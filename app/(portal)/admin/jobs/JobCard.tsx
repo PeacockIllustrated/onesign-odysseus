@@ -45,7 +45,7 @@ export function JobCard({ job, onClick }: JobCardProps) {
             style={style}
             {...listeners}
             {...attributes}
-            onClick={onClick}
+            onClick={isDragging ? undefined : onClick}
             className={`
                 bg-white rounded-[var(--radius-sm)] border-l-4 border border-neutral-200
                 ${PRIORITY_BORDER[job.priority]}

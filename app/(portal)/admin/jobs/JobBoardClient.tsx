@@ -1,10 +1,11 @@
 // app/(portal)/admin/jobs/JobBoardClient.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
     DndContext,
     DragEndEvent,
+    DragStartEvent,
     DragOverlay,
     PointerSensor,
     useSensor,
@@ -29,6 +30,7 @@ export function JobBoardClient({ initialBoard, stages }: JobBoardClientProps) {
     const [detailJobId, setDetailJobId] = useState<string | null>(null);
     const [createOpen, setCreateOpen] = useState(false);
     const [draggingJob, setDraggingJob] = useState<JobWithStage | null>(null);
+    const preDragBoardRef = useRef<BoardColumn[]>(board);
 
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -83,8 +85,9 @@ export function JobBoardClient({ initialBoard, stages }: JobBoardClientProps) {
         return () => { supabase.removeChannel(channel); };
     }, [stages]);
 
-    function handleDragStart(event: any) {
-        const jobId = event.active.id as string;
+    function handleDragStart(event: DragStartEvent) {
+        preDragBoardRef.current = board;  // Snapshot before drag
+        const jobId = String(event.active.id);
         const job = board.flatMap(c => c.jobs).find(j => j.id === jobId) ?? null;
         setDraggingJob(job);
     }
@@ -119,7 +122,7 @@ export function JobBoardClient({ initialBoard, stages }: JobBoardClientProps) {
         const result = await moveJobToStage(jobId, newStageId);
         if ('error' in result) {
             // Revert on failure
-            setBoard(initialBoard);
+            setBoard(preDragBoardRef.current);  // Revert to pre-drag state (preserves prior moves)
             console.error('Failed to move job:', result.error);
         }
     }
