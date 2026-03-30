@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { ArrowLeft, Printer, Copy, AlertTriangle, History, Send } from 'lucide-react';
 import { DuplicateQuoteButton } from './DuplicateQuoteButton';
 import { QuoteHeaderEdit } from './QuoteHeaderEdit';
+import { CreateJobButton } from './CreateJobButton';
 
 interface PageProps {
     params: Promise<{ id: string }>;
@@ -70,6 +71,13 @@ export default async function QuoteDetailPage({ params }: PageProps) {
         .eq('quote_id', id)
         .order('created_at', { ascending: false });
 
+    // Check for existing production job
+    const { data: existingProductionJob } = await supabase
+        .from('production_jobs')
+        .select('id, job_number')
+        .eq('quote_id', id)
+        .maybeSingle();
+
     // Get rate card for this quote's pricing set
     const rateCard = await getRateCardForPricingSet(quote.pricing_set_id);
 
@@ -127,6 +135,13 @@ export default async function QuoteDetailPage({ params }: PageProps) {
                             <Send size={14} />
                             Client PDF
                         </Link>
+                        {quoteData.status === 'accepted' && (
+                            <CreateJobButton
+                                quoteId={id}
+                                existingJobId={existingProductionJob?.id ?? null}
+                                existingJobNumber={existingProductionJob?.job_number ?? null}
+                            />
+                        )}
                         <Chip variant={getStatusVariant(quoteData.status)}>
                             {quoteData.status}
                         </Chip>
