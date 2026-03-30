@@ -157,7 +157,7 @@ export function JobDetailPanel({ jobId, onClose, stages }: JobDetailPanelProps) 
                                 <p className="text-xs font-semibold text-orange-700 uppercase mb-1">Artwork Approval Stage</p>
                                 <p className="text-sm text-neutral-700 mb-2">This job is awaiting artwork sign-off.</p>
                                 <a
-                                    href="/app/admin/artwork"
+                                    href="/admin/artwork"
                                     className="text-xs text-[#4e7e8c] hover:underline"
                                 >
                                     View Artwork Jobs →

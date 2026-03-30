@@ -40,7 +40,7 @@ export function ActivateClient({
                 return;
             }
 
-            router.push('/app/admin/pricing');
+            router.push('/admin/pricing');
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Activation failed');
         } finally {

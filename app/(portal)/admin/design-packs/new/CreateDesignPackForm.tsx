@@ -35,7 +35,7 @@ export function CreateDesignPackForm() {
             }
 
             // Success - redirect to the new design pack
-            router.push(`/app/admin/design-packs/${result.id}`);
+            router.push(`/admin/design-packs/${result.id}`);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'failed to create design pack');
             setSubmitting(false);

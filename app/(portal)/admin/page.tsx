@@ -76,28 +76,28 @@ export default async function AdminPage() {
 
             {/* Stats Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6">
-                <Link href="/app/admin/leads">
+                <Link href="/admin/leads">
                     <StatsCard
                         label="Total Leads"
                         value={leadCount || 0}
                         icon="users"
                     />
                 </Link>
-                <Link href="/app/admin/orgs">
+                <Link href="/admin/orgs">
                     <StatsCard
                         label="Organisations"
                         value={orgCount || 0}
                         icon="building"
                     />
                 </Link>
-                <Link href="/app/admin/subscriptions">
+                <Link href="/admin/subscriptions">
                     <StatsCard
                         label="Active Subscriptions"
                         value={activeSubCount || 0}
                         icon="package"
                     />
                 </Link>
-                <Link href="/app/admin/deliverables">
+                <Link href="/admin/deliverables">
                     <StatsCard
                         label="Need Attention"
                         value={orgsNeedingAttention.length}
@@ -112,7 +112,7 @@ export default async function AdminPage() {
                 <Card>
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-sm font-semibold text-neutral-900">Recent Leads</h2>
-                        <Link href="/app/admin/leads" className="text-xs text-blue-600 hover:underline">
+                        <Link href="/admin/leads" className="text-xs text-blue-600 hover:underline">
                             View all
                         </Link>
                     </div>
@@ -123,7 +123,7 @@ export default async function AdminPage() {
                             {recentLeads.map(lead => (
                                 <Link
                                     key={lead.id}
-                                    href="/app/admin/leads"
+                                    href="/admin/leads"
                                     className="flex items-center justify-between p-2 rounded hover:bg-neutral-50 transition-colors"
                                 >
                                     <div>
@@ -152,7 +152,7 @@ export default async function AdminPage() {
                             <AlertCircle size={16} className="text-amber-500" />
                             <h2 className="text-sm font-semibold text-neutral-900">Needs Attention</h2>
                         </div>
-                        <Link href="/app/admin/deliverables" className="text-xs text-blue-600 hover:underline">
+                        <Link href="/admin/deliverables" className="text-xs text-blue-600 hover:underline">
                             Generate
                         </Link>
                     </div>
@@ -184,7 +184,7 @@ export default async function AdminPage() {
                             <LayoutGrid size={16} className="text-[#4e7e8c]" />
                             <h2 className="text-sm font-semibold text-neutral-900">Production Pipeline</h2>
                         </div>
-                        <Link href="/app/admin/jobs" className="text-xs text-[#4e7e8c] hover:underline">
+                        <Link href="/admin/jobs" className="text-xs text-[#4e7e8c] hover:underline">
                             View board
                         </Link>
                     </div>

@@ -52,7 +52,7 @@ export default async function ComponentDetailPage({
     return (
         <div className="p-6 max-w-7xl mx-auto">
             <Link
-                href={`/app/admin/artwork/${id}`}
+                href={`/admin/artwork/${id}`}
                 className="inline-flex items-center gap-1 text-sm text-neutral-600 hover:text-black mb-4 transition-colors"
             >
                 <ChevronLeft size={16} />
@@ -73,7 +73,7 @@ export default async function ComponentDetailPage({
                 <div className="flex items-center gap-2 shrink-0">
                     {component.design_signed_off_at && (
                         <Link
-                            href={`/app/admin/artwork/${id}/${componentId}/print`}
+                            href={`/admin/artwork/${id}/${componentId}/print`}
                             target="_blank"
                             className="btn-secondary inline-flex items-center gap-2"
                         >

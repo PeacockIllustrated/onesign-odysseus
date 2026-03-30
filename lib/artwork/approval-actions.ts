@@ -100,7 +100,7 @@ export async function generateApprovalLink(
         return { error: insertError.message };
     }
 
-    revalidatePath(`/app/admin/artwork/${jobId}`);
+    revalidatePath(`/admin/artwork/${jobId}`);
     return { token };
 }
 
@@ -150,7 +150,7 @@ export async function revokeApproval(
         return { error: error.message };
     }
 
-    revalidatePath(`/app/admin/artwork/${jobId}`);
+    revalidatePath(`/admin/artwork/${jobId}`);
     return { success: true };
 }
 
@@ -307,6 +307,6 @@ export async function submitApproval(
         return { error: 'failed to submit approval' };
     }
 
-    revalidatePath(`/app/admin/artwork/${approval.job_id}`);
+    revalidatePath(`/admin/artwork/${approval.job_id}`);
     return { success: true };
 }

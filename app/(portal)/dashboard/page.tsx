@@ -117,7 +117,7 @@ export default async function DashboardPage() {
                 <Card>
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-sm font-semibold text-neutral-900">This Month&apos;s Deliverables</h2>
-                        <Link href="/app/deliverables" className="text-xs text-neutral-500 hover:text-black flex items-center gap-1">
+                        <Link href="/deliverables" className="text-xs text-neutral-500 hover:text-black flex items-center gap-1">
                             View all <ArrowRight size={12} />
                         </Link>
                     </div>

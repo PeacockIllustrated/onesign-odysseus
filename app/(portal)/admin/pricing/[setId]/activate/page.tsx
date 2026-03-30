@@ -26,7 +26,7 @@ export default async function ActivatePricingSetPage({ params }: PageProps) {
 
     const superAdmin = await isSuperAdmin();
     if (!superAdmin) {
-        redirect('/app/admin');
+        redirect('/admin');
     }
 
     const { setId } = await params;
@@ -60,7 +60,7 @@ export default async function ActivatePricingSetPage({ params }: PageProps) {
                             This pricing set is currently: <strong>{pricingSet.status}</strong>
                         </p>
                         <Link
-                            href={`/app/admin/pricing/${setId}`}
+                            href={`/admin/pricing/${setId}`}
                             className="text-sm text-blue-600 hover:underline mt-4 inline-block"
                         >
                             Back to pricing set
@@ -85,7 +85,7 @@ export default async function ActivatePricingSetPage({ params }: PageProps) {
         <div>
             <div className="mb-4">
                 <Link
-                    href={`/app/admin/pricing/${setId}`}
+                    href={`/admin/pricing/${setId}`}
                     className="text-sm text-neutral-500 hover:text-neutral-900 flex items-center gap-1"
                 >
                     <ArrowLeft size={14} />

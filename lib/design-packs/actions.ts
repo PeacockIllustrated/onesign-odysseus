@@ -64,7 +64,7 @@ export async function createDesignPack(
         return { error: error.message };
     }
 
-    revalidatePath('/app/admin/design-packs');
+    revalidatePath('/admin/design-packs');
     return { id: data.id };
 }
 
@@ -124,8 +124,8 @@ export async function updateDesignPack(
         return { error: error.message };
     }
 
-    revalidatePath(`/app/admin/design-packs/${id}`);
-    revalidatePath('/app/admin/design-packs');
+    revalidatePath(`/admin/design-packs/${id}`);
+    revalidatePath('/admin/design-packs');
     return { success: true };
 }
 
@@ -175,7 +175,7 @@ export async function updateDesignPackData(
         return { error: error.message };
     }
 
-    revalidatePath(`/app/admin/design-packs/${id}`);
+    revalidatePath(`/admin/design-packs/${id}`);
     return { success: true };
 }
 
@@ -197,8 +197,8 @@ export async function deleteDesignPack(id: string): Promise<{ success: boolean }
         return { error: error.message };
     }
 
-    revalidatePath('/app/admin/design-packs');
-    redirect('/app/admin/design-packs');
+    revalidatePath('/admin/design-packs');
+    redirect('/admin/design-packs');
 }
 
 /**
@@ -247,7 +247,7 @@ export async function duplicateDesignPack(id: string): Promise<{ id: string } | 
         return { error: createError.message };
     }
 
-    revalidatePath('/app/admin/design-packs');
+    revalidatePath('/admin/design-packs');
     return { id: duplicate.id };
 }
 
@@ -302,8 +302,8 @@ export async function lockSection(
         return { error: error.message };
     }
 
-    revalidatePath(`/app/admin/design-packs/${id}`);
-    revalidatePath(`/app/admin/design-packs/${id}/present`);
+    revalidatePath(`/admin/design-packs/${id}`);
+    revalidatePath(`/admin/design-packs/${id}/present`);
     return { success: true };
 }
 
@@ -354,8 +354,8 @@ export async function unlockSection(
         return { error: error.message };
     }
 
-    revalidatePath(`/app/admin/design-packs/${id}`);
-    revalidatePath(`/app/admin/design-packs/${id}/present`);
+    revalidatePath(`/admin/design-packs/${id}`);
+    revalidatePath(`/admin/design-packs/${id}/present`);
     return { success: true };
 }
 
@@ -418,8 +418,8 @@ export async function parkDecision(
         return { error: error.message };
     }
 
-    revalidatePath(`/app/admin/design-packs/${id}`);
-    revalidatePath(`/app/admin/design-packs/${id}/present`);
+    revalidatePath(`/admin/design-packs/${id}`);
+    revalidatePath(`/admin/design-packs/${id}/present`);
     return { success: true };
 }
 
@@ -470,8 +470,8 @@ export async function removeParkedDecision(
         return { error: error.message };
     }
 
-    revalidatePath(`/app/admin/design-packs/${id}`);
-    revalidatePath(`/app/admin/design-packs/${id}/present`);
+    revalidatePath(`/admin/design-packs/${id}`);
+    revalidatePath(`/admin/design-packs/${id}/present`);
     return { success: true };
 }
 
@@ -522,8 +522,8 @@ export async function recordExport(id: string): Promise<{ version: number } | { 
         })
         .eq('id', id);
 
-    revalidatePath(`/app/admin/design-packs/${id}`);
-    revalidatePath('/app/admin/design-packs');
+    revalidatePath(`/admin/design-packs/${id}`);
+    revalidatePath('/admin/design-packs');
     return { version: nextVersion };
 }
 

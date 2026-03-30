@@ -31,7 +31,7 @@ export function PricingListClient() {
 
             setShowModal(false);
             setName('');
-            router.push(`/app/admin/pricing/${result.id}`);
+            router.push(`/admin/pricing/${result.id}`);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to create');
         } finally {

@@ -29,7 +29,7 @@ export default async function AdminPricingPage() {
     // Super-admin only for pricing
     const superAdmin = await isSuperAdmin();
     if (!superAdmin) {
-        redirect('/app/admin');
+        redirect('/admin');
     }
 
     const supabase = await createServerClient();
@@ -80,7 +80,7 @@ export default async function AdminPricingPage() {
                                     </p>
                                 </div>
                                 <Link
-                                    href={`/app/admin/pricing/${set.id}`}
+                                    href={`/admin/pricing/${set.id}`}
                                     className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
                                 >
                                     <Settings size={14} />
@@ -120,13 +120,13 @@ export default async function AdminPricingPage() {
                                         <td className="px-4 py-3 text-sm text-neutral-500">{formatDate(set.created_at)}</td>
                                         <td className="px-4 py-3 text-right space-x-3">
                                             <Link
-                                                href={`/app/admin/pricing/${set.id}`}
+                                                href={`/admin/pricing/${set.id}`}
                                                 className="text-sm text-blue-600 hover:underline"
                                             >
                                                 Edit
                                             </Link>
                                             <Link
-                                                href={`/app/admin/pricing/${set.id}/activate`}
+                                                href={`/admin/pricing/${set.id}/activate`}
                                                 className="text-sm text-green-600 hover:underline"
                                             >
                                                 Activate
@@ -164,7 +164,7 @@ export default async function AdminPricingPage() {
                                         <td className="px-4 py-3 text-sm text-neutral-500">{formatDate(set.created_at)}</td>
                                         <td className="px-4 py-3 text-right">
                                             <Link
-                                                href={`/app/admin/pricing/${set.id}`}
+                                                href={`/admin/pricing/${set.id}`}
                                                 className="text-sm text-neutral-500 hover:underline"
                                             >
                                                 View

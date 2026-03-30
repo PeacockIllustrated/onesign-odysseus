@@ -61,7 +61,7 @@ export function Topbar({ org, isAdmin }: TopbarProps) {
                         {/* Dropdown */}
                         <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-neutral-200 rounded-[var(--radius-md)] shadow-lg z-20 py-1">
                             <Link
-                                href="/app/settings"
+                                href="/settings"
                                 className="w-full flex items-center gap-2 px-4 py-2 text-sm text-neutral-600 hover:bg-neutral-50 transition-colors"
                                 onClick={() => setMenuOpen(false)}
                             >

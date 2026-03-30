@@ -35,7 +35,7 @@ function LoginForm() {
 
             // Check role to determine redirect target
             const { data: { user } } = await supabase.auth.getUser();
-            let redirectTo = '/app/dashboard';
+            let redirectTo = '/dashboard';
 
             if (user) {
                 const { data: profile } = await supabase
@@ -45,7 +45,7 @@ function LoginForm() {
                     .single();
 
                 if (profile?.role === 'super_admin') {
-                    redirectTo = '/app/admin';
+                    redirectTo = '/admin';
                 }
             }
 

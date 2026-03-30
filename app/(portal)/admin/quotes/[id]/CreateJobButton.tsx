@@ -30,7 +30,7 @@ export function CreateJobButton({ quoteId, existingJobId, existingJobNumber }: C
     if (existingJobId) {
         return (
             <Link
-                href={`/app/admin/jobs`}
+                href={`/admin/jobs`}
                 className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-green-700 bg-green-50 border border-green-200 hover:bg-green-100 rounded-[var(--radius-sm)] transition-colors"
             >
                 <CheckCircle2 size={14} />
@@ -58,7 +58,7 @@ export function CreateJobButton({ quoteId, existingJobId, existingJobNumber }: C
             if ('error' in result) {
                 setError(result.error);
             } else {
-                router.push(`/app/admin/jobs`);
+                router.push(`/admin/jobs`);
             }
         });
     }

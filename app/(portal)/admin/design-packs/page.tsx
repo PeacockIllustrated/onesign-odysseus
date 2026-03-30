@@ -29,7 +29,7 @@ export default async function DesignPacksPage({
                 title="design packs"
                 description="interactive design presentation tool for client sessions"
                 action={
-                    <Link href="/app/admin/design-packs/new" className="btn-primary">
+                    <Link href="/admin/design-packs/new" className="btn-primary">
                         new design pack
                     </Link>
                 }
@@ -70,13 +70,13 @@ export default async function DesignPacksPage({
                         <p className="text-neutral-500 mb-4">no design packs found</p>
                         {params.search || (params.status && params.status !== 'all') ? (
                             <Link
-                                href="/app/admin/design-packs"
+                                href="/admin/design-packs"
                                 className="text-sm text-neutral-600 hover:text-black underline"
                             >
                                 clear filters
                             </Link>
                         ) : (
-                            <Link href="/app/admin/design-packs/new" className="btn-primary">
+                            <Link href="/admin/design-packs/new" className="btn-primary">
                                 create your first design pack
                             </Link>
                         )}
@@ -128,7 +128,7 @@ export default async function DesignPacksPage({
                                         >
                                             <td className="px-4 py-3">
                                                 <Link
-                                                    href={`/app/admin/design-packs/${pack.id}`}
+                                                    href={`/admin/design-packs/${pack.id}`}
                                                     className="font-medium text-black hover:underline"
                                                 >
                                                     {pack.project_name}

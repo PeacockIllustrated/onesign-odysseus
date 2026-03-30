@@ -68,7 +68,7 @@ export async function createArtworkJob(
         return { error: error.message };
     }
 
-    revalidatePath('/app/admin/artwork');
+    revalidatePath('/admin/artwork');
     return { id: data.id };
 }
 
@@ -109,8 +109,8 @@ export async function updateArtworkJob(
         return { error: error.message };
     }
 
-    revalidatePath('/app/admin/artwork');
-    revalidatePath(`/app/admin/artwork/${id}`);
+    revalidatePath('/admin/artwork');
+    revalidatePath(`/admin/artwork/${id}`);
     return { success: true };
 }
 
@@ -127,8 +127,8 @@ export async function deleteArtworkJob(id: string): Promise<void> {
 
     await supabase.from('artwork_jobs').delete().eq('id', id);
 
-    revalidatePath('/app/admin/artwork');
-    redirect('/app/admin/artwork');
+    revalidatePath('/admin/artwork');
+    redirect('/admin/artwork');
 }
 
 // =============================================================================
@@ -187,7 +187,7 @@ export async function addComponent(
         .eq('id', jobId)
         .eq('status', 'draft');
 
-    revalidatePath(`/app/admin/artwork/${jobId}`);
+    revalidatePath(`/admin/artwork/${jobId}`);
     return { id: data.id };
 }
 
@@ -231,8 +231,8 @@ export async function updateComponent(
         return { error: error.message };
     }
 
-    revalidatePath(`/app/admin/artwork/${component.job_id}`);
-    revalidatePath(`/app/admin/artwork/${component.job_id}/${componentId}`);
+    revalidatePath(`/admin/artwork/${component.job_id}`);
+    revalidatePath(`/admin/artwork/${component.job_id}/${componentId}`);
     return { success: true };
 }
 
@@ -261,7 +261,7 @@ export async function deleteComponent(
         return { error: error.message };
     }
 
-    revalidatePath(`/app/admin/artwork/${jobId}`);
+    revalidatePath(`/admin/artwork/${jobId}`);
     return { success: true };
 }
 
@@ -393,8 +393,8 @@ export async function submitDesign(
         await supabase.from('artwork_component_items').insert(itemRows);
     }
 
-    revalidatePath(`/app/admin/artwork/${current.job_id}`);
-    revalidatePath(`/app/admin/artwork/${current.job_id}/${componentId}`);
+    revalidatePath(`/admin/artwork/${current.job_id}`);
+    revalidatePath(`/admin/artwork/${current.job_id}/${componentId}`);
     return { success: true };
 }
 
@@ -440,8 +440,8 @@ export async function signOffDesign(
         return { error: error.message };
     }
 
-    revalidatePath(`/app/admin/artwork/${component.job_id}`);
-    revalidatePath(`/app/admin/artwork/${component.job_id}/${componentId}`);
+    revalidatePath(`/admin/artwork/${component.job_id}`);
+    revalidatePath(`/admin/artwork/${component.job_id}/${componentId}`);
     return { success: true };
 }
 
@@ -603,8 +603,8 @@ export async function submitProductionMeasurements(
         .eq('id', component.job_id)
         .in('status', ['draft', 'in_progress', 'design_complete']);
 
-    revalidatePath(`/app/admin/artwork/${component.job_id}`);
-    revalidatePath(`/app/admin/artwork/${component.job_id}/${componentId}`);
+    revalidatePath(`/admin/artwork/${component.job_id}`);
+    revalidatePath(`/admin/artwork/${component.job_id}/${componentId}`);
     return { success: true };
 }
 
@@ -703,9 +703,9 @@ export async function signOffProduction(
             .eq('id', component.job_id);
     }
 
-    revalidatePath(`/app/admin/artwork/${component.job_id}`);
-    revalidatePath(`/app/admin/artwork/${component.job_id}/${componentId}`);
-    revalidatePath('/app/admin/artwork');
+    revalidatePath(`/admin/artwork/${component.job_id}`);
+    revalidatePath(`/admin/artwork/${component.job_id}/${componentId}`);
+    revalidatePath('/admin/artwork');
     return { success: true };
 }
 
@@ -767,8 +767,8 @@ export async function uploadArtworkThumbnail(
         .update({ artwork_thumbnail_url: url })
         .eq('id', componentId);
 
-    revalidatePath(`/app/admin/artwork/${component.job_id}`);
-    revalidatePath(`/app/admin/artwork/${component.job_id}/${componentId}`);
+    revalidatePath(`/admin/artwork/${component.job_id}`);
+    revalidatePath(`/admin/artwork/${component.job_id}/${componentId}`);
     return { url };
 }
 
@@ -818,7 +818,7 @@ export async function uploadCoverImage(
         return { error: updateError.message };
     }
 
-    revalidatePath(`/app/admin/artwork/${jobId}`);
+    revalidatePath(`/admin/artwork/${jobId}`);
     return { path: storagePath };
 }
 
@@ -858,7 +858,7 @@ export async function removeCoverImage(
         return { error: error.message };
     }
 
-    revalidatePath(`/app/admin/artwork/${jobId}`);
+    revalidatePath(`/admin/artwork/${jobId}`);
     return { success: true };
 }
 

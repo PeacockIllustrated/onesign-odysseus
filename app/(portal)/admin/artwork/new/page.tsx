@@ -10,7 +10,7 @@ export default async function NewArtworkJobPage() {
     return (
         <div className="p-6 max-w-3xl mx-auto">
             <Link
-                href="/app/admin/artwork"
+                href="/admin/artwork"
                 className="inline-flex items-center gap-1 text-sm text-neutral-600 hover:text-black mb-4 transition-colors"
             >
                 <ChevronLeft size={16} />

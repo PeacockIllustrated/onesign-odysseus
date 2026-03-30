@@ -112,7 +112,7 @@ export async function createQuoteAction(input: CreateQuoteInput): Promise<{ id: 
         return { error: error.message };
     }
 
-    revalidatePath('/app/admin/quotes');
+    revalidatePath('/admin/quotes');
     return { id: data.id };
 }
 
@@ -156,8 +156,8 @@ export async function updateQuoteAction(input: UpdateQuoteInput): Promise<{ succ
         new_data: input,
     });
 
-    revalidatePath(`/app/admin/quotes/${input.id}`);
-    revalidatePath('/app/admin/quotes');
+    revalidatePath(`/admin/quotes/${input.id}`);
+    revalidatePath('/admin/quotes');
     return { success: true };
 }
 
@@ -209,8 +209,8 @@ export async function updateQuoteStatusAction(
         new_data: { status },
     });
 
-    revalidatePath(`/app/admin/quotes/${quoteId}`);
-    revalidatePath('/app/admin/quotes');
+    revalidatePath(`/admin/quotes/${quoteId}`);
+    revalidatePath('/admin/quotes');
     return { success: true };
 }
 
@@ -230,7 +230,7 @@ export async function deleteQuoteAction(quoteId: string): Promise<{ success: boo
         return { error: error.message };
     }
 
-    revalidatePath('/app/admin/quotes');
+    revalidatePath('/admin/quotes');
     return { success: true };
 }
 
@@ -334,7 +334,7 @@ export async function addQuoteItemAction(
         new_data: { input, output },
     });
 
-    revalidatePath(`/app/admin/quotes/${quoteId}`);
+    revalidatePath(`/admin/quotes/${quoteId}`);
     return { id: data.id };
 }
 
@@ -398,7 +398,7 @@ export async function updateQuoteItemAction(
         new_data: { input, output },
     });
 
-    revalidatePath(`/app/admin/quotes/${quoteId}`);
+    revalidatePath(`/admin/quotes/${quoteId}`);
     return { success: true };
 }
 
@@ -450,7 +450,7 @@ export async function deleteQuoteItemAction(
         });
     }
 
-    revalidatePath(`/app/admin/quotes/${quoteId}`);
+    revalidatePath(`/admin/quotes/${quoteId}`);
     return { success: true };
 }
 
@@ -621,7 +621,7 @@ export async function duplicateQuoteAction(
         await supabase.from('quote_items').insert(newItems);
     }
 
-    revalidatePath('/app/admin/quotes');
+    revalidatePath('/admin/quotes');
     return { id: newQuote.id };
 }
 
@@ -674,7 +674,7 @@ export async function duplicateQuoteItemAction(
         return { error: createError?.message || 'Failed to duplicate item' };
     }
 
-    revalidatePath(`/app/admin/quotes/${quoteId}`);
+    revalidatePath(`/admin/quotes/${quoteId}`);
     return { id: newItem.id };
 }
 

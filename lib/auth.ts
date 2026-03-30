@@ -112,7 +112,7 @@ export async function isSuperAdmin(): Promise<boolean> {
 export async function requireAdmin() {
     const superAdmin = await isSuperAdmin();
     if (!superAdmin) {
-        redirect('/app/dashboard');
+        redirect('/dashboard');
     }
 }
 

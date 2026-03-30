@@ -134,8 +134,8 @@ export async function createJobFromQuote(
         notes: `Job created from quote ${quote.quote_number}`,
     });
 
-    revalidatePath('/app/admin/jobs');
-    revalidatePath(`/app/admin/quotes/${quoteId}`);
+    revalidatePath('/admin/jobs');
+    revalidatePath(`/admin/quotes/${quoteId}`);
     return { id: newJob.id, jobNumber: newJob.job_number };
 }
 
@@ -197,7 +197,7 @@ export async function createManualJob(input: {
         notes: 'Job created manually',
     });
 
-    revalidatePath('/app/admin/jobs');
+    revalidatePath('/admin/jobs');
     return { id: newJob.id, jobNumber: newJob.job_number };
 }
 
@@ -239,7 +239,7 @@ export async function moveJobToStage(
         notes: notes || null,
     });
 
-    revalidatePath('/app/admin/jobs');
+    revalidatePath('/admin/jobs');
     return { success: true };
 }
 
@@ -284,7 +284,7 @@ export async function moveJobItemToStage(
         notes: notes || null,
     });
 
-    revalidatePath('/app/admin/jobs');
+    revalidatePath('/admin/jobs');
     return { success: true };
 }
 
@@ -351,7 +351,7 @@ export async function completeJob(
 
     if (error) return { error: error.message };
     revalidatePath('/shop-floor');
-    revalidatePath('/app/admin/jobs');
+    revalidatePath('/admin/jobs');
     return { success: true };
 }
 
@@ -418,7 +418,7 @@ export async function updateJobPriority(
         .eq('id', jobId);
 
     if (error) return { error: error.message };
-    revalidatePath('/app/admin/jobs');
+    revalidatePath('/admin/jobs');
     return { success: true };
 }
 
@@ -436,7 +436,7 @@ export async function updateJobAssignment(
         .eq('id', jobId);
 
     if (error) return { error: error.message };
-    revalidatePath('/app/admin/jobs');
+    revalidatePath('/admin/jobs');
     return { success: true };
 }
 
@@ -458,6 +458,6 @@ export async function addDepartmentInstruction(
         .insert({ job_id: jobId, stage_id: stageId, instruction, created_by: user.id });
 
     if (error) return { error: error.message };
-    revalidatePath('/app/admin/jobs');
+    revalidatePath('/admin/jobs');
     return { success: true };
 }
