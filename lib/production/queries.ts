@@ -181,7 +181,11 @@ export async function getProductionStats(): Promise<{
     const supabase = await createServerClient();
     const today = new Date().toISOString().split('T')[0];
 
-    const [{ count: total }, { count: overdue }, { data: activeJobs }] = await Promise.all([
+    const [
+        { count: total, error: e1 },
+        { count: overdue, error: e2 },
+        { data: activeJobs, error: e3 },
+    ] = await Promise.all([
         supabase
             .from('production_jobs')
             .select('*', { count: 'exact', head: true })
@@ -196,6 +200,10 @@ export async function getProductionStats(): Promise<{
             .select('current_stage_id')
             .in('status', ['active', 'paused']),
     ]);
+
+    if (e1 || e2 || e3) {
+        throw new Error('Production tables not available');
+    }
 
     const stages = await getProductionStages();
     const stageMap = new Map(stages.map(s => [s.id, s]));

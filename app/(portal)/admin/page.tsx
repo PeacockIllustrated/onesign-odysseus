@@ -1,7 +1,7 @@
 import { createServerClient } from '@/lib/supabase-server';
 import { requireAdmin } from '@/lib/auth';
 import { PageHeader, Card, StatsCard } from '@/app/(portal)/components/ui';
-import { Users, Building2, Package, FileText, AlertCircle, LayoutGrid } from 'lucide-react';
+import { AlertCircle, LayoutGrid } from 'lucide-react';
 import Link from 'next/link';
 import { getProductionStats } from '@/lib/production/queries';
 
