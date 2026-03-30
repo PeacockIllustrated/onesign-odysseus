@@ -1,0 +1,194 @@
+@import "tailwindcss";
+
+/* Gilroy Font Family */
+@font-face {
+  font-family: 'Gilroy';
+  src: url('/fonts/Gilroy-Light.ttf') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Gilroy';
+  src: url('/fonts/Gilroy-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Gilroy';
+  src: url('/fonts/Gilroy-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Gilroy';
+  src: url('/fonts/Gilroy-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Gilroy';
+  src: url('/fonts/Gilroy-Heavy.ttf') format('truetype');
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@layer base {
+  :root {
+    /* Brand: Monochrome & Structured */
+    --background: 0 0% 100%;
+    /* White */
+    --foreground: 0 0% 0%;
+    /* Black */
+
+    /* Surface Tokens */
+    --surface-50: 0 0% 98%;
+    --surface-100: 0 0% 95%;
+    --surface-200: 0 0% 90%;
+    --surface-300: 0 0% 80%;
+
+    /* Action Tokens */
+    --action-primary: 0 0% 0%;
+    --action-primary-fg: 0 0% 100%;
+
+    --action-secondary: 0 0% 100%;
+    --action-secondary-fg: 0 0% 0%;
+
+    /* Border Radius - Structured/Sharp */
+    --radius-sm: 0.125rem;
+    /* 2px */
+    --radius-md: 0.25rem;
+    /* 4px */
+    --radius-lg: 0.5rem;
+    /* 8px */
+
+    /* Typography - Gilroy */
+    --font-heading: 'Gilroy', system-ui, sans-serif;
+    --font-body: 'Gilroy', system-ui, sans-serif;
+  }
+
+  body {
+    color: hsl(var(--foreground));
+    background: hsl(var(--background));
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    text-transform: lowercase;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-heading);
+    letter-spacing: -0.02em;
+    font-weight: 700;
+  }
+}
+
+/* Component classes without @apply - direct CSS */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 150ms ease;
+  background-color: #000;
+  color: #fff;
+  border: 1px solid #000;
+  border-radius: var(--radius-sm);
+}
+
+.btn-primary:hover {
+  background-color: #262626;
+}
+
+.btn-primary:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #000;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 150ms ease;
+  background-color: #fff;
+  color: #000;
+  border: 1px solid #e5e5e5;
+  border-radius: var(--radius-sm);
+}
+
+.btn-secondary:hover {
+  background-color: #fafafa;
+  border-color: #d4d4d4;
+}
+
+.btn-secondary:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #000;
+}
+
+.btn-secondary:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.card-base {
+  background-color: #fff;
+  border: 1px solid #e5e5e5;
+  border-radius: var(--radius-md);
+  padding: 1.5rem;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background-color: #f5f5f5;
+  color: #262626;
+  border: 1px solid #e5e5e5;
+}
+/* Mobile sidebar slide-in */
+@keyframes slideIn {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+.animate-slide-in {
+  animation: slideIn 200ms ease-out;
+}
+
+/* Presentation Mode Animation */
+@keyframes fadeOut {
+  0% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.animate-fadeOut {
+  animation: fadeOut 5s ease-out forwards;
+}

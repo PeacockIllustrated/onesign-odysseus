@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx next build:*)",
+      "Bash(node -e:*)",
+      "Bash(dir:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git rm:*)",
+      "Bash(grep -E \"\\\\.sql$\")",
+      "Bash(npm run:*)",
+      "Bash(cat '/c/Users/peaco/Documents/onesign-growth/app/app/\\(portal\\)/layout.tsx')",
+      "Bash(grep -r \"svg\\\\|logo\\\\|Logo\\\\|icon\\\\|Icon\" /c/Users/peaco/Documents/onesign-growth/app/app/components/*.tsx)",
+      "Bash(xargs grep:*)",
+      "Bash(cat '/c/Users/peaco/Documents/onesign-growth/app/approve/artwork/'*'/ApprovalClientView.tsx')",
+      "Bash(cat '/c/Users/peaco/Documents/onesign-growth/app/app/\\(print\\)/admin/quotes/[id]/print/page.tsx')",
+      "Bash(cat '/c/Users/peaco/Documents/onesign-growth/app/app/\\(portal\\)/admin/quotes/[id]/QuoteHeaderEdit.tsx')",
+      "Bash(cat '/c/Users/peaco/Documents/onesign-growth/app/app/\\(print\\)/admin/artwork/[id]/print/page.tsx')",
+      "Bash(grep -n \"OneSign\" /c/Users/peaco/Documents/onesign-growth/app/app/\\\\\\(print\\\\\\)/admin/artwork/[id]/print/page.tsx)",
+      "Bash(head -50 '/c/Users/peaco/Documents/onesign-growth/app/app/\\(print\\)/admin/quotes/[id]/print/page.tsx')",
+      "Bash(ls C:/Users/peaco/Documents/onesign-portal/app/app/\\\\\\(portal\\\\\\)/)",
+      "Bash(ls C:/Users/peaco/Documents/onesign-portal/app/app/\\\\\\(portal\\\\\\)/admin/)"
+    ]
+  }
+}

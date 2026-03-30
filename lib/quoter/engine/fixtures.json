@@ -1,0 +1,382 @@
+{
+    "fixtures": [
+        {
+            "name": "Basic panel with single letter set",
+            "input": {
+                "width_mm": 2400,
+                "height_mm": 1200,
+                "allowance_mm": 0,
+                "panel_size": "2.4 x 1.2",
+                "panel_material": "Aluminium 2.5mm",
+                "panel_finish": "Powder Coating",
+                "letter_sets": [
+                    {
+                        "type": "Fabricated",
+                        "qty": 10,
+                        "height_mm": 200,
+                        "finish": "Powder Coating",
+                        "illuminated": false
+                    }
+                ],
+                "labour_hours": {
+                    "router": 2,
+                    "fabrication": 3,
+                    "assembly": 2,
+                    "vinyl": 1,
+                    "print": 0
+                },
+                "transformer_type": "60W",
+                "markup_percent": 20
+            },
+            "expected": {
+                "ok": true,
+                "panels_needed": 1,
+                "area_m2": 2.88,
+                "total_leds": 0,
+                "transformers_needed": 0,
+                "panel_material_cost_pence": 8500,
+                "panel_finish_cost_pence": 7200,
+                "letters_total_cost_pence": 40000,
+                "line_total_pence_min": 80000,
+                "line_total_pence_max": 100000
+            }
+        },
+        {
+            "name": "Large panel requiring multiple sheets",
+            "input": {
+                "width_mm": 5000,
+                "height_mm": 2500,
+                "allowance_mm": 50,
+                "panel_size": "2.4 x 1.2",
+                "panel_material": "Aluminium 2.5mm",
+                "panel_finish": "Powder Coating",
+                "letter_sets": [
+                    {
+                        "type": "Fabricated",
+                        "qty": 8,
+                        "height_mm": 300,
+                        "finish": "Powder Coating",
+                        "illuminated": false
+                    }
+                ],
+                "labour_hours": {
+                    "router": 4,
+                    "fabrication": 5,
+                    "assembly": 3,
+                    "vinyl": 2,
+                    "print": 0
+                },
+                "transformer_type": "100W",
+                "markup_percent": 25
+            },
+            "expected": {
+                "ok": true,
+                "panels_needed": 6,
+                "panels_x": 3,
+                "panels_y": 2,
+                "total_leds": 0,
+                "transformers_needed": 0
+            }
+        },
+        {
+            "name": "Illuminated letters with transformer sizing",
+            "input": {
+                "width_mm": 3000,
+                "height_mm": 1500,
+                "allowance_mm": 0,
+                "panel_size": "3 x 1.5",
+                "panel_material": "Aluminium 2.5mm",
+                "panel_finish": "Powder Coating",
+                "letter_sets": [
+                    {
+                        "type": "Fabricated",
+                        "qty": 15,
+                        "height_mm": 200,
+                        "finish": "Powder Coating",
+                        "illuminated": true
+                    }
+                ],
+                "labour_hours": {
+                    "router": 3,
+                    "fabrication": 4,
+                    "assembly": 3,
+                    "vinyl": 1,
+                    "print": 0
+                },
+                "transformer_type": "60W",
+                "markup_percent": 20
+            },
+            "expected": {
+                "ok": true,
+                "panels_needed": 1,
+                "letters_total_leds": 75,
+                "total_leds": 75,
+                "transformers_needed": 2
+            }
+        },
+        {
+            "name": "Panel with aperture and LEDs",
+            "input": {
+                "width_mm": 2400,
+                "height_mm": 1200,
+                "allowance_mm": 0,
+                "panel_size": "2.4 x 1.2",
+                "panel_material": "Aluminium 2.5mm",
+                "panel_finish": "Powder Coating",
+                "aperture": {
+                    "width_mm": 800,
+                    "height_mm": 400,
+                    "opal_type": "Opal (5mm)"
+                },
+                "letter_sets": [
+                    {
+                        "type": "Fabricated",
+                        "qty": 5,
+                        "height_mm": 150,
+                        "finish": "Powder Coating",
+                        "illuminated": true
+                    }
+                ],
+                "labour_hours": {
+                    "router": 3,
+                    "fabrication": 4,
+                    "assembly": 3,
+                    "vinyl": 1,
+                    "print": 0
+                },
+                "transformer_type": "60W",
+                "markup_percent": 20
+            },
+            "expected": {
+                "ok": true,
+                "aperture_leds": 8,
+                "letters_total_leds": 20,
+                "total_leds": 28,
+                "transformers_needed": 1
+            }
+        },
+        {
+            "name": "Multiple letter sets mixed illumination",
+            "input": {
+                "width_mm": 4000,
+                "height_mm": 2000,
+                "allowance_mm": 100,
+                "panel_size": "2.4 x 1.2",
+                "panel_material": "Aluminium 3mm",
+                "panel_finish": "Powder Coating",
+                "letter_sets": [
+                    {
+                        "type": "Fabricated",
+                        "qty": 10,
+                        "height_mm": 300,
+                        "finish": "Powder Coating",
+                        "illuminated": true
+                    },
+                    {
+                        "type": "Komacel",
+                        "qty": 5,
+                        "height_mm": 150,
+                        "finish": "Painted",
+                        "illuminated": false
+                    },
+                    {
+                        "type": "Acrylic",
+                        "qty": 8,
+                        "height_mm": 100,
+                        "finish": "Clear",
+                        "illuminated": true
+                    }
+                ],
+                "labour_hours": {
+                    "router": 5,
+                    "fabrication": 6,
+                    "assembly": 4,
+                    "vinyl": 2,
+                    "print": 1
+                },
+                "transformer_type": "100W",
+                "markup_percent": 30
+            },
+            "expected": {
+                "ok": true,
+                "panels_needed": 4,
+                "letters_total_leds": 104
+            }
+        },
+        {
+            "name": "Transformer edge case - high LED count with small transformer",
+            "input": {
+                "width_mm": 6000,
+                "height_mm": 3000,
+                "allowance_mm": 0,
+                "panel_size": "3 x 1.5",
+                "panel_material": "Aluminium 2.5mm",
+                "panel_finish": "Powder Coating",
+                "aperture": {
+                    "width_mm": 2000,
+                    "height_mm": 1000,
+                    "opal_type": "Opal (10mm)"
+                },
+                "letter_sets": [
+                    {
+                        "type": "Fabricated",
+                        "qty": 20,
+                        "height_mm": 500,
+                        "finish": "Powder Coating",
+                        "illuminated": true
+                    }
+                ],
+                "labour_hours": {
+                    "router": 8,
+                    "fabrication": 10,
+                    "assembly": 6,
+                    "vinyl": 3,
+                    "print": 2
+                },
+                "transformer_type": "20W",
+                "markup_percent": 25
+            },
+            "expected": {
+                "ok": true,
+                "panels_needed": 4,
+                "aperture_leds": 50,
+                "letters_total_leds": 320,
+                "total_leds": 370,
+                "transformers_needed": 19,
+                "has_warning": true
+            }
+        },
+        {
+            "name": "Invalid finish for letter type",
+            "input": {
+                "width_mm": 2400,
+                "height_mm": 1200,
+                "allowance_mm": 0,
+                "panel_size": "2.4 x 1.2",
+                "panel_material": "Aluminium 2.5mm",
+                "panel_finish": "Powder Coating",
+                "letter_sets": [
+                    {
+                        "type": "Komacel",
+                        "qty": 10,
+                        "height_mm": 200,
+                        "finish": "Powder Coating",
+                        "illuminated": false
+                    }
+                ],
+                "labour_hours": {
+                    "router": 2,
+                    "fabrication": 3,
+                    "assembly": 2,
+                    "vinyl": 1,
+                    "print": 0
+                },
+                "transformer_type": "60W",
+                "markup_percent": 20
+            },
+            "expected": {
+                "ok": false,
+                "error_contains": "not allowed for type"
+            }
+        },
+        {
+            "name": "Missing panel material in rate card",
+            "input": {
+                "width_mm": 2400,
+                "height_mm": 1200,
+                "allowance_mm": 0,
+                "panel_size": "2.4 x 1.2",
+                "panel_material": "Titanium 5mm",
+                "panel_finish": "Powder Coating",
+                "letter_sets": [
+                    {
+                        "type": "Fabricated",
+                        "qty": 10,
+                        "height_mm": 200,
+                        "finish": "Powder Coating",
+                        "illuminated": false
+                    }
+                ],
+                "labour_hours": {
+                    "router": 2,
+                    "fabrication": 3,
+                    "assembly": 2,
+                    "vinyl": 1,
+                    "print": 0
+                },
+                "transformer_type": "60W",
+                "markup_percent": 20
+            },
+            "expected": {
+                "ok": false,
+                "error_contains": "Panel price not found"
+            }
+        },
+        {
+            "name": "Negative allowance produces invalid dimensions",
+            "input": {
+                "width_mm": 500,
+                "height_mm": 300,
+                "allowance_mm": 300,
+                "panel_size": "2.4 x 1.2",
+                "panel_material": "Aluminium 2.5mm",
+                "panel_finish": "Powder Coating",
+                "letter_sets": [
+                    {
+                        "type": "Fabricated",
+                        "qty": 5,
+                        "height_mm": 100,
+                        "finish": "Powder Coating",
+                        "illuminated": false
+                    }
+                ],
+                "labour_hours": {
+                    "router": 1,
+                    "fabrication": 1,
+                    "assembly": 1,
+                    "vinyl": 0,
+                    "print": 0
+                },
+                "transformer_type": "20W",
+                "markup_percent": 15
+            },
+            "expected": {
+                "ok": false,
+                "error_contains": "must be positive"
+            }
+        },
+        {
+            "name": "Zero markup calculation",
+            "input": {
+                "width_mm": 2400,
+                "height_mm": 1200,
+                "allowance_mm": 0,
+                "panel_size": "2.4 x 1.2",
+                "panel_material": "Aluminium 2.5mm",
+                "panel_finish": "Powder Coating",
+                "letter_sets": [
+                    {
+                        "type": "Fabricated",
+                        "qty": 10,
+                        "height_mm": 100,
+                        "finish": "Powder Coating",
+                        "illuminated": false
+                    }
+                ],
+                "labour_hours": {
+                    "router": 0,
+                    "fabrication": 0,
+                    "assembly": 0,
+                    "vinyl": 0,
+                    "print": 0
+                },
+                "transformer_type": "60W",
+                "markup_percent": 0
+            },
+            "expected": {
+                "ok": true,
+                "materials_markup_pence": 0
+            }
+        }
+    ]
+}
