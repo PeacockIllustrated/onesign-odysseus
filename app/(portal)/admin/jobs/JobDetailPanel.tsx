@@ -26,26 +26,42 @@ export function JobDetailPanel({ jobId, onClose, stages }: JobDetailPanelProps) 
 
     useEffect(() => {
         setLoading(true);
-        getJobDetailAction(jobId).then(d => {
-            setDetail(d);
-            setLoading(false);
-        });
+        getJobDetailAction(jobId)
+            .then(d => {
+                setDetail(d);
+            })
+            .catch(err => {
+                console.error('Failed to load job detail:', err);
+            })
+            .finally(() => {
+                setLoading(false);
+            });
     }, [jobId]);
 
-    async function handleMoveStage(stageId: string) {
+    function handleMoveStage(stageId: string) {
         startTransition(async () => {
-            await moveJobToStage(jobId, stageId);
+            const result = await moveJobToStage(jobId, stageId);
+            if ('error' in result) {
+                console.error('Failed to move job:', result.error);
+                return;
+            }
             const updated = await getJobDetailAction(jobId);
             setDetail(updated);
         });
     }
 
-    async function handleAddInstruction() {
+    function handleAddInstruction() {
         if (!newInstruction.trim() || !instructionStageId) return;
-        await addDepartmentInstruction(jobId, instructionStageId, newInstruction.trim());
-        setNewInstruction('');
-        const updated = await getJobDetailAction(jobId);
-        setDetail(updated);
+        startTransition(async () => {
+            const result = await addDepartmentInstruction(jobId, instructionStageId, newInstruction.trim());
+            if ('error' in result) {
+                console.error('Failed to add instruction:', result.error);
+                return;
+            }
+            setNewInstruction('');
+            const updated = await getJobDetailAction(jobId);
+            setDetail(updated);
+        });
     }
 
     return (
@@ -241,7 +257,7 @@ export function JobDetailPanel({ jobId, onClose, stages }: JobDetailPanelProps) 
                                     />
                                     <button
                                         onClick={handleAddInstruction}
-                                        disabled={!newInstruction.trim() || !instructionStageId}
+                                        disabled={!newInstruction.trim() || !instructionStageId || isPending}
                                         className="px-3 py-1.5 text-sm bg-[#4e7e8c] text-white rounded disabled:opacity-40 hover:bg-[#3a5f6a] transition-colors"
                                     >
                                         <Plus size={14} />
