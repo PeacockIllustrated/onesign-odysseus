@@ -52,6 +52,7 @@ export async function getJobBoard(): Promise<BoardColumn[]> {
     }
 
     const jobList = (jobs || []) as ProductionJob[];
+    // Supabase RLS on production_jobs ensures only the requesting user's org's jobs are visible
     const stageMap = new Map(stages.map(s => [s.id, s]));
 
     return stages.map(stage => ({
@@ -159,7 +160,7 @@ export async function getShopFloorQueue(stageSlug: string): Promise<ProductionJo
         .select('*')
         .eq('current_stage_id', stage.id)
         .in('status', ['active', 'paused'])
-        .order('due_date', { ascending: true, nullsFirst: false });
+        .order('due_date', { ascending: true, nullsFirst: false }); // dated jobs first, undated last
 
     if (error) {
         console.error('getShopFloorQueue error:', error);
@@ -226,27 +227,29 @@ export async function getAcceptedQuotesWithoutJobs(): Promise<
 > {
     const supabase = await createServerClient();
 
-    const { data: quotes, error } = await supabase
+    // Supabase RLS enforced on both tables
+    // Fetch job quote_ids first (bounded by job count), then exclude from quotes query
+    const { data: existingJobs } = await supabase
+        .from('production_jobs')
+        .select('quote_id')
+        .not('quote_id', 'is', null);
+
+    const convertedIds = (existingJobs || [])
+        .map((j: any) => j.quote_id as string)
+        .filter(Boolean);
+
+    // Build query — filter out already-converted quotes at DB level
+    const baseQuery = supabase
         .from('quotes')
         .select('id, quote_number, customer_name')
         .eq('status', 'accepted')
         .order('created_at', { ascending: false });
 
+    const { data: quotes, error } = convertedIds.length > 0
+        ? await baseQuery.not('id', 'in', `(${convertedIds.join(',')})`)
+        : await baseQuery;
+
     if (error || !quotes) return [];
 
-    const quoteIds = quotes.map(q => q.id);
-    if (quoteIds.length === 0) return [];
-
-    const { data: existingJobs } = await supabase
-        .from('production_jobs')
-        .select('quote_id')
-        .in('quote_id', quoteIds);
-
-    const convertedIds = new Set((existingJobs || []).map(j => j.quote_id).filter(Boolean));
-
-    return quotes.filter(q => !convertedIds.has(q.id)) as Array<{
-        id: string;
-        quote_number: string;
-        customer_name: string | null;
-    }>;
+    return quotes as Array<{ id: string; quote_number: string; customer_name: string | null }>;
 }
