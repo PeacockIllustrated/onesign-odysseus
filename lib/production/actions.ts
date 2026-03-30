@@ -110,7 +110,7 @@ export async function createJobFromQuote(
 
     if (items.length > 0) {
         const { error: itemsError } = await supabase.from('job_items').insert(
-            items.map((item: any) => ({
+            items.map((item: { id: string; item_type: string | null }) => ({
                 job_id: newJob.id,
                 quote_item_id: item.id,
                 description: item.item_type === 'panel_letters_v1' ? 'Panel + Letters' : item.item_type,
