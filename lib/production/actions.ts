@@ -389,8 +389,10 @@ export async function advanceJobToNextStage(
         .from('production_stages')
         .select('id')
         .is('org_id', null)
-        .eq('sort_order', sort_order + 1)
-        .single();
+        .gt('sort_order', sort_order)
+        .order('sort_order', { ascending: true })
+        .limit(1)
+        .maybeSingle();
 
     if (!nextStage) {
         // Already at last stage — mark complete
