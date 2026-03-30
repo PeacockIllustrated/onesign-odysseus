@@ -43,7 +43,7 @@ export function NewQuoteForm({
                 return;
             }
 
-            router.push(`/app/admin/quotes/${result.id}`);
+            router.push(`/admin/quotes/${result.id}`);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to create quote');
         } finally {
@@ -131,7 +131,7 @@ export function NewQuoteForm({
             <div className="flex justify-end gap-3 pt-4 border-t border-neutral-200">
                 <button
                     type="button"
-                    onClick={() => router.push('/app/admin/quotes')}
+                    onClick={() => router.push('/admin/quotes')}
                     className="px-4 py-2 text-sm font-medium text-neutral-600 hover:text-neutral-900"
                     disabled={isSubmitting}
                 >

@@ -56,7 +56,7 @@ export function PresentationView({ pack }: PresentationViewProps) {
                     goToSlide(currentSlide - 1);
                     break;
                 case 'Escape':
-                    router.push(`/app/admin/design-packs/${pack.id}`);
+                    router.push(`/admin/design-packs/${pack.id}`);
                     break;
                 case 'l':
                 case 'L':
@@ -103,7 +103,7 @@ export function PresentationView({ pack }: PresentationViewProps) {
             <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
                 <div className="flex items-center gap-4">
                     <button
-                        onClick={() => router.push(`/app/admin/design-packs/${pack.id}`)}
+                        onClick={() => router.push(`/admin/design-packs/${pack.id}`)}
                         className="p-2 hover:bg-white/10 rounded transition-colors"
                         title="Exit presentation (ESC)"
                     >

@@ -34,7 +34,7 @@ export default async function ArtworkJobsPage({
                 title="artwork compliance"
                 description="design-to-production verification for signage jobs"
                 action={
-                    <Link href="/app/admin/artwork/new" className="btn-primary">
+                    <Link href="/admin/artwork/new" className="btn-primary">
                         new artwork job
                     </Link>
                 }
@@ -77,13 +77,13 @@ export default async function ArtworkJobsPage({
                         <p className="text-neutral-500 mb-4">no artwork jobs found</p>
                         {params.search || (params.status && params.status !== 'all') ? (
                             <Link
-                                href="/app/admin/artwork"
+                                href="/admin/artwork"
                                 className="text-sm text-neutral-600 hover:text-black underline"
                             >
                                 clear filters
                             </Link>
                         ) : (
-                            <Link href="/app/admin/artwork/new" className="btn-primary">
+                            <Link href="/admin/artwork/new" className="btn-primary">
                                 create your first artwork job
                             </Link>
                         )}
@@ -123,7 +123,7 @@ export default async function ArtworkJobsPage({
                                     >
                                         <td className="px-4 py-3">
                                             <Link
-                                                href={`/app/admin/artwork/${job.id}`}
+                                                href={`/admin/artwork/${job.id}`}
                                                 className="font-mono text-sm text-neutral-600 hover:text-black"
                                             >
                                                 {job.job_reference}
@@ -131,7 +131,7 @@ export default async function ArtworkJobsPage({
                                         </td>
                                         <td className="px-4 py-3">
                                             <Link
-                                                href={`/app/admin/artwork/${job.id}`}
+                                                href={`/admin/artwork/${job.id}`}
                                                 className="font-medium text-black hover:underline"
                                             >
                                                 {job.job_name}

@@ -55,7 +55,7 @@ export default async function ArtworkJobDetailPage({
     return (
         <div className="p-6 max-w-7xl mx-auto">
             <Link
-                href="/app/admin/artwork"
+                href="/admin/artwork"
                 className="inline-flex items-center gap-1 text-sm text-neutral-600 hover:text-black mb-4 transition-colors"
             >
                 <ChevronLeft size={16} />
@@ -69,7 +69,7 @@ export default async function ArtworkJobDetailPage({
                     <div className="flex items-center gap-2">
                         {hasSignedOffComponents && (
                             <Link
-                                href={`/app/admin/artwork/${id}/print`}
+                                href={`/admin/artwork/${id}/print`}
                                 target="_blank"
                                 className="btn-secondary inline-flex items-center gap-2"
                             >
@@ -114,7 +114,7 @@ export default async function ArtworkJobDetailPage({
                                 {job.components.map((component, index) => (
                                     <Link
                                         key={component.id}
-                                        href={`/app/admin/artwork/${id}/${component.id}`}
+                                        href={`/admin/artwork/${id}/${component.id}`}
                                         className="block"
                                     >
                                         <Card className="hover:border-neutral-300 transition-colors cursor-pointer">

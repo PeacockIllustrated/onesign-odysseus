@@ -41,47 +41,47 @@ interface NavGroup {
     items: NavItem[];
 }
 
-const adminOverview: NavItem = { label: 'Overview', href: '/app/admin', icon: Shield };
+const adminOverview: NavItem = { label: 'Overview', href: '/admin', icon: Shield };
 
 const adminNavGroups: NavGroup[] = [
     {
         label: 'Production',
         items: [
-            { label: 'Job Board', href: '/app/admin/jobs', icon: LayoutGrid },
-            { label: 'Artwork', href: '/app/admin/artwork', icon: ClipboardCheck },
+            { label: 'Job Board', href: '/admin/jobs', icon: LayoutGrid },
+            { label: 'Artwork', href: '/admin/artwork', icon: ClipboardCheck },
         ],
     },
     {
         label: 'Sales',
         items: [
-            { label: 'Quotes', href: '/app/admin/quotes', icon: Calculator },
-            { label: 'Leads', href: '/app/admin/leads', icon: Users },
-            { label: 'Pricing', href: '/app/admin/pricing', icon: DollarSign },
+            { label: 'Quotes', href: '/admin/quotes', icon: Calculator },
+            { label: 'Leads', href: '/admin/leads', icon: Users },
+            { label: 'Pricing', href: '/admin/pricing', icon: DollarSign },
         ],
     },
     {
         label: 'Client Management',
         items: [
-            { label: 'Clients', href: '/app/admin/orgs', icon: Building2 },
-            { label: 'Subscriptions', href: '/app/admin/subscriptions', icon: Package },
-            { label: 'Deliverables', href: '/app/admin/deliverables', icon: Zap },
-            { label: 'Design Packs', href: '/app/admin/design-packs', icon: Palette },
-            { label: 'Reports', href: '/app/admin/reports', icon: FileText },
+            { label: 'Clients', href: '/admin/orgs', icon: Building2 },
+            { label: 'Subscriptions', href: '/admin/subscriptions', icon: Package },
+            { label: 'Deliverables', href: '/admin/deliverables', icon: Zap },
+            { label: 'Design Packs', href: '/admin/design-packs', icon: Palette },
+            { label: 'Reports', href: '/admin/reports', icon: FileText },
         ],
     },
 ];
 
 const clientNavItems: NavItem[] = [
-    { label: 'Dashboard', href: '/app/dashboard', icon: LayoutDashboard },
-    { label: 'Deliverables', href: '/app/deliverables', icon: CheckSquare },
-    { label: 'Assets', href: '/app/assets', icon: FolderOpen },
-    { label: 'Reports', href: '/app/reports', icon: FileText },
-    { label: 'Billing', href: '/app/billing', icon: CreditCard },
+    { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { label: 'Deliverables', href: '/deliverables', icon: CheckSquare },
+    { label: 'Assets', href: '/assets', icon: FolderOpen },
+    { label: 'Reports', href: '/reports', icon: FileText },
+    { label: 'Billing', href: '/billing', icon: CreditCard },
 ];
 
 function isItemActive(pathname: string, href: string): boolean {
-    if (href === '/app/admin') {
-        return pathname === '/app/admin';
+    if (href === '/admin') {
+        return pathname === '/admin';
     }
     return pathname === href || pathname.startsWith(href + '/');
 }
@@ -91,7 +91,7 @@ export function Sidebar({ isAdmin }: SidebarProps) {
     const [collapsed, setCollapsed] = useState(false);
     const { mobileOpen, closeMobile } = useSidebar();
 
-    const homeHref = isAdmin ? '/app/admin' : '/app/dashboard';
+    const homeHref = isAdmin ? '/admin' : '/dashboard';
 
     const sidebarContent = (
         <>

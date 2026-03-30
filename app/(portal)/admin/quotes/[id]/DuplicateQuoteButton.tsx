@@ -25,7 +25,7 @@ export function DuplicateQuoteButton({ quoteId }: DuplicateQuoteButtonProps) {
                 return;
             }
 
-            router.push(`/app/admin/quotes/${result.id}`);
+            router.push(`/admin/quotes/${result.id}`);
         } catch (err) {
             alert(err instanceof Error ? err.message : 'Failed to duplicate');
         } finally {

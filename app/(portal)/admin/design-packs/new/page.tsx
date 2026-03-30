@@ -11,7 +11,7 @@ export default async function NewDesignPackPage() {
         <div className="p-6 max-w-3xl mx-auto">
             {/* Back Button */}
             <Link
-                href="/app/admin/design-packs"
+                href="/admin/design-packs"
                 className="inline-flex items-center gap-1 text-sm text-neutral-600 hover:text-black mb-4 transition-colors"
             >
                 <ChevronLeft size={16} />

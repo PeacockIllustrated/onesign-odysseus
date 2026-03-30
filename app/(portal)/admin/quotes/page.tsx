@@ -42,7 +42,7 @@ function buildPageUrl(params: SearchParams, page: number): string {
     if (params.search) searchParams.set('search', params.search);
     if (page > 1) searchParams.set('page', String(page));
     const qs = searchParams.toString();
-    return `/app/admin/quotes${qs ? `?${qs}` : ''}`;
+    return `/admin/quotes${qs ? `?${qs}` : ''}`;
 }
 
 export default async function AdminQuotesPage({
@@ -103,7 +103,7 @@ export default async function AdminQuotesPage({
                 description="Internal quoter for signage projects"
                 action={
                     <Link
-                        href="/app/admin/quotes/new"
+                        href="/admin/quotes/new"
                         className="btn-primary flex items-center gap-2"
                     >
                         <Plus size={16} />
@@ -156,7 +156,7 @@ export default async function AdminQuotesPage({
                     <div className="py-12 text-center">
                         <p className="text-sm text-neutral-500 mb-4">No quotes found</p>
                         <Link
-                            href="/app/admin/quotes/new"
+                            href="/admin/quotes/new"
                             className="text-sm text-blue-600 hover:underline"
                         >
                             Create your first quote
@@ -184,7 +184,7 @@ export default async function AdminQuotesPage({
                                         >
                                             <td className="px-4 py-3">
                                                 <Link
-                                                    href={`/app/admin/quotes/${quote.id}`}
+                                                    href={`/admin/quotes/${quote.id}`}
                                                     className="text-sm font-medium text-blue-600 hover:underline"
                                                 >
                                                     {quote.quote_number}

@@ -30,7 +30,7 @@ export default async function DesignPackEditorPage({
         <div className="p-6 max-w-7xl mx-auto">
             {/* Header */}
             <Link
-                href="/app/admin/design-packs"
+                href="/admin/design-packs"
                 className="inline-flex items-center gap-1 text-sm text-neutral-600 hover:text-black mb-4 transition-colors"
             >
                 <ChevronLeft size={16} />
@@ -43,7 +43,7 @@ export default async function DesignPackEditorPage({
                 action={
                     <div className="flex items-center gap-2">
                         <Link
-                            href={`/app/admin/design-packs/${id}/present`}
+                            href={`/admin/design-packs/${id}/present`}
                             className="btn-secondary inline-flex items-center gap-2"
                         >
                             <Presentation size={16} />
@@ -145,7 +145,7 @@ export default async function DesignPackEditorPage({
                         <h3 className="text-sm font-medium text-neutral-900 mb-3">quick actions</h3>
                         <div className="space-y-2">
                             <Link
-                                href={`/app/admin/design-packs/${id}/present`}
+                                href={`/admin/design-packs/${id}/present`}
                                 className="block w-full text-left px-3 py-2 text-sm rounded-[var(--radius-sm)] hover:bg-neutral-100 transition-colors"
                             >
                                 <span className="font-medium">presentation mode</span>

@@ -32,7 +32,7 @@ export default async function PricingSetEditPage({ params }: PageProps) {
 
     const superAdmin = await isSuperAdmin();
     if (!superAdmin) {
-        redirect('/app/admin');
+        redirect('/admin');
     }
 
     const { setId } = await params;
@@ -48,7 +48,7 @@ export default async function PricingSetEditPage({ params }: PageProps) {
         <div>
             <div className="mb-4">
                 <Link
-                    href="/app/admin/pricing"
+                    href="/admin/pricing"
                     className="text-sm text-neutral-500 hover:text-neutral-900 flex items-center gap-1"
                 >
                     <ArrowLeft size={14} />
@@ -66,7 +66,7 @@ export default async function PricingSetEditPage({ params }: PageProps) {
                         </Chip>
                         {pricingSet.status === 'draft' && (
                             <Link
-                                href={`/app/admin/pricing/${setId}/activate`}
+                                href={`/admin/pricing/${setId}/activate`}
                                 className="btn-primary flex items-center gap-2"
                             >
                                 <Zap size={16} />

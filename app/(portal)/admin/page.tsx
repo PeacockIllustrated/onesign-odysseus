@@ -1,11 +1,20 @@
 import { createServerClient } from '@/lib/supabase-server';
 import { requireAdmin } from '@/lib/auth';
 import { PageHeader, Card, StatsCard } from '@/app/(portal)/components/ui';
-import { Users, Building2, Package, FileText, AlertCircle } from 'lucide-react';
+import { AlertCircle, LayoutGrid } from 'lucide-react';
 import Link from 'next/link';
+import { getProductionStats } from '@/lib/production/queries';
 
 export default async function AdminPage() {
     await requireAdmin();
+
+    // Try to get production stats — graceful fallback if migration 024 not yet run
+    let productionStats: { totalActive: number; overdueCount: number; byStage: Array<{ name: string; color: string; count: number; sortOrder: number }> } | null = null;
+    try {
+        productionStats = await getProductionStats();
+    } catch {
+        // Migration 024 not yet run — silently skip production stats
+    }
 
     const supabase = await createServerClient();
 
@@ -67,28 +76,28 @@ export default async function AdminPage() {
 
             {/* Stats Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6">
-                <Link href="/app/admin/leads">
+                <Link href="/admin/leads">
                     <StatsCard
                         label="Total Leads"
                         value={leadCount || 0}
                         icon="users"
                     />
                 </Link>
-                <Link href="/app/admin/orgs">
+                <Link href="/admin/orgs">
                     <StatsCard
                         label="Organisations"
                         value={orgCount || 0}
                         icon="building"
                     />
                 </Link>
-                <Link href="/app/admin/subscriptions">
+                <Link href="/admin/subscriptions">
                     <StatsCard
                         label="Active Subscriptions"
                         value={activeSubCount || 0}
                         icon="package"
                     />
                 </Link>
-                <Link href="/app/admin/deliverables">
+                <Link href="/admin/deliverables">
                     <StatsCard
                         label="Need Attention"
                         value={orgsNeedingAttention.length}
@@ -103,7 +112,7 @@ export default async function AdminPage() {
                 <Card>
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-sm font-semibold text-neutral-900">Recent Leads</h2>
-                        <Link href="/app/admin/leads" className="text-xs text-blue-600 hover:underline">
+                        <Link href="/admin/leads" className="text-xs text-blue-600 hover:underline">
                             View all
                         </Link>
                     </div>
@@ -114,7 +123,7 @@ export default async function AdminPage() {
                             {recentLeads.map(lead => (
                                 <Link
                                     key={lead.id}
-                                    href="/app/admin/leads"
+                                    href="/admin/leads"
                                     className="flex items-center justify-between p-2 rounded hover:bg-neutral-50 transition-colors"
                                 >
                                     <div>
@@ -143,7 +152,7 @@ export default async function AdminPage() {
                             <AlertCircle size={16} className="text-amber-500" />
                             <h2 className="text-sm font-semibold text-neutral-900">Needs Attention</h2>
                         </div>
-                        <Link href="/app/admin/deliverables" className="text-xs text-blue-600 hover:underline">
+                        <Link href="/admin/deliverables" className="text-xs text-blue-600 hover:underline">
                             Generate
                         </Link>
                     </div>
@@ -166,6 +175,55 @@ export default async function AdminPage() {
                     )}
                 </Card>
             </div>
+
+            {/* Production Pipeline Summary */}
+            {productionStats !== null && (
+                <div className="mt-6">
+                    <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                            <LayoutGrid size={16} className="text-[#4e7e8c]" />
+                            <h2 className="text-sm font-semibold text-neutral-900">Production Pipeline</h2>
+                        </div>
+                        <Link href="/admin/jobs" className="text-xs text-[#4e7e8c] hover:underline">
+                            View board
+                        </Link>
+                    </div>
+
+                    <div className="bg-white rounded-[var(--radius-md)] border border-neutral-200 p-4">
+                        <div className="flex items-center gap-6 mb-4 text-sm">
+                            <div>
+                                <span className="text-2xl font-bold text-neutral-900">{productionStats.totalActive}</span>
+                                <span className="text-neutral-500 ml-1.5">active</span>
+                            </div>
+                            {productionStats.overdueCount > 0 && (
+                                <div className="flex items-center gap-1.5 text-red-600">
+                                    <AlertCircle size={14} />
+                                    <span className="font-semibold">{productionStats.overdueCount} overdue</span>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Stage bar */}
+                        <div className="flex gap-2 flex-wrap">
+                            {productionStats.byStage.map(stage => (
+                                <div
+                                    key={stage.name}
+                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium border"
+                                    style={{
+                                        backgroundColor: `${stage.color}15`,
+                                        borderColor: `${stage.color}40`,
+                                        color: stage.color,
+                                    }}
+                                >
+                                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: stage.color }} />
+                                    {stage.name}
+                                    <span className="font-bold ml-0.5">{stage.count}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

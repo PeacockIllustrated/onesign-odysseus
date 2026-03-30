@@ -34,7 +34,7 @@ export function NewArtworkJobForm() {
                 return;
             }
 
-            router.push(`/app/admin/artwork/${result.id}`);
+            router.push(`/admin/artwork/${result.id}`);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'failed to create artwork job');
             setSubmitting(false);

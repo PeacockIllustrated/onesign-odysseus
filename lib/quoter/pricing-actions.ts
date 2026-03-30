@@ -225,7 +225,7 @@ export async function createDraftPricingSetFromActiveAction(
         }
     }
 
-    revalidatePath('/app/admin/pricing');
+    revalidatePath('/admin/pricing');
     return { id: newSet.id };
 }
 
@@ -245,8 +245,8 @@ export async function updatePricingSetAction(
         return { error: error.message };
     }
 
-    revalidatePath('/app/admin/pricing');
-    revalidatePath(`/app/admin/pricing/${pricingSetId}`);
+    revalidatePath('/admin/pricing');
+    revalidatePath(`/admin/pricing/${pricingSetId}`);
     return { success: true };
 }
 
@@ -276,7 +276,7 @@ export async function deletePricingSetAction(
         return { error: error.message };
     }
 
-    revalidatePath('/app/admin/pricing');
+    revalidatePath('/admin/pricing');
     return { success: true };
 }
 
@@ -336,8 +336,8 @@ export async function activatePricingSetAction(
         return { error: 'Failed to activate pricing set' };
     }
 
-    revalidatePath('/app/admin/pricing');
-    revalidatePath(`/app/admin/pricing/${pricingSetId}`);
+    revalidatePath('/admin/pricing');
+    revalidatePath(`/admin/pricing/${pricingSetId}`);
     return { success: true };
 }
 
@@ -367,7 +367,7 @@ export async function addRateCardRowAction(
         return { error: error.message };
     }
 
-    revalidatePath(`/app/admin/pricing/${pricingSetId}`);
+    revalidatePath(`/admin/pricing/${pricingSetId}`);
     return { id: row.id };
 }
 
@@ -390,7 +390,7 @@ export async function updateRateCardRowAction(
         return { error: error.message };
     }
 
-    revalidatePath(`/app/admin/pricing/${pricingSetId}`);
+    revalidatePath(`/admin/pricing/${pricingSetId}`);
     return { success: true };
 }
 
@@ -412,7 +412,7 @@ export async function deleteRateCardRowAction(
         return { error: error.message };
     }
 
-    revalidatePath(`/app/admin/pricing/${pricingSetId}`);
+    revalidatePath(`/admin/pricing/${pricingSetId}`);
     return { success: true };
 }
 

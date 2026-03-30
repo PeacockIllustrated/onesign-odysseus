@@ -67,7 +67,7 @@ export function ComponentActions({ componentId, jobId, initialName }: ComponentA
                 setShowDeleteModal(false);
                 return;
             }
-            router.push(`/app/admin/artwork/${jobId}`);
+            router.push(`/admin/artwork/${jobId}`);
         });
     }
 
