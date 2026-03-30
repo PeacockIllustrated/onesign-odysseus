@@ -25,7 +25,9 @@ export function ShopFloorClient({ stages, initialJobs, initialStageSlug }: ShopF
     const [jobs, setJobs] = useState<ProductionJob[]>(initialJobs);
     const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
     const [expandedDetail, setExpandedDetail] = useState<JobDetail | null>(null);
-    const [isPending, startTransition] = useTransition();
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [pendingJobId, setPendingJobId] = useState<string | null>(null);
+    const [, startTransition] = useTransition();
 
     const activeStage = stages.find(s => s.slug === activeSlug);
 
@@ -64,31 +66,78 @@ export function ShopFloorClient({ stages, initialJobs, initialStageSlug }: ShopF
     }
 
     function handleStart(jobId: string) {
+        setErrorMessage(null);
+        setPendingJobId(jobId);
         startTransition(async () => {
-            await startJob(jobId);
-            const updated = await getShopFloorJobsAction(activeSlug);
-            setJobs(updated);
+            try {
+                const result = await startJob(jobId);
+                if ('error' in result) {
+                    setErrorMessage(result.error);
+                } else {
+                    const updated = await getShopFloorJobsAction(activeSlug);
+                    setJobs(updated);
+                }
+            } finally {
+                setPendingJobId(null);
+            }
         });
     }
 
     function handlePause(jobId: string) {
+        setErrorMessage(null);
+        setPendingJobId(jobId);
         startTransition(async () => {
-            await pauseJob(jobId);
-            const updated = await getShopFloorJobsAction(activeSlug);
-            setJobs(updated);
+            try {
+                const result = await pauseJob(jobId);
+                if ('error' in result) {
+                    setErrorMessage(result.error);
+                } else {
+                    const updated = await getShopFloorJobsAction(activeSlug);
+                    setJobs(updated);
+                }
+            } finally {
+                setPendingJobId(null);
+            }
         });
     }
 
     function handleAdvance(jobId: string) {
+        setErrorMessage(null);
+        setPendingJobId(jobId);
         startTransition(async () => {
-            await advanceJobToNextStage(jobId);
-            const updated = await getShopFloorJobsAction(activeSlug);
-            setJobs(updated);
+            try {
+                const result = await advanceJobToNextStage(jobId);
+                if ('error' in result) {
+                    setErrorMessage(result.error);
+                } else {
+                    const updated = await getShopFloorJobsAction(activeSlug);
+                    setJobs(updated);
+                }
+            } finally {
+                setPendingJobId(null);
+            }
         });
     }
 
     return (
         <div>
+            {/* Error banner */}
+            {errorMessage && (
+                <div className="bg-red-50 border border-red-200 text-red-800 rounded-lg p-3 mb-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <AlertCircle size={16} className="flex-shrink-0" />
+                        <span className="text-sm font-medium">{errorMessage}</span>
+                    </div>
+                    <button
+                        onClick={() => setErrorMessage(null)}
+                        className="text-red-600 hover:text-red-800 font-bold text-lg leading-none ml-3"
+                        aria-label="Dismiss error"
+                    >
+                        &times;
+                    </button>
+                </div>
+            )}
+
             {/* Stage tabs */}
             <div className="flex gap-2 overflow-x-auto pb-2 mb-6">
                 {stages.map(stage => {
@@ -186,7 +235,7 @@ export function ShopFloorClient({ stages, initialJobs, initialStageSlug }: ShopF
                                     {job.status !== 'active' && (
                                         <button
                                             onClick={() => handleStart(job.id)}
-                                            disabled={isPending}
+                                            disabled={pendingJobId === job.id}
                                             className="flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 flex-1"
                                         >
                                             <Play size={16} />
@@ -196,7 +245,7 @@ export function ShopFloorClient({ stages, initialJobs, initialStageSlug }: ShopF
                                     {job.status === 'active' && (
                                         <button
                                             onClick={() => handlePause(job.id)}
-                                            disabled={isPending}
+                                            disabled={pendingJobId === job.id}
                                             className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50"
                                         >
                                             <Pause size={16} />
@@ -205,7 +254,7 @@ export function ShopFloorClient({ stages, initialJobs, initialStageSlug }: ShopF
                                     )}
                                     <button
                                         onClick={() => handleAdvance(job.id)}
-                                        disabled={isPending}
+                                        disabled={pendingJobId === job.id}
                                         className="flex items-center gap-2 px-4 py-2.5 bg-[#4e7e8c] hover:bg-[#3a5f6a] text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 flex-1"
                                     >
                                         <CheckCircle size={16} />
