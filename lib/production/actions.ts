@@ -109,7 +109,7 @@ export async function createJobFromQuote(
     }
 
     if (items.length > 0) {
-        await supabase.from('job_items').insert(
+        const { error: itemsError } = await supabase.from('job_items').insert(
             items.map((item: any) => ({
                 job_id: newJob.id,
                 quote_item_id: item.id,
@@ -119,6 +119,10 @@ export async function createJobFromQuote(
                 status: 'pending',
             }))
         );
+        if (itemsError) {
+            console.error('createJobFromQuote items insert error:', itemsError);
+            // Job was created — don't rollback, but log the failure
+        }
     }
 
     await supabase.from('job_stage_log').insert({
@@ -268,10 +272,12 @@ export async function moveJobItemToStage(
 
     if (error) return { error: error.message };
 
+    const { job_id, current_stage_id: fromStageId } = item as { job_id: string; current_stage_id: string | null };
+
     await supabase.from('job_stage_log').insert({
-        job_id: (item as any).job_id,
+        job_id,
         job_item_id: jobItemId,
-        from_stage_id: (item as any).current_stage_id,
+        from_stage_id: fromStageId,
         to_stage_id: stageId,
         moved_by: user.id,
         moved_by_name: user.email ?? null,
@@ -377,11 +383,13 @@ export async function advanceJobToNextStage(
 
     if (!currentStage) return { error: 'Stage not found' };
 
+    const { sort_order } = currentStage as { sort_order: number };
+
     const { data: nextStage } = await supabase
         .from('production_stages')
         .select('id')
         .is('org_id', null)
-        .eq('sort_order', (currentStage as any).sort_order + 1)
+        .eq('sort_order', sort_order + 1)
         .single();
 
     if (!nextStage) {
