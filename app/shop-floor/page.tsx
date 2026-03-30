@@ -1,8 +1,19 @@
-export default function ShopFloorPage() {
+// app/shop-floor/page.tsx
+import { requireAdmin } from '@/lib/auth';
+import { getProductionStages, getShopFloorQueue } from '@/lib/production/queries';
+import { ShopFloorClient } from './ShopFloorClient';
+
+export default async function ShopFloorPage() {
+    await requireAdmin();
+
+    const stages = await getProductionStages();
+    const initialJobs = await getShopFloorQueue('design');
+
     return (
-        <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
-            <h1 className="text-2xl font-bold text-neutral-900 mb-2">Shop Floor</h1>
-            <p className="text-neutral-500">Phase 1 — Coming soon</p>
-        </div>
+        <ShopFloorClient
+            stages={stages}
+            initialJobs={initialJobs}
+            initialStageSlug="design"
+        />
     );
 }
