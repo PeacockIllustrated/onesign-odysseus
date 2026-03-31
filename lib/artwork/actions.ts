@@ -26,6 +26,7 @@ import {
     ArtworkComponent,
     ArtworkJobWithComponents,
     ArtworkComponentWithVersions,
+    ComponentStageDefault,
 } from './types';
 import { checkDimensionTolerance } from './utils';
 
@@ -178,6 +179,20 @@ export async function addComponent(
     if (error) {
         console.error('error adding component:', error);
         return { error: error.message };
+    }
+
+    // Auto-set target_stage_id from defaults if available
+    const { data: defaultStage } = await supabase
+        .from('component_stage_defaults')
+        .select('stage_id')
+        .eq('component_type', validation.data.component_type)
+        .maybeSingle();
+
+    if (defaultStage && data) {
+        await supabase
+            .from('artwork_components')
+            .update({ target_stage_id: defaultStage.stage_id })
+            .eq('id', data.id);
     }
 
     // Update job status to in_progress if currently draft
@@ -860,6 +875,129 @@ export async function removeCoverImage(
 
     revalidatePath(`/admin/artwork/${jobId}`);
     return { success: true };
+}
+
+// =============================================================================
+// PRODUCTION INTEGRATION
+// =============================================================================
+
+/**
+ * Create an artwork job linked to a production job item (idempotent).
+ * Used when a job item enters an approval stage, or triggered manually.
+ */
+export async function createArtworkJobForItem(
+    jobItemId: string
+): Promise<{ id: string; jobReference: string } | { error: string }> {
+    const user = await getUser();
+    if (!user) {
+        return { error: 'not authenticated' };
+    }
+
+    const supabase = await createServerClient();
+
+    // Fetch the job_item with parent production_job context
+    const { data: itemContext } = await supabase
+        .from('job_items')
+        .select('description, job_id, production_jobs!inner(client_name, job_number)')
+        .eq('id', jobItemId)
+        .single();
+
+    if (!itemContext) {
+        return { error: 'job item not found' };
+    }
+
+    // Idempotent: check no artwork_job already exists for this job_item_id
+    const { data: existing } = await supabase
+        .from('artwork_jobs')
+        .select('id, job_reference')
+        .eq('job_item_id', jobItemId)
+        .maybeSingle();
+
+    if (existing) {
+        return { id: existing.id, jobReference: existing.job_reference };
+    }
+
+    const pj = (itemContext as any).production_jobs;
+
+    const { data, error } = await supabase
+        .from('artwork_jobs')
+        .insert({
+            job_name: (itemContext as any).description || `Artwork for ${pj.job_number}`,
+            client_name: pj.client_name,
+            job_item_id: jobItemId,
+            status: 'draft',
+            created_by: user.id,
+        })
+        .select('id, job_reference')
+        .single();
+
+    if (error) {
+        console.error('error creating artwork job for item:', error);
+        return { error: error.message };
+    }
+
+    revalidatePath('/admin/artwork');
+    revalidatePath('/admin/jobs');
+    return { id: data.id, jobReference: data.job_reference };
+}
+
+/**
+ * Set (or clear) the target production stage for an artwork component.
+ * This controls which department the component routes to after artwork approval.
+ */
+export async function setComponentTargetStage(
+    componentId: string,
+    targetStageId: string | null
+): Promise<{ success: boolean } | { error: string }> {
+    const user = await getUser();
+    if (!user) {
+        return { error: 'not authenticated' };
+    }
+
+    const supabase = await createServerClient();
+
+    // Get the job_id for revalidation
+    const { data: component } = await supabase
+        .from('artwork_components')
+        .select('job_id')
+        .eq('id', componentId)
+        .single();
+
+    if (!component) {
+        return { error: 'component not found' };
+    }
+
+    const { error } = await supabase
+        .from('artwork_components')
+        .update({ target_stage_id: targetStageId })
+        .eq('id', componentId);
+
+    if (error) {
+        console.error('error setting component target stage:', error);
+        return { error: error.message };
+    }
+
+    revalidatePath(`/admin/artwork/${component.job_id}`);
+    revalidatePath(`/admin/artwork/${component.job_id}/${componentId}`);
+    return { success: true };
+}
+
+/**
+ * Fetch all component type → stage default mappings.
+ */
+export async function getComponentStageDefaults(): Promise<ComponentStageDefault[]> {
+    const supabase = await createServerClient();
+
+    const { data, error } = await supabase
+        .from('component_stage_defaults')
+        .select('component_type, stage_id');
+
+    if (error) {
+        console.error('error fetching component stage defaults:', error);
+        return [];
+    }
+
+    return (data || []) as ComponentStageDefault[];
 }
 
 // =============================================================================

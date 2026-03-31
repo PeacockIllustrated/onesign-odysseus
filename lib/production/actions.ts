@@ -316,6 +316,43 @@ export async function moveJobItemToStage(
         notes: notes || null,
     });
 
+    // Auto-create artwork job if moving to an approval stage
+    const { data: targetStage } = await supabase
+        .from('production_stages')
+        .select('is_approval_stage')
+        .eq('id', stageId)
+        .single();
+
+    if (targetStage?.is_approval_stage) {
+        // Check if artwork job already exists for this item
+        const { data: existingArtwork } = await supabase
+            .from('artwork_jobs')
+            .select('id')
+            .eq('job_item_id', jobItemId)
+            .maybeSingle();
+
+        if (!existingArtwork) {
+            // Fetch item + parent job context for naming
+            const { data: itemContext } = await supabase
+                .from('job_items')
+                .select('description, job_id, production_jobs!inner(client_name, job_number)')
+                .eq('id', jobItemId)
+                .single();
+
+            if (itemContext) {
+                const pj = (itemContext as any).production_jobs;
+                await supabase.from('artwork_jobs').insert({
+                    job_name: (itemContext as any).description || `Artwork for ${pj.job_number}`,
+                    client_name: pj.client_name,
+                    job_item_id: jobItemId,
+                    status: 'draft',
+                    created_by: user.id,
+                });
+                revalidatePath('/admin/artwork');
+            }
+        }
+    }
+
     revalidatePath('/admin/jobs');
     return { success: true };
 }
