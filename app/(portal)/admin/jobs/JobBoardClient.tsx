@@ -21,6 +21,11 @@ import { ItemCard } from './JobCard';
 import { JobDetailPanel } from './JobDetailPanel';
 import { CreateJobModal } from './CreateJobModal';
 
+function insertItemSorted(items: JobItemWithJob[], item: JobItemWithJob): JobItemWithJob[] {
+    const all = items.filter(i => i.id !== item.id).concat(item);
+    return all.sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
+
 interface JobBoardClientProps {
     initialBoard: ItemBoardColumn[];
     stages: ProductionStage[];
@@ -32,7 +37,7 @@ export function JobBoardClient({ initialBoard, stages }: JobBoardClientProps) {
     const [detailItemId, setDetailItemId] = useState<string | null>(null);
     const [createOpen, setCreateOpen] = useState(false);
     const [draggingItem, setDraggingItem] = useState<JobItemWithJob | null>(null);
-    const preDragBoardRef = useRef<ItemBoardColumn[]>(board);
+    const preDragBoardRef = useRef<ItemBoardColumn[]>([]);
 
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -59,7 +64,7 @@ export function JobBoardClient({ initialBoard, stages }: JobBoardClientProps) {
                         return prev.map(col => {
                             const filtered = col.items.filter(i => i.id !== updated.id);
                             if (col.stage.id === updated.current_stage_id) {
-                                return { ...col, items: [...filtered, updatedItem] };
+                                return { ...col, items: insertItemSorted(filtered, updatedItem) };
                             }
                             return { ...col, items: filtered };
                         });
@@ -106,7 +111,7 @@ export function JobBoardClient({ initialBoard, stages }: JobBoardClientProps) {
                 if (col.stage.id === newStageId) {
                     return {
                         ...col,
-                        items: [...without, { ...currentItem, current_stage_id: newStageId, stage: targetStage }],
+                        items: insertItemSorted(without, { ...currentItem, current_stage_id: newStageId, stage: targetStage }),
                     };
                 }
                 return { ...col, items: without };
