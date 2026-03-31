@@ -544,6 +544,13 @@ export async function getJobItemDetailAction(itemId: string): Promise<JobItemDet
             : Promise.resolve({ data: null }),
     ]);
 
+    // Look up linked artwork job (if any)
+    const { data: linkedArtwork } = await supabase
+        .from('artwork_jobs')
+        .select('id')
+        .eq('job_item_id', itemId)
+        .maybeSingle();
+
     const currentWorkCentre = item.work_centre_id
         ? ((workCentres || []) as WorkCentre[]).find(wc => wc.id === item.work_centre_id) ?? null
         : null;
@@ -584,6 +591,7 @@ export async function getJobItemDetailAction(itemId: string): Promise<JobItemDet
 
     return {
         ...jobItemBase,
+        artwork_job_id: linkedArtwork?.id ?? null,
         stage: currentStageData as ProductionStage | null,
         work_centre: currentWorkCentre,
         job: {

@@ -10,6 +10,7 @@ import {
     addDepartmentInstruction,
     setItemWorkCentre,
 } from '@/lib/production/actions';
+import { createArtworkJobForItem } from '@/lib/artwork/actions';
 import { isJobOverdue, formatDueDate } from '@/lib/production/utils';
 
 // Local type alias to avoid importing the unexported type
@@ -76,6 +77,17 @@ export function JobDetailPanel({ itemId, onClose, stages }: JobDetailPanelProps)
             setInstructionStageId('');
             const updated = await getJobItemDetailAction(capturedItemId);
             if (capturedItemId === itemId) setDetail(updated);
+        });
+    }
+
+    function handleStartArtwork() {
+        startTransition(async () => {
+            const result = await createArtworkJobForItem(itemId);
+            if ('id' in result) {
+                window.open(`/admin/artwork/${result.id}`, '_blank');
+            }
+            const updated = await getJobItemDetailAction(itemId);
+            setDetail(updated);
         });
     }
 
@@ -239,17 +251,29 @@ export function JobDetailPanel({ itemId, onClose, stages }: JobDetailPanelProps)
                             </div>
                         )}
 
-                        {/* Artwork approval banner */}
+                        {/* Artwork Pack Link */}
                         {detail.stage?.is_approval_stage && (
                             <div className="bg-orange-50 border border-orange-200 rounded p-3">
                                 <p className="text-xs font-semibold text-orange-700 uppercase mb-1">Artwork Approval Stage</p>
-                                <p className="text-sm text-neutral-700 mb-2">This item is awaiting artwork sign-off.</p>
-                                <a
-                                    href="/admin/artwork"
-                                    className="text-xs text-[#4e7e8c] hover:underline"
-                                >
-                                    View Artwork Jobs →
-                                </a>
+                                {detail.artwork_job_id ? (
+                                    <a
+                                        href={`/admin/artwork/${detail.artwork_job_id}`}
+                                        className="text-sm text-[#4e7e8c] hover:underline font-medium"
+                                    >
+                                        View Artwork Pack →
+                                    </a>
+                                ) : (
+                                    <div>
+                                        <p className="text-sm text-neutral-700 mb-2">No artwork pack started for this item.</p>
+                                        <button
+                                            onClick={handleStartArtwork}
+                                            disabled={isPending}
+                                            className="text-xs font-medium px-3 py-1.5 bg-[#D85A30] text-white rounded-[var(--radius-sm)] hover:bg-[#c14e28] disabled:opacity-50 transition-colors"
+                                        >
+                                            {isPending ? 'Creating...' : 'Start Artwork Pack'}
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         )}
 

@@ -81,7 +81,7 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
                     item.id,
                     new Set(
                         stages
-                            .filter(s => !s.is_approval_stage && s.slug !== 'order-book' && s.slug !== 'goods-out')
+                            .filter(s => s.slug !== 'order-book' && s.slug !== 'goods-out')
                             .map(s => s.id)
                     )
                 );
