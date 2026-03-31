@@ -88,6 +88,7 @@ export interface JobItemWithJob extends JobItem {
     stage: ProductionStage | null;
     work_centre: WorkCentre | null;
     job: Pick<ProductionJob, 'id' | 'job_number' | 'client_name' | 'title' | 'priority' | 'due_date' | 'org_id'>;
+    artwork_job_id?: string | null;
 }
 
 // Item board column: a stage with its job items

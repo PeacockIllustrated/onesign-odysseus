@@ -76,6 +76,7 @@ export const ArtworkJobSchema = z.object({
     panel_size: z.string().nullable(),
     paint_colour: z.string().nullable(),
     status: ArtworkJobStatusEnum,
+    job_item_id: z.string().uuid().nullable(),
     created_at: z.string(),
     updated_at: z.string(),
     created_by: z.string().uuid().nullable(),
@@ -89,6 +90,9 @@ export const ArtworkComponentSchema = z.object({
     component_type: ComponentTypeEnum,
     sort_order: z.number().int(),
     status: ComponentStatusEnum,
+
+    // Department assignment
+    target_stage_id: z.string().uuid().nullable(),
 
     // Design fields
     width_mm: z.number().nullable(),
@@ -275,4 +279,24 @@ export interface ArtworkComponentWithVersions extends ArtworkComponent {
     versions: ComponentVersion[];
     production_checks: ProductionCheck[];
     extra_items: ArtworkComponentItem[];
+}
+
+export interface ComponentStageDefault {
+    component_type: string;
+    stage_id: string;
+}
+
+export interface ProductionItemContext {
+    id: string;
+    job_id: string;
+    description: string;
+    item_number: string | null;
+    job_number: string;
+    client_name: string;
+    due_date: string | null;
+    priority: string;
+}
+
+export interface ArtworkJobWithProductionContext extends ArtworkJobWithComponents {
+    production_item?: ProductionItemContext | null;
 }
