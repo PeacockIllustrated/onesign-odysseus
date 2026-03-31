@@ -68,14 +68,14 @@ export async function createJobFromQuote(
 
     if (existingJob) return { error: 'A production job already exists for this quote' };
 
-    const { data: designStage } = await supabase
+    const { data: orderBookStage } = await supabase
         .from('production_stages')
         .select('id')
         .eq('slug', 'order-book')
         .is('org_id', null)
         .single();
 
-    if (!designStage) return { error: 'Order Book stage not found — run migration 028 first' };
+    if (!orderBookStage) return { error: 'Order Book stage not found — run migration 028 first' };
 
     const { data: quoteItems } = await supabase
         .from('quote_items')
@@ -95,7 +95,7 @@ export async function createJobFromQuote(
             quote_id: quoteId,
             title,
             client_name: quote.customer_name || quote.quote_number,
-            current_stage_id: designStage.id,
+            current_stage_id: orderBookStage.id,
             priority: 'normal',
             status: 'active',
             total_items: items.length || 1,
@@ -115,7 +115,7 @@ export async function createJobFromQuote(
                 quote_item_id: item.id,
                 description: item.item_type === 'panel_letters_v1' ? 'Panel + Letters' : item.item_type,
                 quantity: 1,
-                current_stage_id: designStage.id,
+                current_stage_id: orderBookStage.id,
                 status: 'pending',
             }))
         );
@@ -128,7 +128,7 @@ export async function createJobFromQuote(
     await supabase.from('job_stage_log').insert({
         job_id: newJob.id,
         from_stage_id: null,
-        to_stage_id: designStage.id,
+        to_stage_id: orderBookStage.id,
         moved_by: user.id,
         moved_by_name: user.email ?? null,
         notes: `Job created from quote ${quote.quote_number}`,
@@ -157,14 +157,14 @@ export async function createManualJob(input: {
 
     const supabase = await createServerClient();
 
-    const { data: designStage } = await supabase
+    const { data: orderBookStage } = await supabase
         .from('production_stages')
         .select('id')
         .eq('slug', 'order-book')
         .is('org_id', null)
         .single();
 
-    if (!designStage) return { error: 'Order Book stage not found — run migration 028 first' };
+    if (!orderBookStage) return { error: 'Order Book stage not found — run migration 028 first' };
 
     const { data: newJob, error } = await supabase
         .from('production_jobs')
@@ -173,7 +173,7 @@ export async function createManualJob(input: {
             title: input.title,
             client_name: input.clientName,
             description: input.description || null,
-            current_stage_id: designStage.id,
+            current_stage_id: orderBookStage.id,
             priority: input.priority,
             status: 'active',
             due_date: input.dueDate || null,
@@ -191,7 +191,7 @@ export async function createManualJob(input: {
     await supabase.from('job_stage_log').insert({
         job_id: newJob.id,
         from_stage_id: null,
-        to_stage_id: designStage.id,
+        to_stage_id: orderBookStage.id,
         moved_by: user.id,
         moved_by_name: user.email ?? null,
         notes: 'Job created manually',

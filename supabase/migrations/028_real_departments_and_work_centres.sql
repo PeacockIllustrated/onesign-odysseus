@@ -27,7 +27,7 @@ INSERT INTO public.production_stages (name, slug, sort_order, color, is_approval
   ('Painters',            'painters',             8,  '#22C55E', FALSE, TRUE),
   ('Lighting',            'lighting',             9,  '#06B6D4', FALSE, TRUE),
   ('Vinyl',               'vinyl',                10, '#3B82F6', FALSE, TRUE),
-  ('Digital Print',       'digital-print',        11, '#6366F1', FALSE, TRUE),
+  ('Digital Print',       'digital-print',        11, '#7C3AED', FALSE, TRUE),
   ('Assembly',            'assembly',             12, '#14B8A6', FALSE, TRUE),
   ('Goods Out',           'goods-out',            13, '#4e7e8c', FALSE, TRUE);
 

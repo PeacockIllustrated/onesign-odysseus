@@ -7,13 +7,13 @@ export default async function ShopFloorPage() {
     await requireAuth();
 
     const stages = await getProductionStages();
-    const initialJobs = await getShopFloorQueue('design');
+    const initialJobs = await getShopFloorQueue('order-book');
 
     return (
         <ShopFloorClient
             stages={stages}
             initialJobs={initialJobs}
-            initialStageSlug="design"
+            initialStageSlug="order-book"
         />
     );
 }
