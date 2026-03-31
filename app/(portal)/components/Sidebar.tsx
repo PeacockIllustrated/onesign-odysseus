@@ -55,6 +55,7 @@ const adminNavGroups: NavGroup[] = [
         label: 'Sales',
         items: [
             { label: 'Quotes', href: '/admin/quotes', icon: Calculator },
+            { label: 'Invoices', href: '/admin/invoices', icon: FileText },
             { label: 'Purchase Orders', href: '/admin/purchase-orders', icon: ShoppingCart },
             { label: 'Pricing', href: '/admin/pricing', icon: DollarSign },
         ],

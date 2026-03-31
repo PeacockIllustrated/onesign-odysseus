@@ -1,9 +1,11 @@
 import { createServerClient } from '@/lib/supabase-server';
 import { requireAdmin } from '@/lib/auth';
 import { PageHeader } from '@/app/(portal)/components/ui';
-import { AlertCircle, LayoutGrid, FileText, ShoppingCart, Zap } from 'lucide-react';
+import { AlertCircle, LayoutGrid, FileText, ShoppingCart, Zap, Receipt } from 'lucide-react';
 import Link from 'next/link';
 import { getProductionStats } from '@/lib/production/queries';
+import { formatPence, INVOICE_STATUS_COLORS, INVOICE_STATUS_LABELS } from '@/lib/invoices/utils';
+import type { InvoiceStatus } from '@/lib/invoices/types';
 
 export default async function AdminPage() {
     await requireAdmin();
@@ -67,6 +69,37 @@ export default async function AdminPage() {
     } catch {
         // production tables not available
     }
+
+    // Invoice stats
+    const { data: invoiceStats } = await supabase
+        .from('invoices')
+        .select('id, status, total_pence');
+
+    const invoiceCounts = {
+        draft: 0,
+        sent: 0,
+        paid: 0,
+        overdue: 0,
+    };
+    let totalOutstanding = 0;
+    let totalPaid = 0;
+    (invoiceStats || []).forEach((inv: { id: string; status: string; total_pence: number }) => {
+        if (inv.status in invoiceCounts) {
+            invoiceCounts[inv.status as keyof typeof invoiceCounts]++;
+        }
+        if (inv.status === 'sent' || inv.status === 'overdue') {
+            totalOutstanding += inv.total_pence;
+        }
+        if (inv.status === 'paid') {
+            totalPaid += inv.total_pence;
+        }
+    });
+
+    const { data: recentInvoices } = await supabase
+        .from('invoices')
+        .select('id, invoice_number, customer_name, status, total_pence, invoice_date')
+        .order('created_at', { ascending: false })
+        .limit(5);
 
     const quoteStatusOrder = ['draft', 'sent', 'accepted', 'rejected', 'cancelled'];
     const quoteStatusLabels: Record<string, string> = {
@@ -217,6 +250,75 @@ export default async function AdminPage() {
                             <p className="text-sm text-neutral-400 py-3 text-center">No quotes yet</p>
                         )}
                     </div>
+                </div>
+            </div>
+
+            {/* Invoices */}
+            <div className="mb-6">
+                <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                        <Receipt size={15} className="text-neutral-500" />
+                        <h2 className="text-sm font-semibold text-neutral-900">Invoices</h2>
+                    </div>
+                    <Link href="/admin/invoices" className="text-xs text-neutral-500 hover:underline">View all</Link>
+                </div>
+
+                <div className="bg-white rounded-[var(--radius-md)] border border-neutral-200 p-4">
+                    {/* Stats grid */}
+                    <div className="grid grid-cols-4 gap-3 mb-4">
+                        {([
+                            { key: 'draft' as const, color: 'bg-neutral-50 border-neutral-200', textColor: 'text-neutral-600' },
+                            { key: 'sent' as const, color: 'bg-blue-50 border-blue-200', textColor: 'text-blue-700' },
+                            { key: 'overdue' as const, color: 'bg-red-50 border-red-200', textColor: 'text-red-600' },
+                            { key: 'paid' as const, color: 'bg-green-50 border-green-200', textColor: 'text-green-700' },
+                        ]).map(({ key, color, textColor }) => (
+                            <div key={key} className={`rounded border p-2.5 text-center ${color}`}>
+                                <span className={`text-2xl font-bold ${textColor}`}>{invoiceCounts[key]}</span>
+                                <p className={`text-[10px] font-medium mt-0.5 ${textColor}`}>{INVOICE_STATUS_LABELS[key]}</p>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Outstanding / Paid summary */}
+                    <div className="flex items-center gap-4 mb-4 text-sm">
+                        <div>
+                            <span className="text-neutral-500">Outstanding:</span>{' '}
+                            <span className="font-semibold text-neutral-900">{formatPence(totalOutstanding)}</span>
+                        </div>
+                        <div>
+                            <span className="text-neutral-500">Collected:</span>{' '}
+                            <span className="font-semibold text-green-700">{formatPence(totalPaid)}</span>
+                        </div>
+                    </div>
+
+                    {/* Recent invoices mini-table */}
+                    {(recentInvoices && recentInvoices.length > 0) ? (
+                        <div className="border-t border-neutral-100 pt-3">
+                            <p className="text-[10px] font-medium text-neutral-400 uppercase tracking-wider mb-2">Recent Invoices</p>
+                            <div className="space-y-1.5">
+                                {recentInvoices.map((inv: { id: string; invoice_number: string; customer_name: string; status: string; total_pence: number; invoice_date: string }) => (
+                                    <Link
+                                        key={inv.id}
+                                        href={`/admin/invoices/${inv.id}`}
+                                        className="flex items-center justify-between p-1.5 rounded hover:bg-neutral-50 transition-colors"
+                                    >
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <span className="text-xs font-medium text-neutral-900 shrink-0">{inv.invoice_number}</span>
+                                            <span className="text-xs text-neutral-500 truncate">{inv.customer_name}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0 ml-2">
+                                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${INVOICE_STATUS_COLORS[inv.status as InvoiceStatus] || ''}`}>
+                                                {INVOICE_STATUS_LABELS[inv.status as InvoiceStatus] || inv.status}
+                                            </span>
+                                            <span className="text-xs font-medium text-neutral-700">{formatPence(inv.total_pence)}</span>
+                                        </div>
+                                    </Link>
+                                ))}
+                            </div>
+                        </div>
+                    ) : (
+                        <p className="text-sm text-neutral-400 text-center py-2">No invoices yet</p>
+                    )}
                 </div>
             </div>
 
