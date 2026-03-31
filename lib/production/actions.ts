@@ -4,8 +4,32 @@
 import { createServerClient } from '@/lib/supabase-server';
 import { getUser } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
-import type { JobDetail, JobPriority, JobItemWithJob, ProductionStage } from './types';
+import type {
+    JobDetail,
+    JobPriority,
+    JobItemWithJob,
+    JobItem,
+    ProductionStage,
+    JobStageLog,
+    DepartmentInstruction,
+    WorkCentre,
+} from './types';
 import { getJobDetail, getAcceptedQuotesWithoutJobs, getShopFloorQueue, getProductionStages } from './queries';
+
+// =============================================================================
+// JobItemDetailResult type
+// =============================================================================
+
+type JobItemDetailResult = JobItemWithJob & {
+    stage_log: Array<JobStageLog & {
+        to_stage: ProductionStage | null;
+        from_stage: ProductionStage | null;
+    }>;
+    instructions: Array<DepartmentInstruction & {
+        stage: ProductionStage | null;
+    }>;
+    work_centres: WorkCentre[];
+};
 
 // =============================================================================
 // SERVER ACTIONS EXPOSED TO CLIENT COMPONENTS
@@ -507,6 +531,148 @@ export async function addDepartmentInstruction(
     const { error } = await supabase
         .from('department_instructions')
         .insert({ job_id: jobId, stage_id: stageId, instruction, created_by: user.id });
+
+    if (error) return { error: error.message };
+    revalidatePath('/admin/jobs');
+    return { success: true };
+}
+
+// =============================================================================
+// getJobItemDetailAction
+// =============================================================================
+
+export async function getJobItemDetailAction(itemId: string): Promise<JobItemDetailResult | null> {
+    const user = await getUser();
+    if (!user) return null;
+
+    const supabase = await createServerClient();
+
+    // Step 1: Fetch the item with parent job context
+    const { data: rawItem, error: itemError } = await supabase
+        .from('job_items')
+        .select(`
+            *,
+            production_jobs!inner(
+                id, job_number, client_name, title, priority, due_date, org_id
+            )
+        `)
+        .eq('id', itemId)
+        .single();
+
+    if (itemError || !rawItem) return null;
+
+    const item = rawItem as any;
+    const jobId: string = item.job_id;
+
+    // Step 2: Parallel fetches now that we have the job_id
+    const [
+        { data: stageLog },
+        { data: instructions },
+        { data: workCentres },
+        { data: currentStageData },
+    ] = await Promise.all([
+        supabase
+            .from('job_stage_log')
+            .select('*')
+            .or(`job_item_id.eq.${itemId},and(job_id.eq.${jobId},job_item_id.is.null)`)
+            .order('moved_at', { ascending: false }),
+        supabase
+            .from('department_instructions')
+            .select('*')
+            .eq('job_id', jobId)
+            .order('created_at', { ascending: true }),
+        item.current_stage_id
+            ? supabase
+                .from('work_centres')
+                .select('*')
+                .eq('stage_id', item.current_stage_id)
+                .order('sort_order', { ascending: true })
+            : Promise.resolve({ data: [] }),
+        item.current_stage_id
+            ? supabase.from('production_stages').select('*').eq('id', item.current_stage_id).single()
+            : Promise.resolve({ data: null }),
+    ]);
+
+    const currentWorkCentre = item.work_centre_id
+        ? ((workCentres || []) as WorkCentre[]).find(wc => wc.id === item.work_centre_id) ?? null
+        : null;
+
+    // Resolve stage IDs referenced in log entries and instructions
+    const allStageIds = new Set<string>();
+    (stageLog || []).forEach((l: any) => {
+        if (l.to_stage_id) allStageIds.add(l.to_stage_id);
+        if (l.from_stage_id) allStageIds.add(l.from_stage_id);
+    });
+    (instructions || []).forEach((i: any) => {
+        if (i.stage_id) allStageIds.add(i.stage_id);
+    });
+
+    let stagesById = new Map<string, ProductionStage>();
+    if (allStageIds.size > 0) {
+        const { data: stagesData } = await supabase
+            .from('production_stages')
+            .select('*')
+            .in('id', Array.from(allStageIds));
+        (stagesData || []).forEach((s: any) => stagesById.set(s.id, s as ProductionStage));
+    }
+
+    const jobItemBase: JobItem = {
+        id: item.id,
+        job_id: item.job_id,
+        quote_item_id: item.quote_item_id,
+        description: item.description,
+        quantity: item.quantity,
+        current_stage_id: item.current_stage_id,
+        status: item.status,
+        notes: item.notes,
+        created_at: item.created_at,
+        item_number: item.item_number,
+        stage_routing: item.stage_routing || [],
+        work_centre_id: item.work_centre_id,
+    };
+
+    return {
+        ...jobItemBase,
+        stage: currentStageData as ProductionStage | null,
+        work_centre: currentWorkCentre,
+        job: {
+            id: item.production_jobs.id,
+            job_number: item.production_jobs.job_number,
+            client_name: item.production_jobs.client_name,
+            title: item.production_jobs.title,
+            priority: item.production_jobs.priority,
+            due_date: item.production_jobs.due_date,
+            org_id: item.production_jobs.org_id,
+        },
+        stage_log: (stageLog || []).map((l: any) => ({
+            ...(l as JobStageLog),
+            to_stage: stagesById.get(l.to_stage_id) ?? null,
+            from_stage: l.from_stage_id ? stagesById.get(l.from_stage_id) ?? null : null,
+        })),
+        instructions: (instructions || []).map((i: any) => ({
+            ...(i as DepartmentInstruction),
+            stage: stagesById.get(i.stage_id) ?? null,
+        })),
+        work_centres: (workCentres || []) as WorkCentre[],
+    };
+}
+
+// =============================================================================
+// setItemWorkCentre
+// =============================================================================
+
+export async function setItemWorkCentre(
+    itemId: string,
+    workCentreId: string | null
+): Promise<{ success: boolean } | { error: string }> {
+    const user = await getUser();
+    if (!user) return { error: 'Not authenticated' };
+
+    const supabase = await createServerClient();
+    const { error } = await supabase
+        .from('job_items')
+        .update({ work_centre_id: workCentreId })
+        .eq('id', itemId);
 
     if (error) return { error: error.message };
     revalidatePath('/admin/jobs');

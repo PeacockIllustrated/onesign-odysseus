@@ -3,66 +3,99 @@
 
 import { useState, useEffect, useTransition } from 'react';
 import { X, Clock, AlertCircle, Plus } from 'lucide-react';
-import type { JobDetail, ProductionStage } from '@/lib/production/types';
+import type { ProductionStage } from '@/lib/production/types';
 import {
-    getJobDetailAction,
-    moveJobToStage,
+    getJobItemDetailAction,
+    moveJobItemToStage,
     addDepartmentInstruction,
+    setItemWorkCentre,
 } from '@/lib/production/actions';
 import { isJobOverdue, formatDueDate } from '@/lib/production/utils';
 
+// Local type alias to avoid importing the unexported type
+type JobItemDetail = Awaited<ReturnType<typeof getJobItemDetailAction>>;
+
 interface JobDetailPanelProps {
-    jobId: string;
+    itemId: string;
     onClose: () => void;
     stages: ProductionStage[];
 }
 
-export function JobDetailPanel({ jobId, onClose, stages }: JobDetailPanelProps) {
-    const [detail, setDetail] = useState<JobDetail | null>(null);
+export function JobDetailPanel({ itemId, onClose, stages }: JobDetailPanelProps) {
+    const [detail, setDetail] = useState<NonNullable<JobItemDetail> | null>(null);
     const [loading, setLoading] = useState(true);
     const [isPending, startTransition] = useTransition();
     const [newInstruction, setNewInstruction] = useState('');
     const [instructionStageId, setInstructionStageId] = useState('');
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         setLoading(true);
-        getJobDetailAction(jobId)
+        getJobItemDetailAction(itemId)
             .then(d => {
                 setDetail(d);
             })
             .catch(err => {
-                console.error('Failed to load job detail:', err);
+                console.error('Failed to load item detail:', err);
             })
             .finally(() => {
                 setLoading(false);
             });
-    }, [jobId]);
+    }, [itemId]);
 
     function handleMoveStage(stageId: string) {
+        const capturedItemId = itemId;
         startTransition(async () => {
-            const result = await moveJobToStage(jobId, stageId);
-            if ('error' in result) {
-                console.error('Failed to move job:', result.error);
-                return;
-            }
-            const updated = await getJobDetailAction(jobId);
-            setDetail(updated);
+            const result = await moveJobItemToStage(capturedItemId, stageId);
+            if ('error' in result) { setError(result.error); return; }
+            setError(null);
+            const updated = await getJobItemDetailAction(capturedItemId);
+            if (capturedItemId === itemId) setDetail(updated);
+        });
+    }
+
+    function handleSetWorkCentre(wcId: string | null) {
+        const capturedItemId = itemId;
+        startTransition(async () => {
+            const result = await setItemWorkCentre(capturedItemId, wcId);
+            if ('error' in result) { setError(result.error); return; }
+            setError(null);
+            const updated = await getJobItemDetailAction(capturedItemId);
+            if (capturedItemId === itemId) setDetail(updated);
         });
     }
 
     function handleAddInstruction() {
-        if (!newInstruction.trim() || !instructionStageId) return;
+        if (!newInstruction.trim() || !instructionStageId || !detail) return;
+        const capturedItemId = itemId;
         startTransition(async () => {
-            const result = await addDepartmentInstruction(jobId, instructionStageId, newInstruction.trim());
-            if ('error' in result) {
-                console.error('Failed to add instruction:', result.error);
-                return;
-            }
+            const result = await addDepartmentInstruction(detail.job_id, instructionStageId, newInstruction.trim());
+            if ('error' in result) { setError(result.error); return; }
+            setError(null);
             setNewInstruction('');
-            const updated = await getJobDetailAction(jobId);
-            setDetail(updated);
+            setInstructionStageId('');
+            const updated = await getJobItemDetailAction(capturedItemId);
+            if (capturedItemId === itemId) setDetail(updated);
         });
     }
+
+    // Stage routing pipeline data
+    const routingStages = detail
+        ? detail.stage_routing
+            .map(id => stages.find(s => s.id === id))
+            .filter((s): s is ProductionStage => Boolean(s))
+        : [];
+    const currentIdx = detail
+        ? routingStages.findIndex(s => s.id === detail.current_stage_id)
+        : -1;
+
+    // Move targets: stages in the routing that are not the current stage.
+    // Fall back to all stages if no routing is configured.
+    const moveTargets = detail
+        ? (detail.stage_routing.length > 0
+            ? stages.filter(s => detail.stage_routing.includes(s.id) && s.id !== detail.current_stage_id)
+            : stages.filter(s => s.id !== detail.current_stage_id))
+        : [];
 
     return (
         <>
@@ -80,10 +113,10 @@ export function JobDetailPanel({ jobId, onClose, stages }: JobDetailPanelProps) 
                         {detail ? (
                             <>
                                 <code className="text-xs font-mono text-[#4e7e8c] font-semibold">
-                                    {detail.job_number}
+                                    {detail.job.job_number}{detail.item_number ? ` · ${detail.item_number}` : ''}
                                 </code>
                                 <p className="text-sm font-semibold text-neutral-900 mt-0.5">
-                                    {detail.client_name}
+                                    {detail.job.client_name}
                                 </p>
                             </>
                         ) : (
@@ -104,14 +137,21 @@ export function JobDetailPanel({ jobId, onClose, stages }: JobDetailPanelProps) 
                     </div>
                 ) : !detail ? (
                     <div className="flex-1 flex items-center justify-center">
-                        <div className="text-sm text-neutral-500">Job not found</div>
+                        <div className="text-sm text-neutral-500">Item not found</div>
                     </div>
                 ) : (
                     <div className="flex-1 overflow-y-auto p-5 space-y-6">
-                        {/* Meta */}
+                        {error && (
+                            <div className="bg-red-50 border border-red-200 rounded px-3 py-2 text-xs text-red-700 flex items-center justify-between">
+                                {error}
+                                <button onClick={() => setError(null)} className="ml-2 text-red-400 hover:text-red-600">✕</button>
+                            </div>
+                        )}
+
+                        {/* Meta grid */}
                         <div className="grid grid-cols-2 gap-4 text-sm">
                             <div>
-                                <p className="text-xs font-medium text-neutral-500 uppercase mb-1">Stage</p>
+                                <p className="text-xs font-medium text-neutral-500 uppercase mb-1">Current Stage</p>
                                 <div className="flex items-center gap-2">
                                     {detail.stage && (
                                         <div
@@ -123,31 +163,79 @@ export function JobDetailPanel({ jobId, onClose, stages }: JobDetailPanelProps) 
                                 </div>
                             </div>
                             <div>
+                                <p className="text-xs font-medium text-neutral-500 uppercase mb-1">Item Status</p>
+                                <span className={`capitalize font-medium ${
+                                    detail.status === 'completed' ? 'text-green-700' :
+                                    detail.status === 'in_progress' ? 'text-blue-700' :
+                                    'text-neutral-600'
+                                }`}>
+                                    {detail.status.replace('_', ' ')}
+                                </span>
+                            </div>
+                            <div>
                                 <p className="text-xs font-medium text-neutral-500 uppercase mb-1">Priority</p>
                                 <span className={`capitalize font-medium ${
-                                    detail.priority === 'urgent' ? 'text-red-600' :
-                                    detail.priority === 'high' ? 'text-amber-600' : 'text-neutral-700'
+                                    detail.job.priority === 'urgent' ? 'text-red-600' :
+                                    detail.job.priority === 'high' ? 'text-amber-600' : 'text-neutral-700'
                                 }`}>
-                                    {detail.priority}
+                                    {detail.job.priority}
                                 </span>
                             </div>
                             <div>
                                 <p className="text-xs font-medium text-neutral-500 uppercase mb-1">Due Date</p>
-                                <span className={isJobOverdue(detail.due_date) ? 'text-red-600 font-semibold flex items-center gap-1' : 'text-neutral-700'}>
-                                    {isJobOverdue(detail.due_date) && <AlertCircle size={12} />}
-                                    {formatDueDate(detail.due_date) ?? '—'}
+                                <span className={isJobOverdue(detail.job.due_date) ? 'text-red-600 font-semibold flex items-center gap-1' : 'text-neutral-700'}>
+                                    {isJobOverdue(detail.job.due_date) && <AlertCircle size={12} />}
+                                    {formatDueDate(detail.job.due_date) ?? '—'}
                                 </span>
-                            </div>
-                            <div>
-                                <p className="text-xs font-medium text-neutral-500 uppercase mb-1">Assigned</p>
-                                <span>{detail.assigned_initials ?? '—'}</span>
                             </div>
                         </div>
 
-                        {detail.notes && (
+                        {/* Stage routing pipeline */}
+                        {routingStages.length > 0 && (
                             <div>
-                                <p className="text-xs font-medium text-neutral-500 uppercase mb-1">Notes</p>
-                                <p className="text-sm text-neutral-700 whitespace-pre-wrap">{detail.notes}</p>
+                                <p className="text-xs font-medium text-neutral-500 uppercase mb-2">Stage Route</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {routingStages.map((s, idx) => {
+                                        const isCurrent = s.id === detail.current_stage_id;
+                                        const isPast = currentIdx >= 0 && idx < currentIdx;
+                                        const opacity = isCurrent ? 1 : isPast ? 0.4 : 0.2;
+                                        return (
+                                            <span
+                                                key={s.id}
+                                                className="flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border"
+                                                style={{
+                                                    borderColor: isCurrent ? s.color : '#e5e7eb',
+                                                    boxShadow: isCurrent ? `0 0 0 2px ${s.color}40` : undefined,
+                                                    opacity,
+                                                }}
+                                            >
+                                                <div
+                                                    className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                                    style={{ backgroundColor: s.color }}
+                                                />
+                                                {s.name}
+                                            </span>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Work centre picker */}
+                        {detail.work_centres.length > 0 && (
+                            <div>
+                                <p className="text-xs font-medium text-neutral-500 uppercase mb-2">Work Centre</p>
+                                <select
+                                    value={detail.work_centre_id || ''}
+                                    onChange={e => handleSetWorkCentre(e.target.value || null)}
+                                    disabled={isPending}
+                                    className="w-full text-sm border border-neutral-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#4e7e8c] disabled:opacity-50"
+                                >
+                                    <option value="">— Unassigned —</option>
+                                    {detail.work_centres.map(wc => (
+                                        <option key={wc.id} value={wc.id}>{wc.name}</option>
+                                    ))}
+                                </select>
                             </div>
                         )}
 
@@ -155,7 +243,7 @@ export function JobDetailPanel({ jobId, onClose, stages }: JobDetailPanelProps) 
                         {detail.stage?.is_approval_stage && (
                             <div className="bg-orange-50 border border-orange-200 rounded p-3">
                                 <p className="text-xs font-semibold text-orange-700 uppercase mb-1">Artwork Approval Stage</p>
-                                <p className="text-sm text-neutral-700 mb-2">This job is awaiting artwork sign-off.</p>
+                                <p className="text-sm text-neutral-700 mb-2">This item is awaiting artwork sign-off.</p>
                                 <a
                                     href="/admin/artwork"
                                     className="text-xs text-[#4e7e8c] hover:underline"
@@ -169,50 +257,22 @@ export function JobDetailPanel({ jobId, onClose, stages }: JobDetailPanelProps) 
                         <div>
                             <p className="text-xs font-medium text-neutral-500 uppercase mb-2">Move to Stage</p>
                             <div className="flex flex-wrap gap-2">
-                                {stages.map(s => (
+                                {moveTargets.map(s => (
                                     <button
                                         key={s.id}
-                                        disabled={s.id === detail.current_stage_id || isPending}
+                                        disabled={isPending}
                                         onClick={() => handleMoveStage(s.id)}
-                                        className={`
-                                            flex items-center gap-1.5 px-2.5 py-1 text-xs rounded transition-colors
-                                            ${s.id === detail.current_stage_id
-                                                ? 'bg-neutral-900 text-white cursor-default'
-                                                : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200 disabled:opacity-50'}
-                                        `}
+                                        className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded transition-colors bg-neutral-100 text-neutral-700 hover:bg-neutral-200 disabled:opacity-50"
                                     >
                                         <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: s.color }} />
                                         {s.name}
                                     </button>
                                 ))}
+                                {moveTargets.length === 0 && (
+                                    <p className="text-sm text-neutral-400">No further stages</p>
+                                )}
                             </div>
                         </div>
-
-                        {/* Job items */}
-                        {detail.items.length > 0 && (
-                            <div>
-                                <p className="text-xs font-medium text-neutral-500 uppercase mb-2">
-                                    Items ({detail.items.length})
-                                </p>
-                                <div className="space-y-1">
-                                    {detail.items.map(item => (
-                                        <div
-                                            key={item.id}
-                                            className="flex items-center justify-between py-1.5 px-3 bg-neutral-50 rounded text-sm"
-                                        >
-                                            <span className="text-neutral-700">{item.description}</span>
-                                            <span className={`text-xs px-1.5 py-0.5 rounded capitalize ${
-                                                item.status === 'completed' ? 'bg-green-100 text-green-700' :
-                                                item.status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
-                                                'bg-neutral-200 text-neutral-600'
-                                            }`}>
-                                                {item.status.replace('_', ' ')}
-                                            </span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
 
                         {/* Department instructions */}
                         <div>
