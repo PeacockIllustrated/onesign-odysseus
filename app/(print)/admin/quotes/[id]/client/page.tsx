@@ -328,6 +328,11 @@ export default async function QuoteClientPrintPage({ params }: PageProps) {
                 </div>
                 <div className="quote-info">
                     <div className="quote-number">{quoteData.quote_number}</div>
+                    {quoteData.project_name && (
+                        <div className="quote-date" style={{ marginTop: '2px', fontWeight: 500, color: '#333' }}>
+                            {quoteData.project_name}
+                        </div>
+                    )}
                     <div className="quote-date">{formatDate(quoteData.created_at)}</div>
                     {quoteData.valid_until && (
                         <div className="quote-date" style={{ marginTop: '4px' }}>
@@ -346,6 +351,11 @@ export default async function QuoteClientPrintPage({ params }: PageProps) {
                         {quoteData.customer_email}
                         {quoteData.customer_email && quoteData.customer_phone && ' • '}
                         {quoteData.customer_phone}
+                    </div>
+                )}
+                {quoteData.customer_reference && (
+                    <div className="customer-contact" style={{ marginTop: '4px' }}>
+                        Your ref: <strong>{quoteData.customer_reference}</strong>
                     </div>
                 )}
             </div>
@@ -400,6 +410,16 @@ export default async function QuoteClientPrintPage({ params }: PageProps) {
                 </div>
             </div>
 
+            {/* Client notes */}
+            {quoteData.notes_client && (
+                <div className="notes-section">
+                    <div className="notes-title">Notes</div>
+                    <div className="notes-content" style={{ whiteSpace: 'pre-wrap', color: '#333' }}>
+                        {quoteData.notes_client}
+                    </div>
+                </div>
+            )}
+
             {/* Terms & Conditions — No internal notes */}
             <div className="notes-section">
                 <div className="notes-title">Terms & Conditions</div>
@@ -416,7 +436,7 @@ export default async function QuoteClientPrintPage({ params }: PageProps) {
 
             {/* Footer */}
             <div className="footer">
-                OneSign & Digital • Quote generated on {formatDate(new Date().toISOString())}
+                Onesign & Digital • Quote generated on {formatDate(new Date().toISOString())}
             </div>
         </div>
     );
