@@ -1,5 +1,5 @@
 import { requireAdmin } from '@/lib/auth';
-import { getArtworkJobs } from '@/lib/artwork/actions';
+import { getArtworkJobs, getProductionItemsAtArtworkStage } from '@/lib/artwork/actions';
 import { PageHeader, Card, Chip } from '@/app/(portal)/components/ui';
 import Link from 'next/link';
 import { formatDate } from '@/lib/artwork/utils';
@@ -9,6 +9,7 @@ import {
     getJobProgress,
 } from '@/lib/artwork/utils';
 import { ArtworkJob, ArtworkJobStatus } from '@/lib/artwork/types';
+import { StartArtworkButton } from './StartArtworkButton';
 
 interface SearchParams {
     status?: string;
@@ -23,10 +24,10 @@ export default async function ArtworkJobsPage({
     await requireAdmin();
 
     const params = await searchParams;
-    const jobs = await getArtworkJobs({
-        status: params.status,
-        search: params.search,
-    });
+    const [jobs, productionItems] = await Promise.all([
+        getArtworkJobs({ status: params.status, search: params.search }),
+        getProductionItemsAtArtworkStage(),
+    ]);
 
     return (
         <div className="p-6 max-w-7xl mx-auto">
@@ -39,6 +40,52 @@ export default async function ArtworkJobsPage({
                     </Link>
                 }
             />
+
+            {/* Production Items Awaiting Artwork */}
+            {productionItems.length > 0 && (
+                <div className="mb-6">
+                    <div className="flex items-center gap-2 mb-3">
+                        <div className="w-2.5 h-2.5 rounded-full bg-[#D85A30]" />
+                        <h2 className="text-sm font-semibold text-neutral-900 uppercase tracking-wider">
+                            Production Items Awaiting Artwork
+                        </h2>
+                        <span className="text-xs text-neutral-500 bg-neutral-100 px-1.5 py-0.5 rounded font-medium">
+                            {productionItems.length}
+                        </span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {productionItems.map(item => (
+                            <div key={item.jobItem.id} className="bg-white rounded-[var(--radius-md)] border border-neutral-200 p-4">
+                                <div className="flex items-start justify-between gap-2 mb-2">
+                                    <code className="text-xs font-mono text-[#4e7e8c] font-semibold">
+                                        {item.productionJob.job_number}{item.jobItem.item_number ? ` \u00b7 ${item.jobItem.item_number}` : ''}
+                                    </code>
+                                    {item.productionJob.priority === 'urgent' && (
+                                        <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-red-50 text-red-700">urgent</span>
+                                    )}
+                                    {item.productionJob.priority === 'high' && (
+                                        <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">high</span>
+                                    )}
+                                </div>
+                                <p className="text-sm font-semibold text-neutral-900 truncate">{item.productionJob.client_name}</p>
+                                <p className="text-xs text-neutral-500 mt-0.5 line-clamp-2">{item.jobItem.description}</p>
+                                <div className="mt-3">
+                                    {item.artworkJob ? (
+                                        <Link
+                                            href={`/admin/artwork/${item.artworkJob.id}`}
+                                            className="text-xs font-medium text-[#4e7e8c] hover:underline"
+                                        >
+                                            {item.artworkJob.job_reference} — {item.artworkJob.status.replace('_', ' ')} →
+                                        </Link>
+                                    ) : (
+                                        <StartArtworkButton jobItemId={item.jobItem.id} />
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Filters */}
             <Card className="mb-6">

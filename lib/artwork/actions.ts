@@ -1264,3 +1264,87 @@ export async function getComponentDetail(
         extra_items: (itemsResult.data || []),
     } as ArtworkComponentWithVersions;
 }
+
+// =============================================================================
+// PRODUCTION ARTWORK QUEUE
+// =============================================================================
+
+/**
+ * Fetch production job items that are currently at the artwork-approval stage,
+ * along with any linked artwork_jobs so the UI can show a "Start Artwork Pack"
+ * button or a link to the existing artwork job.
+ */
+export async function getProductionItemsAtArtworkStage(): Promise<
+    Array<{
+        jobItem: { id: string; description: string; item_number: string | null };
+        productionJob: { job_number: string; client_name: string; due_date: string | null; priority: string };
+        artworkJob: { id: string; job_reference: string; status: string } | null;
+    }>
+> {
+    const supabase = await createServerClient();
+
+    // 1. Find the default artwork-approval stage
+    const { data: stage } = await supabase
+        .from('production_stages')
+        .select('id')
+        .eq('slug', 'artwork-approval')
+        .is('org_id', null)
+        .single();
+
+    if (!stage) return [];
+
+    // 2. Fetch job_items at that stage with parent job context
+    const { data: items, error } = await supabase
+        .from('job_items')
+        .select(`
+            id, description, item_number, current_stage_id,
+            production_jobs!inner(
+                job_number, client_name, due_date, priority, status
+            )
+        `)
+        .eq('current_stage_id', stage.id)
+        .order('created_at', { ascending: true });
+
+    if (error || !items || items.length === 0) return [];
+
+    // Filter to active/paused parent jobs (PostgREST ignores .in() on embedded columns)
+    const filtered = items.filter(
+        (i: any) => i.production_jobs?.status === 'active' || i.production_jobs?.status === 'paused'
+    );
+
+    if (filtered.length === 0) return [];
+
+    // 3. Batch-fetch any linked artwork_jobs for these item IDs
+    const itemIds = filtered.map((i: any) => i.id);
+    const { data: artworkJobs } = await supabase
+        .from('artwork_jobs')
+        .select('id, job_reference, status, job_item_id')
+        .in('job_item_id', itemIds);
+
+    const artworkMap = new Map<string, { id: string; job_reference: string; status: string }>();
+    (artworkJobs || []).forEach((aj: any) => {
+        if (aj.job_item_id) {
+            artworkMap.set(aj.job_item_id, {
+                id: aj.id,
+                job_reference: aj.job_reference,
+                status: aj.status,
+            });
+        }
+    });
+
+    // 4. Assemble result
+    return filtered.map((i: any) => ({
+        jobItem: {
+            id: i.id,
+            description: i.description || '',
+            item_number: i.item_number || null,
+        },
+        productionJob: {
+            job_number: (i.production_jobs as any).job_number,
+            client_name: (i.production_jobs as any).client_name,
+            due_date: (i.production_jobs as any).due_date || null,
+            priority: (i.production_jobs as any).priority || 'normal',
+        },
+        artworkJob: artworkMap.get(i.id) || null,
+    }));
+}
