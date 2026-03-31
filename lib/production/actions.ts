@@ -4,8 +4,8 @@
 import { createServerClient } from '@/lib/supabase-server';
 import { getUser } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
-import type { JobDetail, JobPriority, JobItemWithJob } from './types';
-import { getJobDetail, getAcceptedQuotesWithoutJobs, getShopFloorQueue } from './queries';
+import type { JobDetail, JobPriority, JobItemWithJob, ProductionStage } from './types';
+import { getJobDetail, getAcceptedQuotesWithoutJobs, getShopFloorQueue, getProductionStages } from './queries';
 
 // =============================================================================
 // SERVER ACTIONS EXPOSED TO CLIENT COMPONENTS
@@ -33,6 +33,42 @@ export async function getOrgListAction(): Promise<Array<{ id: string; name: stri
     return (data || []) as Array<{ id: string; name: string }>;
 }
 
+/** Fetch production stages — callable from client components */
+export async function getProductionStagesAction(): Promise<ProductionStage[]> {
+    return getProductionStages();
+}
+
+// Helper: derive a human-readable description for a quote item
+function deriveItemDescription(item: any, index: number): string {
+    const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const label = LETTERS[index] ?? `${index + 1}`;
+    const itemType = item.item_type === 'panel_letters_v1' ? 'Panel + Letters' : (item.item_type || 'Item');
+    const output = item.output_json as any;
+    const dims =
+        output?.derived?.adjusted_width_mm && output?.derived?.adjusted_height_mm
+            ? `${output.derived.adjusted_width_mm}×${output.derived.adjusted_height_mm}mm`
+            : null;
+    return dims ? `${label}: ${itemType} (${dims})` : `${label}: ${itemType}`;
+}
+
+/** Fetch quote items with derived descriptions for routing configuration */
+export async function getQuoteItemsForRoutingAction(
+    quoteId: string
+): Promise<Array<{ id: string; description: string; item_type: string | null }>> {
+    const supabase = await createServerClient();
+    const { data } = await supabase
+        .from('quote_items')
+        .select('id, item_type, output_json')
+        .eq('quote_id', quoteId)
+        .order('created_at', { ascending: true });
+
+    return (data || []).map((item: any, index: number) => ({
+        id: item.id,
+        description: deriveItemDescription(item, index),
+        item_type: item.item_type,
+    }));
+}
+
 /** Fetch items for shop floor queue — callable from ShopFloorClient */
 export async function getShopFloorJobsAction(stageSlug: string): Promise<JobItemWithJob[]> {
     return getShopFloorQueue(stageSlug);
@@ -42,9 +78,12 @@ export async function getShopFloorJobsAction(stageSlug: string): Promise<JobItem
 // createJobFromQuote
 // =============================================================================
 
+const ITEM_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
 export async function createJobFromQuote(
     quoteId: string,
-    orgId: string
+    orgId: string,
+    itemRoutings?: Array<{ quoteItemId: string; stageIds: string[]; description: string }>
 ): Promise<{ id: string; jobNumber: string } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
@@ -110,14 +149,24 @@ export async function createJobFromQuote(
 
     if (items.length > 0) {
         const { error: itemsError } = await supabase.from('job_items').insert(
-            items.map((item: { id: string; item_type: string | null }) => ({
-                job_id: newJob.id,
-                quote_item_id: item.id,
-                description: item.item_type === 'panel_letters_v1' ? 'Panel + Letters' : item.item_type,
-                quantity: 1,
-                current_stage_id: orderBookStage.id,
-                status: 'pending',
-            }))
+            items.map((item: { id: string; item_type: string | null }, index: number) => {
+                const itemRouting = itemRoutings?.find(r => r.quoteItemId === item.id);
+                const stageRouting = itemRouting
+                    ? [orderBookStage.id, ...itemRouting.stageIds.filter(id => id !== orderBookStage.id)]
+                    : [];
+                const description = itemRouting?.description
+                    ?? (item.item_type === 'panel_letters_v1' ? 'Panel + Letters' : item.item_type);
+                return {
+                    job_id: newJob.id,
+                    quote_item_id: item.id,
+                    item_number: ITEM_LETTERS[index] ?? `${index + 1}`,
+                    description,
+                    quantity: 1,
+                    current_stage_id: orderBookStage.id,
+                    status: 'pending',
+                    stage_routing: stageRouting,
+                };
+            })
         );
         if (itemsError) {
             console.error('createJobFromQuote items insert error:', itemsError);

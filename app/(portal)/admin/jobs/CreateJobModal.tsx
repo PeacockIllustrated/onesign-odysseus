@@ -9,7 +9,10 @@ import {
     createJobFromQuote,
     getAcceptedQuotesAction,
     getOrgListAction,
+    getProductionStagesAction,
+    getQuoteItemsForRoutingAction,
 } from '@/lib/production/actions';
+import type { ProductionStage } from '@/lib/production/types';
 
 interface CreateJobModalProps {
     open: boolean;
@@ -41,11 +44,18 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
     const [selectedQuoteId, setSelectedQuoteId] = useState('');
     const [quotesLoading, setQuotesLoading] = useState(false);
 
-    // Fetch orgs and quotes when modal opens
+    // Routing state
+    const [stages, setStages] = useState<ProductionStage[]>([]);
+    const [quoteItems, setQuoteItems] = useState<Array<{ id: string; description: string }>>([]);
+    const [loadingItems, setLoadingItems] = useState(false);
+    const [itemRoutings, setItemRoutings] = useState<Map<string, Set<string>>>(new Map());
+
+    // Fetch orgs, quotes, and stages when modal opens
     useEffect(() => {
         if (!open) return;
 
         getOrgListAction().then(setOrgs);
+        getProductionStagesAction().then(setStages);
 
         setQuotesLoading(true);
         getAcceptedQuotesAction().then(q => {
@@ -53,6 +63,33 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
             setQuotesLoading(false);
         });
     }, [open]);
+
+    // Fetch quote items + set default routings when a quote is selected
+    useEffect(() => {
+        if (!selectedQuoteId) {
+            setQuoteItems([]);
+            setItemRoutings(new Map());
+            return;
+        }
+        setLoadingItems(true);
+        getQuoteItemsForRoutingAction(selectedQuoteId).then(items => {
+            setQuoteItems(items);
+            // Default: all non-approval, non-order-book, non-goods-out stages selected
+            const defaultRoutings = new Map<string, Set<string>>();
+            items.forEach(item => {
+                defaultRoutings.set(
+                    item.id,
+                    new Set(
+                        stages
+                            .filter(s => !s.is_approval_stage && s.slug !== 'order-book' && s.slug !== 'goods-out')
+                            .map(s => s.id)
+                    )
+                );
+            });
+            setItemRoutings(defaultRoutings);
+            setLoadingItems(false);
+        });
+    }, [selectedQuoteId, stages]);
 
     // Reset form when closed
     useEffect(() => {
@@ -65,6 +102,8 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
             setAssignedInitials('');
             setOrgId('');
             setSelectedQuoteId('');
+            setQuoteItems([]);
+            setItemRoutings(new Map());
             setError(null);
             setTab('manual');
         }
@@ -101,7 +140,17 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
         setSubmitting(true);
         setError(null);
 
-        const result = await createJobFromQuote(selectedQuoteId, orgId);
+        const routingPayload = quoteItems.map(item => ({
+            quoteItemId: item.id,
+            stageIds: Array.from(itemRoutings.get(item.id) ?? []),
+            description: item.description,
+        }));
+
+        const result = await createJobFromQuote(
+            selectedQuoteId,
+            orgId,
+            routingPayload.length > 0 ? routingPayload : undefined
+        );
 
         setSubmitting(false);
         if ('error' in result) {
@@ -114,10 +163,13 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
 
     if (!open) return null;
 
+    // Stages shown as checkboxes (exclude order-book and goods-out — always auto-included)
+    const routingStages = stages.filter(s => s.slug !== 'order-book' && s.slug !== 'goods-out');
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
             <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-            <div className="relative bg-white rounded-[var(--radius-md)] shadow-2xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="relative bg-white rounded-[var(--radius-md)] shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
                 <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-200">
                     <h2 className="text-sm font-semibold text-neutral-900">New Production Job</h2>
                     <button onClick={onClose} className="text-neutral-400 hover:text-neutral-700 transition-colors">
@@ -261,6 +313,71 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
                                     </select>
                                 </div>
                             )}
+
+                            {/* Department routing — shown once a quote is selected */}
+                            {loadingItems && (
+                                <p className="text-xs text-neutral-500 text-center py-2 flex items-center justify-center gap-1.5">
+                                    <Loader2 size={12} className="animate-spin" /> Loading items…
+                                </p>
+                            )}
+
+                            {!loadingItems && quoteItems.length > 0 && routingStages.length > 0 && (
+                                <div>
+                                    <p className="text-xs font-semibold text-neutral-600 uppercase mb-2">
+                                        Department Routing
+                                    </p>
+                                    <p className="text-[11px] text-neutral-500 mb-3">
+                                        Order Book and Goods Out are always included. Choose which departments each item will visit.
+                                    </p>
+                                    <div className="space-y-3">
+                                        {quoteItems.map(item => {
+                                            const routing = itemRoutings.get(item.id) ?? new Set<string>();
+                                            return (
+                                                <div
+                                                    key={item.id}
+                                                    className="border border-neutral-200 rounded p-3"
+                                                >
+                                                    <p className="text-xs font-semibold text-neutral-800 mb-2">
+                                                        {item.description}
+                                                    </p>
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {routingStages.map(stage => (
+                                                            <label
+                                                                key={stage.id}
+                                                                className="flex items-center gap-1 cursor-pointer"
+                                                            >
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={routing.has(stage.id)}
+                                                                    onChange={e => {
+                                                                        const next = new Map(itemRoutings);
+                                                                        const stageSet = new Set(next.get(item.id) ?? []);
+                                                                        if (e.target.checked) stageSet.add(stage.id);
+                                                                        else stageSet.delete(stage.id);
+                                                                        next.set(item.id, stageSet);
+                                                                        setItemRoutings(next);
+                                                                    }}
+                                                                    className="rounded"
+                                                                />
+                                                                <span
+                                                                    className="text-[10px] font-medium px-1.5 py-0.5 rounded"
+                                                                    style={{
+                                                                        color: stage.color,
+                                                                        backgroundColor: `${stage.color}18`,
+                                                                    }}
+                                                                >
+                                                                    {stage.name}
+                                                                </span>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
                             <button
                                 type="submit"
                                 disabled={submitting || !selectedQuoteId || !orgId || quotes.length === 0}
