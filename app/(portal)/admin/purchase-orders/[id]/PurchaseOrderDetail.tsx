@@ -108,7 +108,7 @@ export function PurchaseOrderDetail({ initialPo }: PurchaseOrderDetailProps) {
                     </div>
                     <div className="flex items-center gap-2">
                         <a
-                            href={`/print/admin/purchase-orders/${po.id}`}
+                            href={`/admin/purchase-orders/${po.id}/print`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-neutral-200 rounded hover:bg-neutral-50"
