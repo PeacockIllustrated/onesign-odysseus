@@ -39,11 +39,12 @@ export async function getProductionStages(): Promise<ProductionStage[]> {
 
 export async function getWorkCentres(): Promise<WorkCentre[]> {
     const supabase = await createServerClient();
-    const { data } = await supabase
+    const { data, error } = await supabase
         .from('work_centres')
         .select('*')
         .eq('is_active', true)
         .order('sort_order', { ascending: true });
+    if (error) console.error('getWorkCentres error:', error);
     return (data || []) as WorkCentre[];
 }
 
@@ -99,7 +100,6 @@ export async function getItemBoard(): Promise<ItemBoardColumn[]> {
                 id, job_number, client_name, title, priority, due_date, org_id, status
             )
         `)
-        .in('production_jobs.status', ['active', 'paused'])
         .order('created_at', { ascending: true });
 
     if (error) {
@@ -118,23 +118,27 @@ export async function getItemBoard(): Promise<ItemBoardColumn[]> {
         (wcs || []).forEach((wc: any) => wcMap.set(wc.id, wc as WorkCentre));
     }
 
-    const itemList: JobItemWithJob[] = (items || []).map((i: any) => ({
-        ...i as JobItem,
-        item_number: i.item_number,
-        stage_routing: i.stage_routing || [],
-        work_centre_id: i.work_centre_id,
-        stage: i.current_stage_id ? stageMap.get(i.current_stage_id) ?? null : null,
-        work_centre: i.work_centre_id ? wcMap.get(i.work_centre_id) ?? null : null,
-        job: {
-            id: i.production_jobs.id,
-            job_number: i.production_jobs.job_number,
-            client_name: i.production_jobs.client_name,
-            title: i.production_jobs.title,
-            priority: i.production_jobs.priority,
-            due_date: i.production_jobs.due_date,
-            org_id: i.production_jobs.org_id,
-        },
-    }));
+    // Supabase JS v2: .in() on an embedded foreign table column is silently ignored by
+    // PostgREST, so we filter completed/cancelled parent jobs in JavaScript instead.
+    const itemList: JobItemWithJob[] = (items || [])
+        .filter((i: any) => i.production_jobs?.status === 'active' || i.production_jobs?.status === 'paused')
+        .map((i: any) => ({
+            ...i as JobItem,
+            item_number: i.item_number,
+            stage_routing: i.stage_routing || [],
+            work_centre_id: i.work_centre_id,
+            stage: i.current_stage_id ? stageMap.get(i.current_stage_id) ?? null : null,
+            work_centre: i.work_centre_id ? wcMap.get(i.work_centre_id) ?? null : null,
+            job: {
+                id: i.production_jobs.id,
+                job_number: i.production_jobs.job_number,
+                client_name: i.production_jobs.client_name,
+                title: i.production_jobs.title,
+                priority: i.production_jobs.priority,
+                due_date: i.production_jobs.due_date,
+                org_id: i.production_jobs.org_id,
+            },
+        }));
 
     return stages.map(stage => ({
         stage,
@@ -300,22 +304,27 @@ export async function getProductionStats(): Promise<{
         supabase
             .from('job_items')
             .select('current_stage_id, production_jobs!inner(due_date, status)')
-            .in('status', ['pending', 'in_progress'])
-            .in('production_jobs.status', ['active', 'paused']),
+            .in('status', ['pending', 'in_progress']),
     ]);
 
     if (e1 || e3) {
         throw new Error('Production tables not available');
     }
 
+    // Supabase JS v2: .in() on an embedded foreign table column is silently ignored by
+    // PostgREST, so we filter completed/cancelled parent jobs in JavaScript instead.
+    const filteredItems = (activeItems || []).filter((i: any) =>
+        i.production_jobs?.status === 'active' || i.production_jobs?.status === 'paused'
+    );
+
     // Count overdue: items whose parent job has a due_date in the past
-    const overdueCount = (activeItems || []).filter((i: any) =>
+    const overdueCount = filteredItems.filter((i: any) =>
         i.production_jobs?.due_date && i.production_jobs.due_date < today
     ).length;
 
     const stages = await getProductionStages();
     const stageCounts = new Map<string, number>();
-    for (const item of activeItems || []) {
+    for (const item of filteredItems) {
         if ((item as any).current_stage_id) {
             stageCounts.set((item as any).current_stage_id, (stageCounts.get((item as any).current_stage_id) || 0) + 1);
         }
