@@ -6,9 +6,31 @@
 -- =============================================================================
 -- 1. REMOVE OLD PLACEHOLDER STAGE SEEDS
 -- =============================================================================
--- Note: existing jobs/items referencing these stages must be removed first,
--- or this migration must be run on a fresh database (no production data).
--- The FKs do not use ON DELETE SET NULL — this migration assumes no live data.
+-- Clear all FK references to default stages before deleting them.
+-- The FK columns do not use ON DELETE SET NULL, so we must clear them first.
+-- On a fresh database these are all no-ops.
+
+-- NULL out stage references on jobs and items (FK columns are nullable)
+UPDATE public.production_jobs
+  SET current_stage_id = NULL
+  WHERE current_stage_id IN (SELECT id FROM public.production_stages WHERE is_default = TRUE);
+
+UPDATE public.job_items
+  SET current_stage_id = NULL
+  WHERE current_stage_id IN (SELECT id FROM public.production_stages WHERE is_default = TRUE);
+
+-- Delete log entries whose to_stage_id references old stages (to_stage_id is NOT NULL)
+DELETE FROM public.job_stage_log
+  WHERE to_stage_id IN (SELECT id FROM public.production_stages WHERE is_default = TRUE);
+
+-- NULL out from_stage_id references (nullable column)
+UPDATE public.job_stage_log
+  SET from_stage_id = NULL
+  WHERE from_stage_id IN (SELECT id FROM public.production_stages WHERE is_default = TRUE);
+
+-- Delete department instructions tied to old stages
+DELETE FROM public.department_instructions
+  WHERE stage_id IN (SELECT id FROM public.production_stages WHERE is_default = TRUE);
 
 DELETE FROM public.production_stages WHERE is_default = TRUE;
 
