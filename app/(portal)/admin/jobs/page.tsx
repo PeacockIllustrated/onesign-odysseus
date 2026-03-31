@@ -1,15 +1,13 @@
 // app/(portal)/admin/jobs/page.tsx
 import { requireAdmin } from '@/lib/auth';
-import { getJobBoard, getProductionStages } from '@/lib/production/queries';
+import { getItemBoard } from '@/lib/production/queries';
 import { JobBoardClient } from './JobBoardClient';
 
 export default async function JobBoardPage() {
     await requireAdmin();
 
-    const [boardData, stages] = await Promise.all([
-        getJobBoard(),
-        getProductionStages(),
-    ]);
+    const boardData = await getItemBoard();
+    const stages = boardData.map(col => col.stage);
 
     return (
         <div className="flex flex-col h-full">

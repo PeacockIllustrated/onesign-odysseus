@@ -2,6 +2,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import {
     DndContext,
     DragEndEvent,
@@ -14,93 +15,86 @@ import {
 } from '@dnd-kit/core';
 import { Plus } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase';
-import { moveJobToStage } from '@/lib/production/actions';
-import type { BoardColumn, JobWithStage, ProductionJob, ProductionStage } from '@/lib/production/types';
-import { JobCard } from './JobCard';
+import { moveJobItemToStage } from '@/lib/production/actions';
+import type { ItemBoardColumn, JobItemWithJob, JobItem, ProductionStage } from '@/lib/production/types';
+import { ItemCard } from './JobCard';
 import { JobDetailPanel } from './JobDetailPanel';
 import { CreateJobModal } from './CreateJobModal';
 
 interface JobBoardClientProps {
-    initialBoard: BoardColumn[];
+    initialBoard: ItemBoardColumn[];
     stages: ProductionStage[];
 }
 
 export function JobBoardClient({ initialBoard, stages }: JobBoardClientProps) {
-    const [board, setBoard] = useState<BoardColumn[]>(initialBoard);
-    const [detailJobId, setDetailJobId] = useState<string | null>(null);
+    const router = useRouter();
+    const [board, setBoard] = useState<ItemBoardColumn[]>(initialBoard);
+    const [detailItemId, setDetailItemId] = useState<string | null>(null);
     const [createOpen, setCreateOpen] = useState(false);
-    const [draggingJob, setDraggingJob] = useState<JobWithStage | null>(null);
-    const preDragBoardRef = useRef<BoardColumn[]>(board);
+    const [draggingItem, setDraggingItem] = useState<JobItemWithJob | null>(null);
+    const preDragBoardRef = useRef<ItemBoardColumn[]>(board);
 
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
     );
 
-    // Realtime: update board state when other users move jobs
+    // Realtime: update board state when items move
     useEffect(() => {
         const supabase = createBrowserClient();
         const stageMap = new Map(stages.map(s => [s.id, s]));
 
         const channel = supabase
-            .channel('job_board_realtime')
+            .channel('item_board_realtime')
             .on(
                 'postgres_changes',
-                { event: 'UPDATE', schema: 'public', table: 'production_jobs' },
+                { event: 'UPDATE', schema: 'public', table: 'job_items' },
                 (payload) => {
-                    const updated = payload.new as ProductionJob;
-                    setBoard(prev =>
-                        prev.map(col => {
-                            const filtered = col.jobs.filter(j => j.id !== updated.id);
+                    const updated = payload.new as JobItem;
+                    setBoard(prev => {
+                        // Find the item in the existing board to preserve .job context
+                        const existingItem = prev.flatMap(c => c.items).find(i => i.id === updated.id);
+                        if (!existingItem) return prev;
+                        const stage = stageMap.get(updated.current_stage_id ?? '') ?? null;
+                        const updatedItem: JobItemWithJob = { ...existingItem, ...updated, stage };
+                        return prev.map(col => {
+                            const filtered = col.items.filter(i => i.id !== updated.id);
                             if (col.stage.id === updated.current_stage_id) {
-                                const stage = stageMap.get(updated.current_stage_id!) ?? null;
-                                return {
-                                    ...col,
-                                    jobs: [...filtered, { ...updated, stage }],
-                                };
+                                return { ...col, items: [...filtered, updatedItem] };
                             }
-                            return { ...col, jobs: filtered };
-                        })
-                    );
+                            return { ...col, items: filtered };
+                        });
+                    });
                 }
             )
             .on(
                 'postgres_changes',
-                { event: 'INSERT', schema: 'public', table: 'production_jobs' },
-                (payload) => {
-                    const newJob = payload.new as ProductionJob;
-                    const stage = newJob.current_stage_id
-                        ? stageMap.get(newJob.current_stage_id) ?? null
-                        : null;
-                    setBoard(prev =>
-                        prev.map(col =>
-                            col.stage.id === newJob.current_stage_id
-                                ? { ...col, jobs: [...col.jobs, { ...newJob, stage }] }
-                                : col
-                        )
-                    );
+                { event: 'INSERT', schema: 'public', table: 'job_items' },
+                () => {
+                    // Can't easily hydrate .job from realtime alone — trigger a full refresh
+                    router.refresh();
                 }
             )
             .subscribe();
 
         return () => { supabase.removeChannel(channel); };
-    }, [stages]);
+    }, [stages, router]);
 
     function handleDragStart(event: DragStartEvent) {
-        preDragBoardRef.current = board;  // Snapshot before drag
-        const jobId = String(event.active.id);
-        const job = board.flatMap(c => c.jobs).find(j => j.id === jobId) ?? null;
-        setDraggingJob(job);
+        preDragBoardRef.current = board;
+        const itemId = String(event.active.id);
+        const item = board.flatMap(c => c.items).find(i => i.id === itemId) ?? null;
+        setDraggingItem(item);
     }
 
     async function handleDragEnd(event: DragEndEvent) {
-        setDraggingJob(null);
+        setDraggingItem(null);
         const { active, over } = event;
         if (!over) return;
 
-        const jobId = active.id as string;
+        const itemId = active.id as string;
         const newStageId = over.id as string;
-        const currentJob = board.flatMap(c => c.jobs).find(j => j.id === jobId);
-        if (!currentJob || currentJob.current_stage_id === newStageId) return;
+        const currentItem = board.flatMap(c => c.items).find(i => i.id === itemId);
+        if (!currentItem || currentItem.current_stage_id === newStageId) return;
 
         const targetStage = stages.find(s => s.id === newStageId);
         if (!targetStage) return;
@@ -108,32 +102,32 @@ export function JobBoardClient({ initialBoard, stages }: JobBoardClientProps) {
         // Optimistic update
         setBoard(prev =>
             prev.map(col => {
-                const without = col.jobs.filter(j => j.id !== jobId);
+                const without = col.items.filter(i => i.id !== itemId);
                 if (col.stage.id === newStageId) {
                     return {
                         ...col,
-                        jobs: [...without, { ...currentJob, current_stage_id: newStageId, stage: targetStage }],
+                        items: [...without, { ...currentItem, current_stage_id: newStageId, stage: targetStage }],
                     };
                 }
-                return { ...col, jobs: without };
+                return { ...col, items: without };
             })
         );
 
-        const result = await moveJobToStage(jobId, newStageId);
+        const result = await moveJobItemToStage(itemId, newStageId);
         if ('error' in result) {
             // Revert on failure
-            setBoard(preDragBoardRef.current);  // Revert to pre-drag state (preserves prior moves)
-            console.error('Failed to move job:', result.error);
+            setBoard(preDragBoardRef.current);
+            console.error('Failed to move item:', result.error);
         }
     }
 
-    const totalJobs = board.flatMap(c => c.jobs).length;
+    const totalItems = board.flatMap(c => c.items).length;
 
     return (
         <>
             <div className="flex items-center justify-between mb-4">
                 <span className="text-sm text-neutral-500">
-                    {totalJobs} active job{totalJobs !== 1 ? 's' : ''}
+                    {totalItems} active item{totalItems !== 1 ? 's' : ''}
                 </span>
                 <button
                     onClick={() => setCreateOpen(true)}
@@ -150,24 +144,24 @@ export function JobBoardClient({ initialBoard, stages }: JobBoardClientProps) {
                         <KanbanColumn
                             key={col.stage.id}
                             column={col}
-                            onCardClick={setDetailJobId}
+                            onCardClick={setDetailItemId}
                         />
                     ))}
                 </div>
 
                 <DragOverlay>
-                    {draggingJob && (
+                    {draggingItem && (
                         <div className="rotate-2 opacity-90">
-                            <JobCard job={draggingJob} onClick={() => {}} />
+                            <ItemCard item={draggingItem} onClick={() => {}} />
                         </div>
                     )}
                 </DragOverlay>
             </DndContext>
 
-            {detailJobId && (
+            {detailItemId && (
                 <JobDetailPanel
-                    jobId={detailJobId}
-                    onClose={() => setDetailJobId(null)}
+                    jobId={detailItemId}
+                    onClose={() => setDetailItemId(null)}
                     stages={stages}
                 />
             )}
@@ -184,7 +178,7 @@ function KanbanColumn({
     column,
     onCardClick,
 }: {
-    column: BoardColumn;
+    column: ItemBoardColumn;
     onCardClick: (id: string) => void;
 }) {
     const { isOver, setNodeRef } = useDroppable({ id: column.stage.id });
@@ -209,17 +203,17 @@ function KanbanColumn({
                     {column.stage.name}
                 </span>
                 <span className="text-xs text-neutral-400 bg-white/70 px-1.5 py-0.5 rounded font-medium">
-                    {column.jobs.length}
+                    {column.items.length}
                 </span>
             </div>
 
             {/* Cards */}
             <div className="p-2 flex-1 space-y-2 min-h-[120px]">
-                {column.jobs.map(job => (
-                    <JobCard
-                        key={job.id}
-                        job={job}
-                        onClick={() => onCardClick(job.id)}
+                {column.items.map(item => (
+                    <ItemCard
+                        key={item.id}
+                        item={item}
+                        onClick={() => onCardClick(item.id)}
                     />
                 ))}
             </div>
