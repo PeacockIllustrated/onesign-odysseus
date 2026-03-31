@@ -165,7 +165,7 @@ export function JobBoardClient({ initialBoard, stages }: JobBoardClientProps) {
 
             {detailItemId && (
                 <JobDetailPanel
-                    jobId={detailItemId}
+                    itemId={detailItemId}
                     onClose={() => setDetailItemId(null)}
                     stages={stages}
                 />

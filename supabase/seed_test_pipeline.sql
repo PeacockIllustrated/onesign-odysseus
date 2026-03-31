@@ -183,13 +183,12 @@ log_entries AS (
 -- jobs so the shop floor expanded view has visible content
 -- -------------------------------------------------------------------------
 test_instructions AS (
-    INSERT INTO public.department_instructions (job_id, stage_id, instruction, created_by_name)
+    INSERT INTO public.department_instructions (job_id, stage_id, instruction)
 
     SELECT
         j.id,
         (SELECT id FROM stages WHERE slug = 'artwork-approval'),
-        '[TEST] Client contact: Sarah Mellor — sarah@democlient.com. Chase approval if no response by 9am on due date.',
-        'KR'
+        '[TEST] Client contact: Sarah Mellor — sarah@democlient.com. Chase approval if no response by 9am on due date.'
     FROM inserted_jobs j
     WHERE j.title = 'Site hoarding wrap — phase 2'
 
@@ -198,8 +197,7 @@ test_instructions AS (
     SELECT
         j.id,
         (SELECT id FROM stages WHERE slug = 'metal-fabrication'),
-        '[TEST] Use brushed aluminium substrate (not gloss). Double-check logo panel orientation — client had issues last time.',
-        'DS'
+        '[TEST] Use brushed aluminium substrate (not gloss). Double-check logo panel orientation — client had issues last time.'
     FROM inserted_jobs j
     WHERE j.title = 'Illuminated totem — dual-post'
 )

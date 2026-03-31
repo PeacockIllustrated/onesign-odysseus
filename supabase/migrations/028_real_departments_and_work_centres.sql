@@ -6,9 +6,9 @@
 -- =============================================================================
 -- 1. REMOVE OLD PLACEHOLDER STAGE SEEDS
 -- =============================================================================
--- The FK from production_jobs.current_stage_id → production_stages(id) uses
--- ON DELETE SET NULL, so existing jobs will have current_stage_id set to NULL.
--- The same applies to job_items.current_stage_id. That is acceptable.
+-- Note: existing jobs/items referencing these stages must be removed first,
+-- or this migration must be run on a fresh database (no production data).
+-- The FKs do not use ON DELETE SET NULL — this migration assumes no live data.
 
 DELETE FROM public.production_stages WHERE is_default = TRUE;
 

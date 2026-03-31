@@ -3,8 +3,6 @@ import { createServerClient } from '@/lib/supabase-server';
 import type {
     ProductionStage,
     ProductionJob,
-    BoardColumn,
-    JobWithStage,
     JobDetail,
     JobItem,
     JobStageLog,
@@ -46,39 +44,6 @@ export async function getWorkCentres(): Promise<WorkCentre[]> {
         .order('sort_order', { ascending: true });
     if (error) console.error('getWorkCentres error:', error);
     return (data || []) as WorkCentre[];
-}
-
-// =============================================================================
-// JOB BOARD
-// =============================================================================
-
-export async function getJobBoard(): Promise<BoardColumn[]> {
-    const supabase = await createServerClient();
-
-    const [stages, { data: jobs, error }] = await Promise.all([
-        getProductionStages(),
-        supabase
-            .from('production_jobs')
-            .select('*')
-            .eq('status', 'active')
-            .order('created_at', { ascending: true }),
-    ]);
-
-    if (error) {
-        console.error('getJobBoard error:', error);
-        return stages.map(stage => ({ stage, jobs: [] }));
-    }
-
-    const jobList = (jobs || []) as ProductionJob[];
-    // Supabase RLS on production_jobs ensures only the requesting user's org's jobs are visible
-    const stageMap = new Map(stages.map(s => [s.id, s]));
-
-    return stages.map(stage => ({
-        stage,
-        jobs: jobList
-            .filter(j => j.current_stage_id === stage.id)
-            .map(j => ({ ...j, stage: stageMap.get(j.current_stage_id!) ?? null })),
-    }));
 }
 
 // =============================================================================

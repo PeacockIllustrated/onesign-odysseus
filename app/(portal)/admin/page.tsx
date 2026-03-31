@@ -181,7 +181,7 @@ export default async function AdminPage() {
                                 {overdueJobs.map(job => (
                                     <Link
                                         key={job.id}
-                                        href={`/admin/jobs/${job.id}`}
+                                        href="/admin/jobs"
                                         className="flex items-center justify-between p-2 rounded hover:bg-neutral-50 transition-colors"
                                     >
                                         <span className="text-sm text-neutral-900 truncate">{job.title}</span>

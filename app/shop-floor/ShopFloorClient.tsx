@@ -5,13 +5,13 @@ import { useState, useEffect, useTransition } from 'react';
 import { Play, Pause, CheckCircle, ChevronDown, AlertCircle } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase';
 import {
-    startJob,
-    pauseJob,
-    advanceJobToNextStage,
-    getJobDetailAction,
+    startItem,
+    pauseItem,
+    advanceItemToNextRoutedStage,
+    getJobItemDetailAction,
     getShopFloorJobsAction,
 } from '@/lib/production/actions';
-import type { ProductionStage, JobItemWithJob, JobDetail } from '@/lib/production/types';
+import type { ProductionStage, JobItemWithJob } from '@/lib/production/types';
 import { isJobOverdue, formatDueDate } from '@/lib/production/utils';
 
 interface ShopFloorClientProps {
@@ -23,22 +23,23 @@ interface ShopFloorClientProps {
 export function ShopFloorClient({ stages, initialJobs, initialStageSlug }: ShopFloorClientProps) {
     const [activeSlug, setActiveSlug] = useState(initialStageSlug);
     const [jobs, setJobs] = useState<JobItemWithJob[]>(initialJobs);
-    const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
-    const [expandedDetail, setExpandedDetail] = useState<JobDetail | null>(null);
+    type ItemDetailResult = Awaited<ReturnType<typeof getJobItemDetailAction>>;
+    const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+    const [expandedDetail, setExpandedDetail] = useState<ItemDetailResult>(null);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [pendingJobId, setPendingJobId] = useState<string | null>(null);
     const [, startTransition] = useTransition();
 
     const activeStage = stages.find(s => s.slug === activeSlug);
 
-    // Realtime subscription — refetch queue on any change to production_jobs
+    // Realtime subscription — refetch queue on any change to job_items
     useEffect(() => {
         const supabase = createBrowserClient();
         const channel = supabase
             .channel('shop_floor_realtime')
             .on(
                 'postgres_changes',
-                { event: '*', schema: 'public', table: 'production_jobs' },
+                { event: '*', schema: 'public', table: 'job_items' },
                 () => {
                     getShopFloorJobsAction(activeSlug).then(setJobs);
                 }
@@ -54,23 +55,23 @@ export function ShopFloorClient({ stages, initialJobs, initialStageSlug }: ShopF
 
     // Load detail when card expanded
     useEffect(() => {
-        if (!expandedJobId) {
+        if (!expandedItemId) {
             setExpandedDetail(null);
             return;
         }
-        getJobDetailAction(expandedJobId).then(setExpandedDetail);
-    }, [expandedJobId]);
+        getJobItemDetailAction(expandedItemId).then(setExpandedDetail);
+    }, [expandedItemId]);
 
-    function handleExpand(jobId: string) {
-        setExpandedJobId(prev => prev === jobId ? null : jobId);
+    function handleExpand(itemId: string) {
+        setExpandedItemId(prev => prev === itemId ? null : itemId);
     }
 
-    function handleStart(jobId: string) {
+    function handleStart(itemId: string) {
         setErrorMessage(null);
-        setPendingJobId(jobId);
+        setPendingJobId(itemId);
         startTransition(async () => {
             try {
-                const result = await startJob(jobId);
+                const result = await startItem(itemId);
                 if ('error' in result) {
                     setErrorMessage(result.error);
                 } else {
@@ -83,12 +84,12 @@ export function ShopFloorClient({ stages, initialJobs, initialStageSlug }: ShopF
         });
     }
 
-    function handlePause(jobId: string) {
+    function handlePause(itemId: string) {
         setErrorMessage(null);
-        setPendingJobId(jobId);
+        setPendingJobId(itemId);
         startTransition(async () => {
             try {
-                const result = await pauseJob(jobId);
+                const result = await pauseItem(itemId);
                 if ('error' in result) {
                     setErrorMessage(result.error);
                 } else {
@@ -101,12 +102,12 @@ export function ShopFloorClient({ stages, initialJobs, initialStageSlug }: ShopF
         });
     }
 
-    function handleAdvance(jobId: string) {
+    function handleAdvance(itemId: string) {
         setErrorMessage(null);
-        setPendingJobId(jobId);
+        setPendingJobId(itemId);
         startTransition(async () => {
             try {
-                const result = await advanceJobToNextStage(jobId);
+                const result = await advanceItemToNextRoutedStage(itemId);
                 if ('error' in result) {
                     setErrorMessage(result.error);
                 } else {
@@ -177,15 +178,15 @@ export function ShopFloorClient({ stages, initialJobs, initialStageSlug }: ShopF
                 <div className="flex items-center gap-3 mb-4">
                     <div className="w-3 h-3 rounded-full" style={{ backgroundColor: activeStage.color }} />
                     <h2 className="text-lg font-bold text-neutral-900">{activeStage.name}</h2>
-                    <span className="text-sm text-neutral-500">{jobs.length} job{jobs.length !== 1 ? 's' : ''}</span>
+                    <span className="text-sm text-neutral-500">{jobs.length} item{jobs.length !== 1 ? 's' : ''}</span>
                 </div>
             )}
 
             {/* Job cards */}
             {jobs.length === 0 ? (
                 <div className="bg-white rounded-xl border border-neutral-200 p-12 text-center">
-                    <p className="text-neutral-500 font-medium">No jobs in this stage</p>
-                    <p className="text-sm text-neutral-400 mt-1">Jobs will appear here when moved to {activeStage?.name}</p>
+                    <p className="text-neutral-500 font-medium">No items in this stage</p>
+                    <p className="text-sm text-neutral-400 mt-1">Items will appear here when moved to {activeStage?.name}</p>
                 </div>
             ) : (
                 <div className="space-y-3">
@@ -217,6 +218,11 @@ export function ShopFloorClient({ stages, initialJobs, initialStageSlug }: ShopF
                                         {item.job.priority === 'high' && (
                                             <span className="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
                                                 HIGH
+                                            </span>
+                                        )}
+                                        {item.work_centre && (
+                                            <span className="text-xs font-semibold bg-[#22C55E]/15 text-green-800 px-2 py-0.5 rounded-full">
+                                                {item.work_centre.name}
                                             </span>
                                         )}
                                         {item.job.due_date && (
@@ -267,14 +273,14 @@ export function ShopFloorClient({ stages, initialJobs, initialStageSlug }: ShopF
                                     >
                                         <ChevronDown
                                             size={16}
-                                            className={`transition-transform ${expandedJobId === item.id ? 'rotate-180' : ''}`}
+                                            className={`transition-transform ${expandedItemId === item.id ? 'rotate-180' : ''}`}
                                         />
                                     </button>
                                 </div>
                             </div>
 
                             {/* Expanded department instructions */}
-                            {expandedJobId === item.id && (
+                            {expandedItemId === item.id && (
                                 <div className="border-t border-neutral-200 p-4 bg-neutral-50 rounded-b-xl">
                                     {!expandedDetail ? (
                                         <p className="text-sm text-neutral-500">Loading…</p>

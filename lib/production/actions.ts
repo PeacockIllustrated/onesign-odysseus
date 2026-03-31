@@ -179,7 +179,8 @@ export async function createJobFromQuote(
                     ? [orderBookStage.id, ...itemRouting.stageIds.filter(id => id !== orderBookStage.id)]
                     : [];
                 const description = itemRouting?.description
-                    ?? (item.item_type === 'panel_letters_v1' ? 'Panel + Letters' : item.item_type);
+                    ?? (item.item_type === 'panel_letters_v1' ? 'Panel + Letters' : item.item_type)
+                    ?? 'Item';
                 return {
                     job_id: newJob.id,
                     quote_item_id: item.id,
@@ -275,48 +276,6 @@ export async function createManualJob(input: {
 }
 
 // =============================================================================
-// moveJobToStage
-// =============================================================================
-
-export async function moveJobToStage(
-    jobId: string,
-    stageId: string,
-    notes?: string
-): Promise<{ success: boolean } | { error: string }> {
-    const user = await getUser();
-    if (!user) return { error: 'Not authenticated' };
-
-    const supabase = await createServerClient();
-
-    const { data: job } = await supabase
-        .from('production_jobs')
-        .select('current_stage_id')
-        .eq('id', jobId)
-        .single();
-
-    if (!job) return { error: 'Job not found' };
-
-    const { error } = await supabase
-        .from('production_jobs')
-        .update({ current_stage_id: stageId })
-        .eq('id', jobId);
-
-    if (error) return { error: error.message };
-
-    await supabase.from('job_stage_log').insert({
-        job_id: jobId,
-        from_stage_id: job.current_stage_id,
-        to_stage_id: stageId,
-        moved_by: user.id,
-        moved_by_name: user.email ?? null,
-        notes: notes || null,
-    });
-
-    revalidatePath('/admin/jobs');
-    return { success: true };
-}
-
-// =============================================================================
 // moveJobItemToStage
 // =============================================================================
 
@@ -357,73 +316,6 @@ export async function moveJobItemToStage(
         notes: notes || null,
     });
 
-    revalidatePath('/admin/jobs');
-    return { success: true };
-}
-
-// =============================================================================
-// startJob / pauseJob / completeJob (shop floor actions)
-// =============================================================================
-
-export async function startJob(jobId: string): Promise<{ success: boolean } | { error: string }> {
-    const user = await getUser();
-    if (!user) return { error: 'Not authenticated' };
-
-    const supabase = await createServerClient();
-    const { error } = await supabase
-        .from('production_jobs')
-        .update({ status: 'active' })
-        .eq('id', jobId);
-
-    if (error) return { error: error.message };
-    revalidatePath('/shop-floor');
-    return { success: true };
-}
-
-export async function pauseJob(jobId: string): Promise<{ success: boolean } | { error: string }> {
-    const user = await getUser();
-    if (!user) return { error: 'Not authenticated' };
-
-    const supabase = await createServerClient();
-    const { error } = await supabase
-        .from('production_jobs')
-        .update({ status: 'paused' })
-        .eq('id', jobId);
-
-    if (error) return { error: error.message };
-    revalidatePath('/shop-floor');
-    return { success: true };
-}
-
-export async function completeJob(
-    jobId: string
-): Promise<{ success: boolean } | { error: string }> {
-    const user = await getUser();
-    if (!user) return { error: 'Not authenticated' };
-
-    const supabase = await createServerClient();
-
-    // Get goods-out stage
-    const { data: dispatchStage } = await supabase
-        .from('production_stages')
-        .select('id')
-        .eq('slug', 'goods-out')
-        .is('org_id', null)
-        .single();
-
-    const updates: Record<string, unknown> = {
-        status: 'completed',
-        completed_at: new Date().toISOString(),
-    };
-    if (dispatchStage) updates.current_stage_id = dispatchStage.id;
-
-    const { error } = await supabase
-        .from('production_jobs')
-        .update(updates)
-        .eq('id', jobId);
-
-    if (error) return { error: error.message };
-    revalidatePath('/shop-floor');
     revalidatePath('/admin/jobs');
     return { success: true };
 }
@@ -535,93 +427,6 @@ export async function advanceItemToNextRoutedStage(
         revalidatePath('/shop-floor');
         return { success: true };
     }
-}
-
-// =============================================================================
-// advanceJobToNextStage (shop floor "Complete" button)
-// =============================================================================
-
-export async function advanceJobToNextStage(
-    jobId: string
-): Promise<{ success: boolean } | { error: string }> {
-    const user = await getUser();
-    if (!user) return { error: 'Not authenticated' };
-
-    const supabase = await createServerClient();
-
-    const { data: job } = await supabase
-        .from('production_jobs')
-        .select('current_stage_id')
-        .eq('id', jobId)
-        .single();
-
-    if (!job?.current_stage_id) return { error: 'Job has no current stage' };
-
-    const { data: currentStage } = await supabase
-        .from('production_stages')
-        .select('sort_order')
-        .eq('id', job.current_stage_id)
-        .single();
-
-    if (!currentStage) return { error: 'Stage not found' };
-
-    const { sort_order } = currentStage as { sort_order: number };
-
-    const { data: nextStage } = await supabase
-        .from('production_stages')
-        .select('id')
-        .is('org_id', null)
-        .gt('sort_order', sort_order)
-        .order('sort_order', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-    if (!nextStage) {
-        // Already at last stage — mark complete
-        return completeJob(jobId);
-    }
-
-    return moveJobToStage(jobId, nextStage.id, 'Advanced from shop floor');
-}
-
-// =============================================================================
-// updateJobPriority / updateJobAssignment
-// =============================================================================
-
-export async function updateJobPriority(
-    jobId: string,
-    priority: JobPriority
-): Promise<{ success: boolean } | { error: string }> {
-    const user = await getUser();
-    if (!user) return { error: 'Not authenticated' };
-
-    const supabase = await createServerClient();
-    const { error } = await supabase
-        .from('production_jobs')
-        .update({ priority })
-        .eq('id', jobId);
-
-    if (error) return { error: error.message };
-    revalidatePath('/admin/jobs');
-    return { success: true };
-}
-
-export async function updateJobAssignment(
-    jobId: string,
-    initials: string
-): Promise<{ success: boolean } | { error: string }> {
-    const user = await getUser();
-    if (!user) return { error: 'Not authenticated' };
-
-    const supabase = await createServerClient();
-    const { error } = await supabase
-        .from('production_jobs')
-        .update({ assigned_initials: initials || null })
-        .eq('id', jobId);
-
-    if (error) return { error: error.message };
-    revalidatePath('/admin/jobs');
-    return { success: true };
 }
 
 // =============================================================================

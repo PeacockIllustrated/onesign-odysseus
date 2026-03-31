@@ -83,17 +83,6 @@ export interface DepartmentInstruction {
     created_at: string;
 }
 
-// Rich view type used in Kanban — job with its resolved stage
-export interface JobWithStage extends ProductionJob {
-    stage: ProductionStage | null;
-}
-
-// Board column: a stage with its jobs
-export interface BoardColumn {
-    stage: ProductionStage;
-    jobs: JobWithStage[];
-}
-
 // Item as it appears on the item-level board, with parent job context
 export interface JobItemWithJob extends JobItem {
     stage: ProductionStage | null;
