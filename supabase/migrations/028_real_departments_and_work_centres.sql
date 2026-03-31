@@ -40,12 +40,12 @@ DELETE FROM public.production_stages WHERE is_default = TRUE;
 
 INSERT INTO public.production_stages (name, slug, sort_order, color, is_approval_stage, is_default) VALUES
   ('Order Book',          'order-book',          1,  '#6366F1', FALSE, TRUE),
-  ('Cut List',            'cut-list',             2,  '#8B5CF6', FALSE, TRUE),
-  ('Laser',               'laser',                3,  '#EC4899', FALSE, TRUE),
-  ('CNC Routing',         'cnc-routing',          4,  '#EF4444', FALSE, TRUE),
-  ('Plastic Fabrication', 'plastic-fabrication',  5,  '#F97316', FALSE, TRUE),
-  ('Metal Fabrication',   'metal-fabrication',    6,  '#F59E0B', FALSE, TRUE),
-  ('Artwork Approval',    'artwork-approval',      7,  '#D85A30', TRUE,  TRUE),
+  ('Artwork Approval',    'artwork-approval',     2,  '#D85A30', TRUE,  TRUE),
+  ('Cut List',            'cut-list',             3,  '#8B5CF6', FALSE, TRUE),
+  ('Laser',               'laser',                4,  '#EC4899', FALSE, TRUE),
+  ('CNC Routing',         'cnc-routing',          5,  '#EF4444', FALSE, TRUE),
+  ('Plastic Fabrication', 'plastic-fabrication',  6,  '#F97316', FALSE, TRUE),
+  ('Metal Fabrication',   'metal-fabrication',    7,  '#F59E0B', FALSE, TRUE),
   ('Painters',            'painters',             8,  '#22C55E', FALSE, TRUE),
   ('Lighting',            'lighting',             9,  '#06B6D4', FALSE, TRUE),
   ('Vinyl',               'vinyl',                10, '#3B82F6', FALSE, TRUE),
