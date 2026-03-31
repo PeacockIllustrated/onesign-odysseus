@@ -71,11 +71,11 @@ export async function createJobFromQuote(
     const { data: designStage } = await supabase
         .from('production_stages')
         .select('id')
-        .eq('slug', 'design')
+        .eq('slug', 'order-book')
         .is('org_id', null)
         .single();
 
-    if (!designStage) return { error: 'Design stage not found — run migration 024 first' };
+    if (!designStage) return { error: 'Order Book stage not found — run migration 028 first' };
 
     const { data: quoteItems } = await supabase
         .from('quote_items')
@@ -160,11 +160,11 @@ export async function createManualJob(input: {
     const { data: designStage } = await supabase
         .from('production_stages')
         .select('id')
-        .eq('slug', 'design')
+        .eq('slug', 'order-book')
         .is('org_id', null)
         .single();
 
-    if (!designStage) return { error: 'Design stage not found — run migration 024 first' };
+    if (!designStage) return { error: 'Order Book stage not found — run migration 028 first' };
 
     const { data: newJob, error } = await supabase
         .from('production_jobs')
@@ -330,11 +330,11 @@ export async function completeJob(
 
     const supabase = await createServerClient();
 
-    // Get dispatch stage
+    // Get goods-out stage
     const { data: dispatchStage } = await supabase
         .from('production_stages')
         .select('id')
-        .eq('slug', 'dispatch')
+        .eq('slug', 'goods-out')
         .is('org_id', null)
         .single();
 
