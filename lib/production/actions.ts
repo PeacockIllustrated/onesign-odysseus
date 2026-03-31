@@ -429,6 +429,115 @@ export async function completeJob(
 }
 
 // =============================================================================
+// startItem / pauseItem / advanceItemToNextRoutedStage (item-centric shop floor actions)
+// =============================================================================
+
+export async function startItem(itemId: string): Promise<{ success: boolean } | { error: string }> {
+    const user = await getUser();
+    if (!user) return { error: 'Not authenticated' };
+
+    const supabase = await createServerClient();
+    const { error } = await supabase
+        .from('job_items')
+        .update({ status: 'in_progress' })
+        .eq('id', itemId);
+
+    if (error) return { error: error.message };
+    revalidatePath('/shop-floor');
+    return { success: true };
+}
+
+export async function pauseItem(itemId: string): Promise<{ success: boolean } | { error: string }> {
+    const user = await getUser();
+    if (!user) return { error: 'Not authenticated' };
+
+    const supabase = await createServerClient();
+    const { error } = await supabase
+        .from('job_items')
+        .update({ status: 'pending' })
+        .eq('id', itemId);
+
+    if (error) return { error: error.message };
+    revalidatePath('/shop-floor');
+    return { success: true };
+}
+
+export async function advanceItemToNextRoutedStage(
+    itemId: string
+): Promise<{ success: boolean } | { error: string }> {
+    const user = await getUser();
+    if (!user) return { error: 'Not authenticated' };
+
+    const supabase = await createServerClient();
+
+    const { data: item } = await supabase
+        .from('job_items')
+        .select('id, job_id, current_stage_id, stage_routing, status')
+        .eq('id', itemId)
+        .single();
+
+    if (!item) return { error: 'Item not found' };
+
+    const routing = (item.stage_routing as string[] | null) ?? [];
+    const currentIdx = routing.indexOf(item.current_stage_id ?? '');
+
+    if (currentIdx >= 0 && currentIdx < routing.length - 1) {
+        // Advance to next stage in routing
+        const nextStageId = routing[currentIdx + 1];
+        const moveResult = await moveJobItemToStage(itemId, nextStageId, 'Advanced from shop floor');
+        if ('error' in moveResult) return moveResult;
+
+        // Reset status to pending for the next department
+        await supabase
+            .from('job_items')
+            .update({ status: 'pending' })
+            .eq('id', itemId);
+
+        revalidatePath('/shop-floor');
+        return { success: true };
+    } else {
+        // At last stage in routing, or no routing / stage not found in routing — complete item
+        await supabase
+            .from('job_items')
+            .update({ status: 'completed' })
+            .eq('id', itemId);
+
+        // No stage_log entry here — the item's entry into this stage was already
+        // recorded by moveJobItemToStage. Completion is captured by status = 'completed'
+        // on job_items. A from_stage_id === to_stage_id log entry would be misleading.
+
+        // Check if all items in the job are now completed
+        const { count } = await supabase
+            .from('job_items')
+            .select('*', { count: 'exact', head: true })
+            .eq('job_id', item.job_id)
+            .neq('status', 'completed');
+
+        if (count === 0) {
+            await supabase
+                .from('production_jobs')
+                .update({ status: 'completed', completed_at: new Date().toISOString() })
+                .eq('id', item.job_id);
+
+            await supabase.from('job_stage_log').insert({
+                job_id: item.job_id,
+                job_item_id: null,
+                from_stage_id: null,
+                to_stage_id: item.current_stage_id,
+                moved_by: user.id,
+                moved_by_name: user.email ?? null,
+                notes: 'All items completed — job marked complete',
+            });
+
+            revalidatePath('/admin/jobs');
+        }
+
+        revalidatePath('/shop-floor');
+        return { success: true };
+    }
+}
+
+// =============================================================================
 // advanceJobToNextStage (shop floor "Complete" button)
 // =============================================================================
 
