@@ -4,7 +4,7 @@
 import { createServerClient } from '@/lib/supabase-server';
 import { getUser } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
-import type { JobDetail, JobPriority, ProductionJob } from './types';
+import type { JobDetail, JobPriority, JobItemWithJob } from './types';
 import { getJobDetail, getAcceptedQuotesWithoutJobs, getShopFloorQueue } from './queries';
 
 // =============================================================================
@@ -33,8 +33,8 @@ export async function getOrgListAction(): Promise<Array<{ id: string; name: stri
     return (data || []) as Array<{ id: string; name: string }>;
 }
 
-/** Fetch jobs for shop floor queue — callable from ShopFloorClient */
-export async function getShopFloorJobsAction(stageSlug: string): Promise<ProductionJob[]> {
+/** Fetch items for shop floor queue — callable from ShopFloorClient */
+export async function getShopFloorJobsAction(stageSlug: string): Promise<JobItemWithJob[]> {
     return getShopFloorQueue(stageSlug);
 }
 

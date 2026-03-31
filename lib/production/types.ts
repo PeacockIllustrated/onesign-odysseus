@@ -37,6 +37,16 @@ export interface ProductionJob {
     completed_at: string | null;
 }
 
+export interface WorkCentre {
+    id: string;
+    stage_id: string;
+    name: string;
+    slug: string;
+    is_active: boolean;
+    sort_order: number;
+    created_at: string;
+}
+
 export interface JobItem {
     id: string;
     job_id: string;
@@ -47,6 +57,9 @@ export interface JobItem {
     status: JobItemStatus;
     notes: string | null;
     created_at: string;
+    item_number: string | null;
+    stage_routing: string[];
+    work_centre_id: string | null;
 }
 
 export interface JobStageLog {
@@ -79,6 +92,19 @@ export interface JobWithStage extends ProductionJob {
 export interface BoardColumn {
     stage: ProductionStage;
     jobs: JobWithStage[];
+}
+
+// Item as it appears on the item-level board, with parent job context
+export interface JobItemWithJob extends JobItem {
+    stage: ProductionStage | null;
+    work_centre: WorkCentre | null;
+    job: Pick<ProductionJob, 'id' | 'job_number' | 'client_name' | 'title' | 'priority' | 'due_date' | 'org_id'>;
+}
+
+// Item board column: a stage with its job items
+export interface ItemBoardColumn {
+    stage: ProductionStage;
+    items: JobItemWithJob[];
 }
 
 // Full detail for the slide-out panel

@@ -11,18 +11,18 @@ import {
     getJobDetailAction,
     getShopFloorJobsAction,
 } from '@/lib/production/actions';
-import type { ProductionStage, ProductionJob, JobDetail } from '@/lib/production/types';
+import type { ProductionStage, JobItemWithJob, JobDetail } from '@/lib/production/types';
 import { isJobOverdue, formatDueDate } from '@/lib/production/utils';
 
 interface ShopFloorClientProps {
     stages: ProductionStage[];
-    initialJobs: ProductionJob[];
+    initialJobs: JobItemWithJob[];
     initialStageSlug: string;
 }
 
 export function ShopFloorClient({ stages, initialJobs, initialStageSlug }: ShopFloorClientProps) {
     const [activeSlug, setActiveSlug] = useState(initialStageSlug);
-    const [jobs, setJobs] = useState<ProductionJob[]>(initialJobs);
+    const [jobs, setJobs] = useState<JobItemWithJob[]>(initialJobs);
     const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
     const [expandedDetail, setExpandedDetail] = useState<JobDetail | null>(null);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -189,11 +189,11 @@ export function ShopFloorClient({ stages, initialJobs, initialStageSlug }: ShopF
                 </div>
             ) : (
                 <div className="space-y-3">
-                    {jobs.map(job => (
+                    {jobs.map(item => (
                         <div
-                            key={job.id}
+                            key={item.id}
                             className={`bg-white rounded-xl border-2 transition-all ${
-                                job.status === 'paused' ? 'border-amber-300 opacity-80' : 'border-neutral-200'
+                                item.status === 'in_progress' ? 'border-neutral-200' : 'border-amber-300 opacity-80'
                             }`}
                         >
                             {/* Card header */}
@@ -201,30 +201,30 @@ export function ShopFloorClient({ stages, initialJobs, initialStageSlug }: ShopF
                                 <div className="flex items-start justify-between gap-3 mb-2">
                                     <div className="flex-1 min-w-0">
                                         <code className="text-xs font-mono text-[#4e7e8c] font-semibold">
-                                            {job.job_number}
+                                            {item.job.job_number}{item.item_number ? ` / ${item.item_number}` : ''}
                                         </code>
                                         <p className="text-lg font-bold text-neutral-900 leading-tight truncate">
-                                            {job.client_name}
+                                            {item.job.client_name}
                                         </p>
-                                        <p className="text-sm text-neutral-600 mt-0.5 line-clamp-2">{job.title}</p>
+                                        <p className="text-sm text-neutral-600 mt-0.5 line-clamp-2">{item.description}</p>
                                     </div>
                                     <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                                        {job.priority === 'urgent' && (
+                                        {item.job.priority === 'urgent' && (
                                             <span className="text-xs font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
                                                 URGENT
                                             </span>
                                         )}
-                                        {job.priority === 'high' && (
+                                        {item.job.priority === 'high' && (
                                             <span className="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
                                                 HIGH
                                             </span>
                                         )}
-                                        {job.due_date && (
+                                        {item.job.due_date && (
                                             <span className={`text-xs flex items-center gap-1 ${
-                                                isJobOverdue(job.due_date) ? 'text-red-600 font-bold' : 'text-neutral-500'
+                                                isJobOverdue(item.job.due_date) ? 'text-red-600 font-bold' : 'text-neutral-500'
                                             }`}>
-                                                {isJobOverdue(job.due_date) && <AlertCircle size={12} />}
-                                                Due {formatDueDate(job.due_date)}
+                                                {isJobOverdue(item.job.due_date) && <AlertCircle size={12} />}
+                                                Due {formatDueDate(item.job.due_date)}
                                             </span>
                                         )}
                                     </div>
@@ -232,20 +232,20 @@ export function ShopFloorClient({ stages, initialJobs, initialStageSlug }: ShopF
 
                                 {/* Action buttons — large touch targets */}
                                 <div className="flex gap-2 mt-3">
-                                    {job.status !== 'active' && (
+                                    {item.status !== 'in_progress' && (
                                         <button
-                                            onClick={() => handleStart(job.id)}
-                                            disabled={pendingJobId === job.id}
+                                            onClick={() => handleStart(item.id)}
+                                            disabled={pendingJobId === item.id}
                                             className="flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 flex-1"
                                         >
                                             <Play size={16} />
                                             Start
                                         </button>
                                     )}
-                                    {job.status === 'active' && (
+                                    {item.status === 'in_progress' && (
                                         <button
-                                            onClick={() => handlePause(job.id)}
-                                            disabled={pendingJobId === job.id}
+                                            onClick={() => handlePause(item.id)}
+                                            disabled={pendingJobId === item.id}
                                             className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50"
                                         >
                                             <Pause size={16} />
@@ -253,28 +253,28 @@ export function ShopFloorClient({ stages, initialJobs, initialStageSlug }: ShopF
                                         </button>
                                     )}
                                     <button
-                                        onClick={() => handleAdvance(job.id)}
-                                        disabled={pendingJobId === job.id}
+                                        onClick={() => handleAdvance(item.id)}
+                                        disabled={pendingJobId === item.id}
                                         className="flex items-center gap-2 px-4 py-2.5 bg-[#4e7e8c] hover:bg-[#3a5f6a] text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 flex-1"
                                     >
                                         <CheckCircle size={16} />
                                         Complete → Next Stage
                                     </button>
                                     <button
-                                        onClick={() => handleExpand(job.id)}
+                                        onClick={() => handleExpand(item.id)}
                                         className="p-2.5 bg-neutral-100 hover:bg-neutral-200 rounded-lg transition-colors"
                                         aria-label="View details"
                                     >
                                         <ChevronDown
                                             size={16}
-                                            className={`transition-transform ${expandedJobId === job.id ? 'rotate-180' : ''}`}
+                                            className={`transition-transform ${expandedJobId === item.id ? 'rotate-180' : ''}`}
                                         />
                                     </button>
                                 </div>
                             </div>
 
                             {/* Expanded department instructions */}
-                            {expandedJobId === job.id && (
+                            {expandedJobId === item.id && (
                                 <div className="border-t border-neutral-200 p-4 bg-neutral-50 rounded-b-xl">
                                     {!expandedDetail ? (
                                         <p className="text-sm text-neutral-500">Loading…</p>
