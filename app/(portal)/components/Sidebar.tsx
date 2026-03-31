@@ -12,9 +12,7 @@ import {
     Shield,
     ChevronLeft,
     ChevronRight,
-    Users,
     Building2,
-    Package,
     Zap,
     Calculator,
     ShoppingCart,
@@ -49,6 +47,7 @@ const adminNavGroups: NavGroup[] = [
         label: 'Production',
         items: [
             { label: 'Job Board', href: '/admin/jobs', icon: LayoutGrid },
+            { label: 'Shop Floor', href: '/shop-floor', icon: Zap },
             { label: 'Artwork', href: '/admin/artwork', icon: ClipboardCheck },
         ],
     },
@@ -57,16 +56,13 @@ const adminNavGroups: NavGroup[] = [
         items: [
             { label: 'Quotes', href: '/admin/quotes', icon: Calculator },
             { label: 'Purchase Orders', href: '/admin/purchase-orders', icon: ShoppingCart },
-            { label: 'Leads', href: '/admin/leads', icon: Users },
             { label: 'Pricing', href: '/admin/pricing', icon: DollarSign },
         ],
     },
     {
-        label: 'Client Management',
+        label: 'Clients',
         items: [
-            { label: 'Clients', href: '/admin/orgs', icon: Building2 },
-            { label: 'Subscriptions', href: '/admin/subscriptions', icon: Package },
-            { label: 'Deliverables', href: '/admin/deliverables', icon: Zap },
+            { label: 'Organisations', href: '/admin/orgs', icon: Building2 },
             { label: 'Design Packs', href: '/admin/design-packs', icon: Palette },
             { label: 'Reports', href: '/admin/reports', icon: FileText },
         ],

@@ -80,7 +80,6 @@
     background: hsl(var(--background));
     font-family: var(--font-body);
     -webkit-font-smoothing: antialiased;
-    text-transform: lowercase;
   }
 
   h1,
