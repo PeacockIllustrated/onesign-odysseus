@@ -986,6 +986,54 @@ export async function setComponentTargetStage(
 }
 
 /**
+ * Update component type → stage default mappings.
+ * Replaces all existing rows with the provided mappings.
+ */
+export async function updateComponentStageDefaults(
+    mappings: Array<{ componentType: string; stageId: string | null }>
+): Promise<{ success: boolean } | { error: string }> {
+    const user = await getUser();
+    if (!user) {
+        return { error: 'not authenticated' };
+    }
+
+    const supabase = await createServerClient();
+
+    // Delete all existing defaults
+    const { error: deleteError } = await supabase
+        .from('component_stage_defaults')
+        .delete()
+        .neq('component_type', '');
+
+    if (deleteError) {
+        console.error('error deleting component stage defaults:', deleteError);
+        return { error: deleteError.message };
+    }
+
+    // Insert only mappings where stageId is not null
+    const toInsert = mappings
+        .filter((m) => m.stageId)
+        .map((m) => ({
+            component_type: m.componentType,
+            stage_id: m.stageId,
+        }));
+
+    if (toInsert.length > 0) {
+        const { error: insertError } = await supabase
+            .from('component_stage_defaults')
+            .insert(toInsert);
+
+        if (insertError) {
+            console.error('error inserting component stage defaults:', insertError);
+            return { error: insertError.message };
+        }
+    }
+
+    revalidatePath('/admin/artwork/settings');
+    return { success: true };
+}
+
+/**
  * Fetch all component type → stage default mappings.
  */
 export async function getComponentStageDefaults(): Promise<ComponentStageDefault[]> {

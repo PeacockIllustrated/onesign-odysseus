@@ -9,6 +9,7 @@ import {
     getJobProgress,
 } from '@/lib/artwork/utils';
 import { ArtworkJob, ArtworkJobStatus } from '@/lib/artwork/types';
+import { Settings } from 'lucide-react';
 import { StartArtworkButton } from './StartArtworkButton';
 
 interface SearchParams {
@@ -35,9 +36,14 @@ export default async function ArtworkJobsPage({
                 title="artwork compliance"
                 description="design-to-production verification for signage jobs"
                 action={
-                    <Link href="/admin/artwork/new" className="btn-primary">
-                        new artwork job
-                    </Link>
+                    <div className="flex items-center gap-2">
+                        <Link href="/admin/artwork/settings" className="btn-secondary p-2" title="Settings">
+                            <Settings size={16} />
+                        </Link>
+                        <Link href="/admin/artwork/new" className="btn-primary">
+                            new artwork job
+                        </Link>
+                    </div>
                 }
             />
 
