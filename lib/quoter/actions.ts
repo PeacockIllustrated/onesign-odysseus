@@ -79,6 +79,9 @@ export interface UpdateQuoteInput {
     customer_email?: string;
     customer_phone?: string;
     notes_internal?: string;
+    notes_client?: string;
+    customer_reference?: string;
+    project_name?: string;
 }
 
 export async function createQuoteAction(input: CreateQuoteInput): Promise<{ id: string } | { error: string }> {
@@ -136,6 +139,9 @@ export async function updateQuoteAction(input: UpdateQuoteInput): Promise<{ succ
             customer_email: input.customer_email,
             customer_phone: input.customer_phone,
             notes_internal: input.notes_internal,
+            notes_client: input.notes_client,
+            customer_reference: input.customer_reference,
+            project_name: input.project_name,
             // updated_at handled by DB trigger trg_quotes_updated_at
         })
         .eq('id', input.id);
@@ -582,6 +588,9 @@ export async function duplicateQuoteAction(
             customer_phone: original.customer_phone,
             pricing_set_id: original.pricing_set_id,
             notes_internal: original.notes_internal ? `Copied from ${original.quote_number}: ${original.notes_internal}` : `Copied from ${original.quote_number}`,
+            notes_client: original.notes_client,
+            customer_reference: original.customer_reference,
+            project_name: original.project_name,
             status: 'draft',
             created_by: user.id,
             valid_until: validUntil.toISOString().split('T')[0],
