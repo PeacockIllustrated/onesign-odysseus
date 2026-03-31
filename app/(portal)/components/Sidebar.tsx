@@ -17,6 +17,7 @@ import {
     Package,
     Zap,
     Calculator,
+    ShoppingCart,
     DollarSign,
     Palette,
     ClipboardCheck,
@@ -55,6 +56,7 @@ const adminNavGroups: NavGroup[] = [
         label: 'Sales',
         items: [
             { label: 'Quotes', href: '/admin/quotes', icon: Calculator },
+            { label: 'Purchase Orders', href: '/admin/purchase-orders', icon: ShoppingCart },
             { label: 'Leads', href: '/admin/leads', icon: Users },
             { label: 'Pricing', href: '/admin/pricing', icon: DollarSign },
         ],
