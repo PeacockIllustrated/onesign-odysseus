@@ -1,5 +1,6 @@
 import { requireAdmin } from '@/lib/auth';
 import { getArtworkJob } from '@/lib/artwork/actions';
+import { getProductionStages } from '@/lib/production/queries';
 import { createServerClient } from '@/lib/supabase-server';
 import { notFound } from 'next/navigation';
 import { PageHeader, Card, Chip } from '@/app/(portal)/components/ui';
@@ -21,6 +22,7 @@ import { AddComponentForm } from './components/AddComponentForm';
 import { ApprovalLinkSection } from './components/ApprovalLinkSection';
 import { CoverImageUpload } from './components/CoverImageUpload';
 import { JobFieldsForm } from './components/JobFieldsForm';
+import { ReleaseToProductionButton } from './components/ReleaseToProductionButton';
 
 export default async function ArtworkJobDetailPage({
     params,
@@ -30,9 +32,10 @@ export default async function ArtworkJobDetailPage({
     await requireAdmin();
 
     const { id } = await params;
-    const [job, approval] = await Promise.all([
+    const [job, approval, stages] = await Promise.all([
         getArtworkJob(id),
         getApprovalForJob(id),
+        getProductionStages(),
     ]);
 
     if (!job) {
@@ -67,6 +70,13 @@ export default async function ArtworkJobDetailPage({
                 description={`${job.job_reference}${job.client_name ? ` — ${job.client_name}` : ''}`}
                 action={
                     <div className="flex items-center gap-2">
+                        {job.production_item && job.status !== 'completed' && (
+                            <ReleaseToProductionButton
+                                artworkJobId={id}
+                                components={job.components}
+                                stages={stages}
+                            />
+                        )}
                         {hasSignedOffComponents && (
                             <Link
                                 href={`/admin/artwork/${id}/print`}
@@ -147,6 +157,14 @@ export default async function ArtworkJobDetailPage({
                                                     )}
                                                 </div>
                                                 <div className="flex items-center gap-2">
+                                                    {component.target_stage_id && (() => {
+                                                        const stage = stages.find(s => s.id === component.target_stage_id);
+                                                        return stage ? (
+                                                            <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: `${stage.color}20`, color: stage.color }}>
+                                                                {stage.name}
+                                                            </span>
+                                                        ) : null;
+                                                    })()}
                                                     {component.design_signed_off_at && (
                                                         <span className="text-xs text-green-600" title="design signed off">
                                                             design ok
@@ -177,6 +195,37 @@ export default async function ArtworkJobDetailPage({
 
                 {/* Right: Progress Sidebar */}
                 <div className="space-y-6">
+                    {job.production_item && (
+                        <Card>
+                            <h3 className="text-sm font-semibold text-neutral-900 mb-3">production context</h3>
+                            <div className="space-y-2 text-sm">
+                                <div className="flex justify-between">
+                                    <span className="text-neutral-500">job</span>
+                                    <Link href="/admin/jobs" className="font-mono text-xs text-[#4e7e8c] hover:underline">
+                                        {job.production_item.job_number}{job.production_item.item_number ? ` \u00b7 ${job.production_item.item_number}` : ''}
+                                    </Link>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-neutral-500">client</span>
+                                    <span>{job.production_item.client_name}</span>
+                                </div>
+                                {job.production_item.due_date && (
+                                    <div className="flex justify-between">
+                                        <span className="text-neutral-500">due</span>
+                                        <span>{job.production_item.due_date}</span>
+                                    </div>
+                                )}
+                                <div className="flex justify-between">
+                                    <span className="text-neutral-500">priority</span>
+                                    <span className={`capitalize font-medium ${
+                                        job.production_item.priority === 'urgent' ? 'text-red-600' :
+                                        job.production_item.priority === 'high' ? 'text-amber-600' : 'text-neutral-700'
+                                    }`}>{job.production_item.priority}</span>
+                                </div>
+                            </div>
+                        </Card>
+                    )}
+
                     <Card>
                         <h3 className="text-sm font-semibold text-neutral-900 mb-3">progress</h3>
 

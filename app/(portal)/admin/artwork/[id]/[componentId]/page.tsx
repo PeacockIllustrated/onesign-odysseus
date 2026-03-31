@@ -1,5 +1,6 @@
 import { requireAdmin } from '@/lib/auth';
 import { getComponentDetail, getArtworkJob } from '@/lib/artwork/actions';
+import { getProductionStages } from '@/lib/production/queries';
 import { notFound } from 'next/navigation';
 import { Card, Chip } from '@/app/(portal)/components/ui';
 import Link from 'next/link';
@@ -16,6 +17,7 @@ import { ProductionSection } from './components/ProductionSection';
 import { VersionHistory } from './components/VersionHistory';
 import { DimensionAlert } from './components/DimensionAlert';
 import { ComponentActions } from './components/ComponentActions';
+import { DepartmentPicker } from './components/DepartmentPicker';
 import { createServerClient } from '@/lib/supabase-server';
 
 export default async function ComponentDetailPage({
@@ -26,9 +28,10 @@ export default async function ComponentDetailPage({
     await requireAdmin();
 
     const { id, componentId } = await params;
-    const [component, job] = await Promise.all([
+    const [component, job, stages] = await Promise.all([
         getComponentDetail(componentId),
         getArtworkJob(id),
+        getProductionStages(),
     ]);
 
     if (!component || !job) {
@@ -122,6 +125,14 @@ export default async function ComponentDetailPage({
 
                 {/* Right: Production Checklist (40%) */}
                 <div className="lg:col-span-2 space-y-6">
+                    <Card>
+                        <DepartmentPicker
+                            componentId={componentId}
+                            currentStageId={component.target_stage_id ?? null}
+                            stages={stages}
+                        />
+                    </Card>
+
                     <Card>
                         <h2 className="text-sm font-semibold text-neutral-900 mb-4 uppercase tracking-wider">
                             production verification

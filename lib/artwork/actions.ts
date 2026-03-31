@@ -26,6 +26,8 @@ import {
     ArtworkComponent,
     ArtworkJobWithComponents,
     ArtworkComponentWithVersions,
+    ArtworkJobWithProductionContext,
+    ProductionItemContext,
     ComponentStageDefault,
 } from './types';
 import { checkDimensionTolerance } from './utils';
@@ -1196,7 +1198,7 @@ export async function getArtworkJobs(
 /**
  * Get a single artwork job with its components
  */
-export async function getArtworkJob(id: string): Promise<ArtworkJobWithComponents | null> {
+export async function getArtworkJob(id: string): Promise<ArtworkJobWithProductionContext | null> {
     const supabase = await createServerClient();
 
     const { data: job, error } = await supabase
@@ -1215,10 +1217,35 @@ export async function getArtworkJob(id: string): Promise<ArtworkJobWithComponent
         .eq('job_id', id)
         .order('sort_order', { ascending: true });
 
-    return {
+    const result = {
         ...job,
         components: (components || []) as ArtworkComponent[],
     } as ArtworkJobWithComponents;
+
+    // Fetch production context when linked to a production job item
+    let production_item: ProductionItemContext | null = null;
+    if (job.job_item_id) {
+        const { data: itemData } = await supabase
+            .from('job_items')
+            .select('id, job_id, description, item_number, production_jobs!inner(job_number, client_name, due_date, priority)')
+            .eq('id', job.job_item_id)
+            .single();
+        if (itemData) {
+            const pj = (itemData as any).production_jobs;
+            production_item = {
+                id: itemData.id,
+                job_id: (itemData as any).job_id,
+                description: (itemData as any).description,
+                item_number: (itemData as any).item_number,
+                job_number: pj.job_number,
+                client_name: pj.client_name,
+                due_date: pj.due_date,
+                priority: pj.priority,
+            };
+        }
+    }
+
+    return { ...result, production_item };
 }
 
 /**
