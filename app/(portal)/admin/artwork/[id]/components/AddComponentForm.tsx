@@ -3,20 +3,13 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { addComponent } from '@/lib/artwork/actions';
-import { ComponentType } from '@/lib/artwork/types';
+import { ComponentTypeEnum, ComponentType } from '@/lib/artwork/types';
+import { getComponentTypeLabel } from '@/lib/artwork/utils';
 import { Modal } from '@/app/(portal)/components/ui';
 import { Plus, Loader2 } from 'lucide-react';
 
-const componentTypes: { value: ComponentType; label: string }[] = [
-    { value: 'panel', label: 'panel' },
-    { value: 'vinyl', label: 'vinyl' },
-    { value: 'acrylic', label: 'acrylic' },
-    { value: 'push_through', label: 'push-through' },
-    { value: 'dibond', label: 'dibond' },
-    { value: 'aperture_cut', label: 'aperture cut panel' },
-    { value: 'foamex', label: 'foamex' },
-    { value: 'other', label: 'other' },
-];
+const componentTypes: { value: ComponentType; label: string }[] =
+    ComponentTypeEnum.options.map(value => ({ value, label: getComponentTypeLabel(value) }));
 
 export function AddComponentForm({ jobId }: { jobId: string }) {
     const router = useRouter();
