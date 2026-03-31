@@ -26,6 +26,11 @@ export const ComponentTypeEnum = z.enum([
     'dibond',
     'aperture_cut',
     'foamex',
+    'digital_print',
+    'flat_cut_letters',
+    'channel_letters',
+    'engraved',
+    'led_module',
     'other',
 ]);
 export type ComponentType = z.infer<typeof ComponentTypeEnum>;

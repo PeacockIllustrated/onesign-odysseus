@@ -214,6 +214,11 @@ const componentTypeLabels: Record<string, string> = {
     dibond: 'dibond',
     aperture_cut: 'aperture cut panel',
     foamex: 'foamex',
+    digital_print: 'digital print',
+    flat_cut_letters: 'flat-cut letters',
+    channel_letters: 'channel letters',
+    engraved: 'engraved',
+    led_module: 'LED module',
     other: 'other',
 };
 
