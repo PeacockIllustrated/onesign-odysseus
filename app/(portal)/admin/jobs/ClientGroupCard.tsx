@@ -162,45 +162,48 @@ function CompactItemRow({
             {...attributes}
             onClick={isDragging ? undefined : onClick}
             className={`
-                flex items-center gap-2 px-3 py-1.5 cursor-pointer select-none
+                px-3 py-2 cursor-pointer select-none
                 hover:bg-[#4e7e8c]/5 transition-colors
                 ${isDragging ? 'bg-neutral-50 shadow-sm rounded' : ''}
             `}
         >
-            {/* Item letter */}
-            <code className="text-[10px] font-mono text-[#4e7e8c] font-bold w-3 flex-shrink-0">
-                {item.item_number || '·'}
-            </code>
-
-            {/* Description */}
-            <span className="flex-1 text-xs text-neutral-600 truncate leading-tight">
-                {item.description}
-            </span>
-
-            {/* Routing dots */}
-            {routingLen > 0 && (
-                <div className="flex items-center gap-px flex-shrink-0">
-                    {Array.from({ length: dotsToShow }).map((_, i) => (
-                        <div
-                            key={i}
-                            className={`w-1 h-1 rounded-full ${
-                                i < currentIdx ? 'bg-neutral-300' :
-                                i === currentIdx ? 'bg-[#4e7e8c]' :
-                                'bg-neutral-200'
-                            }`}
-                        />
-                    ))}
-                </div>
-            )}
-
-            {/* Due date (only on first row of each job group) */}
-            {showDueDate && dueDate && (
-                <span className={`text-[9px] flex-shrink-0 ${
-                    isJobOverdue(dueDate) ? 'text-red-600 font-semibold' : 'text-neutral-400'
-                }`}>
-                    {formatDueDate(dueDate)}
+            {/* Line 1: Item letter + full description */}
+            <div className="flex items-start gap-1.5">
+                <code className="text-[10px] font-mono text-[#4e7e8c] font-bold flex-shrink-0 mt-px">
+                    {item.item_number || '·'}
+                </code>
+                <span className="text-xs text-neutral-700 leading-snug">
+                    {item.description}
                 </span>
-            )}
+            </div>
+
+            {/* Line 2: Routing dots + due date */}
+            <div className="flex items-center justify-between gap-2 mt-1 pl-4">
+                {routingLen > 0 ? (
+                    <div className="flex items-center gap-0.5">
+                        {Array.from({ length: dotsToShow }).map((_, i) => (
+                            <div
+                                key={i}
+                                className={`w-1.5 h-1.5 rounded-full ${
+                                    i < currentIdx ? 'bg-neutral-300' :
+                                    i === currentIdx ? 'bg-[#4e7e8c]' :
+                                    'bg-neutral-200'
+                                }`}
+                            />
+                        ))}
+                    </div>
+                ) : (
+                    <span className="text-[9px] text-neutral-300">no routing</span>
+                )}
+
+                {showDueDate && dueDate && (
+                    <span className={`text-[9px] flex-shrink-0 ${
+                        isJobOverdue(dueDate) ? 'text-red-600 font-semibold' : 'text-neutral-400'
+                    }`}>
+                        {formatDueDate(dueDate)}
+                    </span>
+                )}
+            </div>
         </div>
     );
 }
