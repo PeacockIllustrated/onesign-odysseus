@@ -120,8 +120,8 @@ export function DeliveriesClient({ initialDeliveries }: DeliveriesClientProps) {
                     <p className="text-sm">No deliveries found</p>
                 </div>
             ) : (
-                <div className="border border-neutral-200 rounded-[var(--radius-sm)] overflow-hidden">
-                    <table className="w-full text-sm">
+                <div className="border border-neutral-200 rounded-[var(--radius-sm)] overflow-hidden overflow-x-auto">
+                    <table className="w-full text-sm min-w-[600px]">
                         <thead className="bg-neutral-50 border-b border-neutral-200">
                             <tr>
                                 <th className="text-left px-4 py-3 text-xs font-semibold text-neutral-500 uppercase tracking-wide">

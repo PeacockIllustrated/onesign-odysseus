@@ -198,7 +198,7 @@ export function PodClientView({ token, data }: Props) {
                     marginBottom: '16px',
                     boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
                 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#999', fontWeight: 600, marginBottom: '2px' }}>
                                 Delivery No.

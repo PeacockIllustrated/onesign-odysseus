@@ -193,7 +193,7 @@ function KanbanColumn({
         <div
             ref={setNodeRef}
             className={`
-                flex-shrink-0 w-[272px] flex flex-col rounded-lg border border-neutral-200/60
+                flex-shrink-0 w-[85vw] sm:w-[240px] md:w-[272px] flex flex-col rounded-lg border border-neutral-200/60
                 transition-colors duration-150
                 ${isOver ? 'border-[#4e7e8c] shadow-sm' : ''}
             `}

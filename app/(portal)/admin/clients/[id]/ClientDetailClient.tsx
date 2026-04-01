@@ -308,7 +308,7 @@ function DetailsTab({
                         </div>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                         <FieldDisplay label="Name" value={client.name} />
                         <FieldDisplay label="Phone" value={client.phone} />
                         <FieldDisplay label="Email" value={client.email} />
@@ -352,7 +352,7 @@ function DetailsTab({
                         </div>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                         <FieldDisplay label="Business Type" value={client.business_type} />
                         <FieldDisplay label="Account Number" value={client.account_number} />
                         <FieldDisplay label="Company Reg" value={client.company_reg_number} />
@@ -394,7 +394,7 @@ function DetailsTab({
                         </div>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-2 gap-4 text-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                         <FieldDisplay label="Payment Terms" value={`${client.payment_terms_days} days`} />
                         <FieldDisplay label="Sales Discount" value={`${client.sales_discount_percent}%`} />
                     </div>

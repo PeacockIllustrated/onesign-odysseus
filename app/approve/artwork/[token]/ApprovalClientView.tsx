@@ -237,12 +237,7 @@ export default function ApprovalClientView({ data, token }: Props) {
                         </p>
                     </div>
 
-                    <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: components.length === 1 ? '1fr' : 'repeat(2, 1fr)',
-                        gap: '1px',
-                        background: '#eee',
-                    }}>
+                    <div className={`grid ${components.length === 1 ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'} gap-px bg-neutral-200`}>
                         {components.map((component) => (
                             <div key={component.id} style={{ background: '#fff', padding: '16px' }}>
                                 {/* Thumbnail */}
@@ -330,7 +325,7 @@ export default function ApprovalClientView({ data, token }: Props) {
                         </div>
                     )}
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                         <div>
                             <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#555', marginBottom: '4px' }}>
                                 your name *
