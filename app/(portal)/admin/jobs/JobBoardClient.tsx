@@ -18,6 +18,7 @@ import { createBrowserClient } from '@/lib/supabase';
 import { moveJobItemToStage } from '@/lib/production/actions';
 import type { ItemBoardColumn, JobItemWithJob, JobItem, ProductionStage } from '@/lib/production/types';
 import { ItemCard } from './JobCard';
+import { ClientGroupCard } from './ClientGroupCard';
 import { JobDetailPanel } from './JobDetailPanel';
 import { CreateJobModal } from './CreateJobModal';
 
@@ -212,15 +213,25 @@ function KanbanColumn({
                 </span>
             </div>
 
-            {/* Cards */}
+            {/* Cards — grouped by client */}
             <div className="p-2 flex-1 space-y-2 min-h-[120px]">
-                {column.items.map(item => (
-                    <ItemCard
-                        key={item.id}
-                        item={item}
-                        onClick={() => onCardClick(item.id)}
-                    />
-                ))}
+                {(() => {
+                    // Group items by client name, preserving insertion order
+                    const grouped = new Map<string, JobItemWithJob[]>();
+                    for (const item of column.items) {
+                        const key = item.job.client_name;
+                        if (!grouped.has(key)) grouped.set(key, []);
+                        grouped.get(key)!.push(item);
+                    }
+                    return Array.from(grouped.entries()).map(([clientName, items]) => (
+                        <ClientGroupCard
+                            key={clientName}
+                            clientName={clientName}
+                            items={items}
+                            onCardClick={onCardClick}
+                        />
+                    ));
+                })()}
             </div>
         </div>
     );
