@@ -150,6 +150,7 @@ export default async function QuoteDetailPage({ params }: PageProps) {
                                     quoteId={id}
                                     existingJobId={existingProductionJob?.id ?? null}
                                     existingJobNumber={existingProductionJob?.job_number ?? null}
+                                    quoteOrgId={(quoteData as any).org_id ?? null}
                                 />
                                 <CreateInvoiceButton
                                     quoteId={id}

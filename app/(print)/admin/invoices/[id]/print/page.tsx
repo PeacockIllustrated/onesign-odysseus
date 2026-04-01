@@ -116,8 +116,23 @@ export default async function InvoicePrintPage({ params }: PageProps) {
                 <div>
                     <div className="section-title">To</div>
                     <div className="party-name">{invoice.customer_name}</div>
-                    {invoice.customer_email && <div className="party-detail">{invoice.customer_email}</div>}
-                    {invoice.customer_phone && <div className="party-detail">{invoice.customer_phone}</div>}
+                    {invoice.billing_site ? (
+                        <>
+                            {invoice.billing_site.address_line_1 && <div className="party-detail">{invoice.billing_site.address_line_1}</div>}
+                            {invoice.billing_site.address_line_2 && <div className="party-detail">{invoice.billing_site.address_line_2}</div>}
+                            {(invoice.billing_site.city || invoice.billing_site.postcode) && (
+                                <div className="party-detail">{[invoice.billing_site.city, invoice.billing_site.county, invoice.billing_site.postcode].filter(Boolean).join(', ')}</div>
+                            )}
+                            {invoice.billing_site.country && invoice.billing_site.country !== 'United Kingdom' && (
+                                <div className="party-detail">{invoice.billing_site.country}</div>
+                            )}
+                        </>
+                    ) : (
+                        <>
+                            {invoice.customer_email && <div className="party-detail">{invoice.customer_email}</div>}
+                            {invoice.customer_phone && <div className="party-detail">{invoice.customer_phone}</div>}
+                        </>
+                    )}
                     {invoice.customer_reference && <div className="party-detail">Ref: {invoice.customer_reference}</div>}
                 </div>
             </div>

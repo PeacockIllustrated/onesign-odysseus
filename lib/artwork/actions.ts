@@ -60,6 +60,8 @@ export async function createArtworkJob(
         .insert({
             job_name: validation.data.job_name,
             client_name: validation.data.client_name || null,
+            org_id: validation.data.org_id || null,
+            contact_id: validation.data.contact_id || null,
             description: validation.data.description || null,
             status: 'draft',
             created_by: user.id,

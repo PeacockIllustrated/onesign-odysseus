@@ -4,6 +4,10 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { createQuoteAction } from '@/lib/quoter/actions';
+import { getContactsForOrgAction } from '@/lib/clients/actions';
+import { OrgPicker } from '@/components/admin/OrgPicker';
+import { ContactPicker } from '@/components/admin/ContactPicker';
+import { SitePicker } from '@/components/admin/SitePicker';
 
 interface NewQuoteFormProps {
     defaultPricingSetId: string;
@@ -25,6 +29,35 @@ export function NewQuoteForm({
     const [customerPhone, setCustomerPhone] = useState('');
     const [pricingSetId, setPricingSetId] = useState(defaultPricingSetId);
 
+    // FK picker state
+    const [orgId, setOrgId] = useState<string | null>(null);
+    const [contactId, setContactId] = useState<string | null>(null);
+    const [siteId, setSiteId] = useState<string | null>(null);
+
+    const handleOrgChange = async (newOrgId: string | null, orgName: string) => {
+        setOrgId(newOrgId);
+        setContactId(null);
+        setSiteId(null);
+
+        if (orgName) {
+            setCustomerName(orgName);
+        }
+
+        // Auto-fill email/phone from primary contact
+        if (newOrgId) {
+            try {
+                const contacts = await getContactsForOrgAction(newOrgId);
+                const primary = contacts.find(c => c.is_primary) || contacts[0];
+                if (primary) {
+                    if (primary.email) setCustomerEmail(primary.email);
+                    if (primary.phone) setCustomerPhone(primary.phone);
+                }
+            } catch {
+                // Silently ignore — freeform fields still work
+            }
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSubmitting(true);
@@ -36,6 +69,9 @@ export function NewQuoteForm({
                 customer_email: customerEmail || undefined,
                 customer_phone: customerPhone || undefined,
                 pricing_set_id: pricingSetId,
+                org_id: orgId || undefined,
+                contact_id: contactId || undefined,
+                site_id: siteId || undefined,
             });
 
             if ('error' in result) {
@@ -53,6 +89,39 @@ export function NewQuoteForm({
 
     return (
         <form onSubmit={handleSubmit} className="space-y-6 max-w-xl">
+            {/* Client Picker */}
+            <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-neutral-900">Client</h3>
+
+                <div>
+                    <label className="block text-xs font-medium text-neutral-600 mb-1">
+                        Select Client
+                    </label>
+                    <OrgPicker value={orgId} onChange={handleOrgChange} />
+                    <p className="text-xs text-neutral-400 mt-1">
+                        Optional &mdash; selecting a client auto-fills name, email and phone below
+                    </p>
+                </div>
+
+                {orgId && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-xs font-medium text-neutral-600 mb-1">
+                                Contact
+                            </label>
+                            <ContactPicker orgId={orgId} value={contactId} onChange={setContactId} />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-neutral-600 mb-1">
+                                Site
+                            </label>
+                            <SitePicker orgId={orgId} value={siteId} onChange={setSiteId} />
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Customer Details (freeform, auto-filled from picker) */}
             <div className="space-y-4">
                 <h3 className="text-sm font-semibold text-neutral-900">Customer Details</h3>
 
@@ -65,7 +134,7 @@ export function NewQuoteForm({
                         value={customerName}
                         onChange={(e) => setCustomerName(e.target.value)}
                         placeholder="Customer or company name"
-                        className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                        className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                     />
                 </div>
 
@@ -79,7 +148,7 @@ export function NewQuoteForm({
                             value={customerEmail}
                             onChange={(e) => setCustomerEmail(e.target.value)}
                             placeholder="email@example.com"
-                            className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                            className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                         />
                     </div>
                     <div>
@@ -90,8 +159,8 @@ export function NewQuoteForm({
                             type="tel"
                             value={customerPhone}
                             onChange={(e) => setCustomerPhone(e.target.value)}
-                            placeholder="01onal 123 456"
-                            className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                            placeholder="0191 123 4567"
+                            className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                         />
                     </div>
                 </div>
@@ -107,7 +176,7 @@ export function NewQuoteForm({
                         <select
                             value={pricingSetId}
                             onChange={(e) => setPricingSetId(e.target.value)}
-                            className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                            className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                         >
                             {pricingSets.map((ps) => (
                                 <option key={ps.id} value={ps.id}>

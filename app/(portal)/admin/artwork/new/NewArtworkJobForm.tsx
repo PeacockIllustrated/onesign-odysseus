@@ -6,16 +6,19 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { CreateArtworkJobInputSchema, CreateArtworkJobInput } from '@/lib/artwork/types';
 import { createArtworkJob } from '@/lib/artwork/actions';
+import { OrgPicker } from '@/components/admin/OrgPicker';
 import { Loader2 } from 'lucide-react';
 
 export function NewArtworkJobForm() {
     const router = useRouter();
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
 
     const {
         register,
         handleSubmit,
+        setValue,
         formState: { errors },
     } = useForm<CreateArtworkJobInput>({
         resolver: zodResolver(CreateArtworkJobInputSchema),
@@ -67,6 +70,23 @@ export function NewArtworkJobForm() {
                 {errors.job_name && (
                     <p className="mt-1 text-xs text-red-600">{errors.job_name.message}</p>
                 )}
+            </div>
+
+            {/* Client (Org) Picker */}
+            <div>
+                <label className="block text-sm font-medium text-neutral-900 mb-1">
+                    client <span className="text-neutral-400 text-xs">(optional)</span>
+                </label>
+                <OrgPicker
+                    value={selectedOrgId}
+                    onChange={(orgId, orgName) => {
+                        setSelectedOrgId(orgId);
+                        setValue('org_id', orgId || undefined);
+                        if (orgName) {
+                            setValue('client_name', orgName);
+                        }
+                    }}
+                />
             </div>
 
             {/* Client Name */}

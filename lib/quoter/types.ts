@@ -113,6 +113,9 @@ export interface Quote {
     customer_reference: string | null;
     project_name: string | null;
     valid_until: string | null;
+    org_id: string | null;
+    contact_id: string | null;
+    site_id: string | null;
     created_at: string;
     created_by: string | null;
     updated_at: string;

@@ -27,6 +27,19 @@ export interface Org {
     name: string;
     slug: string;
     logo_url?: string;
+    phone?: string;
+    email?: string;
+    website?: string;
+    business_type?: string;
+    account_number?: string;
+    company_reg_number?: string;
+    vat_number?: string;
+    tax_code?: string;
+    currency?: string;
+    payment_terms_days?: number;
+    sales_discount_percent?: number;
+    notes?: string;
+    tags?: string[];
     created_at: string;
     updated_at?: string;
 }

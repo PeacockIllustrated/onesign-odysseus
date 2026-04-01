@@ -5,7 +5,11 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { Edit2, X, Loader2, Save } from 'lucide-react';
 import { updateQuoteAction } from '@/lib/quoter/actions';
+import { getContactsForOrgAction } from '@/lib/clients/actions';
 import { Quote } from '@/lib/quoter/types';
+import { OrgPicker } from '@/components/admin/OrgPicker';
+import { ContactPicker } from '@/components/admin/ContactPicker';
+import { SitePicker } from '@/components/admin/SitePicker';
 
 interface QuoteHeaderEditProps {
     quote: Quote;
@@ -16,7 +20,13 @@ export function QuoteHeaderEdit({ quote }: QuoteHeaderEditProps) {
     const [isEditing, setIsEditing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const { register, handleSubmit } = useForm({
+
+    // FK picker state
+    const [orgId, setOrgId] = useState<string | null>(quote.org_id);
+    const [contactId, setContactId] = useState<string | null>(quote.contact_id);
+    const [siteId, setSiteId] = useState<string | null>(quote.site_id);
+
+    const { register, handleSubmit, setValue } = useForm({
         defaultValues: {
             customer_name: quote.customer_name || '',
             customer_email: quote.customer_email || '',
@@ -28,11 +38,41 @@ export function QuoteHeaderEdit({ quote }: QuoteHeaderEditProps) {
         }
     });
 
+    const handleOrgChange = async (newOrgId: string | null, orgName: string) => {
+        setOrgId(newOrgId);
+        setContactId(null);
+        setSiteId(null);
+
+        if (orgName) {
+            setValue('customer_name', orgName);
+        }
+
+        // Auto-fill email/phone from primary contact
+        if (newOrgId) {
+            try {
+                const contacts = await getContactsForOrgAction(newOrgId);
+                const primary = contacts.find(c => c.is_primary) || contacts[0];
+                if (primary) {
+                    if (primary.email) setValue('customer_email', primary.email);
+                    if (primary.phone) setValue('customer_phone', primary.phone);
+                }
+            } catch {
+                // Silently ignore
+            }
+        }
+    };
+
     const onSubmit = async (data: any) => {
         setIsSaving(true);
         setError(null);
         try {
-            const result = await updateQuoteAction({ id: quote.id, ...data });
+            const result = await updateQuoteAction({
+                id: quote.id,
+                ...data,
+                org_id: orgId,
+                contact_id: contactId,
+                site_id: siteId,
+            });
             if ('error' in result) {
                 setError(result.error);
             } else {
@@ -56,19 +96,38 @@ export function QuoteHeaderEdit({ quote }: QuoteHeaderEditProps) {
                     </button>
                 </div>
 
+                {/* Client Picker Row */}
+                <div>
+                    <label className="block text-[10px] font-medium text-neutral-500 uppercase mb-1">Client</label>
+                    <OrgPicker value={orgId} onChange={handleOrgChange} />
+                </div>
+
+                {orgId && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-[10px] font-medium text-neutral-500 uppercase mb-1">Contact</label>
+                            <ContactPicker orgId={orgId} value={contactId} onChange={setContactId} />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-medium text-neutral-500 uppercase mb-1">Site</label>
+                            <SitePicker orgId={orgId} value={siteId} onChange={setSiteId} />
+                        </div>
+                    </div>
+                )}
+
                 {/* Row 1: Contact */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                         <label className="block text-[10px] font-medium text-neutral-500 uppercase mb-1">Customer Name</label>
-                        <input {...register('customer_name')} className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-black" />
+                        <input {...register('customer_name')} className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]" />
                     </div>
                     <div>
                         <label className="block text-[10px] font-medium text-neutral-500 uppercase mb-1">Email</label>
-                        <input type="email" {...register('customer_email')} className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-black" />
+                        <input type="email" {...register('customer_email')} className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]" />
                     </div>
                     <div>
                         <label className="block text-[10px] font-medium text-neutral-500 uppercase mb-1">Phone</label>
-                        <input {...register('customer_phone')} className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-black" />
+                        <input {...register('customer_phone')} className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]" />
                     </div>
                 </div>
 
@@ -76,22 +135,22 @@ export function QuoteHeaderEdit({ quote }: QuoteHeaderEditProps) {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label className="block text-[10px] font-medium text-neutral-500 uppercase mb-1">Project Name</label>
-                        <input {...register('project_name')} placeholder="e.g. HQ Signage Refresh" className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-black" />
+                        <input {...register('project_name')} placeholder="e.g. HQ Signage Refresh" className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]" />
                     </div>
                     <div>
                         <label className="block text-[10px] font-medium text-neutral-500 uppercase mb-1">Customer Reference</label>
-                        <input {...register('customer_reference')} placeholder="e.g. PO-12345 or their ref" className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-black" />
+                        <input {...register('customer_reference')} placeholder="e.g. PO-12345 or their ref" className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]" />
                     </div>
                 </div>
 
                 {/* Notes */}
                 <div>
                     <label className="block text-[10px] font-medium text-neutral-500 uppercase mb-1">Client Notes <span className="normal-case text-neutral-400">(visible on PDF)</span></label>
-                    <textarea {...register('notes_client')} rows={3} className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-black" placeholder="Notes to include on the client-facing PDF..." />
+                    <textarea {...register('notes_client')} rows={3} className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]" placeholder="Notes to include on the client-facing PDF..." />
                 </div>
                 <div>
                     <label className="block text-[10px] font-medium text-neutral-500 uppercase mb-1">Internal Notes <span className="normal-case text-neutral-400">(not on PDF)</span></label>
-                    <textarea {...register('notes_internal')} rows={2} className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-black" placeholder="Internal notes only..." />
+                    <textarea {...register('notes_internal')} rows={2} className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]" placeholder="Internal notes only..." />
                 </div>
 
                 {error && <p className="text-xs text-red-600">{error}</p>}

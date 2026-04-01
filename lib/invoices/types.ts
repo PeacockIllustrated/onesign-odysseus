@@ -21,6 +21,8 @@ export interface Invoice {
     vat_rate: number;
     vat_pence: number;
     total_pence: number;
+    billing_contact_id: string | null;
+    billing_site_id: string | null;
     created_by: string | null;
     created_at: string;
     updated_at: string;
@@ -42,6 +44,8 @@ export interface InvoiceWithItems extends Invoice {
     items: InvoiceItem[];
     linked_quote: { id: string; quote_number: string; customer_name: string | null } | null;
     linked_job: { id: string; job_number: string; status: string } | null;
+    billing_contact: { id: string; first_name: string; last_name: string; email: string | null; phone: string | null } | null;
+    billing_site: { id: string; name: string; address_line_1: string | null; address_line_2: string | null; city: string | null; county: string | null; postcode: string | null; country: string | null } | null;
 }
 
 export interface CreateInvoiceInput {

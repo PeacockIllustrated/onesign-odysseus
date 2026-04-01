@@ -13,6 +13,8 @@ import {
     getQuoteItemsForRoutingAction,
 } from '@/lib/production/actions';
 import type { ProductionStage } from '@/lib/production/types';
+import { ContactPicker } from '@/components/admin/ContactPicker';
+import { SitePicker } from '@/components/admin/SitePicker';
 
 interface CreateJobModalProps {
     open: boolean;
@@ -38,6 +40,8 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
     const [priority, setPriority] = useState<'urgent' | 'high' | 'normal' | 'low'>('normal');
     const [dueDate, setDueDate] = useState('');
     const [assignedInitials, setAssignedInitials] = useState('');
+    const [contactId, setContactId] = useState<string | null>(null);
+    const [siteId, setSiteId] = useState<string | null>(null);
 
     // Quote tab state
     const [quotes, setQuotes] = useState<Array<{ id: string; quote_number: string; customer_name: string | null }>>([]);
@@ -100,6 +104,8 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
             setPriority('normal');
             setDueDate('');
             setAssignedInitials('');
+            setContactId(null);
+            setSiteId(null);
             setOrgId('');
             setSelectedQuoteId('');
             setQuoteItems([]);
@@ -123,6 +129,8 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
             priority,
             dueDate: dueDate || undefined,
             assignedInitials: assignedInitials.trim() || undefined,
+            contactId: contactId || undefined,
+            siteId: siteId || undefined,
         });
 
         setSubmitting(false);
@@ -206,7 +214,15 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
                         <label className="block text-xs font-medium text-neutral-700 mb-1">Client Org *</label>
                         <select
                             value={orgId}
-                            onChange={e => setOrgId(e.target.value)}
+                            onChange={e => {
+                                const selectedId = e.target.value;
+                                setOrgId(selectedId);
+                                // Auto-fill client name with the org name
+                                const selectedOrg = orgs.find(o => o.id === selectedId);
+                                if (selectedOrg) {
+                                    setClientName(selectedOrg.name);
+                                }
+                            }}
                             required
                             className="w-full text-sm border border-neutral-200 rounded px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#4e7e8c]"
                         >
@@ -240,6 +256,14 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
                                     placeholder="e.g. Persimmon Homes"
                                     className="w-full text-sm border border-neutral-200 rounded px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#4e7e8c]"
                                 />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-neutral-700 mb-1">Contact</label>
+                                <ContactPicker orgId={orgId || null} value={contactId} onChange={setContactId} />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-neutral-700 mb-1">Site</label>
+                                <SitePicker orgId={orgId || null} value={siteId} onChange={setSiteId} />
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>

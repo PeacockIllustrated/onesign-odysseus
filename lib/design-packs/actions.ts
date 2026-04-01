@@ -52,6 +52,8 @@ export async function createDesignPack(
             project_name: input.project_name,
             client_name: input.client_name,
             client_email: input.client_email || null,
+            org_id: input.org_id || null,
+            contact_id: input.contact_id || null,
             status: 'in_progress',
             data_json: DEFAULT_DESIGN_PACK_DATA,
             created_by: user.id,

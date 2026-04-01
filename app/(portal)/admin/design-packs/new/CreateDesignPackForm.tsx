@@ -6,20 +6,44 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { CreateDesignPackInputSchema, CreateDesignPackInput } from '@/lib/design-packs/types';
 import { createDesignPack } from '@/lib/design-packs/actions';
+import { OrgPicker } from '@/components/admin/OrgPicker';
+import { getContactsForOrgAction } from '@/lib/clients/actions';
 import { Loader2 } from 'lucide-react';
 
 export function CreateDesignPackForm() {
     const router = useRouter();
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
 
     const {
         register,
         handleSubmit,
+        setValue,
         formState: { errors },
     } = useForm<CreateDesignPackInput>({
         resolver: zodResolver(CreateDesignPackInputSchema),
     });
+
+    const handleOrgChange = async (orgId: string | null, orgName: string) => {
+        setSelectedOrgId(orgId);
+        setValue('org_id', orgId || undefined);
+        if (orgName) {
+            setValue('client_name', orgName);
+        }
+        // Fetch primary contact and auto-fill email
+        if (orgId) {
+            try {
+                const contacts = await getContactsForOrgAction(orgId);
+                const primary = contacts.find(c => c.is_primary);
+                if (primary?.email) {
+                    setValue('client_email', primary.email);
+                }
+            } catch {
+                // Silently ignore — email can be filled manually
+            }
+        }
+    };
 
     const onSubmit = async (data: CreateDesignPackInput) => {
         setSubmitting(true);
@@ -69,6 +93,17 @@ export function CreateDesignPackForm() {
                 {errors.project_name && (
                     <p className="mt-1 text-xs text-red-600">{errors.project_name.message}</p>
                 )}
+            </div>
+
+            {/* Client (Org) Picker */}
+            <div>
+                <label className="block text-sm font-medium text-neutral-900 mb-1">
+                    client <span className="text-neutral-400 text-xs">(optional)</span>
+                </label>
+                <OrgPicker
+                    value={selectedOrgId}
+                    onChange={handleOrgChange}
+                />
             </div>
 
             {/* Client Name */}

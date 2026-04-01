@@ -11,9 +11,10 @@ interface CreateJobButtonProps {
     quoteId: string;
     existingJobId: string | null;
     existingJobNumber: string | null;
+    quoteOrgId: string | null;
 }
 
-export function CreateJobButton({ quoteId, existingJobId, existingJobNumber }: CreateJobButtonProps) {
+export function CreateJobButton({ quoteId, existingJobId, existingJobNumber, quoteOrgId }: CreateJobButtonProps) {
     const router = useRouter();
     const [isPending, startTransition] = useTransition();
     const [orgs, setOrgs] = useState<Array<{ id: string; name: string }>>([]);
@@ -22,10 +23,10 @@ export function CreateJobButton({ quoteId, existingJobId, existingJobNumber }: C
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        if (showPicker) {
+        if (showPicker && !quoteOrgId) {
             getOrgListAction().then(setOrgs);
         }
-    }, [showPicker]);
+    }, [showPicker, quoteOrgId]);
 
     if (existingJobId) {
         return (
@@ -41,13 +42,31 @@ export function CreateJobButton({ quoteId, existingJobId, existingJobNumber }: C
 
     if (!showPicker) {
         return (
-            <button
-                onClick={() => setShowPicker(true)}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-[#4e7e8c] hover:bg-[#3a5f6a] rounded-[var(--radius-sm)] transition-colors"
-            >
-                <LayoutGrid size={14} />
-                Create Production Job
-            </button>
+            <div className="flex items-center gap-2">
+                {error && <span className="text-xs text-red-600">{error}</span>}
+                <button
+                    onClick={() => {
+                        if (quoteOrgId) {
+                            // Skip picker — create directly using the quote's org_id
+                            startTransition(async () => {
+                                const result = await createJobFromQuote(quoteId, quoteOrgId);
+                                if ('error' in result) {
+                                    setError(result.error);
+                                } else {
+                                    router.push(`/admin/jobs`);
+                                }
+                            });
+                        } else {
+                            setShowPicker(true);
+                        }
+                    }}
+                    disabled={isPending}
+                    className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-[#4e7e8c] hover:bg-[#3a5f6a] disabled:opacity-50 rounded-[var(--radius-sm)] transition-colors"
+                >
+                    {isPending ? <Loader2 size={14} className="animate-spin" /> : <LayoutGrid size={14} />}
+                    Create Production Job
+                </button>
+            </div>
         );
     }
 

@@ -116,12 +116,15 @@ export async function createJobFromQuote(
 
     const { data: quote, error: quoteError } = await supabase
         .from('quotes')
-        .select('id, quote_number, customer_name, status')
+        .select('id, quote_number, customer_name, status, org_id, contact_id, site_id')
         .eq('id', quoteId)
         .single();
 
     if (quoteError || !quote) return { error: 'Quote not found' };
     if (quote.status !== 'accepted') return { error: 'Quote must be accepted before creating a job' };
+
+    // Use quote.org_id if set, otherwise fall back to passed orgId
+    const effectiveOrgId = (quote as any).org_id || orgId;
 
     const { data: existingJob } = await supabase
         .from('production_jobs')
@@ -154,8 +157,10 @@ export async function createJobFromQuote(
     const { data: newJob, error: jobError } = await supabase
         .from('production_jobs')
         .insert({
-            org_id: orgId,
+            org_id: effectiveOrgId,
             quote_id: quoteId,
+            contact_id: (quote as any).contact_id || null,
+            site_id: (quote as any).site_id || null,
             title,
             client_name: quote.customer_name || quote.quote_number,
             current_stage_id: orderBookStage.id,
@@ -225,6 +230,8 @@ export async function createManualJob(input: {
     priority: JobPriority;
     dueDate?: string;
     assignedInitials?: string;
+    contactId?: string;
+    siteId?: string;
 }): Promise<{ id: string; jobNumber: string } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
@@ -247,6 +254,8 @@ export async function createManualJob(input: {
             title: input.title,
             client_name: input.clientName,
             description: input.description || null,
+            contact_id: input.contactId || null,
+            site_id: input.siteId || null,
             current_stage_id: orderBookStage.id,
             priority: input.priority,
             status: 'active',
@@ -335,7 +344,7 @@ export async function moveJobItemToStage(
             // Fetch item + parent job context for naming
             const { data: itemContext } = await supabase
                 .from('job_items')
-                .select('description, job_id, production_jobs!inner(client_name, job_number)')
+                .select('description, job_id, production_jobs!inner(client_name, job_number, org_id)')
                 .eq('id', jobItemId)
                 .single();
 
@@ -345,6 +354,7 @@ export async function moveJobItemToStage(
                     job_name: (itemContext as any).description || `Artwork for ${pj.job_number}`,
                     client_name: pj.client_name,
                     job_item_id: jobItemId,
+                    org_id: pj.org_id || null,
                     status: 'draft',
                     created_by: user.id,
                 });

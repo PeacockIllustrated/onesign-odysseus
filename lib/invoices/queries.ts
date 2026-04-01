@@ -70,10 +70,32 @@ export async function getInvoiceWithItems(invoiceId: string): Promise<InvoiceWit
         linked_job = job ?? null;
     }
 
+    let billing_contact = null;
+    if (invoice.billing_contact_id) {
+        const { data } = await supabase
+            .from('contacts')
+            .select('id, first_name, last_name, email, phone')
+            .eq('id', invoice.billing_contact_id)
+            .single();
+        billing_contact = data ?? null;
+    }
+
+    let billing_site = null;
+    if (invoice.billing_site_id) {
+        const { data } = await supabase
+            .from('org_sites')
+            .select('id, name, address_line_1, address_line_2, city, county, postcode, country')
+            .eq('id', invoice.billing_site_id)
+            .single();
+        billing_site = data ?? null;
+    }
+
     return {
         ...(invoice as Invoice),
         items: (items || []) as InvoiceItem[],
         linked_quote,
         linked_job,
+        billing_contact,
+        billing_site,
     };
 }

@@ -71,6 +71,9 @@ export interface CreateQuoteInput {
     customer_email?: string;
     customer_phone?: string;
     pricing_set_id: string;
+    org_id?: string;
+    contact_id?: string;
+    site_id?: string;
 }
 
 export interface UpdateQuoteInput {
@@ -82,6 +85,9 @@ export interface UpdateQuoteInput {
     notes_client?: string;
     customer_reference?: string;
     project_name?: string;
+    org_id?: string | null;
+    contact_id?: string | null;
+    site_id?: string | null;
 }
 
 export async function createQuoteAction(input: CreateQuoteInput): Promise<{ id: string } | { error: string }> {
@@ -103,6 +109,9 @@ export async function createQuoteAction(input: CreateQuoteInput): Promise<{ id: 
             customer_email: input.customer_email || null,
             customer_phone: input.customer_phone || null,
             pricing_set_id: input.pricing_set_id,
+            org_id: input.org_id || null,
+            contact_id: input.contact_id || null,
+            site_id: input.site_id || null,
             status: 'draft',
             created_by: user.id,
             valid_until: validUntil.toISOString().split('T')[0],
@@ -132,18 +141,25 @@ export async function updateQuoteAction(input: UpdateQuoteInput): Promise<{ succ
         .eq('id', input.id)
         .single();
 
+    // Build update payload — only include FK fields if explicitly provided
+    const updatePayload: Record<string, unknown> = {
+        customer_name: input.customer_name,
+        customer_email: input.customer_email,
+        customer_phone: input.customer_phone,
+        notes_internal: input.notes_internal,
+        notes_client: input.notes_client,
+        customer_reference: input.customer_reference,
+        project_name: input.project_name,
+        // updated_at handled by DB trigger trg_quotes_updated_at
+    };
+
+    if (input.org_id !== undefined) updatePayload.org_id = input.org_id;
+    if (input.contact_id !== undefined) updatePayload.contact_id = input.contact_id;
+    if (input.site_id !== undefined) updatePayload.site_id = input.site_id;
+
     const { error } = await supabase
         .from('quotes')
-        .update({
-            customer_name: input.customer_name,
-            customer_email: input.customer_email,
-            customer_phone: input.customer_phone,
-            notes_internal: input.notes_internal,
-            notes_client: input.notes_client,
-            customer_reference: input.customer_reference,
-            project_name: input.project_name,
-            // updated_at handled by DB trigger trg_quotes_updated_at
-        })
+        .update(updatePayload)
         .eq('id', input.id);
 
     if (error) {
@@ -587,6 +603,9 @@ export async function duplicateQuoteAction(
             customer_email: original.customer_email,
             customer_phone: original.customer_phone,
             pricing_set_id: original.pricing_set_id,
+            org_id: original.org_id || null,
+            contact_id: original.contact_id || null,
+            site_id: original.site_id || null,
             notes_internal: original.notes_internal ? `Copied from ${original.quote_number}: ${original.notes_internal}` : `Copied from ${original.quote_number}`,
             notes_client: original.notes_client,
             customer_reference: original.customer_reference,

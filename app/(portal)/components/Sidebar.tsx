@@ -63,7 +63,7 @@ const adminNavGroups: NavGroup[] = [
     {
         label: 'Clients',
         items: [
-            { label: 'Organisations', href: '/admin/orgs', icon: Building2 },
+            { label: 'Clients', href: '/admin/clients', icon: Building2 },
             { label: 'Design Packs', href: '/admin/design-packs', icon: Palette },
             { label: 'Reports', href: '/admin/reports', icon: FileText },
         ],

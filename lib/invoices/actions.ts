@@ -183,6 +183,34 @@ export async function createInvoiceFromQuote(
 
     const productionJobId: string | null = jobRow?.id ?? null;
 
+    // 4b. Lookup billing contact and billing site for the org
+    let billingContactId: string | null = null;
+    let billingSiteId: string | null = null;
+
+    if (quote.org_id) {
+        // Look for billing contact, fall back to primary
+        const { data: billingContact } = await supabase
+            .from('contacts')
+            .select('id')
+            .eq('org_id', quote.org_id)
+            .or('contact_type.eq.billing,is_primary.eq.true')
+            .order('contact_type', { ascending: true }) // 'billing' sorts before 'primary'
+            .limit(1)
+            .maybeSingle();
+        billingContactId = billingContact?.id || null;
+
+        // Look for billing site, fall back to primary
+        const { data: billingSite } = await supabase
+            .from('org_sites')
+            .select('id')
+            .eq('org_id', quote.org_id)
+            .or('is_billing_address.eq.true,is_primary.eq.true')
+            .order('is_billing_address', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        billingSiteId = billingSite?.id || null;
+    }
+
     // 5. Derive invoice items from quote items
     const invoiceItems = quoteItems.map((item: any, index: number) => {
         const label = LETTERS[index] ?? `${index + 1}`;
@@ -218,6 +246,8 @@ export async function createInvoiceFromQuote(
             org_id: orgId,
             quote_id: quoteId,
             production_job_id: productionJobId,
+            billing_contact_id: billingContactId,
+            billing_site_id: billingSiteId,
             customer_name: quote.customer_name ?? '',
             customer_email: quote.customer_email ?? null,
             customer_phone: quote.customer_phone ?? null,

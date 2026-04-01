@@ -20,6 +20,8 @@ export interface ProductionJob {
     id: string;
     org_id: string;
     quote_id: string | null;
+    contact_id: string | null;
+    site_id: string | null;
     job_number: string;
     title: string;
     description: string | null;

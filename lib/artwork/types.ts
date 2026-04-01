@@ -76,6 +76,8 @@ export const ArtworkJobSchema = z.object({
     job_name: z.string(),
     job_reference: z.string(),
     client_name: z.string().nullable(),
+    org_id: z.string().uuid().nullable(),
+    contact_id: z.string().uuid().nullable(),
     description: z.string().nullable(),
     cover_image_path: z.string().nullable(),
     panel_size: z.string().nullable(),
@@ -195,6 +197,8 @@ export type ProductionCheck = z.infer<typeof ProductionCheckSchema>;
 export const CreateArtworkJobInputSchema = z.object({
     job_name: z.string().min(1, 'job name is required'),
     client_name: z.string().optional(),
+    org_id: z.string().uuid().optional(),
+    contact_id: z.string().uuid().optional(),
     description: z.string().optional(),
 });
 export type CreateArtworkJobInput = z.infer<typeof CreateArtworkJobInputSchema>;
