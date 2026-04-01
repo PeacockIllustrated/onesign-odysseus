@@ -16,7 +16,7 @@ export default async function ClientDetailPage({ params }: PageProps) {
 
     // Fetch activity counts in parallel
     const supabase = await createServerClient();
-    const [quotesResult, jobsResult, invoicesResult] = await Promise.all([
+    const [quotesResult, jobsResult, invoicesResult, deliveriesResult] = await Promise.all([
         supabase
             .from('quotes')
             .select('id', { count: 'exact', head: true })
@@ -29,12 +29,17 @@ export default async function ClientDetailPage({ params }: PageProps) {
             .from('invoices')
             .select('id', { count: 'exact', head: true })
             .eq('org_id', id),
+        supabase
+            .from('deliveries')
+            .select('id', { count: 'exact', head: true })
+            .eq('org_id', id),
     ]);
 
     const activityCounts = {
         quotes: quotesResult.count ?? 0,
         jobs: jobsResult.count ?? 0,
         invoices: invoicesResult.count ?? 0,
+        deliveries: deliveriesResult.count ?? 0,
     };
 
     return <ClientDetailClient client={client} activityCounts={activityCounts} />;

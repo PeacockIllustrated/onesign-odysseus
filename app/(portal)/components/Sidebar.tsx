@@ -19,6 +19,7 @@ import {
     DollarSign,
     Palette,
     ClipboardCheck,
+    Truck,
     X,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -49,6 +50,7 @@ const adminNavGroups: NavGroup[] = [
             { label: 'Job Board', href: '/admin/jobs', icon: LayoutGrid },
             { label: 'Shop Floor', href: '/shop-floor', icon: Zap },
             { label: 'Artwork', href: '/admin/artwork', icon: ClipboardCheck },
+            { label: 'Deliveries', href: '/admin/deliveries', icon: Truck },
         ],
     },
     {

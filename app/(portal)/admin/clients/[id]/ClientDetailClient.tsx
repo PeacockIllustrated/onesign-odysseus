@@ -34,7 +34,7 @@ type TabKey = 'details' | 'contacts' | 'sites';
 
 interface ClientDetailClientProps {
     client: ClientWithDetails;
-    activityCounts: { quotes: number; jobs: number; invoices: number };
+    activityCounts: { quotes: number; jobs: number; invoices: number; deliveries: number };
 }
 
 // ---------------------------------------------------------------------------
@@ -157,7 +157,7 @@ function DetailsTab({
     onError,
 }: {
     client: ClientWithDetails;
-    activityCounts: { quotes: number; jobs: number; invoices: number };
+    activityCounts: { quotes: number; jobs: number; invoices: number; deliveries: number };
     onRefresh: () => Promise<void>;
     onError: (msg: string) => void;
 }) {
@@ -492,6 +492,13 @@ function DetailsTab({
                         className="text-[#4e7e8c] hover:underline font-medium"
                     >
                         {activityCounts.invoices} Invoices
+                    </Link>
+                    <span className="text-neutral-300">·</span>
+                    <Link
+                        href={`/admin/deliveries?org=${client.id}`}
+                        className="text-[#4e7e8c] hover:underline font-medium"
+                    >
+                        {activityCounts.deliveries} Deliveries
                     </Link>
                 </div>
             </div>

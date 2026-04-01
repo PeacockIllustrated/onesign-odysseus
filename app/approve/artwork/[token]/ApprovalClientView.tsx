@@ -4,7 +4,7 @@ import { useState, useRef, useTransition, useCallback, useEffect } from 'react';
 import { submitApproval } from '@/lib/artwork/approval-actions';
 import type { ApprovalPackData } from '@/lib/artwork/approval-actions';
 import { formatDateTime } from '@/lib/artwork/utils';
-import SignatureCanvas, { type SignatureCanvasRef } from './SignatureCanvas';
+import SignatureCanvas, { type SignatureCanvasRef } from '@/components/SignatureCanvas';
 
 interface Props {
     data: ApprovalPackData;

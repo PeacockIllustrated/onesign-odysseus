@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useTransition } from 'react';
-import { X, Clock, AlertCircle, Plus } from 'lucide-react';
+import { X, Clock, AlertCircle, Plus, Truck } from 'lucide-react';
 import type { ProductionStage } from '@/lib/production/types';
 import {
     getJobItemDetailAction,
@@ -12,6 +12,14 @@ import {
 } from '@/lib/production/actions';
 import { createArtworkJobForItem } from '@/lib/artwork/actions';
 import { isJobOverdue, formatDueDate } from '@/lib/production/utils';
+import { getDeliveryForJobAction } from '@/lib/deliveries/actions';
+import {
+    formatDeliveryDate,
+    DELIVERY_STATUS_LABELS,
+    DELIVERY_STATUS_COLORS,
+    POD_STATUS_LABELS,
+    POD_STATUS_COLORS,
+} from '@/lib/deliveries/utils';
 
 // Local type alias to avoid importing the unexported type
 type JobItemDetail = Awaited<ReturnType<typeof getJobItemDetailAction>>;
@@ -29,12 +37,18 @@ export function JobDetailPanel({ itemId, onClose, stages }: JobDetailPanelProps)
     const [newInstruction, setNewInstruction] = useState('');
     const [instructionStageId, setInstructionStageId] = useState('');
     const [error, setError] = useState<string | null>(null);
+    const [delivery, setDelivery] = useState<Awaited<ReturnType<typeof getDeliveryForJobAction>>>(null);
 
     useEffect(() => {
         setLoading(true);
+        setDelivery(null);
         getJobItemDetailAction(itemId)
-            .then(d => {
+            .then(async d => {
                 setDetail(d);
+                if (d) {
+                    const deliveryResult = await getDeliveryForJobAction(d.job.id);
+                    setDelivery(deliveryResult);
+                }
             })
             .catch(err => {
                 console.error('Failed to load item detail:', err);
@@ -348,6 +362,44 @@ export function JobDetailPanel({ itemId, onClose, stages }: JobDetailPanelProps)
                                     </button>
                                 </div>
                             </div>
+                        </div>
+
+                        {/* Delivery */}
+                        <div>
+                            <p className="text-xs font-medium text-neutral-500 uppercase mb-2">Delivery</p>
+                            {delivery ? (
+                                <div className="bg-neutral-50 rounded p-3 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <a href={`/admin/deliveries/${delivery.id}`} className="text-xs font-mono text-[#4e7e8c] font-semibold hover:underline">
+                                            {delivery.delivery_number}
+                                        </a>
+                                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${DELIVERY_STATUS_COLORS[delivery.status]}`}>
+                                            {DELIVERY_STATUS_LABELS[delivery.status]}
+                                        </span>
+                                    </div>
+                                    <div className="text-xs text-neutral-600">
+                                        {delivery.driver_name && <p>Driver: {delivery.driver_name}</p>}
+                                        <p>Scheduled: {formatDeliveryDate(delivery.scheduled_date)}</p>
+                                    </div>
+                                    {delivery.pod_status !== 'pending' && (
+                                        <div className="flex items-center gap-1.5">
+                                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${POD_STATUS_COLORS[delivery.pod_status]}`}>
+                                                POD: {POD_STATUS_LABELS[delivery.pod_status]}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="bg-neutral-50 rounded p-3 text-center">
+                                    <p className="text-sm text-neutral-500 mb-2">No delivery scheduled</p>
+                                    <a
+                                        href="/admin/deliveries"
+                                        className="text-xs text-[#4e7e8c] hover:underline"
+                                    >
+                                        Schedule Delivery &rarr;
+                                    </a>
+                                </div>
+                            )}
                         </div>
 
                         {/* Stage log */}
