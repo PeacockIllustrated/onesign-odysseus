@@ -1,4 +1,4 @@
-import { createServerClient } from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase-admin';
 import type {
     Contact,
     OrgSite,
@@ -11,7 +11,7 @@ export async function getClients(filters?: {
     search?: string;
     tag?: string;
 }): Promise<ClientSummary[]> {
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
 
     let query = supabase
         .from('orgs')
@@ -99,7 +99,7 @@ export async function getClients(filters?: {
 }
 
 export async function getClientWithDetails(orgId: string): Promise<ClientWithDetails | null> {
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
 
     const [orgResult, contactsResult, sitesResult] = await Promise.all([
         supabase
@@ -151,7 +151,7 @@ export async function getClientWithDetails(orgId: string): Promise<ClientWithDet
 }
 
 export async function getContactsForOrg(orgId: string): Promise<Contact[]> {
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
 
     const { data, error } = await supabase
         .from('contacts')
@@ -168,7 +168,7 @@ export async function getContactsForOrg(orgId: string): Promise<Contact[]> {
 }
 
 export async function getSitesForOrg(orgId: string): Promise<OrgSite[]> {
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
 
     const { data, error } = await supabase
         .from('org_sites')
