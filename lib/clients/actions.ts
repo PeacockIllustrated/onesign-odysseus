@@ -1,6 +1,7 @@
 'use server';
 
 import { createServerClient } from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase-admin';
 import { getUser } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 import {
@@ -61,7 +62,8 @@ export async function createClientAction(input: {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
 
-    const supabase = await createServerClient();
+    // Use admin client to bypass RLS for org creation (super-admin gated by getUser + requireAdmin in page)
+    const adminDb = createAdminClient();
 
     // Auto-generate slug from name
     const slug = input.name
@@ -69,7 +71,7 @@ export async function createClientAction(input: {
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
 
-    const { data: org, error: orgError } = await supabase
+    const { data: org, error: orgError } = await adminDb
         .from('orgs')
         .insert({
             name: input.name,
@@ -85,7 +87,7 @@ export async function createClientAction(input: {
 
     // Optionally create the primary contact
     if (input.primaryContact) {
-        const { error: contactError } = await supabase.from('contacts').insert({
+        const { error: contactError } = await adminDb.from('contacts').insert({
             org_id: org.id,
             first_name: input.primaryContact.first_name,
             last_name: input.primaryContact.last_name,
@@ -115,7 +117,7 @@ export async function updateOrgDetailsAction(
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
 
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
 
     // Only include fields that are not undefined
     const updates: Record<string, unknown> = {};
@@ -163,7 +165,7 @@ export async function createContactAction(
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
 
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
 
     // If marking as primary, unset existing primary contact for this org
     if (input.is_primary) {
@@ -207,7 +209,7 @@ export async function updateContactAction(
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
 
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
 
     // Get the contact's org_id for primary-flag handling and revalidation
     const { data: existing, error: fetchError } = await supabase
@@ -260,7 +262,7 @@ export async function deleteContactAction(
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
 
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
 
     // Get org_id for revalidation before deleting
     const { data: existing } = await supabase
@@ -296,7 +298,7 @@ export async function createSiteAction(
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
 
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
 
     // If marking as primary, unset existing primary site for this org
     if (input.is_primary) {
@@ -345,7 +347,7 @@ export async function updateSiteAction(
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
 
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
 
     // Get the site's org_id for primary-flag handling and revalidation
     const { data: existing, error: fetchError } = await supabase
@@ -403,7 +405,7 @@ export async function deleteSiteAction(
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
 
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
 
     // Get org_id for revalidation before deleting
     const { data: existing } = await supabase
