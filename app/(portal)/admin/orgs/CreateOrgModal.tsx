@@ -5,10 +5,21 @@ import { createBrowserClient } from '@/lib/supabase';
 import { Modal, Chip } from '@/app/(portal)/components/ui';
 import { Loader2 } from 'lucide-react';
 
+export interface CreatedOrg {
+    id: string;
+    name: string;
+    slug: string;
+}
+
 interface CreateOrgModalProps {
     open: boolean;
     onClose: () => void;
-    onSuccess: () => void;
+    /**
+     * Called after the org is successfully created. The newly-created org is
+     * passed so callers can auto-select it in a dropdown. Optional — existing
+     * callers that just refresh a list can ignore the argument.
+     */
+    onSuccess: (newOrg?: CreatedOrg) => void;
 }
 
 function slugify(text: string): string {
@@ -52,7 +63,17 @@ export function CreateOrgModal({ open, onClose, onSuccess }: CreateOrgModalProps
             setName('');
             setSlug('');
             setOwnerEmail('');
-            onSuccess();
+
+            // RPC returns jsonb_build_object('id', ..., 'name', ..., 'slug', ...)
+            const created =
+                data && typeof data === 'object' && 'id' in data
+                    ? {
+                          id: (data as any).id,
+                          name: (data as any).name,
+                          slug: (data as any).slug,
+                      }
+                    : undefined;
+            onSuccess(created);
             onClose();
         } catch (err) {
             console.error('Error creating org:', err);

@@ -1,6 +1,7 @@
 'use client';
 
 import { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
     LucideIcon,
     FolderOpen,
@@ -218,7 +219,11 @@ interface ModalProps {
 export function Modal({ open, onClose, title, children }: ModalProps) {
     if (!open) return null;
 
-    return (
+    // Portal to body so the modal escapes table/form layouts — otherwise a
+    // <div> child of a <tr> produces invalid HTML and hydration warnings.
+    if (typeof document === 'undefined') return null;
+
+    const content = (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
             {/* Backdrop */}
             <div
@@ -244,6 +249,8 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
             </div>
         </div>
     );
+
+    return createPortal(content, document.body);
 }
 
 // =============================================================================
