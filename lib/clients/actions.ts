@@ -2,7 +2,7 @@
 
 import { createServerClient } from '@/lib/supabase-server';
 import { createAdminClient } from '@/lib/supabase-admin';
-import { getUser } from '@/lib/auth';
+import { getUser, requireSuperAdminOrError } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 import {
     getClients,
@@ -69,6 +69,8 @@ export async function createClientAction(input: {
 }): Promise<{ id: string } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { error: gate.error };
 
     const validation = CreateClientActionInputSchema.safeParse(input);
     if (!validation.success) {
@@ -128,6 +130,8 @@ export async function updateOrgDetailsAction(
 ): Promise<{ success: boolean } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { error: gate.error };
 
     const validation = UpdateOrgDetailsInputSchema.safeParse(input);
     if (!validation.success) {
@@ -168,6 +172,8 @@ export async function createContactAction(
 ): Promise<{ id: string } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { error: gate.error };
 
     const validation = CreateContactInputSchema.safeParse(input);
     if (!validation.success) {
@@ -217,6 +223,8 @@ export async function updateContactAction(
 ): Promise<{ success: boolean } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { error: gate.error };
 
     const validation = UpdateContactInputSchema.safeParse(input);
     if (!validation.success) {
@@ -266,6 +274,8 @@ export async function deleteContactAction(
 ): Promise<{ success: boolean } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { error: gate.error };
 
     const supabase = createAdminClient();
 
@@ -302,6 +312,8 @@ export async function createSiteAction(
 ): Promise<{ id: string } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { error: gate.error };
 
     const validation = CreateSiteInputSchema.safeParse(input);
     if (!validation.success) {
@@ -356,6 +368,8 @@ export async function updateSiteAction(
 ): Promise<{ success: boolean } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { error: gate.error };
 
     const validation = UpdateSiteInputSchema.safeParse(input);
     if (!validation.success) {
@@ -405,6 +419,8 @@ export async function deleteSiteAction(
 ): Promise<{ success: boolean } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { error: gate.error };
 
     const supabase = createAdminClient();
 

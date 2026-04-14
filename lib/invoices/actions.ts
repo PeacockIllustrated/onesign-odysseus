@@ -1,7 +1,7 @@
 'use server';
 
 import { createServerClient } from '@/lib/supabase-server';
-import { getUser } from '@/lib/auth';
+import { getUser, requireSuperAdminOrError } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 import { calcLineTotal, calcSubtotal, calcVat, canTransitionTo } from './utils';
 import { getInvoices, getInvoiceWithItems } from './queries';
@@ -142,6 +142,8 @@ export async function createInvoiceFromQuote(
 ): Promise<{ id: string; invoiceNumber: string } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { error: gate.error };
 
     const validation = CreateInvoiceInputSchema.safeParse(input);
     if (!validation.success) {
@@ -311,6 +313,8 @@ export async function updateInvoiceAction(
 ): Promise<{ success: boolean } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { error: gate.error };
 
     const validation = UpdateInvoiceInputSchema.safeParse(input);
     if (!validation.success) {
@@ -353,6 +357,8 @@ export async function updateInvoiceStatusAction(
 ): Promise<{ success: boolean } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { error: gate.error };
 
     const supabase = await createServerClient();
 
@@ -403,6 +409,8 @@ export async function addInvoiceItemAction(
 ): Promise<{ id: string } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { error: gate.error };
 
     const validation = CreateInvoiceItemInputSchema.safeParse(input);
     if (!validation.success) {
@@ -450,6 +458,8 @@ export async function updateInvoiceItemAction(
 ): Promise<{ success: boolean } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { error: gate.error };
 
     const validation = UpdateInvoiceItemInputSchema.safeParse(input);
     if (!validation.success) {
@@ -508,6 +518,8 @@ export async function deleteInvoiceItemAction(
 ): Promise<{ success: boolean } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { error: gate.error };
 
     const supabase = await createServerClient();
 
@@ -542,6 +554,8 @@ export async function deleteInvoiceAction(
 ): Promise<{ success: boolean } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { error: gate.error };
 
     const supabase = await createServerClient();
 

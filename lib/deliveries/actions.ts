@@ -2,7 +2,7 @@
 
 import { randomBytes } from 'crypto';
 import { createAdminClient } from '@/lib/supabase-admin';
-import { getUser } from '@/lib/auth';
+import { getUser, requireSuperAdminOrError } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 import { canTransitionTo } from './utils';
 import { getDeliveries, getDeliveryWithItems, getDeliveryForJob } from './queries';
@@ -89,6 +89,8 @@ export async function createDeliveryFromJob(
 ): Promise<{ id: string; deliveryNumber: string } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { error: gate.error };
 
     const validation = CreateDeliveryInputSchema.safeParse(input);
     if (!validation.success) {
@@ -179,6 +181,8 @@ export async function updateDeliveryAction(
 ): Promise<{ success: boolean } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { error: gate.error };
 
     const validation = UpdateDeliveryInputSchema.safeParse(input);
     if (!validation.success) {
@@ -223,6 +227,8 @@ export async function updateDeliveryStatusAction(
 ): Promise<{ success: boolean } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { error: gate.error };
 
     const supabase = createAdminClient();
 
@@ -267,6 +273,8 @@ export async function deleteDeliveryAction(
 ): Promise<{ success: boolean } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { error: gate.error };
 
     const supabase = createAdminClient();
 
@@ -301,6 +309,8 @@ export async function generatePodLink(
 ): Promise<{ token: string } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { error: gate.error };
 
     const supabase = createAdminClient();
 

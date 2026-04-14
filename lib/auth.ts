@@ -117,6 +117,23 @@ export async function requireAdmin() {
 }
 
 /**
+ * Server-action guard for super-admin-only mutations. Returns a discriminated
+ * error instead of redirecting, so actions can short-circuit cleanly.
+ *
+ * Call this at the top of any action that uses `createAdminClient()`:
+ *
+ *   const gate = await requireSuperAdminOrError();
+ *   if (!gate.ok) return { error: gate.error };
+ */
+export async function requireSuperAdminOrError(): Promise<
+    { ok: true } | { ok: false; error: string }
+> {
+    const allowed = await isSuperAdmin();
+    if (!allowed) return { ok: false, error: 'not authorised' };
+    return { ok: true };
+}
+
+/**
  * Get user's profile from the profiles table.
  */
 export async function getUserProfile(userId: string) {

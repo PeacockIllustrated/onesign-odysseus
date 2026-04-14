@@ -32,7 +32,10 @@ const ServerEnvSchema = PublicEnvSchema.extend({
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(40).optional(),
 });
 
-function parseEnv() {
+function parseEnv(): z.infer<typeof ServerEnvSchema> {
+    // Always parse with the server schema. On the client, the service-role
+    // key field is simply undefined (it's optional), so the client still
+    // validates via the public URL + anon key.
     const schema = isServer ? ServerEnvSchema : PublicEnvSchema;
     const result = schema.safeParse(process.env);
     if (!result.success) {
@@ -44,7 +47,9 @@ function parseEnv() {
                 `See .env.example for the full list of required variables.`
         );
     }
-    return result.data;
+    // Widen to server shape so callers can read SUPABASE_SERVICE_ROLE_KEY
+    // without a type narrowing dance. On the client the field is undefined.
+    return result.data as z.infer<typeof ServerEnvSchema>;
 }
 
 export const env = parseEnv();
