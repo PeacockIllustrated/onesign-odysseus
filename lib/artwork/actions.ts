@@ -1256,41 +1256,184 @@ export async function completeArtworkAndAdvanceItem(
 // =============================================================================
 
 /**
- * List artwork jobs with optional filters
+ * List artwork jobs with optional filters.
+ *
+ * Phase 1: filter taxonomy replaces the previous loose `status` string with a
+ * controlled `ArtworkDashboardFilter` enum. `awaiting_approval` and `flagged`
+ * are computed client-side from embedded relationships because PostgREST
+ * can't filter on aggregates cheaply.
  */
 export async function getArtworkJobs(
-    filters?: { status?: string; search?: string }
-): Promise<(ArtworkJob & { client_approved: boolean })[]> {
+    filters?: { filter?: ArtworkDashboardFilter; search?: string }
+): Promise<(ArtworkJob & { client_approved: boolean; flagged_count: number })[]> {
     const supabase = await createServerClient();
+    const filter = filters?.filter ?? 'all';
 
     let query = supabase
         .from('artwork_jobs')
-        .select('*, artwork_approvals(status)')
+        .select(`
+            *,
+            artwork_approvals(status),
+            artwork_components(dimension_flag)
+        `)
         .order('created_at', { ascending: false });
 
-    if (filters?.status && filters.status !== 'all') {
-        query = query.eq('status', filters.status);
+    switch (filter) {
+        case 'in_progress':
+            query = query.in('status', ['draft', 'in_progress', 'design_complete', 'in_production']);
+            break;
+        case 'completed':
+            query = query.eq('status', 'completed');
+            break;
+        case 'orphans':
+            query = query.eq('is_orphan', true);
+            break;
+        // awaiting_approval, flagged, awaiting_start, all → filtered below
     }
 
     if (filters?.search) {
+        const s = filters.search.replace(/[%,]/g, '');
         query = query.or(
-            `job_name.ilike.%${filters.search}%,job_reference.ilike.%${filters.search}%,client_name.ilike.%${filters.search}%`
+            `job_name.ilike.%${s}%,job_reference.ilike.%${s}%,client_name_snapshot.ilike.%${s}%`
         );
     }
 
     const { data, error } = await query;
-
     if (error) {
         console.error('error fetching artwork jobs:', error);
         return [];
     }
 
-    return (data || []).map((row: any) => {
-        const approvals = row.artwork_approvals || [];
+    const rows = (data ?? []).map((row: any) => {
+        const approvals = row.artwork_approvals ?? [];
+        const components = row.artwork_components ?? [];
         const client_approved = approvals.some((a: any) => a.status === 'approved');
-        const { artwork_approvals, ...job } = row;
-        return { ...job, client_approved } as ArtworkJob & { client_approved: boolean };
+        const pending_approval = approvals.some((a: any) => a.status === 'pending');
+        const flagged_count = components.filter(
+            (c: any) => c.dimension_flag === 'out_of_tolerance'
+        ).length;
+        const { artwork_approvals, artwork_components, ...job } = row;
+        return {
+            ...job,
+            client_approved,
+            pending_approval,
+            flagged_count,
+        };
     });
+
+    const stripPending = (r: any) => {
+        const { pending_approval, ...rest } = r;
+        return rest as ArtworkJob & { client_approved: boolean; flagged_count: number };
+    };
+
+    if (filter === 'awaiting_approval') {
+        return rows.filter((r) => r.pending_approval).map(stripPending);
+    }
+    if (filter === 'flagged') {
+        return rows.filter((r) => r.flagged_count > 0).map(stripPending);
+    }
+    return rows.map(stripPending);
+}
+
+/**
+ * Single query for the unified dashboard: returns jobs + ghost rows (production
+ * items at the artwork stage with no linked artwork_job) + per-filter counts
+ * for the chip badges.
+ */
+export async function getArtworkDashboardData(
+    filters?: { filter?: ArtworkDashboardFilter; search?: string }
+): Promise<ArtworkDashboardData> {
+    const supabase = await createServerClient();
+    const filter = filters?.filter ?? 'all';
+
+    const jobs = await getArtworkJobs(filters);
+
+    // Ghost rows: production items at the artwork stage with no linked artwork_job yet.
+    let ghostRows: ArtworkGhostRow[] = [];
+    if (filter === 'all' || filter === 'awaiting_start') {
+        const { data: stage } = await supabase
+            .from('production_stages')
+            .select('id')
+            .eq('slug', 'artwork-approval')
+            .is('org_id', null)
+            .single();
+
+        if (stage) {
+            const { data: items } = await supabase
+                .from('job_items')
+                .select(`
+                    id, description, item_number,
+                    production_jobs!inner(
+                        job_number, client_name, org_id, due_date, priority, status
+                    )
+                `)
+                .eq('current_stage_id', stage.id)
+                .order('created_at', { ascending: true });
+
+            const activeItems = (items ?? []).filter(
+                (i: any) =>
+                    i.production_jobs?.status === 'active' ||
+                    i.production_jobs?.status === 'paused'
+            );
+
+            if (activeItems.length > 0) {
+                const { data: existing } = await supabase
+                    .from('artwork_jobs')
+                    .select('job_item_id')
+                    .in('job_item_id', activeItems.map((i: any) => i.id));
+
+                const started = new Set((existing ?? []).map((r: any) => r.job_item_id));
+
+                ghostRows = activeItems
+                    .filter((i: any) => !started.has(i.id))
+                    .map((i: any) => ({
+                        jobItemId: i.id,
+                        jobItemDescription: i.description || '',
+                        itemNumber: i.item_number || null,
+                        productionJobNumber: i.production_jobs.job_number,
+                        clientName: i.production_jobs.client_name,
+                        orgId: i.production_jobs.org_id ?? null,
+                        dueDate: i.production_jobs.due_date ?? null,
+                        priority: i.production_jobs.priority ?? 'normal',
+                    }));
+            }
+        }
+    }
+
+    // Lightweight summary for chip badges.
+    const counts: ArtworkDashboardData['counts'] = {
+        all: 0,
+        awaiting_start: ghostRows.length,
+        in_progress: 0,
+        awaiting_approval: 0,
+        flagged: 0,
+        completed: 0,
+        orphans: 0,
+    };
+
+    const { data: allJobsForCounts } = await supabase
+        .from('artwork_jobs')
+        .select(
+            'id, status, is_orphan, artwork_approvals(status), artwork_components(dimension_flag)'
+        );
+
+    (allJobsForCounts ?? []).forEach((row: any) => {
+        counts.all += 1;
+        if (row.is_orphan) counts.orphans += 1;
+        if (row.status === 'completed') counts.completed += 1;
+        else counts.in_progress += 1;
+        const hasPending = (row.artwork_approvals ?? []).some(
+            (a: any) => a.status === 'pending'
+        );
+        if (hasPending) counts.awaiting_approval += 1;
+        const flagged = (row.artwork_components ?? []).some(
+            (c: any) => c.dimension_flag === 'out_of_tolerance'
+        );
+        if (flagged) counts.flagged += 1;
+    });
+    counts.all += ghostRows.length;
+
+    return { jobs, ghostRows, counts };
 }
 
 /**
