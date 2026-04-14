@@ -1,5 +1,5 @@
 import { requireAdmin } from '@/lib/auth';
-import { getArtworkJob } from '@/lib/artwork/actions';
+import { getArtworkJob, getArtworkJobLineage } from '@/lib/artwork/actions';
 import { getProductionStages } from '@/lib/production/queries';
 import { createServerClient } from '@/lib/supabase-server';
 import { notFound } from 'next/navigation';
@@ -32,10 +32,11 @@ export default async function ArtworkJobDetailPage({
     await requireAdmin();
 
     const { id } = await params;
-    const [job, approval, stages] = await Promise.all([
+    const [job, approval, stages, lineage] = await Promise.all([
         getArtworkJob(id),
         getApprovalForJob(id),
         getProductionStages(),
+        getArtworkJobLineage(id),
     ]);
 
     if (!job) {
@@ -64,6 +65,36 @@ export default async function ArtworkJobDetailPage({
                 <ChevronLeft size={16} />
                 back to artwork jobs
             </Link>
+
+            {lineage && (lineage.quoteNumber || lineage.productionJobNumber) && (
+                <nav className="text-xs text-neutral-500 mb-3 flex items-center gap-2 flex-wrap">
+                    {lineage.quoteNumber && (
+                        <>
+                            <span>quote</span>
+                            <Link
+                                href={`/admin/quotes/${lineage.quoteId}`}
+                                className="font-mono text-neutral-700 hover:underline"
+                            >
+                                {lineage.quoteNumber}
+                            </Link>
+                            <span className="text-neutral-400">→</span>
+                        </>
+                    )}
+                    {lineage.productionJobNumber && (
+                        <>
+                            <span>production</span>
+                            <Link
+                                href={`/admin/jobs/${lineage.productionJobId}`}
+                                className="font-mono text-neutral-700 hover:underline"
+                            >
+                                {lineage.productionJobNumber}
+                            </Link>
+                            <span className="text-neutral-400">→</span>
+                        </>
+                    )}
+                    <span className="font-mono text-neutral-700">artwork</span>
+                </nav>
+            )}
 
             <PageHeader
                 title={job.job_name}
