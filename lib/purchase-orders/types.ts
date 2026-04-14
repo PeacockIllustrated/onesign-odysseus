@@ -1,3 +1,45 @@
+import { z } from 'zod';
+
+// =============================================================================
+// INPUT SCHEMAS (server-action validation)
+// =============================================================================
+
+export const CreatePoInputSchema = z.object({
+    org_id: z.string().uuid(),
+    supplier_name: z.string().min(1, 'supplier name is required').max(200),
+    supplier_email: z.string().email().max(200).optional().or(z.literal('')),
+    description: z.string().min(1, 'description is required').max(2000),
+    required_by_date: z.string().max(40).optional(),
+    quote_id: z.string().uuid().optional(),
+    production_job_id: z.string().uuid().optional(),
+});
+
+export const UpdatePoInputSchema = z.object({
+    id: z.string().uuid(),
+    supplier_name: z.string().min(1).max(200).optional(),
+    supplier_email: z.string().email().max(200).optional().or(z.literal('')),
+    supplier_reference: z.string().max(120).optional(),
+    description: z.string().min(1).max(2000).optional(),
+    required_by_date: z.string().max(40).optional(),
+    notes_internal: z.string().max(4000).optional(),
+    notes_supplier: z.string().max(4000).optional(),
+});
+
+export const CreatePoItemInputSchema = z.object({
+    po_id: z.string().uuid(),
+    description: z.string().min(1, 'description is required').max(1000),
+    quantity: z.number().positive('quantity must be positive'),
+    unit_cost_pence: z.number().int().min(0, 'unit cost must be >= 0'),
+});
+
+export const UpdatePoItemInputSchema = z.object({
+    id: z.string().uuid(),
+    po_id: z.string().uuid(),
+    description: z.string().min(1).max(1000).optional(),
+    quantity: z.number().positive().optional(),
+    unit_cost_pence: z.number().int().min(0).optional(),
+});
+
 export type PoStatus = 'draft' | 'sent' | 'acknowledged' | 'completed' | 'cancelled';
 
 export interface PurchaseOrder {

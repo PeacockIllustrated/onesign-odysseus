@@ -14,6 +14,12 @@ import type {
     PurchaseOrder,
     PoWithItems,
 } from './types';
+import {
+    CreatePoInputSchema,
+    UpdatePoInputSchema,
+    CreatePoItemInputSchema,
+    UpdatePoItemInputSchema,
+} from './types';
 
 // Thin wrappers for client components
 export async function getPoListAction(filters?: {
@@ -46,18 +52,24 @@ export async function createPoAction(
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
 
+    const validation = CreatePoInputSchema.safeParse(input);
+    if (!validation.success) {
+        return { error: validation.error.issues[0].message };
+    }
+    const parsed = validation.data;
+
     const supabase = await createServerClient();
 
     const { data, error } = await supabase
         .from('purchase_orders')
         .insert({
-            org_id: input.org_id,
-            supplier_name: input.supplier_name,
-            supplier_email: input.supplier_email || null,
-            description: input.description,
-            required_by_date: input.required_by_date || null,
-            quote_id: input.quote_id || null,
-            production_job_id: input.production_job_id || null,
+            org_id: parsed.org_id,
+            supplier_name: parsed.supplier_name,
+            supplier_email: parsed.supplier_email || null,
+            description: parsed.description,
+            required_by_date: parsed.required_by_date || null,
+            quote_id: parsed.quote_id || null,
+            production_job_id: parsed.production_job_id || null,
             status: 'draft',
             created_by: user.id,
         })
@@ -79,27 +91,28 @@ export async function updatePoAction(
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
 
+    const validation = UpdatePoInputSchema.safeParse(input);
+    if (!validation.success) {
+        return { error: validation.error.issues[0].message };
+    }
+    const parsed = validation.data;
+
     const supabase = await createServerClient();
 
-    const { error } = await supabase
-        .from('purchase_orders')
-        .update({
-            supplier_name: input.supplier_name,
-            supplier_email: input.supplier_email,
-            supplier_reference: input.supplier_reference,
-            description: input.description,
-            required_by_date: input.required_by_date,
-            notes_internal: input.notes_internal,
-            notes_supplier: input.notes_supplier,
-        })
-        .eq('id', input.id);
+    const { id, ...fields } = parsed;
+    const updates: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(fields)) {
+        if (v !== undefined) updates[k] = v;
+    }
+
+    const { error } = await supabase.from('purchase_orders').update(updates).eq('id', id);
 
     if (error) {
         console.error('Error updating PO:', error);
         return { error: error.message };
     }
 
-    revalidatePath(`/admin/purchase-orders/${input.id}`);
+    revalidatePath(`/admin/purchase-orders/${id}`);
     revalidatePath('/admin/purchase-orders');
     return { success: true };
 }
@@ -146,16 +159,22 @@ export async function addPoItemAction(
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
 
+    const validation = CreatePoItemInputSchema.safeParse(input);
+    if (!validation.success) {
+        return { error: validation.error.issues[0].message };
+    }
+    const parsed = validation.data;
+
     const supabase = await createServerClient();
-    const lineTotal = calcLineTotal(input.quantity, input.unit_cost_pence);
+    const lineTotal = calcLineTotal(parsed.quantity, parsed.unit_cost_pence);
 
     const { data, error } = await supabase
         .from('po_items')
         .insert({
-            po_id: input.po_id,
-            description: input.description,
-            quantity: input.quantity,
-            unit_cost_pence: input.unit_cost_pence,
+            po_id: parsed.po_id,
+            description: parsed.description,
+            quantity: parsed.quantity,
+            unit_cost_pence: parsed.unit_cost_pence,
             line_total_pence: lineTotal,
         })
         .select('id')
@@ -166,8 +185,8 @@ export async function addPoItemAction(
         return { error: error.message };
     }
 
-    await recalcPoTotal(supabase, input.po_id);
-    revalidatePath(`/admin/purchase-orders/${input.po_id}`);
+    await recalcPoTotal(supabase, parsed.po_id);
+    revalidatePath(`/admin/purchase-orders/${parsed.po_id}`);
     return { id: data.id };
 }
 
@@ -177,37 +196,45 @@ export async function updatePoItemAction(
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
 
+    const validation = UpdatePoItemInputSchema.safeParse(input);
+    if (!validation.success) {
+        return { error: validation.error.issues[0].message };
+    }
+    const parsed = validation.data;
+
     const supabase = await createServerClient();
 
     const { data: current, error: fetchError } = await supabase
         .from('po_items')
         .select('quantity, unit_cost_pence')
-        .eq('id', input.id)
+        .eq('id', parsed.id)
         .single();
 
     if (fetchError || !current) return { error: 'Item not found' };
 
-    const qty = input.quantity ?? current.quantity;
-    const unitCost = input.unit_cost_pence ?? current.unit_cost_pence;
+    const qty = parsed.quantity ?? current.quantity;
+    const unitCost = parsed.unit_cost_pence ?? current.unit_cost_pence;
     const lineTotal = calcLineTotal(qty, unitCost);
+
+    const updates: Record<string, unknown> = {
+        quantity: qty,
+        unit_cost_pence: unitCost,
+        line_total_pence: lineTotal,
+    };
+    if (parsed.description !== undefined) updates.description = parsed.description;
 
     const { error } = await supabase
         .from('po_items')
-        .update({
-            description: input.description,
-            quantity: qty,
-            unit_cost_pence: unitCost,
-            line_total_pence: lineTotal,
-        })
-        .eq('id', input.id);
+        .update(updates)
+        .eq('id', parsed.id);
 
     if (error) {
         console.error('Error updating PO item:', error);
         return { error: error.message };
     }
 
-    await recalcPoTotal(supabase, input.po_id);
-    revalidatePath(`/admin/purchase-orders/${input.po_id}`);
+    await recalcPoTotal(supabase, parsed.po_id);
+    revalidatePath(`/admin/purchase-orders/${parsed.po_id}`);
     return { success: true };
 }
 
