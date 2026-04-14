@@ -23,7 +23,26 @@
       "Bash(grep -n \"OneSign\" /c/Users/peaco/Documents/onesign-growth/app/app/\\\\\\(print\\\\\\)/admin/artwork/[id]/print/page.tsx)",
       "Bash(head -50 '/c/Users/peaco/Documents/onesign-growth/app/app/\\(print\\)/admin/quotes/[id]/print/page.tsx')",
       "Bash(ls C:/Users/peaco/Documents/onesign-portal/app/app/\\\\\\(portal\\\\\\)/)",
-      "Bash(ls C:/Users/peaco/Documents/onesign-portal/app/app/\\\\\\(portal\\\\\\)/admin/)"
+      "Bash(ls C:/Users/peaco/Documents/onesign-portal/app/app/\\\\\\(portal\\\\\\)/admin/)",
+      "Bash(npm test:*)",
+      "Bash(npx vitest:*)",
+      "Bash(ls -la \"C:/Users/peaco/Documents/onesign-portal/app/\\(portal\\)/admin/invoices/\")",
+      "Bash(ls \"C:/Users/peaco/Documents/onesign-portal/app/\\(portal\\)/admin/\")",
+      "Bash(ls -la \"C:/Users/peaco/Documents/onesign-portal/app/\\(portal\\)/admin/invoices/[id]/\")",
+      "Bash(echo \"EXIT_CODE: $?\")",
+      "Bash(find \"/c/Users/peaco/Documents/onesign-portal/app/\\(portal\\)/admin\" -maxdepth 2 -name \"page.tsx\")",
+      "Bash(find \"/c/Users/peaco/Documents/onesign-portal/app\" -maxdepth 3 -type d -path \"*/\\(portal\\)/*\")",
+      "Bash(find \"/c/Users/peaco/Documents/onesign-portal/app/\\(print\\)\" -type f \\\\\\( -name \"*.tsx\" -o -name \"*.ts\" \\\\\\))",
+      "Bash(find \"/c/Users/peaco/Documents/onesign-portal/app/\\(print\\)\" -type d)",
+      "Bash(xargs -I {} basename \"{}\")",
+      "Bash(find \"/c/Users/peaco/Documents/onesign-portal/app/\\(portal\\)\" -maxdepth 1 -type d)",
+      "Bash(ls \"C:/Users/peaco/Documents/onesign-portal/app/\\(portal\\)/admin/clients\")",
+      "Bash(ls -la \"C:/Users/peaco/Documents/onesign-portal/app/\\(portal\\)/admin/deliveries/\")",
+      "Bash(ls \"C:/Users/peaco/Documents/onesign-portal/app/\\(print\\)/admin/\")",
+      "Bash(ls \"C:/Users/peaco/Documents/onesign-portal/app/\\(print\\)/admin/deliveries/\")",
+      "Bash(ls -la \"C:/Users/peaco/Documents/onesign-portal/app/\\(portal\\)/admin/deliveries/[id]/\")",
+      "Bash(find /c/Users/peaco/Documents/onesign-portal/app -type f \\\\\\(-name *.tsx -o -name *.ts -o -name *.jsx -o -name *.js \\\\\\))",
+      "Bash(grep -E \"\\\\.tsx?$\")"
     ]
   }
 }

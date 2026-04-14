@@ -91,7 +91,7 @@ export default async function InvoicePrintPage({ params }: PageProps) {
             {/* Header */}
             <div className="header">
                 <div>
-                    <img src="/logo-black.svg" alt="Onesign & Digital" style={{ height: '22px', width: 'auto' }} />
+                    <img src="/Odysseus-Logo-Black.svg" alt="Onesign & Digital" style={{ height: '22px', width: 'auto' }} />
                 </div>
                 <div style={{ textAlign: 'right' }}>
                     <div className="inv-badge">Invoice</div>

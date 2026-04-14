@@ -347,7 +347,7 @@ export default async function QuotePrintPage({ params }: PageProps) {
             {/* Header */}
             <div className="header">
                 <div className="logo">
-                    <img src="/logo-black.svg" alt="OneSign" />
+                    <img src="/Odysseus-Logo-Black.svg" alt="OneSign" />
                 </div>
                 <div className="quote-info">
                     <div className="quote-number">{quoteData.quote_number}</div>

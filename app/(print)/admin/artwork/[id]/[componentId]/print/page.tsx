@@ -335,7 +335,7 @@ export default async function ArtworkComponentVisualPrintPage({
                 {/* Header */}
                 <div className="vp-header">
                     <div className="vp-logo">
-                        <img src="/logo-black.svg" alt="OneSign" />
+                        <img src="/Odysseus-Logo-Black.svg" alt="OneSign" />
                     </div>
                     <div className="vp-header-right">
                         {job.job_reference}

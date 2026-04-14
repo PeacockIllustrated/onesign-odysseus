@@ -1,10 +1,10 @@
-# CLAUDE.md — Onesign Portal
+# CLAUDE.md — Onesign Odysseus
 
 ## What this project is
 
-Onesign Portal is the internal production management platform for **Onesign & Digital**, a signage and digital products agency based in Team Valley, Gateshead. It replaces Clarity Go (a third-party production/workflow SaaS at ~£55/user/month) with a bespoke, Onesign-owned system.
+Onesign Odysseus is the internal production management platform for **Onesign & Digital**, a signage and digital products agency based in Team Valley, Gateshead. It replaces Clarity Go (a third-party production/workflow SaaS at ~£55/user/month) with a bespoke, Onesign-owned system.
 
-This codebase was cloned from `onesign-growth`, which started as a marketing lead capture wizard and evolved into a company portal with a quoter engine and artwork compliance workflow. The project has been deliberately forked and renamed to `onesign-portal` to reflect its actual purpose. The old `onesign-growth` repo is archived as a reference.
+This codebase was cloned from `onesign-growth`, which started as a marketing lead capture wizard and evolved into a company portal with a quoter engine and artwork compliance workflow. The project was subsequently forked and renamed — first to `onesign-portal`, then rebranded to `onesign-odysseus`. The old `onesign-growth` repo is archived as a reference.
 
 ## Brand
 
@@ -32,7 +32,7 @@ This codebase was cloned from `onesign-growth`, which started as a marketing lea
 ## Project structure (post-cleanup target)
 
 ```
-onesign-portal/
+onesign-odysseus/
 ├── app/
 │   ├── (portal)/              # ← Main authenticated app (was app/app/(portal))
 │   │   ├── admin/             # Super-admin routes
@@ -92,7 +92,7 @@ onesign-portal/
 │   └── fonts/
 ├── CLAUDE.md                  # This file
 ├── ARCHITECTURE.md            # ★ NEW — Written during cleanup sprint
-├── package.json               # name: "onesign-portal"
+├── package.json               # name: "onesign-odysseus"
 └── next.config.ts
 ```
 
@@ -135,7 +135,7 @@ This codebase will eventually consolidate the separate client portals (persimmon
 HubSpot handles CRM/sales. Sage 50c handles accounting. This platform handles production, quoting, artwork, and delivery. Don't rebuild what external tools do better.
 
 ### 5. Booking OS is deprecated
-The `/admin/booking` module (287K of code) was experimental and is not part of Onesign Portal. It should be removed during the cleanup sprint.
+The `/admin/booking` module (287K of code) was experimental and is not part of Onesign Odysseus. It should be removed during the cleanup sprint.
 
 ## What was removed from onesign-growth
 
@@ -197,6 +197,6 @@ Features left empty (skip): 20
 
 ## GitHub
 
-- **Repo:** `PeacockIllustrated/onesign-portal`
+- **Repo:** `PeacockIllustrated/onesign-odysseus`
 - **Branch:** `master`
 - **Original repo:** `PeacockIllustrated/onesign-growth` (archived reference)

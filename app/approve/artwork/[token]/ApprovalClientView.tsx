@@ -136,7 +136,7 @@ export default function ApprovalClientView({ data, token }: Props) {
             {/* Header */}
             <div style={{ textAlign: 'center', marginBottom: '32px' }}>
                 <div style={{ marginBottom: '4px', display: 'flex', justifyContent: 'center' }}>
-                    <img src="/logo-black.svg" alt="OneSign" style={{ height: '18px', width: 'auto' }} />
+                    <img src="/Odysseus-Logo-Black.svg" alt="Onesign Odysseus" style={{ height: '36px', width: 'auto' }} />
                 </div>
                 <div style={{ fontSize: '10px', color: '#999', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}>
                     artwork approval

@@ -1,4 +1,4 @@
-# Architecture — Onesign Portal
+# Architecture — Onesign Odysseus
 
 ## What this is
 

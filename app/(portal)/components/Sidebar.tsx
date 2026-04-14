@@ -193,12 +193,12 @@ export function Sidebar({ isAdmin }: SidebarProps) {
                 `}
             >
                 {/* Logo + collapse toggle */}
-                <div className="h-14 flex items-center justify-between px-4 border-b border-neutral-100">
+                <div className="h-16 flex items-center justify-between px-4 border-b border-neutral-100">
                     <Link href={homeHref} className="flex items-center">
                         {collapsed ? (
-                            <img src="/onesign-icon.svg" alt="OneSign" className="h-6" />
+                            <img src="/Odysseus-Icon_Black.svg" alt="Onesign Odysseus" className="h-8 w-auto" />
                         ) : (
-                            <img src="/logo-black.svg" alt="OneSign" className="h-5" />
+                            <img src="/Odysseus-Logo-Black.svg" alt="Onesign Odysseus" className="h-9 w-auto" />
                         )}
                     </Link>
                     <button
@@ -225,9 +225,9 @@ export function Sidebar({ isAdmin }: SidebarProps) {
                     {/* Drawer */}
                     <aside className="relative w-72 max-w-[85vw] h-full bg-white shadow-xl flex flex-col animate-slide-in">
                         {/* Logo + close */}
-                        <div className="h-14 flex items-center justify-between px-4 border-b border-neutral-100">
+                        <div className="h-16 flex items-center justify-between px-4 border-b border-neutral-100">
                             <Link href={homeHref} className="flex items-center" onClick={closeMobile}>
-                                <img src="/logo-black.svg" alt="OneSign" className="h-5" />
+                                <img src="/Odysseus-Logo-Black.svg" alt="Onesign Odysseus" className="h-9 w-auto" />
                             </Link>
                             <button
                                 onClick={closeMobile}

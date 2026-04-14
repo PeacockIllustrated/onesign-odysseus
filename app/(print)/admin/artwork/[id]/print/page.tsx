@@ -570,7 +570,7 @@ export default async function ArtworkVisualPackPrintPage({
                 <div className="cover-page">
                     <div className="cover-top">
                         <div className="vp-logo">
-                            <img src="/logo-black.svg" alt="OneSign" />
+                            <img src="/Odysseus-Logo-Black.svg" alt="OneSign" />
                         </div>
                         <div className="vp-header-right">
                             artwork approval pack
@@ -699,7 +699,7 @@ export default async function ArtworkVisualPackPrintPage({
                             {/* Header */}
                             <div className="vp-header">
                                 <div className="vp-logo">
-                                    <img src="/logo-black.svg" alt="OneSign" />
+                                    <img src="/Odysseus-Logo-Black.svg" alt="OneSign" />
                                 </div>
                                 <div className="vp-header-right">
                                     sheet {sheetNumber} of {printableComponents.length}

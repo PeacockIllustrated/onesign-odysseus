@@ -177,7 +177,7 @@ export function PodClientView({ token, data }: Props) {
                 {/* Header */}
                 <div style={{ textAlign: 'center', marginBottom: '24px' }}>
                     <div style={{ marginBottom: '4px', display: 'flex', justifyContent: 'center' }}>
-                        <img src="/logo-black.svg" alt="Onesign" style={{ height: '18px', width: 'auto' }} />
+                        <img src="/Odysseus-Logo-Black.svg" alt="Onesign Odysseus" style={{ height: '36px', width: 'auto' }} />
                     </div>
                     <div style={{
                         fontSize: '10px',
