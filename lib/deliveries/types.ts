@@ -72,11 +72,37 @@ export interface UpdateDeliveryInput {
     notes_driver?: string;
 }
 
+// =============================================================================
+// INPUT SCHEMAS (server-action validation)
+// =============================================================================
+
+export const CreateDeliveryInputSchema = z.object({
+    production_job_id: z.string().uuid(),
+    site_id: z.string().uuid().optional(),
+    contact_id: z.string().uuid().optional(),
+    driver_name: z.string().max(120).optional(),
+    driver_phone: z.string().max(40).optional(),
+    scheduled_date: z.string().min(1, 'scheduled date is required').max(40),
+    notes_internal: z.string().max(4000).optional(),
+    notes_driver: z.string().max(4000).optional(),
+});
+
+export const UpdateDeliveryInputSchema = z.object({
+    id: z.string().uuid(),
+    site_id: z.string().uuid().optional(),
+    contact_id: z.string().uuid().optional(),
+    driver_name: z.string().max(120).optional(),
+    driver_phone: z.string().max(40).optional(),
+    scheduled_date: z.string().max(40).optional(),
+    notes_internal: z.string().max(4000).optional(),
+    notes_driver: z.string().max(4000).optional(),
+});
+
 // Public POD submission
 export const SubmitPodInputSchema = z.object({
-    signed_by: z.string().min(1, 'Name is required'),
-    signature_data: z.string().min(1, 'Signature is required'),
-    notes: z.string().optional(),
+    signed_by: z.string().min(1, 'Name is required').max(200),
+    signature_data: z.string().min(1, 'Signature is required').max(1_000_000),
+    notes: z.string().max(4000).optional(),
 });
 export type SubmitPodInput = z.infer<typeof SubmitPodInputSchema>;
 

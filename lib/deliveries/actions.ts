@@ -8,6 +8,8 @@ import { canTransitionTo } from './utils';
 import { getDeliveries, getDeliveryWithItems, getDeliveryForJob } from './queries';
 import {
     SubmitPodInputSchema,
+    CreateDeliveryInputSchema,
+    UpdateDeliveryInputSchema,
     type Delivery,
     type DeliveryWithItems,
     type DeliveryStatus,
@@ -88,41 +90,44 @@ export async function createDeliveryFromJob(
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
 
+    const validation = CreateDeliveryInputSchema.safeParse(input);
+    if (!validation.success) {
+        return { error: validation.error.issues[0].message };
+    }
+    const parsed = validation.data;
+
     const supabase = createAdminClient();
 
-    // 1. Fetch production job
     const { data: job, error: jobError } = await supabase
         .from('production_jobs')
         .select('id, org_id, site_id, contact_id, client_name, job_number')
-        .eq('id', input.production_job_id)
+        .eq('id', parsed.production_job_id)
         .single();
 
     if (jobError || !job) return { error: 'Job not found' };
 
-    // 2. Check no existing non-failed delivery
     const { data: existing } = await supabase
         .from('deliveries')
         .select('id')
-        .eq('production_job_id', input.production_job_id)
+        .eq('production_job_id', parsed.production_job_id)
         .neq('status', 'failed')
         .maybeSingle();
 
     if (existing) return { error: 'A delivery already exists for this job' };
 
-    // 3. Insert delivery
     const { data: newDelivery, error: insertError } = await supabase
         .from('deliveries')
         .insert({
             org_id: job.org_id,
-            production_job_id: input.production_job_id,
-            site_id: input.site_id ?? job.site_id ?? null,
-            contact_id: input.contact_id ?? job.contact_id ?? null,
+            production_job_id: parsed.production_job_id,
+            site_id: parsed.site_id ?? job.site_id ?? null,
+            contact_id: parsed.contact_id ?? job.contact_id ?? null,
             status: 'scheduled',
-            driver_name: input.driver_name ?? null,
-            driver_phone: input.driver_phone ?? null,
-            scheduled_date: input.scheduled_date,
-            notes_internal: input.notes_internal ?? null,
-            notes_driver: input.notes_driver ?? null,
+            driver_name: parsed.driver_name ?? null,
+            driver_phone: parsed.driver_phone ?? null,
+            scheduled_date: parsed.scheduled_date,
+            notes_internal: parsed.notes_internal ?? null,
+            notes_driver: parsed.notes_driver ?? null,
             created_by: user.id,
         })
         .select('id, delivery_number')
@@ -175,13 +180,18 @@ export async function updateDeliveryAction(
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
 
+    const validation = UpdateDeliveryInputSchema.safeParse(input);
+    if (!validation.success) {
+        return { error: validation.error.issues[0].message };
+    }
+    const parsed = validation.data;
+
     const supabase = createAdminClient();
 
-    // Only allow edits on scheduled deliveries
     const { data: current, error: fetchError } = await supabase
         .from('deliveries')
         .select('status')
-        .eq('id', input.id)
+        .eq('id', parsed.id)
         .single();
 
     if (fetchError || !current) return { error: 'Delivery not found' };
@@ -189,25 +199,20 @@ export async function updateDeliveryAction(
         return { error: 'Only scheduled deliveries can be edited' };
     }
 
-    const { error } = await supabase
-        .from('deliveries')
-        .update({
-            site_id: input.site_id,
-            contact_id: input.contact_id,
-            driver_name: input.driver_name,
-            driver_phone: input.driver_phone,
-            scheduled_date: input.scheduled_date,
-            notes_internal: input.notes_internal,
-            notes_driver: input.notes_driver,
-        })
-        .eq('id', input.id);
+    const { id, ...fields } = parsed;
+    const updates: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(fields)) {
+        if (v !== undefined) updates[k] = v;
+    }
+
+    const { error } = await supabase.from('deliveries').update(updates).eq('id', id);
 
     if (error) {
         console.error('Error updating delivery:', error);
         return { error: error.message };
     }
 
-    revalidatePath(`/admin/deliveries/${input.id}`);
+    revalidatePath(`/admin/deliveries/${id}`);
     revalidatePath('/admin/deliveries');
     return { success: true };
 }
