@@ -1,3 +1,42 @@
+import { z } from 'zod';
+
+// =============================================================================
+// INPUT SCHEMAS (server-action validation)
+// =============================================================================
+
+export const CreateInvoiceInputSchema = z.object({
+    quote_id: z.string().uuid(),
+    org_id: z.string().uuid(),
+});
+
+export const UpdateInvoiceInputSchema = z.object({
+    id: z.string().uuid(),
+    customer_name: z.string().min(1).max(200).optional(),
+    customer_email: z.string().email().max(200).optional().or(z.literal('')),
+    customer_phone: z.string().max(40).optional(),
+    customer_reference: z.string().max(120).optional(),
+    project_name: z.string().max(200).optional(),
+    payment_terms_days: z.number().int().min(0).max(365).optional(),
+    due_date: z.string().max(40).optional(),
+    notes_internal: z.string().max(4000).optional(),
+    notes_customer: z.string().max(4000).optional(),
+});
+
+export const CreateInvoiceItemInputSchema = z.object({
+    invoice_id: z.string().uuid(),
+    description: z.string().min(1, 'description is required').max(1000),
+    quantity: z.number().positive('quantity must be positive'),
+    unit_price_pence: z.number().int().min(0, 'unit price must be >= 0'),
+});
+
+export const UpdateInvoiceItemInputSchema = z.object({
+    id: z.string().uuid(),
+    invoice_id: z.string().uuid(),
+    description: z.string().min(1).max(1000).optional(),
+    quantity: z.number().positive().optional(),
+    unit_price_pence: z.number().int().min(0).optional(),
+});
+
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled';
 
 export interface Invoice {

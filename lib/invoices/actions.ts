@@ -14,6 +14,12 @@ import type {
     Invoice,
     InvoiceWithItems,
 } from './types';
+import {
+    CreateInvoiceInputSchema,
+    UpdateInvoiceInputSchema,
+    CreateInvoiceItemInputSchema,
+    UpdateInvoiceItemInputSchema,
+} from './types';
 
 // ---------------------------------------------------------------------------
 // Thin wrappers for client components
@@ -137,8 +143,13 @@ export async function createInvoiceFromQuote(
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
 
+    const validation = CreateInvoiceInputSchema.safeParse(input);
+    if (!validation.success) {
+        return { error: validation.error.issues[0].message };
+    }
+    const { quote_id: quoteId, org_id: orgId } = validation.data;
+
     const supabase = await createServerClient();
-    const { quote_id: quoteId, org_id: orgId } = input;
 
     // 1. Fetch quote and verify status
     const { data: quote, error: quoteError } = await supabase
@@ -301,39 +312,37 @@ export async function updateInvoiceAction(
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
 
+    const validation = UpdateInvoiceInputSchema.safeParse(input);
+    if (!validation.success) {
+        return { error: validation.error.issues[0].message };
+    }
+    const parsed = validation.data;
+
     const supabase = await createServerClient();
 
-    // Only allow edits on draft invoices
     const { data: current, error: fetchError } = await supabase
         .from('invoices')
         .select('status')
-        .eq('id', input.id)
+        .eq('id', parsed.id)
         .single();
 
     if (fetchError || !current) return { error: 'Invoice not found' };
     if (current.status !== 'draft') return { error: 'Only draft invoices can be edited' };
 
-    const { error } = await supabase
-        .from('invoices')
-        .update({
-            customer_name: input.customer_name,
-            customer_email: input.customer_email,
-            customer_phone: input.customer_phone,
-            customer_reference: input.customer_reference,
-            project_name: input.project_name,
-            payment_terms_days: input.payment_terms_days,
-            due_date: input.due_date,
-            notes_internal: input.notes_internal,
-            notes_customer: input.notes_customer,
-        })
-        .eq('id', input.id);
+    const { id, ...fields } = parsed;
+    const updates: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(fields)) {
+        if (v !== undefined) updates[k] = v;
+    }
+
+    const { error } = await supabase.from('invoices').update(updates).eq('id', id);
 
     if (error) {
         console.error('Error updating invoice:', error);
         return { error: error.message };
     }
 
-    revalidatePath(`/admin/invoices/${input.id}`);
+    revalidatePath(`/admin/invoices/${id}`);
     revalidatePath('/admin/invoices');
     return { success: true };
 }
@@ -395,27 +404,32 @@ export async function addInvoiceItemAction(
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
 
+    const validation = CreateInvoiceItemInputSchema.safeParse(input);
+    if (!validation.success) {
+        return { error: validation.error.issues[0].message };
+    }
+    const parsed = validation.data;
+
     const supabase = await createServerClient();
 
-    // Only allow on draft invoices
     const { data: inv, error: invError } = await supabase
         .from('invoices')
         .select('status')
-        .eq('id', input.invoice_id)
+        .eq('id', parsed.invoice_id)
         .single();
 
     if (invError || !inv) return { error: 'Invoice not found' };
     if (inv.status !== 'draft') return { error: 'Only draft invoices can be edited' };
 
-    const lineTotal = calcLineTotal(input.quantity, input.unit_price_pence);
+    const lineTotal = calcLineTotal(parsed.quantity, parsed.unit_price_pence);
 
     const { data, error } = await supabase
         .from('invoice_items')
         .insert({
-            invoice_id: input.invoice_id,
-            description: input.description,
-            quantity: input.quantity,
-            unit_price_pence: input.unit_price_pence,
+            invoice_id: parsed.invoice_id,
+            description: parsed.description,
+            quantity: parsed.quantity,
+            unit_price_pence: parsed.unit_price_pence,
             line_total_pence: lineTotal,
         })
         .select('id')
@@ -426,8 +440,8 @@ export async function addInvoiceItemAction(
         return { error: error.message };
     }
 
-    await recalcInvoiceTotals(supabase, input.invoice_id);
-    revalidatePath(`/admin/invoices/${input.invoice_id}`);
+    await recalcInvoiceTotals(supabase, parsed.invoice_id);
+    revalidatePath(`/admin/invoices/${parsed.invoice_id}`);
     return { id: data.id };
 }
 
@@ -437,13 +451,18 @@ export async function updateInvoiceItemAction(
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
 
+    const validation = UpdateInvoiceItemInputSchema.safeParse(input);
+    if (!validation.success) {
+        return { error: validation.error.issues[0].message };
+    }
+    const parsed = validation.data;
+
     const supabase = await createServerClient();
 
-    // Only allow on draft invoices
     const { data: inv, error: invError } = await supabase
         .from('invoices')
         .select('status')
-        .eq('id', input.invoice_id)
+        .eq('id', parsed.invoice_id)
         .single();
 
     if (invError || !inv) return { error: 'Invoice not found' };
@@ -452,32 +471,34 @@ export async function updateInvoiceItemAction(
     const { data: current, error: fetchError } = await supabase
         .from('invoice_items')
         .select('quantity, unit_price_pence')
-        .eq('id', input.id)
+        .eq('id', parsed.id)
         .single();
 
     if (fetchError || !current) return { error: 'Item not found' };
 
-    const qty = input.quantity ?? current.quantity;
-    const unitPrice = input.unit_price_pence ?? current.unit_price_pence;
+    const qty = parsed.quantity ?? current.quantity;
+    const unitPrice = parsed.unit_price_pence ?? current.unit_price_pence;
     const lineTotal = calcLineTotal(qty, unitPrice);
+
+    const updates: Record<string, unknown> = {
+        quantity: qty,
+        unit_price_pence: unitPrice,
+        line_total_pence: lineTotal,
+    };
+    if (parsed.description !== undefined) updates.description = parsed.description;
 
     const { error } = await supabase
         .from('invoice_items')
-        .update({
-            description: input.description,
-            quantity: qty,
-            unit_price_pence: unitPrice,
-            line_total_pence: lineTotal,
-        })
-        .eq('id', input.id);
+        .update(updates)
+        .eq('id', parsed.id);
 
     if (error) {
         console.error('Error updating invoice item:', error);
         return { error: error.message };
     }
 
-    await recalcInvoiceTotals(supabase, input.invoice_id);
-    revalidatePath(`/admin/invoices/${input.invoice_id}`);
+    await recalcInvoiceTotals(supabase, parsed.invoice_id);
+    revalidatePath(`/admin/invoices/${parsed.invoice_id}`);
     return { success: true };
 }
 
