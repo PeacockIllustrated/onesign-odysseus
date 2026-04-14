@@ -29,13 +29,18 @@ export function ReconcileRow({ jobId, jobReference, legacyName, orgs: initialOrg
 
     const submit = (action: 'link' | 'orphan') => {
         setError(null);
-        if (!selectedOrg) {
-            setError('pick an organisation first');
+        // Linking requires a client. Orphaning doesn't — reconciliation rows
+        // exist precisely because the client is unknown. If one IS selected
+        // we'll still record it alongside the orphan flag.
+        if (action === 'link' && !selectedOrg) {
+            setError('pick a client first');
             return;
         }
         startTransition(async () => {
-            const fn = action === 'link' ? linkJobToOrg : markJobAsOrphan;
-            const res = await fn(jobId, selectedOrg);
+            const res =
+                action === 'link'
+                    ? await linkJobToOrg(jobId, selectedOrg)
+                    : await markJobAsOrphan(jobId, selectedOrg || null);
             if ('error' in res) setError(res.error);
             else router.refresh();
         });
@@ -75,14 +80,19 @@ export function ReconcileRow({ jobId, jobReference, legacyName, orgs: initialOrg
                     className="btn-primary text-xs mr-2"
                     disabled={pending || !selectedOrg}
                     onClick={() => submit('link')}
+                    title="link this design to the selected client"
                 >
                     link
                 </button>
                 <button
                     className="btn-secondary text-xs"
-                    disabled={pending || !selectedOrg}
+                    disabled={pending}
                     onClick={() => submit('orphan')}
-                    title="mark as orphan (no production link)"
+                    title={
+                        selectedOrg
+                            ? 'mark orphan and attach to the selected client'
+                            : 'mark orphan with no client link'
+                    }
                 >
                     orphan
                 </button>

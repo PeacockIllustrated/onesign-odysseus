@@ -60,20 +60,36 @@ export async function linkJobToOrg(
     return { ok: true };
 }
 
+/**
+ * Mark a historic artwork job as an orphan.
+ *
+ * orgId is optional — reconciliation rows exist precisely because the client
+ * could not be identified, so forcing a pick would defeat the purpose. The DB
+ * CHECK (`is_orphan = true OR org_id IS NOT NULL`) permits fully-orphan rows.
+ *
+ * Behaviour:
+ *  - If orgId is a valid UUID, link the client AND mark orphan.
+ *  - If orgId is empty/missing, clear any stale org_id and mark orphan.
+ */
 export async function markJobAsOrphan(
     jobId: string,
-    orgId: string
+    orgId?: string | null
 ): Promise<{ ok: true } | { error: string }> {
     await requireAdmin();
     if (!UuidSchema.safeParse(jobId).success) return { error: 'invalid job id' };
-    if (!UuidSchema.safeParse(orgId).success) {
-        return { error: 'org must be selected even for orphan jobs' };
+
+    const hasOrg = typeof orgId === 'string' && orgId.length > 0;
+    if (hasOrg && !UuidSchema.safeParse(orgId).success) {
+        return { error: 'invalid org id' };
     }
 
     const supabase = await createServerClient();
     const { error } = await supabase
         .from('artwork_jobs')
-        .update({ org_id: orgId, is_orphan: true })
+        .update({
+            org_id: hasOrg ? orgId : null,
+            is_orphan: true,
+        })
         .eq('id', jobId);
 
     if (error) return { error: error.message };
