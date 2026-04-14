@@ -34,7 +34,7 @@ import {
     ArtworkDashboardFilter,
     ArtworkGhostRow,
 } from './types';
-import { checkDimensionTolerance } from './utils';
+import { checkDimensionTolerance, computeReleaseGaps } from './utils';
 import { advanceItemToNextRoutedStage } from '@/lib/production/actions';
 
 // =============================================================================
@@ -1128,6 +1128,18 @@ export async function getComponentStageDefaults(): Promise<ComponentStageDefault
  *
  * For standalone artwork jobs (no job_item_id), simply marks the job completed.
  */
+/**
+ * Complete the artwork stage for an artwork_job and advance its linked
+ * production job_item to the next routed stage.
+ *
+ * Sub-item driven (post-migration 039): iterates every sub-item across every
+ * component; builds stage_routing from the UNION of their target_stage_ids
+ * (ordered by production_stages.sort_order); blocks release if any sub-item
+ * lacks design sign-off, production sign-off, or a target department.
+ *
+ * Orphan artwork jobs (no linked job_item) short-circuit: just marked
+ * completed, no production advance.
+ */
 export async function completeArtworkAndAdvanceItem(
     artworkJobId: string
 ): Promise<{ success: boolean } | { error: string }> {
@@ -1138,10 +1150,9 @@ export async function completeArtworkAndAdvanceItem(
 
     const supabase = await createServerClient();
 
-    // Fetch the artwork job
     const { data: artworkJob, error: jobError } = await supabase
         .from('artwork_jobs')
-        .select('*')
+        .select('id, job_item_id')
         .eq('id', artworkJobId)
         .single();
 
@@ -1149,97 +1160,85 @@ export async function completeArtworkAndAdvanceItem(
         return { error: 'Artwork job not found' };
     }
 
-    // Standalone check: no linked production item — just mark completed
+    // Orphan / standalone — just mark completed.
     if (!artworkJob.job_item_id) {
         await supabase
             .from('artwork_jobs')
             .update({ status: 'completed' })
             .eq('id', artworkJobId);
-
         revalidatePath('/admin/artwork');
         return { success: true };
     }
 
-    // Fetch all components for this artwork job
+    // Fetch every sub-item across every component for this artwork job.
     const { data: components, error: compError } = await supabase
         .from('artwork_components')
-        .select('id, design_signed_off_at, target_stage_id')
+        .select(
+            `id, name,
+             sub_items:artwork_component_items(
+                label, name,
+                design_signed_off_at, production_signed_off_at, target_stage_id
+             )`
+        )
         .eq('job_id', artworkJobId);
 
     if (compError) {
         return { error: 'Failed to fetch artwork components' };
     }
-
-    // Validate: all components must have design signed off and a department assigned
-    const allValid = (components || []).every(
-        (c) => c.design_signed_off_at !== null && c.target_stage_id !== null
-    );
-    if (!allValid) {
-        return { error: 'All components must have design signed off and a department assigned' };
+    if (!components || components.length === 0) {
+        return { error: 'Artwork job has no components' };
     }
 
-    // Collect unique target stage IDs from components
-    const targetStageIds = [
-        ...new Set(
-            (components || [])
-                .map((c) => c.target_stage_id)
-                .filter((id): id is string => id !== null)
-        ),
-    ];
+    // Shape into the pure-function input and compute gaps.
+    const normalised = (components as any[]).map((c) => ({
+        name: c.name,
+        sub_items: (c.sub_items ?? []) as Array<{
+            label: string;
+            name: string | null;
+            design_signed_off_at: string | null;
+            production_signed_off_at: string | null;
+            target_stage_id: string | null;
+        }>,
+    }));
+    const { gaps, targetStageIds } = computeReleaseGaps(normalised);
+    if (gaps.length > 0) {
+        return { error: 'Cannot release: ' + gaps.join('; ') };
+    }
 
-    // Fetch target stages ordered by sort_order
-    const { data: targetStages } = await supabase
+    // Order departments by production_stages.sort_order; prepend order-book +
+    // artwork-approval; append goods-out.
+    const { data: allStages } = await supabase
         .from('production_stages')
-        .select('id, sort_order, slug')
-        .in('id', targetStageIds)
+        .select('id, slug, sort_order, org_id')
+        .is('org_id', null)
         .order('sort_order', { ascending: true });
 
-    // Fetch special stages: order-book, artwork-approval, goods-out
-    const [
-        { data: orderBookStage },
-        { data: artworkStage },
-        { data: goodsOutStage },
-    ] = await Promise.all([
-        supabase
-            .from('production_stages')
-            .select('id')
-            .eq('slug', 'order-book')
-            .is('org_id', null)
-            .single(),
-        supabase
-            .from('production_stages')
-            .select('id')
-            .eq('slug', 'artwork-approval')
-            .is('org_id', null)
-            .single(),
-        supabase
-            .from('production_stages')
-            .select('id')
-            .eq('slug', 'goods-out')
-            .is('org_id', null)
-            .single(),
-    ]);
+    if (!allStages) {
+        return { error: 'Could not load production stages' };
+    }
 
-    // Build new routing array
+    const orderBook = allStages.find((s: any) => s.slug === 'order-book');
+    const artworkStage = allStages.find((s: any) => s.slug === 'artwork-approval');
+    const goodsOut = allStages.find((s: any) => s.slug === 'goods-out');
+
+    const departmentIds = allStages
+        .filter((s: any) => targetStageIds.includes(s.id))
+        .filter(
+            (s: any) =>
+                s.slug !== 'order-book' &&
+                s.slug !== 'artwork-approval' &&
+                s.slug !== 'goods-out'
+        )
+        .map((s: any) => s.id);
+
     const newRouting: string[] = [];
-
-    // Start with Order Book + Artwork Approval (already visited)
-    if (orderBookStage) newRouting.push(orderBookStage.id);
+    if (orderBook) newRouting.push(orderBook.id);
     if (artworkStage) newRouting.push(artworkStage.id);
-
-    // Add assigned departments in sort_order
-    for (const stage of targetStages || []) {
-        if (!newRouting.includes(stage.id)) {
-            newRouting.push(stage.id);
-        }
+    for (const id of departmentIds) {
+        if (!newRouting.includes(id)) newRouting.push(id);
     }
+    if (goodsOut && !newRouting.includes(goodsOut.id)) newRouting.push(goodsOut.id);
 
-    // Always end with Goods Out
-    if (goodsOutStage && !newRouting.includes(goodsOutStage.id)) {
-        newRouting.push(goodsOutStage.id);
-    }
-
-    // Update the job_item's stage_routing
     const { error: routingError } = await supabase
         .from('job_items')
         .update({ stage_routing: newRouting })
@@ -1249,19 +1248,18 @@ export async function completeArtworkAndAdvanceItem(
         return { error: `Failed to update item routing: ${routingError.message}` };
     }
 
-    // Advance the item to the next routed stage
     const advanceResult = await advanceItemToNextRoutedStage(artworkJob.job_item_id);
     if ('error' in advanceResult) {
         return { error: `Routing updated but failed to advance item: ${advanceResult.error}` };
     }
 
-    // Mark the artwork job as completed
     await supabase
         .from('artwork_jobs')
         .update({ status: 'completed' })
         .eq('id', artworkJobId);
 
     revalidatePath('/admin/artwork');
+    revalidatePath(`/admin/artwork/${artworkJobId}`);
     revalidatePath('/admin/jobs');
     revalidatePath('/shop-floor');
     return { success: true };

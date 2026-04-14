@@ -7,7 +7,7 @@ import {
     UpdateSubItemInputSchema,
     SubItemMeasurementInputSchema,
 } from './types';
-import { nextItemLabel } from './utils';
+import { nextItemLabel, computeReleaseGaps } from './utils';
 
 const COMPONENT_UUID = '11111111-1111-4111-8111-111111111111';
 const STAGE_UUID = '22222222-2222-4222-8222-222222222222';
@@ -103,6 +103,92 @@ describe('SubItemMeasurementInputSchema', () => {
             measured_height_mm: 100,
         });
         expect(res.success).toBe(false);
+    });
+});
+
+describe('computeReleaseGaps', () => {
+    it('flags components with no sub-items', () => {
+        const { gaps } = computeReleaseGaps([
+            { name: 'Panel', sub_items: [] },
+        ]);
+        expect(gaps).toEqual(['"Panel" has no sub-items']);
+    });
+
+    it('flags missing sign-offs and routing with a precise reference', () => {
+        const { gaps } = computeReleaseGaps([
+            {
+                name: 'Panel',
+                sub_items: [
+                    {
+                        label: 'A',
+                        name: 'QUEEN BEE letters',
+                        design_signed_off_at: null,
+                        production_signed_off_at: null,
+                        target_stage_id: null,
+                    },
+                ],
+            },
+        ]);
+        expect(gaps).toContain(
+            'sub-item A (QUEEN BEE letters) of "Panel" — design not signed off'
+        );
+        expect(gaps).toContain(
+            'sub-item A (QUEEN BEE letters) of "Panel" — production not signed off'
+        );
+        expect(gaps).toContain(
+            'sub-item A (QUEEN BEE letters) of "Panel" — no target department'
+        );
+    });
+
+    it('returns empty gaps when every sub-item is signed off + routed', () => {
+        const { gaps, targetStageIds } = computeReleaseGaps([
+            {
+                name: 'Panel',
+                sub_items: [
+                    {
+                        label: 'A',
+                        name: 'Acrylic letters',
+                        design_signed_off_at: '2026-04-14T00:00:00Z',
+                        production_signed_off_at: '2026-04-14T00:00:00Z',
+                        target_stage_id: 'stage-cnc',
+                    },
+                    {
+                        label: 'B',
+                        name: 'Vinyl strapline',
+                        design_signed_off_at: '2026-04-14T00:00:00Z',
+                        production_signed_off_at: '2026-04-14T00:00:00Z',
+                        target_stage_id: 'stage-vinyl',
+                    },
+                ],
+            },
+        ]);
+        expect(gaps).toEqual([]);
+        expect(targetStageIds.sort()).toEqual(['stage-cnc', 'stage-vinyl']);
+    });
+
+    it('deduplicates target stage ids across sub-items', () => {
+        const { targetStageIds } = computeReleaseGaps([
+            {
+                name: 'Panel',
+                sub_items: [
+                    {
+                        label: 'A',
+                        name: null,
+                        design_signed_off_at: 't',
+                        production_signed_off_at: 't',
+                        target_stage_id: 'stage-x',
+                    },
+                    {
+                        label: 'B',
+                        name: null,
+                        design_signed_off_at: 't',
+                        production_signed_off_at: 't',
+                        target_stage_id: 'stage-x',
+                    },
+                ],
+            },
+        ]);
+        expect(targetStageIds).toEqual(['stage-x']);
     });
 });
 
