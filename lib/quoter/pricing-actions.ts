@@ -10,7 +10,44 @@
 import { createServerClient } from '@/lib/supabase-server';
 import { getUser } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
 import { getRateCardForPricingSet, assertRateCardComplete, RateCardError } from './rate-card';
+
+// =============================================================================
+// INPUT SCHEMAS (server-action validation)
+// =============================================================================
+
+const UpdatePricingSetSchema = z.object({
+    name: z.string().min(1).max(200).optional(),
+    effective_from: z.string().max(40).nullable().optional(),
+});
+
+const RateCardTableEnum = z.enum([
+    'panel_prices',
+    'panel_finishes',
+    'manufacturing_rates',
+    'illumination_profiles',
+    'transformers',
+    'opal_prices',
+    'consumables',
+    'letter_finish_rules',
+    'letter_price_table',
+]);
+
+/**
+ * Rate card rows have heterogeneous shapes across tables; we validate the
+ * *envelope* — each top-level value must be a primitive or null, no nested
+ * objects, no arrays, no functions. Schema enforcement at the column level
+ * is deferred to the database.
+ */
+const RateCardRowDataSchema = z
+    .record(
+        z.string().min(1).max(80),
+        z.union([z.string().max(2000), z.number(), z.boolean(), z.null()])
+    )
+    .refine((obj) => Object.keys(obj).length > 0 && Object.keys(obj).length <= 50, {
+        message: 'rate card row must have between 1 and 50 fields',
+    });
 
 // =============================================================================
 // TYPES
@@ -233,11 +270,19 @@ export async function updatePricingSetAction(
     pricingSetId: string,
     updates: { name?: string; effective_from?: string | null }
 ): Promise<{ success: boolean } | { error: string }> {
+    if (!z.string().uuid().safeParse(pricingSetId).success) {
+        return { error: 'invalid pricing set id' };
+    }
+    const validation = UpdatePricingSetSchema.safeParse(updates);
+    if (!validation.success) {
+        return { error: validation.error.issues[0].message };
+    }
+
     const supabase = await createServerClient();
 
     const { error } = await supabase
         .from('pricing_sets')
-        .update(updates)
+        .update(validation.data)
         .eq('id', pricingSetId);
 
     if (error) {
@@ -354,11 +399,22 @@ export async function addRateCardRowAction(
     pricingSetId: string,
     data: RateCardRowData
 ): Promise<{ id: string } | { error: string }> {
+    if (!RateCardTableEnum.safeParse(table).success) {
+        return { error: 'invalid rate card table' };
+    }
+    if (!z.string().uuid().safeParse(pricingSetId).success) {
+        return { error: 'invalid pricing set id' };
+    }
+    const validation = RateCardRowDataSchema.safeParse(data);
+    if (!validation.success) {
+        return { error: validation.error.issues[0].message };
+    }
+
     const supabase = await createServerClient();
 
     const { data: row, error } = await supabase
         .from(table)
-        .insert({ ...data, pricing_set_id: pricingSetId })
+        .insert({ ...validation.data, pricing_set_id: pricingSetId })
         .select('id')
         .single();
 
@@ -377,11 +433,25 @@ export async function updateRateCardRowAction(
     pricingSetId: string,
     data: RateCardRowData
 ): Promise<{ success: boolean } | { error: string }> {
+    if (!RateCardTableEnum.safeParse(table).success) {
+        return { error: 'invalid rate card table' };
+    }
+    if (!z.string().uuid().safeParse(rowId).success) {
+        return { error: 'invalid row id' };
+    }
+    if (!z.string().uuid().safeParse(pricingSetId).success) {
+        return { error: 'invalid pricing set id' };
+    }
+    const validation = RateCardRowDataSchema.safeParse(data);
+    if (!validation.success) {
+        return { error: validation.error.issues[0].message };
+    }
+
     const supabase = await createServerClient();
 
     const { error } = await supabase
         .from(table)
-        .update(data)
+        .update(validation.data)
         .eq('id', rowId)
         .eq('pricing_set_id', pricingSetId);
 
