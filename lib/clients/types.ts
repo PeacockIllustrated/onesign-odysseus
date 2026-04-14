@@ -1,3 +1,104 @@
+import { z } from 'zod';
+
+// =============================================================================
+// INPUT SCHEMAS (server-action validation)
+// =============================================================================
+
+export const ContactTypeEnum = z.enum(['primary', 'billing', 'site', 'general']);
+
+export const CreateContactInputSchema = z.object({
+    org_id: z.string().uuid(),
+    first_name: z.string().min(1, 'first name is required').max(80),
+    last_name: z.string().min(1, 'last name is required').max(80),
+    email: z.string().email().max(200).optional().or(z.literal('')),
+    phone: z.string().max(40).optional(),
+    mobile: z.string().max(40).optional(),
+    job_title: z.string().max(120).optional(),
+    contact_type: ContactTypeEnum.optional(),
+    is_primary: z.boolean().optional(),
+    notes: z.string().max(2000).optional(),
+});
+
+export const UpdateContactInputSchema = z.object({
+    id: z.string().uuid(),
+    first_name: z.string().min(1).max(80).optional(),
+    last_name: z.string().min(1).max(80).optional(),
+    email: z.string().email().max(200).optional().or(z.literal('')),
+    phone: z.string().max(40).optional(),
+    mobile: z.string().max(40).optional(),
+    job_title: z.string().max(120).optional(),
+    contact_type: ContactTypeEnum.optional(),
+    is_primary: z.boolean().optional(),
+    notes: z.string().max(2000).optional(),
+});
+
+export const CreateSiteInputSchema = z.object({
+    org_id: z.string().uuid(),
+    name: z.string().min(1, 'site name is required').max(120),
+    address_line_1: z.string().max(200).optional(),
+    address_line_2: z.string().max(200).optional(),
+    city: z.string().max(100).optional(),
+    county: z.string().max(100).optional(),
+    postcode: z.string().max(20).optional(),
+    country: z.string().max(60).optional(),
+    phone: z.string().max(40).optional(),
+    email: z.string().email().max(200).optional().or(z.literal('')),
+    site_contact_id: z.string().uuid().optional(),
+    is_primary: z.boolean().optional(),
+    is_billing_address: z.boolean().optional(),
+    is_delivery_address: z.boolean().optional(),
+    notes: z.string().max(2000).optional(),
+});
+
+export const UpdateSiteInputSchema = z.object({
+    id: z.string().uuid(),
+    name: z.string().min(1).max(120).optional(),
+    address_line_1: z.string().max(200).optional(),
+    address_line_2: z.string().max(200).optional(),
+    city: z.string().max(100).optional(),
+    county: z.string().max(100).optional(),
+    postcode: z.string().max(20).optional(),
+    country: z.string().max(60).optional(),
+    phone: z.string().max(40).optional(),
+    email: z.string().email().max(200).optional().or(z.literal('')),
+    site_contact_id: z.string().uuid().nullable().optional(),
+    is_primary: z.boolean().optional(),
+    is_billing_address: z.boolean().optional(),
+    is_delivery_address: z.boolean().optional(),
+    notes: z.string().max(2000).optional(),
+});
+
+export const UpdateOrgDetailsInputSchema = z.object({
+    id: z.string().uuid(),
+    name: z.string().min(1).max(200).optional(),
+    phone: z.string().max(40).optional(),
+    email: z.string().email().max(200).optional().or(z.literal('')),
+    website: z.string().max(300).optional(),
+    business_type: z.string().max(60).optional(),
+    account_number: z.string().max(60).optional(),
+    company_reg_number: z.string().max(60).optional(),
+    vat_number: z.string().max(60).optional(),
+    tax_code: z.string().max(20).optional(),
+    currency: z.string().max(10).optional(),
+    payment_terms_days: z.number().int().min(0).max(365).optional(),
+    sales_discount_percent: z.number().min(0).max(100).optional(),
+    notes: z.string().max(2000).optional(),
+    tags: z.array(z.string().max(40)).max(30).optional(),
+});
+
+export const CreateClientActionInputSchema = z.object({
+    name: z.string().min(1, 'client name is required').max(200),
+    primaryContact: z
+        .object({
+            first_name: z.string().min(1).max(80),
+            last_name: z.string().min(1).max(80),
+            email: z.string().email().max(200).optional().or(z.literal('')),
+            phone: z.string().max(40).optional(),
+            job_title: z.string().max(120).optional(),
+        })
+        .optional(),
+});
+
 export type ContactType = 'primary' | 'billing' | 'site' | 'general';
 
 export interface Contact {
