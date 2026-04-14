@@ -2,6 +2,7 @@ import 'server-only';
 import { createServerClient as createSupabaseServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { env } from './env';
 
 // =============================================================================
 // SERVER CLIENT (for server components, actions, route handlers)
@@ -9,10 +10,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 export async function createServerClient(): Promise<SupabaseClient> {
     const cookieStore = await cookies();
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-    return createSupabaseServerClient(supabaseUrl, supabaseAnonKey, {
+    return createSupabaseServerClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
         cookies: {
             getAll() {
                 return cookieStore.getAll();
