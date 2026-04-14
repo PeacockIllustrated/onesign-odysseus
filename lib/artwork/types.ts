@@ -431,7 +431,7 @@ export const CreateSubItemInputSchema = z.object({
     material: z.string().max(200).optional(),
     application_method: z.string().max(200).optional(),
     finish: z.string().max(120).optional(),
-    quantity: z.number().int().min(1).default(1),
+    quantity: z.number().int().min(1).optional(),  // server defaults to 1
     notes: z.string().max(1000).optional(),
     width_mm: z.number().positive().nullable().optional(),
     height_mm: z.number().positive().nullable().optional(),

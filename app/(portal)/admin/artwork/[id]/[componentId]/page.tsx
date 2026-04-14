@@ -12,12 +12,9 @@ import {
     formatDate,
 } from '@/lib/artwork/utils';
 import { ComponentStatus } from '@/lib/artwork/types';
-import { DesignSection } from './components/DesignSection';
-import { ProductionSection } from './components/ProductionSection';
 import { VersionHistory } from './components/VersionHistory';
-import { DimensionAlert } from './components/DimensionAlert';
 import { ComponentActions } from './components/ComponentActions';
-import { DepartmentPicker } from './components/DepartmentPicker';
+import { SubItemList } from './components/SubItemList';
 import { createServerClient } from '@/lib/supabase-server';
 
 export default async function ComponentDetailPage({
@@ -47,13 +44,15 @@ export default async function ComponentDetailPage({
             const storagePath = urlParts[1];
             const { data } = await supabase.storage
                 .from('artwork-assets')
-                .createSignedUrl(storagePath, 3600); // 1 hour expiry
+                .createSignedUrl(storagePath, 3600);
             thumbnailSignedUrl = data?.signedUrl || null;
         }
     }
 
+    const jobCompleted = job.status === 'completed';
+
     return (
-        <div className="p-6 max-w-7xl mx-auto">
+        <div className="p-6 max-w-5xl mx-auto">
             <Link
                 href={`/admin/artwork/${id}`}
                 className="inline-flex items-center gap-1 text-sm text-neutral-600 hover:text-black mb-4 transition-colors"
@@ -74,7 +73,7 @@ export default async function ComponentDetailPage({
                     </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                    {component.design_signed_off_at && (
+                    {component.sub_items?.some((si) => si.design_signed_off_at) && (
                         <Link
                             href={`/admin/artwork/${id}/${componentId}/print`}
                             target="_blank"
@@ -90,89 +89,76 @@ export default async function ComponentDetailPage({
                 </div>
             </div>
 
-            {/* Dimension Alert */}
-            {(component.dimension_flag || component.extra_items?.some(i => i.dimension_flag)) && (
-                <div className="mb-6">
-                    <DimensionAlert component={component} />
-                </div>
+            {/* Thumbnail (artwork file preview, component-level) */}
+            {thumbnailSignedUrl && (
+                <Card className="mb-6">
+                    <h2 className="text-sm font-semibold text-neutral-900 mb-3 uppercase tracking-wider">
+                        artwork preview
+                    </h2>
+                    <img
+                        src={thumbnailSignedUrl}
+                        alt={component.name}
+                        className="max-w-full max-h-96 object-contain rounded border border-neutral-200"
+                    />
+                </Card>
             )}
 
-            {/* Two-Column Layout */}
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-                {/* Left: Design Authority (60%) */}
-                <div className="lg:col-span-3 space-y-6">
-                    <Card>
-                        <h2 className="text-sm font-semibold text-neutral-900 mb-4 uppercase tracking-wider">
-                            design authority
-                        </h2>
-                        <DesignSection
-                            component={component}
-                            jobId={id}
-                            thumbnailUrl={thumbnailSignedUrl}
-                        />
-                    </Card>
-
-                    {/* Version History */}
-                    {component.versions.length > 0 && (
-                        <Card>
-                            <h2 className="text-sm font-semibold text-neutral-900 mb-4 uppercase tracking-wider">
-                                version history
-                            </h2>
-                            <VersionHistory versions={component.versions} />
-                        </Card>
-                    )}
+            {/* Sub-items — the spec-bearing cards */}
+            <Card className="mb-6">
+                <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-sm font-semibold text-neutral-900 uppercase tracking-wider">
+                        sub-items
+                    </h2>
+                    <p className="text-xs text-neutral-500">
+                        each sub-item has its own material, method, dimensions, and target department
+                    </p>
                 </div>
+                <SubItemList
+                    componentId={componentId}
+                    subItems={component.sub_items ?? []}
+                    stages={stages}
+                    jobCompleted={jobCompleted}
+                />
+            </Card>
 
-                {/* Right: Production Checklist (40%) */}
-                <div className="lg:col-span-2 space-y-6">
-                    <Card>
-                        <DepartmentPicker
-                            componentId={componentId}
-                            currentStageId={component.target_stage_id ?? null}
-                            stages={stages}
-                        />
-                    </Card>
+            {/* Version history — component-level artwork file versions */}
+            {component.versions.length > 0 && (
+                <Card className="mb-6">
+                    <h2 className="text-sm font-semibold text-neutral-900 mb-4 uppercase tracking-wider">
+                        version history
+                    </h2>
+                    <VersionHistory versions={component.versions} />
+                </Card>
+            )}
 
-                    <Card>
-                        <h2 className="text-sm font-semibold text-neutral-900 mb-4 uppercase tracking-wider">
-                            production verification
-                        </h2>
-                        <ProductionSection
-                            component={component}
-                            jobId={id}
-                        />
-                    </Card>
-
-                    {/* Production Checks Log */}
-                    {component.production_checks.length > 0 && (
-                        <Card>
-                            <h2 className="text-sm font-semibold text-neutral-900 mb-4 uppercase tracking-wider">
-                                check log
-                            </h2>
-                            <div className="space-y-2">
-                                {component.production_checks.map((check) => (
-                                    <div
-                                        key={check.id}
-                                        className="flex items-center justify-between text-xs py-1.5 border-b border-neutral-100 last:border-0"
-                                    >
-                                        <div className="flex items-center gap-2">
-                                            <span className={check.passed ? 'text-green-600' : 'text-red-600'}>
-                                                {check.passed ? 'PASS' : 'FAIL'}
-                                            </span>
-                                            <span className="text-neutral-600">
-                                                {check.check_type.replace(/_/g, ' ')}
-                                            </span>
-                                        </div>
-                                        <span className="text-neutral-400">
-                                            {formatDate(check.created_at)}
-                                        </span>
-                                    </div>
-                                ))}
+            {/* Production checks log (legacy per-component) */}
+            {component.production_checks.length > 0 && (
+                <Card>
+                    <h2 className="text-sm font-semibold text-neutral-900 mb-4 uppercase tracking-wider">
+                        production check log
+                    </h2>
+                    <div className="space-y-2">
+                        {component.production_checks.map((check) => (
+                            <div
+                                key={check.id}
+                                className="flex items-center justify-between text-xs py-1.5 border-b border-neutral-100 last:border-0"
+                            >
+                                <div className="flex items-center gap-2">
+                                    <span className={check.passed ? 'text-green-600' : 'text-red-600'}>
+                                        {check.passed ? 'PASS' : 'FAIL'}
+                                    </span>
+                                    <span className="text-neutral-600">
+                                        {check.check_type.replace(/_/g, ' ')}
+                                    </span>
+                                </div>
+                                <span className="text-neutral-400">
+                                    {formatDate(check.created_at)}
+                                </span>
                             </div>
-                        </Card>
-                    )}
-                </div>
-            </div>
+                        ))}
+                    </div>
+                </Card>
+            )}
         </div>
     );
 }

@@ -13,10 +13,10 @@ const COMPONENT_UUID = '11111111-1111-4111-8111-111111111111';
 const STAGE_UUID = '22222222-2222-4222-8222-222222222222';
 
 describe('CreateSubItemInputSchema', () => {
-    it('accepts minimal input and defaults quantity to 1', () => {
+    it('accepts minimal input (quantity optional, server applies default of 1)', () => {
         const res = CreateSubItemInputSchema.safeParse({ component_id: COMPONENT_UUID });
         expect(res.success).toBe(true);
-        if (res.success) expect(res.data.quantity).toBe(1);
+        if (res.success) expect(res.data.quantity).toBeUndefined();
     });
 
     it('accepts full spec input', () => {
