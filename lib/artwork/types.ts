@@ -304,7 +304,8 @@ export interface ArtworkJobWithComponents extends ArtworkJob {
 export interface ArtworkComponentWithVersions extends ArtworkComponent {
     versions: ComponentVersion[];
     production_checks: ProductionCheck[];
-    extra_items: ArtworkComponentItem[];
+    extra_items: ArtworkComponentItem[];   // legacy alias, same rows as sub_items
+    sub_items: ArtworkSubItem[];
 }
 
 export interface ComponentStageDefault {
@@ -366,3 +367,104 @@ export interface ArtworkDashboardData {
     ghostRows: ArtworkGhostRow[];
     counts: Record<ArtworkDashboardFilter, number>;
 }
+
+// =============================================================================
+// SUB-ITEMS REFACTOR — PROMOTED artwork_component_items
+// =============================================================================
+
+/**
+ * Full database-row shape for a sub-item after migration 039.
+ * Every spec-bearing row on a component (including the primary) lives here.
+ */
+export const ArtworkSubItemSchema = z.object({
+    id: z.string().uuid(),
+    component_id: z.string().uuid(),
+    label: z.string(),
+    sort_order: z.number().int(),
+
+    // Identity / description
+    name: z.string().nullable(),
+    material: z.string().nullable(),
+    application_method: z.string().nullable(),
+    finish: z.string().nullable(),
+    quantity: z.number().int().min(1),
+    notes: z.string().nullable(),
+
+    // Dimensions
+    width_mm: z.number().nullable(),
+    height_mm: z.number().nullable(),
+    returns_mm: z.number().nullable(),
+    measured_width_mm: z.number().nullable(),
+    measured_height_mm: z.number().nullable(),
+
+    // Tolerance flags
+    dimension_flag: z.string().nullable(),
+    width_deviation_mm: z.number().nullable(),
+    height_deviation_mm: z.number().nullable(),
+
+    // Routing
+    target_stage_id: z.string().uuid().nullable(),
+
+    // Production confirms
+    material_confirmed: z.boolean(),
+    rip_no_scaling_confirmed: z.boolean(),
+
+    // Sign-off
+    designed_by: z.string().uuid().nullable(),
+    design_signed_off_at: z.string().nullable(),
+    design_signed_off_by: z.string().uuid().nullable(),
+    production_checked_by: z.string().uuid().nullable(),
+    production_signed_off_at: z.string().nullable(),
+    production_signed_off_by: z.string().uuid().nullable(),
+
+    created_at: z.string(),
+    updated_at: z.string(),
+});
+export type ArtworkSubItem = z.infer<typeof ArtworkSubItemSchema>;
+
+/**
+ * Input for creating a sub-item. Label and sort_order are assigned server-side.
+ */
+export const CreateSubItemInputSchema = z.object({
+    component_id: z.string().uuid(),
+    name: z.string().max(120).optional(),
+    material: z.string().max(200).optional(),
+    application_method: z.string().max(200).optional(),
+    finish: z.string().max(120).optional(),
+    quantity: z.number().int().min(1).default(1),
+    notes: z.string().max(1000).optional(),
+    width_mm: z.number().positive().nullable().optional(),
+    height_mm: z.number().positive().nullable().optional(),
+    returns_mm: z.number().nullable().optional(),
+    target_stage_id: z.string().uuid().nullable().optional(),
+});
+export type CreateSubItemInput = z.infer<typeof CreateSubItemInputSchema>;
+
+/**
+ * Partial patch for updating a sub-item.
+ */
+export const UpdateSubItemInputSchema = z.object({
+    name: z.string().max(120).nullable().optional(),
+    material: z.string().max(200).nullable().optional(),
+    application_method: z.string().max(200).nullable().optional(),
+    finish: z.string().max(120).nullable().optional(),
+    quantity: z.number().int().min(1).optional(),
+    notes: z.string().max(1000).nullable().optional(),
+    width_mm: z.number().positive().nullable().optional(),
+    height_mm: z.number().positive().nullable().optional(),
+    returns_mm: z.number().nullable().optional(),
+    target_stage_id: z.string().uuid().nullable().optional(),
+});
+export type UpdateSubItemInput = z.infer<typeof UpdateSubItemInputSchema>;
+
+/**
+ * Input for submitting production measurements on a single sub-item.
+ * Server computes dimension tolerance against the design width/height.
+ */
+export const SubItemMeasurementInputSchema = z.object({
+    measured_width_mm: z.number().positive(),
+    measured_height_mm: z.number().positive(),
+    material_confirmed: z.boolean(),
+    rip_no_scaling_confirmed: z.boolean(),
+});
+export type SubItemMeasurementInput = z.infer<typeof SubItemMeasurementInputSchema>;
