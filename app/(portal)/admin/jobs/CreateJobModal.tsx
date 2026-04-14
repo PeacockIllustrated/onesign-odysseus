@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Loader2 } from 'lucide-react';
+import { X, Loader2, Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import {
     createManualJob,
@@ -15,6 +15,7 @@ import {
 import type { ProductionStage } from '@/lib/production/types';
 import { ContactPicker } from '@/components/admin/ContactPicker';
 import { SitePicker } from '@/components/admin/SitePicker';
+import { CreateOrgModal, CreatedOrg } from '@/app/(portal)/admin/orgs/CreateOrgModal';
 
 interface CreateJobModalProps {
     open: boolean;
@@ -53,6 +54,16 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
     const [quoteItems, setQuoteItems] = useState<Array<{ id: string; description: string }>>([]);
     const [loadingItems, setLoadingItems] = useState(false);
     const [itemRoutings, setItemRoutings] = useState<Map<string, Set<string>>>(new Map());
+
+    // Inline "new client" modal
+    const [clientModalOpen, setClientModalOpen] = useState(false);
+
+    const handleClientCreated = (newOrg?: CreatedOrg) => {
+        if (!newOrg) return;
+        setOrgs(prev => [{ id: newOrg.id, name: newOrg.name }, ...prev]);
+        setOrgId(newOrg.id);
+        setClientName(newOrg.name);
+    };
 
     // Fetch orgs, quotes, and stages when modal opens
     useEffect(() => {
@@ -209,9 +220,19 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
                         </p>
                     )}
 
-                    {/* Org picker (shared) */}
+                    {/* Client picker (shared) */}
                     <div className="mb-4">
-                        <label className="block text-xs font-medium text-neutral-700 mb-1">Client Org *</label>
+                        <div className="flex items-center justify-between mb-1">
+                            <label className="block text-xs font-medium text-neutral-700">Client *</label>
+                            <button
+                                type="button"
+                                onClick={() => setClientModalOpen(true)}
+                                className="inline-flex items-center gap-1 text-xs font-medium text-[#4e7e8c] hover:underline"
+                            >
+                                <Plus size={12} />
+                                new client
+                            </button>
+                        </div>
                         <select
                             value={orgId}
                             onChange={e => {
@@ -226,7 +247,7 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
                             required
                             className="w-full text-sm border border-neutral-200 rounded px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#4e7e8c]"
                         >
-                            <option value="">Select org…</option>
+                            <option value="">Select client…</option>
                             {orgs.map(o => (
                                 <option key={o.id} value={o.id}>{o.name}</option>
                             ))}
@@ -414,6 +435,12 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
                     )}
                 </div>
             </div>
+
+            <CreateOrgModal
+                open={clientModalOpen}
+                onClose={() => setClientModalOpen(false)}
+                onSuccess={handleClientCreated}
+            />
         </div>
     );
 }
