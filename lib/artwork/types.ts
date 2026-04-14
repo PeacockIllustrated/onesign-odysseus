@@ -76,7 +76,9 @@ export const ArtworkJobSchema = z.object({
     job_name: z.string(),
     job_reference: z.string(),
     client_name: z.string().nullable(),
+    client_name_snapshot: z.string().nullable(),
     org_id: z.string().uuid().nullable(),
+    is_orphan: z.boolean(),
     contact_id: z.string().uuid().nullable(),
     description: z.string().nullable(),
     cover_image_path: z.string().nullable(),
@@ -194,13 +196,28 @@ export type ProductionCheck = z.infer<typeof ProductionCheckSchema>;
 // INPUT SCHEMAS
 // =============================================================================
 
-export const CreateArtworkJobInputSchema = z.object({
+const LinkedCreateArtworkJobInputSchema = z.object({
+    kind: z.literal('linked'),
     job_name: z.string().min(1, 'job name is required'),
-    client_name: z.string().optional(),
-    org_id: z.string().uuid().optional(),
-    contact_id: z.string().uuid().optional(),
+    job_item_id: z.string().uuid(),
     description: z.string().optional(),
 });
+
+const OrphanCreateArtworkJobInputSchema = z.object({
+    kind: z.literal('orphan'),
+    job_name: z.string().min(1, 'job name is required'),
+    org_id: z.string().uuid('org is required for orphan jobs'),
+    contact_id: z.string().uuid().optional(),
+    description: z.string().optional(),
+    acknowledge_orphan: z.literal(true, {
+        error: 'orphan jobs require explicit acknowledgement',
+    }),
+});
+
+export const CreateArtworkJobInputSchema = z.discriminatedUnion('kind', [
+    LinkedCreateArtworkJobInputSchema,
+    OrphanCreateArtworkJobInputSchema,
+]);
 export type CreateArtworkJobInput = z.infer<typeof CreateArtworkJobInputSchema>;
 
 export const UpdateArtworkJobInputSchema = z.object({
@@ -308,4 +325,44 @@ export interface ProductionItemContext {
 
 export interface ArtworkJobWithProductionContext extends ArtworkJobWithComponents {
     production_item?: ProductionItemContext | null;
+}
+
+// =============================================================================
+// PHASE 1 — DASHBOARD + LINEAGE
+// =============================================================================
+
+export const ArtworkDashboardFilterEnum = z.enum([
+    'all',
+    'awaiting_start',
+    'in_progress',
+    'awaiting_approval',
+    'flagged',
+    'completed',
+    'orphans',
+]);
+export type ArtworkDashboardFilter = z.infer<typeof ArtworkDashboardFilterEnum>;
+
+export interface ArtworkJobLineage {
+    quoteId: string | null;
+    quoteNumber: string | null;
+    productionJobId: string | null;
+    productionJobNumber: string | null;
+    jobItemId: string | null;
+}
+
+export interface ArtworkGhostRow {
+    jobItemId: string;
+    jobItemDescription: string;
+    itemNumber: string | null;
+    productionJobNumber: string;
+    clientName: string;
+    orgId: string | null;
+    dueDate: string | null;
+    priority: string;
+}
+
+export interface ArtworkDashboardData {
+    jobs: (ArtworkJob & { client_approved: boolean; flagged_count: number })[];
+    ghostRows: ArtworkGhostRow[];
+    counts: Record<ArtworkDashboardFilter, number>;
 }
