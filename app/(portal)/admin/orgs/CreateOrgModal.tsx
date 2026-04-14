@@ -84,15 +84,19 @@ export function CreateOrgModal({ open, onClose, onSuccess }: CreateOrgModalProps
     }
 
     return (
-        <Modal open={open} onClose={onClose} title="Create Organisation">
+        <Modal open={open} onClose={onClose} title="Create client">
             <form onSubmit={handleSubmit} className="space-y-4">
+                <p className="text-xs text-neutral-500 -mt-1">
+                    Clients are the businesses Onesign does work for. They do not log in to the portal — this just creates an internal record you can attach jobs, quotes and artwork to.
+                </p>
+
                 {error && (
                     <div className="p-3 bg-red-50 text-red-700 rounded text-sm">{error}</div>
                 )}
 
                 <div>
                     <label className="block text-sm font-medium text-neutral-700 mb-1">
-                        Organisation Name *
+                        Client name *
                     </label>
                     <input
                         type="text"
@@ -105,7 +109,7 @@ export function CreateOrgModal({ open, onClose, onSuccess }: CreateOrgModalProps
 
                 <div>
                     <label className="block text-sm font-medium text-neutral-700 mb-1">
-                        Slug *
+                        Short code *
                     </label>
                     <input
                         type="text"
@@ -114,21 +118,21 @@ export function CreateOrgModal({ open, onClose, onSuccess }: CreateOrgModalProps
                         className="w-full px-3 py-2 border border-neutral-200 rounded-md font-mono text-sm"
                         required
                     />
-                    <p className="text-xs text-neutral-400 mt-1">URL-friendly identifier</p>
+                    <p className="text-xs text-neutral-400 mt-1">URL-friendly identifier for internal references</p>
                 </div>
 
                 <div>
                     <label className="block text-sm font-medium text-neutral-700 mb-1">
-                        Owner Email (optional)
+                        Onesign staff contact (optional)
                     </label>
                     <input
                         type="email"
                         value={ownerEmail}
                         onChange={(e) => setOwnerEmail(e.target.value)}
                         className="w-full px-3 py-2 border border-neutral-200 rounded-md"
-                        placeholder="user@example.com"
+                        placeholder="staff.member@onesignanddigital.com"
                     />
-                    <p className="text-xs text-neutral-400 mt-1">Links existing user as org owner</p>
+                    <p className="text-xs text-neutral-400 mt-1">Assigns an internal Onesign team member as this client&rsquo;s main point of contact</p>
                 </div>
 
                 <div className="flex justify-end gap-2 pt-4">
