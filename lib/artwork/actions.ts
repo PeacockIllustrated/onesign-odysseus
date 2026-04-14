@@ -29,6 +29,10 @@ import {
     ArtworkJobWithProductionContext,
     ProductionItemContext,
     ComponentStageDefault,
+    ArtworkJobLineage,
+    ArtworkDashboardData,
+    ArtworkDashboardFilter,
+    ArtworkGhostRow,
 } from './types';
 import { checkDimensionTolerance } from './utils';
 import { advanceItemToNextRoutedStage } from '@/lib/production/actions';
@@ -1468,4 +1472,41 @@ export async function getProductionItemsAtArtworkStage(): Promise<
         },
         artworkJob: artworkMap.get(i.id) || null,
     }));
+}
+
+// =============================================================================
+// PHASE 1 — LINEAGE
+// =============================================================================
+
+/**
+ * Return the quote → production → artwork lineage for a given artwork job.
+ * Backed by the `artwork_job_lineage` SQL view (migration 037).
+ * Returns null when the job has no production_item link (pure orphan).
+ */
+export async function getArtworkJobLineage(
+    artworkJobId: string
+): Promise<ArtworkJobLineage | null> {
+    const supabase = await createServerClient();
+
+    const { data, error } = await supabase
+        .from('artwork_job_lineage')
+        .select(
+            'quote_id, quote_number, production_job_id, production_job_number, job_item_id'
+        )
+        .eq('artwork_job_id', artworkJobId)
+        .maybeSingle();
+
+    if (error) {
+        console.error('error fetching artwork lineage:', error);
+        return null;
+    }
+    if (!data) return null;
+
+    return {
+        quoteId: data.quote_id ?? null,
+        quoteNumber: data.quote_number ?? null,
+        productionJobId: data.production_job_id ?? null,
+        productionJobNumber: data.production_job_number ?? null,
+        jobItemId: data.job_item_id ?? null,
+    };
 }
