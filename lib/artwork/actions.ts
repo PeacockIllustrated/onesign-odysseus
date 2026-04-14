@@ -38,7 +38,14 @@ import { advanceItemToNextRoutedStage } from '@/lib/production/actions';
 // =============================================================================
 
 /**
- * Create a new artwork job
+ * Create a new artwork job.
+ *
+ * Two paths via discriminated union:
+ *  - 'linked': spawned from a production job_item; org_id is inherited from the
+ *    parent production_job. The partial unique index on artwork_jobs.job_item_id
+ *    prevents duplicate creation per item.
+ *  - 'orphan': warranty/rework/speculative. Requires explicit acknowledgement
+ *    and an org_id — never left unlinked to both an item AND an org.
  */
 export async function createArtworkJob(
     input: CreateArtworkJobInput
@@ -52,24 +59,61 @@ export async function createArtworkJob(
     if (!validation.success) {
         return { error: validation.error.issues[0].message };
     }
+    const parsed = validation.data;
 
     const supabase = await createServerClient();
+
+    let orgId: string | null = null;
+    let jobItemId: string | null = null;
+    let isOrphan = false;
+    let contactId: string | null = null;
+
+    if (parsed.kind === 'linked') {
+        jobItemId = parsed.job_item_id;
+
+        // Inherit org_id from the parent production_job.
+        const { data: itemRow, error: itemErr } = await supabase
+            .from('job_items')
+            .select('id, production_jobs!inner(org_id)')
+            .eq('id', jobItemId)
+            .single();
+
+        if (itemErr || !itemRow) {
+            return { error: 'production item not found' };
+        }
+        const parentOrg = (itemRow as any).production_jobs?.org_id;
+        if (!parentOrg) {
+            return { error: 'production job has no organisation' };
+        }
+        orgId = parentOrg;
+    } else {
+        // orphan
+        isOrphan = true;
+        orgId = parsed.org_id;
+        contactId = parsed.contact_id ?? null;
+    }
 
     const { data, error } = await supabase
         .from('artwork_jobs')
         .insert({
-            job_name: validation.data.job_name,
-            client_name: validation.data.client_name || null,
-            org_id: validation.data.org_id || null,
-            contact_id: validation.data.contact_id || null,
-            description: validation.data.description || null,
+            job_name: parsed.job_name,
+            description: parsed.description ?? null,
             status: 'draft',
+            job_item_id: jobItemId,
+            org_id: orgId,
+            contact_id: contactId,
+            is_orphan: isOrphan,
+            client_name: null,
             created_by: user.id,
         })
         .select('id')
         .single();
 
     if (error) {
+        // 23505 = unique_violation on partial index (artwork_job exists for this job_item)
+        if ((error as any).code === '23505') {
+            return { error: 'artwork job already exists for this production item' };
+        }
         console.error('error creating artwork job:', error);
         return { error: error.message };
     }
