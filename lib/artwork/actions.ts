@@ -948,10 +948,12 @@ export async function createArtworkJobForItem(
 
     const supabase = await createServerClient();
 
-    // Fetch the job_item with parent production_job context
+    // Fetch the job_item with parent production_job context (incl. org_id for inheritance).
     const { data: itemContext } = await supabase
         .from('job_items')
-        .select('description, job_id, production_jobs!inner(client_name, job_number)')
+        .select(
+            'description, job_id, production_jobs!inner(client_name, job_number, org_id)'
+        )
         .eq('id', jobItemId)
         .single();
 
@@ -971,13 +973,18 @@ export async function createArtworkJobForItem(
     }
 
     const pj = (itemContext as any).production_jobs;
+    if (!pj?.org_id) {
+        return { error: 'production job has no organisation' };
+    }
 
     const { data, error } = await supabase
         .from('artwork_jobs')
         .insert({
             job_name: (itemContext as any).description || `Artwork for ${pj.job_number}`,
-            client_name: pj.client_name,
+            client_name: null,
+            org_id: pj.org_id,
             job_item_id: jobItemId,
+            is_orphan: false,
             status: 'draft',
             created_by: user.id,
         })
@@ -985,6 +992,15 @@ export async function createArtworkJobForItem(
         .single();
 
     if (error) {
+        // 23505 = unique_violation race (another admin started artwork simultaneously)
+        if ((error as any).code === '23505') {
+            const { data: raced } = await supabase
+                .from('artwork_jobs')
+                .select('id, job_reference')
+                .eq('job_item_id', jobItemId)
+                .maybeSingle();
+            if (raced) return { id: raced.id, jobReference: raced.job_reference };
+        }
         console.error('error creating artwork job for item:', error);
         return { error: error.message };
     }
