@@ -235,3 +235,26 @@ const lightingTypeLabels: Record<string, string> = {
 export function getLightingTypeLabel(type: string): string {
     return lightingTypeLabels[type] || type;
 }
+
+// =============================================================================
+// SUB-ITEM LABEL ASSIGNMENT
+// =============================================================================
+
+/**
+ * Given a list of existing sub-item labels, return the next available letter.
+ * Fills gaps first (A, B, D → C). Overflows to AA, AB after Z.
+ */
+export function nextItemLabel(existing: string[]): string {
+    const used = new Set(existing);
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    for (const ch of alphabet) {
+        if (!used.has(ch)) return ch;
+    }
+    for (const a of alphabet) {
+        for (const b of alphabet) {
+            const two = a + b;
+            if (!used.has(two)) return two;
+        }
+    }
+    return 'Z';
+}
