@@ -14,6 +14,11 @@ import type {
     DepartmentInstruction,
     WorkCentre,
 } from './types';
+import {
+    CreateManualJobInputSchema,
+    ItemRoutingSchema,
+} from './types';
+import { z } from 'zod';
 import { getJobDetail, getAcceptedQuotesWithoutJobs, getShopFloorQueue, getProductionStages } from './queries';
 
 // =============================================================================
@@ -104,6 +109,12 @@ export async function getShopFloorJobsAction(stageSlug: string): Promise<JobItem
 
 const ITEM_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
+const CreateJobFromQuoteArgsSchema = z.object({
+    quoteId: z.string().uuid(),
+    orgId: z.string().uuid(),
+    itemRoutings: z.array(ItemRoutingSchema).max(200).optional(),
+});
+
 export async function createJobFromQuote(
     quoteId: string,
     orgId: string,
@@ -111,6 +122,11 @@ export async function createJobFromQuote(
 ): Promise<{ id: string; jobNumber: string } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
+
+    const validation = CreateJobFromQuoteArgsSchema.safeParse({ quoteId, orgId, itemRoutings });
+    if (!validation.success) {
+        return { error: validation.error.issues[0].message };
+    }
 
     const supabase = await createServerClient();
 
@@ -236,6 +252,12 @@ export async function createManualJob(input: {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
 
+    const validation = CreateManualJobInputSchema.safeParse(input);
+    if (!validation.success) {
+        return { error: validation.error.issues[0].message };
+    }
+    const parsed = validation.data;
+
     const supabase = await createServerClient();
 
     const { data: orderBookStage } = await supabase
@@ -250,17 +272,17 @@ export async function createManualJob(input: {
     const { data: newJob, error } = await supabase
         .from('production_jobs')
         .insert({
-            org_id: input.orgId,
-            title: input.title,
-            client_name: input.clientName,
-            description: input.description || null,
-            contact_id: input.contactId || null,
-            site_id: input.siteId || null,
+            org_id: parsed.orgId,
+            title: parsed.title,
+            client_name: parsed.clientName,
+            description: parsed.description || null,
+            contact_id: parsed.contactId || null,
+            site_id: parsed.siteId || null,
             current_stage_id: orderBookStage.id,
-            priority: input.priority,
+            priority: parsed.priority,
             status: 'active',
-            due_date: input.dueDate || null,
-            assigned_initials: input.assignedInitials || null,
+            due_date: parsed.dueDate || null,
+            assigned_initials: parsed.assignedInitials || null,
             total_items: 1,
         })
         .select('id, job_number')

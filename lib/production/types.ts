@@ -1,5 +1,31 @@
 // lib/production/types.ts
 
+import { z } from 'zod';
+
+// =============================================================================
+// INPUT SCHEMAS (server-action validation)
+// =============================================================================
+
+export const JobPriorityEnum = z.enum(['urgent', 'high', 'normal', 'low']);
+
+export const CreateManualJobInputSchema = z.object({
+    orgId: z.string().uuid(),
+    title: z.string().min(1, 'title is required').max(200),
+    clientName: z.string().min(1, 'client name is required').max(200),
+    description: z.string().max(4000).optional(),
+    priority: JobPriorityEnum,
+    dueDate: z.string().max(40).optional(),
+    assignedInitials: z.string().max(6).optional(),
+    contactId: z.string().uuid().optional(),
+    siteId: z.string().uuid().optional(),
+});
+
+export const ItemRoutingSchema = z.object({
+    quoteItemId: z.string().uuid(),
+    stageIds: z.array(z.string().uuid()).max(20),
+    description: z.string().max(500),
+});
+
 export type JobPriority = 'urgent' | 'high' | 'normal' | 'low';
 export type JobStatus = 'active' | 'paused' | 'completed' | 'cancelled';
 export type JobItemStatus = 'pending' | 'in_progress' | 'completed';
