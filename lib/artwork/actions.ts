@@ -1539,11 +1539,13 @@ export async function getComponentDetail(
             .order('sort_order', { ascending: true }),
     ]);
 
+    const items = (itemsResult.data || []);
     return {
         ...component,
         versions: (versionsResult.data || []),
         production_checks: (checksResult.data || []),
-        extra_items: (itemsResult.data || []),
+        extra_items: items,    // legacy alias — same rows as sub_items
+        sub_items: items,
     } as ArtworkComponentWithVersions;
 }
 
