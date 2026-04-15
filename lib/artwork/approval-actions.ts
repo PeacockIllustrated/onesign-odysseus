@@ -302,7 +302,15 @@ export async function getApprovalByToken(
         .eq('job_id', approval.job_id)
         .order('sort_order', { ascending: true });
 
+    // Visual approvals: a component is showable as soon as it has ≥ 1
+    // variant attached — there is no designer sign-off step, the client
+    // is the one approving the concept by picking a variant.
+    // Production approvals (default): a component is showable when a
+    // sub-item has been signed off (or the legacy component-level flag).
     const printableComponents = (allComponents || []).filter((c: any) => {
+        if (job.job_type === 'visual_approval') {
+            return (c.variants ?? []).length > 0;
+        }
         if (c.design_signed_off_at) return true;
         return (c.sub_items || []).some((si: any) => si.design_signed_off_at);
     });
