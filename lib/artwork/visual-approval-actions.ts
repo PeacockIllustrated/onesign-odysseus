@@ -11,6 +11,7 @@ import {
     type CreateVariantInput,
     type UpdateVariantInput,
 } from './variant-types';
+import { mapVariantToSubItemInput } from './variant-utils';
 
 // ---------------------------------------------------------------------------
 // createVisualApprovalJob
@@ -373,4 +374,148 @@ export async function removeVariantThumbnail(
 
     revalidatePath('/admin/artwork');
     return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// createProductionFromVisual — the manual handoff
+// ---------------------------------------------------------------------------
+
+/**
+ * Spawn a production artwork_job from an approved visual. Copies
+ * components + seeds one sub-item per component from the client-chosen
+ * variant. Idempotent: refuses if a production job already exists with
+ * parent_visual_job_id pointing to this visual.
+ */
+export async function createProductionFromVisual(
+    visualJobId: string
+): Promise<{ productionJobId: string } | { error: string }> {
+    const user = await getUser();
+    if (!user) return { error: 'not authenticated' };
+
+    const supabase = await createServerClient();
+
+    // 1. Load the visual + its components + their variants.
+    const { data: visual } = await supabase
+        .from('artwork_jobs')
+        .select(
+            `id, job_name, description, status, job_type, org_id, contact_id,
+             site_id, quote_id, job_item_id, is_orphan, client_name`
+        )
+        .eq('id', visualJobId)
+        .single();
+    if (!visual) return { error: 'visual job not found' };
+    if (visual.job_type !== 'visual_approval') {
+        return { error: 'not a visual approval job' };
+    }
+    if (visual.status !== 'completed') {
+        return { error: 'visual is not yet client-approved' };
+    }
+
+    // 2. Idempotency guard.
+    const { data: existing } = await supabase
+        .from('artwork_jobs')
+        .select('id')
+        .eq('parent_visual_job_id', visualJobId)
+        .eq('job_type', 'production')
+        .maybeSingle();
+    if (existing) {
+        return { error: `production job already exists (${existing.id})` };
+    }
+
+    // 3. Load components + chosen variants.
+    const { data: components } = await supabase
+        .from('artwork_components')
+        .select(
+            `id, name, component_type, sort_order, lighting, notes,
+             variants:artwork_variants(*)`
+        )
+        .eq('job_id', visualJobId)
+        .order('sort_order', { ascending: true });
+
+    if (!components || components.length === 0) {
+        return { error: 'visual has no components' };
+    }
+
+    for (const c of components) {
+        const chosen = ((c as any).variants ?? []).find((v: any) => v.is_chosen);
+        if (!chosen) {
+            return {
+                error: `component "${(c as any).name}" has no chosen variant — approval incomplete`,
+            };
+        }
+    }
+
+    // 4. Create the production artwork_job.
+    const { data: prod, error: prodErr } = await supabase
+        .from('artwork_jobs')
+        .insert({
+            job_name: visual.job_name,
+            description: visual.description,
+            status: 'draft',
+            job_type: 'production',
+            parent_visual_job_id: visualJobId,
+            org_id: visual.org_id,
+            contact_id: visual.contact_id,
+            site_id: visual.site_id,
+            quote_id: visual.quote_id,
+            job_item_id: visual.job_item_id,
+            is_orphan: visual.is_orphan,
+            client_name: visual.client_name,
+            created_by: user.id,
+        })
+        .select('id')
+        .single();
+    if (prodErr || !prod) {
+        console.error('createProductionFromVisual insert job error:', prodErr);
+        return { error: prodErr?.message ?? 'failed to create production job' };
+    }
+
+    // 5. Create each component + seed one sub-item from the chosen variant.
+    for (const c of components) {
+        const raw = c as any;
+        const chosen = (raw.variants ?? []).find((v: any) => v.is_chosen);
+
+        const { data: newComp, error: compErr } = await supabase
+            .from('artwork_components')
+            .insert({
+                job_id: prod.id,
+                name: raw.name,
+                component_type: raw.component_type ?? 'other',
+                sort_order: raw.sort_order ?? 0,
+                status: 'pending_design',
+                lighting: raw.lighting ?? null,
+                notes: raw.notes ?? null,
+                scale_confirmed: false,
+                bleed_included: false,
+                material_confirmed: false,
+                rip_no_scaling_confirmed: false,
+            })
+            .select('id')
+            .single();
+        if (compErr || !newComp) {
+            console.error('createProductionFromVisual component error:', compErr);
+            continue;
+        }
+
+        const subItem = mapVariantToSubItemInput(chosen);
+        await supabase.from('artwork_component_items').insert({
+            component_id: newComp.id,
+            label: subItem.label,
+            sort_order: subItem.sort_order,
+            name: subItem.name,
+            material: subItem.material,
+            application_method: subItem.application_method,
+            finish: subItem.finish,
+            width_mm: subItem.width_mm,
+            height_mm: subItem.height_mm,
+            returns_mm: subItem.returns_mm,
+            quantity: subItem.quantity,
+            notes: subItem.notes,
+        });
+    }
+
+    revalidatePath(`/admin/artwork/${visualJobId}`);
+    revalidatePath(`/admin/artwork/${prod.id}`);
+    revalidatePath('/admin/artwork');
+    return { productionJobId: prod.id };
 }
