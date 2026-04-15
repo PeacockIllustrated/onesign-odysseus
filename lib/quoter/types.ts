@@ -315,3 +315,46 @@ export class RateCardError extends Error {
         this.missingKeys = missingKeys;
     }
 }
+
+// =============================================================================
+// GENERIC QUOTE ITEMS (migration 041) — manual-pricing line items for any
+// signage or service job whose pricing isn't covered by the panel_letters_v1
+// engine. Sub-items mirror the artwork sub-item shape so skeleton generation
+// on acceptance is a direct field mapping.
+// =============================================================================
+
+export const QuoteSubItemInputSchema = z.object({
+    name: z.string().max(120).optional(),
+    material: z.string().max(200).optional(),
+    application_method: z.string().max(200).optional(),
+    finish: z.string().max(120).optional(),
+    quantity: z.number().int().min(1).optional(),
+    width_mm: z.number().positive().nullable().optional(),
+    height_mm: z.number().positive().nullable().optional(),
+    returns_mm: z.number().nullable().optional(),
+    notes: z.string().max(500).optional(),
+});
+export type QuoteSubItemInput = z.infer<typeof QuoteSubItemInputSchema>;
+
+/**
+ * Input for adding a generic quote item. The engine is NOT involved — price
+ * is entered manually. line_total_pence is computed server-side as:
+ *   (unit_price_pence * quantity) * (1 - discount_percent/100)
+ *   * (1 + markup_percent/100)   [markup applied after discount, mirrors Clarity]
+ */
+export const GenericQuoteItemInputSchema = z.object({
+    part_label: z.string().min(1, 'part label is required').max(120),
+    description: z.string().max(4000).optional(),
+    // Optional: maps to artwork ComponentTypeEnum on skeleton generation.
+    component_type: z.string().max(60).optional(),
+    is_production_work: z.boolean().optional(),
+    quantity: z.number().int().min(1).optional(),
+    unit_cost_pence: z.number().int().min(0).optional(),
+    unit_price_pence: z.number().int().min(0),
+    markup_percent: z.number().min(0).max(100).optional(),
+    discount_percent: z.number().min(0).max(100).optional(),
+    lighting: z.string().max(60).optional(),
+    spec_notes: z.string().max(2000).optional(),
+    sub_items: z.array(QuoteSubItemInputSchema).max(20).optional(),
+});
+export type GenericQuoteItemInput = z.infer<typeof GenericQuoteItemInputSchema>;

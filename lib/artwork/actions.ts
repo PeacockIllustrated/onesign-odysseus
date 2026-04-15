@@ -71,25 +71,39 @@ export async function createArtworkJob(
     let jobItemId: string | null = null;
     let isOrphan = false;
     let contactId: string | null = null;
+    let siteId: string | null = null;
 
     if (parsed.kind === 'linked') {
         jobItemId = parsed.job_item_id;
 
-        // Inherit org_id from the parent production_job.
+        // Inherit org / contact / site from the parent production_job.
         const { data: itemRow, error: itemErr } = await supabase
             .from('job_items')
-            .select('id, production_jobs!inner(org_id)')
+            .select('id, production_jobs!inner(org_id, contact_id, site_id)')
             .eq('id', jobItemId)
             .single();
 
         if (itemErr || !itemRow) {
             return { error: 'production item not found' };
         }
-        const parentOrg = (itemRow as any).production_jobs?.org_id;
-        if (!parentOrg) {
+        const pj = (itemRow as any).production_jobs;
+        if (!pj?.org_id) {
             return { error: 'production job has no organisation' };
         }
-        orgId = parentOrg;
+        orgId = pj.org_id;
+        contactId = pj.contact_id ?? null;
+        siteId = pj.site_id ?? null;
+
+        // Fall back to the org's primary contact if production didn't capture one.
+        if (!contactId) {
+            const { data: primary } = await supabase
+                .from('contacts')
+                .select('id')
+                .eq('org_id', orgId)
+                .eq('is_primary', true)
+                .maybeSingle();
+            if (primary) contactId = primary.id;
+        }
     } else {
         // orphan
         isOrphan = true;
@@ -106,6 +120,7 @@ export async function createArtworkJob(
             job_item_id: jobItemId,
             org_id: orgId,
             contact_id: contactId,
+            site_id: siteId,
             is_orphan: isOrphan,
             client_name: null,
             created_by: user.id,
@@ -1058,11 +1073,11 @@ export async function createArtworkJobForItem(
 
     const supabase = await createServerClient();
 
-    // Fetch the job_item with parent production_job context (incl. org_id for inheritance).
+    // Fetch the job_item with parent production_job context — inherit org/contact/site.
     const { data: itemContext } = await supabase
         .from('job_items')
         .select(
-            'description, job_id, production_jobs!inner(client_name, job_number, org_id)'
+            'description, job_id, production_jobs!inner(client_name, job_number, org_id, contact_id, site_id)'
         )
         .eq('id', jobItemId)
         .single();
@@ -1087,12 +1102,27 @@ export async function createArtworkJobForItem(
         return { error: 'production job has no organisation' };
     }
 
+    // If the production job didn't capture a contact, fall back to the org's
+    // primary contact so the artwork job always has someone to email.
+    let contactId: string | null = pj.contact_id ?? null;
+    if (!contactId) {
+        const { data: primary } = await supabase
+            .from('contacts')
+            .select('id')
+            .eq('org_id', pj.org_id)
+            .eq('is_primary', true)
+            .maybeSingle();
+        if (primary) contactId = primary.id;
+    }
+
     const { data, error } = await supabase
         .from('artwork_jobs')
         .insert({
             job_name: (itemContext as any).description || `Artwork for ${pj.job_number}`,
             client_name: null,
             org_id: pj.org_id,
+            contact_id: contactId,
+            site_id: pj.site_id ?? null,
             job_item_id: jobItemId,
             is_orphan: false,
             status: 'draft',
@@ -1789,4 +1819,243 @@ export async function getArtworkJobLineage(
         productionJobNumber: data.production_job_number ?? null,
         jobItemId: data.job_item_id ?? null,
     };
+}
+
+// =============================================================================
+// CLIENT CONTEXT OVERRIDE (Phase 2 QoL) — set contact / site on an artwork job
+// independently of upstream. Staff uses this when a specific job ships somewhere
+// other than the client's default site.
+// =============================================================================
+
+export async function setArtworkClientContext(
+    artworkJobId: string,
+    patch: { contact_id?: string | null; site_id?: string | null }
+): Promise<{ ok: true } | { error: string }> {
+    const user = await getUser();
+    if (!user) return { error: 'not authenticated' };
+
+    const supabase = await createServerClient();
+
+    const updates: Record<string, unknown> = {};
+    if (patch.contact_id !== undefined) updates.contact_id = patch.contact_id;
+    if (patch.site_id !== undefined) updates.site_id = patch.site_id;
+    if (Object.keys(updates).length === 0) return { ok: true };
+
+    const { error } = await supabase
+        .from('artwork_jobs')
+        .update(updates)
+        .eq('id', artworkJobId);
+
+    if (error) {
+        console.error('setArtworkClientContext error:', error);
+        return { error: error.message };
+    }
+
+    revalidatePath(`/admin/artwork/${artworkJobId}`);
+    return { ok: true };
+}
+
+// =============================================================================
+// GENERATE ARTWORK FROM QUOTE (Phase 2 skeleton) — called when a quote is
+// accepted. Creates (or reuses) an artwork_job linked to the production item,
+// then materialises one artwork_component per production-work quote item,
+// with sub-items pre-filled from the quote's structured spec. Service items
+// (is_production_work = false) are skipped.
+// =============================================================================
+
+export async function generateArtworkFromQuote(
+    quoteId: string
+): Promise<{ artworkJobIds: string[]; skipped: number } | { error: string }> {
+    const user = await getUser();
+    if (!user) return { error: 'not authenticated' };
+
+    const supabase = await createServerClient();
+
+    // Load quote + its items
+    const { data: quote } = await supabase
+        .from('quotes')
+        .select('id, status, customer_name, quote_number')
+        .eq('id', quoteId)
+        .single();
+    if (!quote) return { error: 'quote not found' };
+    if (quote.status !== 'accepted') {
+        return { error: 'quote must be accepted first' };
+    }
+
+    const { data: items } = await supabase
+        .from('quote_items')
+        .select('id, item_type, part_label, description, component_type, is_production_work, quantity, input_json, lighting, spec_notes')
+        .eq('quote_id', quoteId)
+        .order('created_at', { ascending: true });
+
+    if (!items || items.length === 0) {
+        return { error: 'quote has no items' };
+    }
+
+    const productionItems = items.filter((i: any) => i.is_production_work !== false);
+    const skipped = items.length - productionItems.length;
+
+    if (productionItems.length === 0) {
+        return { artworkJobIds: [], skipped };
+    }
+
+    // Find production_jobs + job_items for this quote (createJobFromQuote should
+    // have been called first by the existing Create Production Job flow).
+    const { data: prodJob } = await supabase
+        .from('production_jobs')
+        .select('id, org_id, contact_id, site_id')
+        .eq('quote_id', quoteId)
+        .maybeSingle();
+
+    if (!prodJob) {
+        return {
+            error: 'no production job exists yet — click "Create Production Job" first, then "Generate Artwork"',
+        };
+    }
+
+    const { data: jobItems } = await supabase
+        .from('job_items')
+        .select('id, quote_item_id, description')
+        .eq('job_id', prodJob.id);
+
+    const jobItemByQuoteItem = new Map<string, string>();
+    (jobItems ?? []).forEach((ji: any) => {
+        if (ji.quote_item_id) jobItemByQuoteItem.set(ji.quote_item_id, ji.id);
+    });
+
+    const artworkJobIds: string[] = [];
+
+    for (const qi of productionItems) {
+        const jobItemId = jobItemByQuoteItem.get(qi.id);
+        if (!jobItemId) continue; // shouldn't happen; skip defensively
+
+        // Idempotent: if an artwork job already exists for this job_item, reuse it
+        const { data: existingAw } = await supabase
+            .from('artwork_jobs')
+            .select('id')
+            .eq('job_item_id', jobItemId)
+            .maybeSingle();
+
+        let artworkJobId: string;
+        if (existingAw) {
+            artworkJobId = existingAw.id;
+        } else {
+            // Create the artwork job (inheriting org/contact/site from production_job)
+            let contactId: string | null = prodJob.contact_id ?? null;
+            if (!contactId && prodJob.org_id) {
+                const { data: primary } = await supabase
+                    .from('contacts')
+                    .select('id')
+                    .eq('org_id', prodJob.org_id)
+                    .eq('is_primary', true)
+                    .maybeSingle();
+                if (primary) contactId = primary.id;
+            }
+
+            const { data: newAw, error: awErr } = await supabase
+                .from('artwork_jobs')
+                .insert({
+                    job_name: qi.part_label || qi.description || `Artwork for ${quote.quote_number}`,
+                    description: qi.description ?? null,
+                    status: 'draft',
+                    job_item_id: jobItemId,
+                    org_id: prodJob.org_id,
+                    contact_id: contactId,
+                    site_id: prodJob.site_id ?? null,
+                    is_orphan: false,
+                    client_name: null,
+                    created_by: user.id,
+                })
+                .select('id')
+                .single();
+
+            if (awErr) {
+                console.error('generateArtworkFromQuote create artwork error:', awErr);
+                continue;
+            }
+            artworkJobId = newAw.id;
+        }
+
+        artworkJobIds.push(artworkJobId);
+
+        // Skip component creation if this artwork job already has components
+        const { count: compCount } = await supabase
+            .from('artwork_components')
+            .select('id', { count: 'exact', head: true })
+            .eq('job_id', artworkJobId);
+        if ((compCount ?? 0) > 0) continue;
+
+        // Create the component shell
+        const componentName = qi.part_label || qi.description || 'Component';
+        const componentType = qi.component_type || 'other';
+
+        const { data: newComp, error: compErr } = await supabase
+            .from('artwork_components')
+            .insert({
+                job_id: artworkJobId,
+                name: componentName,
+                component_type: componentType,
+                sort_order: 0,
+                status: 'pending_design',
+                lighting: qi.lighting ?? null,
+                notes: qi.spec_notes ?? null,
+                scale_confirmed: false,
+                bleed_included: false,
+                material_confirmed: false,
+                rip_no_scaling_confirmed: false,
+            })
+            .select('id')
+            .single();
+
+        if (compErr || !newComp) {
+            console.error('generateArtworkFromQuote create component error:', compErr);
+            continue;
+        }
+
+        // Create sub-items from quote input_json.sub_items
+        const quoteSubItems = Array.isArray((qi.input_json as any)?.sub_items)
+            ? (qi.input_json as any).sub_items
+            : [];
+
+        if (quoteSubItems.length > 0) {
+            const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+            const rows = quoteSubItems.map((si: any, idx: number) => ({
+                component_id: newComp.id,
+                label: alphabet[idx] ?? `X${idx}`,
+                sort_order: idx,
+                name: si.name ?? null,
+                material: si.material ?? null,
+                application_method: si.application_method ?? null,
+                finish: si.finish ?? null,
+                quantity: si.quantity ?? 1,
+                width_mm: si.width_mm ?? null,
+                height_mm: si.height_mm ?? null,
+                returns_mm: si.returns_mm ?? null,
+                notes: si.notes ?? null,
+            }));
+            const { error: siErr } = await supabase
+                .from('artwork_component_items')
+                .insert(rows);
+            if (siErr) {
+                console.error('generateArtworkFromQuote sub-items insert error:', siErr);
+            }
+        } else {
+            // No structured sub-items — seed one empty sub-item so the designer has
+            // a slot to fill in (per sub-items refactor, a component must have ≥ 1 sub-item).
+            await supabase
+                .from('artwork_component_items')
+                .insert({
+                    component_id: newComp.id,
+                    label: 'A',
+                    sort_order: 0,
+                    name: componentName,
+                    quantity: qi.quantity ?? 1,
+                });
+        }
+    }
+
+    revalidatePath(`/admin/quotes/${quoteId}`);
+    revalidatePath('/admin/artwork');
+
+    return { artworkJobIds, skipped };
 }
