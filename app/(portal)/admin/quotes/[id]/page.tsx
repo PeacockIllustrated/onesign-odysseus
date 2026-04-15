@@ -12,6 +12,8 @@ import { DuplicateQuoteButton } from './DuplicateQuoteButton';
 import { QuoteHeaderEdit } from './QuoteHeaderEdit';
 import { CreateJobButton } from './CreateJobButton';
 import { CreateInvoiceButton } from './CreateInvoiceButton';
+import { GenerateArtworkButton } from './GenerateArtworkButton';
+import { AddItemPicker } from './AddItemPicker';
 
 interface PageProps {
     params: Promise<{ id: string }>;
@@ -152,6 +154,9 @@ export default async function QuoteDetailPage({ params }: PageProps) {
                                     existingJobNumber={existingProductionJob?.job_number ?? null}
                                     quoteOrgId={(quoteData as any).org_id ?? null}
                                 />
+                                {existingProductionJob && (
+                                    <GenerateArtworkButton quoteId={id} />
+                                )}
                                 <CreateInvoiceButton
                                     quoteId={id}
                                     orgId={(quoteData as any).org_id || ''}
@@ -228,50 +233,112 @@ export default async function QuoteDetailPage({ params }: PageProps) {
                 ) : (
                     <div className="space-y-3">
                         {itemsData.map((item, index) => {
-                            const input = item.input_json as PanelLettersV1Input;
-                            const output = item.output_json as {
-                                derived?: { panels_needed?: number; area_m2?: number };
-                                letter_sets_breakdown?: { qty: number; type: string }[];
-                            };
-                            const itemHasOverrides = hasOverrides(input);
+                            // Dispatch by item_type — legacy panel_letters_v1 items keep their
+                            // full card; generic/service items render a simpler summary.
+                            if (item.item_type === 'panel_letters_v1') {
+                                const input = item.input_json as PanelLettersV1Input;
+                                const output = item.output_json as {
+                                    derived?: { panels_needed?: number; area_m2?: number };
+                                    letter_sets_breakdown?: { qty: number; type: string }[];
+                                };
+                                const itemHasOverrides = hasOverrides(input);
+
+                                return (
+                                    <div
+                                        key={item.id}
+                                        className={`p-4 rounded-[var(--radius-sm)] border ${itemHasOverrides
+                                            ? 'bg-amber-50 border-amber-200'
+                                            : 'bg-neutral-50 border-neutral-200'
+                                            }`}
+                                    >
+                                        <div className="flex items-start justify-between">
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <p className="text-sm font-medium text-neutral-900">
+                                                        Item {index + 1}: Panel + Letters
+                                                    </p>
+                                                    {itemHasOverrides && (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 rounded">
+                                                            <AlertTriangle size={10} />
+                                                            Override
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <p className="text-xs text-neutral-500 mt-1">
+                                                    {output.derived?.panels_needed || 0} panels • {output.derived?.area_m2?.toFixed(2) || 0} m² • {output.letter_sets_breakdown?.reduce((sum, s) => sum + s.qty, 0) || 0} letters
+                                                </p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-sm font-bold text-neutral-900">
+                                                    {formatPence(item.line_total_pence)}
+                                                </p>
+                                                <QuoteDetailClient
+                                                    quoteId={id}
+                                                    itemId={item.id}
+                                                    mode="item-actions"
+                                                    pricingSetId={quote.pricing_set_id}
+                                                    rateCard={{ panelMaterials, panelFinishes, finishRulesByType, availableHeights, letterPriceKeys }}
+                                                    initialValues={input}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            // Generic / service item.
+                            const anyItem = item as any;
+                            const isService = item.item_type === 'service' || anyItem.is_production_work === false;
+                            const subItems = ((item.input_json as any)?.sub_items ?? []) as any[];
+                            const label = anyItem.part_label || 'Item';
 
                             return (
                                 <div
                                     key={item.id}
-                                    className={`p-4 rounded-[var(--radius-sm)] border ${itemHasOverrides
-                                        ? 'bg-amber-50 border-amber-200'
-                                        : 'bg-neutral-50 border-neutral-200'
+                                    className={`p-4 rounded-[var(--radius-sm)] border ${isService
+                                        ? 'bg-neutral-50 border-neutral-200'
+                                        : 'bg-white border-neutral-200'
                                         }`}
                                 >
                                     <div className="flex items-start justify-between">
-                                        <div>
+                                        <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-2">
                                                 <p className="text-sm font-medium text-neutral-900">
-                                                    Item {index + 1}: {item.item_type === 'panel_letters_v1' ? 'Panel + Letters' : item.item_type}
+                                                    Item {index + 1}: {label}
                                                 </p>
-                                                {itemHasOverrides && (
-                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 rounded">
-                                                        <AlertTriangle size={10} />
-                                                        Override
+                                                {isService ? (
+                                                    <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-neutral-200 text-neutral-600">
+                                                        service
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#e8f0f3] text-[#3a5f6a]">
+                                                        generic
+                                                    </span>
+                                                )}
+                                                {anyItem.component_type && (
+                                                    <span className="text-[10px] text-neutral-500">
+                                                        {anyItem.component_type.replace(/_/g, ' ')}
                                                     </span>
                                                 )}
                                             </div>
-                                            <p className="text-xs text-neutral-500 mt-1">
-                                                {output.derived?.panels_needed || 0} panels • {output.derived?.area_m2?.toFixed(2) || 0} m² • {output.letter_sets_breakdown?.reduce((sum, s) => sum + s.qty, 0) || 0} letters
-                                            </p>
+                                            {anyItem.description && (
+                                                <p className="text-xs text-neutral-600 mt-1 whitespace-pre-line">
+                                                    {anyItem.description}
+                                                </p>
+                                            )}
+                                            {subItems.length > 0 && (
+                                                <p className="text-xs text-neutral-500 mt-1">
+                                                    {subItems.length} sub-item{subItems.length === 1 ? '' : 's'} defined
+                                                </p>
+                                            )}
                                         </div>
-                                        <div className="text-right">
+                                        <div className="text-right ml-4">
                                             <p className="text-sm font-bold text-neutral-900">
                                                 {formatPence(item.line_total_pence)}
                                             </p>
-                                            <QuoteDetailClient
-                                                quoteId={id}
-                                                itemId={item.id}
-                                                mode="item-actions"
-                                                pricingSetId={quote.pricing_set_id}
-                                                rateCard={{ panelMaterials, panelFinishes, finishRulesByType, availableHeights, letterPriceKeys }}
-                                                initialValues={input}
-                                            />
+                                            <p className="text-[10px] text-neutral-500">
+                                                qty {anyItem.quantity ?? 1}
+                                            </p>
                                         </div>
                                     </div>
                                 </div>
@@ -281,7 +348,10 @@ export default async function QuoteDetailPage({ params }: PageProps) {
                 )}
             </Card>
 
-            {/* Add Line Item Form */}
+            {/* Generic item picker (manual pricing) — for items outside the panel_letters_v1 shape */}
+            {quote.status === 'draft' && <AddItemPicker quoteId={id} />}
+
+            {/* Add Line Item Form (panel_letters_v1 engine-calculated) */}
             <QuoteDetailClient
                 quoteId={id}
                 pricingSetId={quote.pricing_set_id}

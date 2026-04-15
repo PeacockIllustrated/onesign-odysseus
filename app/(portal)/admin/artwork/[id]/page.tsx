@@ -20,6 +20,7 @@ import { ArtworkJobStatus, ComponentStatus } from '@/lib/artwork/types';
 import { getApprovalForJob } from '@/lib/artwork/approval-actions';
 import { AddComponentForm } from './components/AddComponentForm';
 import { ApprovalLinkSection } from './components/ApprovalLinkSection';
+import { ClientDeliveryCard } from './components/ClientDeliveryCard';
 import { CoverImageUpload } from './components/CoverImageUpload';
 import { JobFieldsForm } from './components/JobFieldsForm';
 import { ReleaseToProductionButton } from './components/ReleaseToProductionButton';
@@ -45,14 +46,52 @@ export default async function ArtworkJobDetailPage({
         notFound();
     }
 
+    const supabaseClient = await createServerClient();
+
     // Generate signed URL for cover image if present
     let coverImageUrl: string | null = null;
     if (job.cover_image_path) {
-        const supabase = await createServerClient();
-        const { data } = await supabase.storage
+        const { data } = await supabaseClient.storage
             .from('artwork-assets')
             .createSignedUrl(job.cover_image_path, 3600);
         coverImageUrl = data?.signedUrl || null;
+    }
+
+    // Load client context (contact list + site list for the override dropdowns,
+    // plus the currently-selected contact + site rows for display).
+    let clientOrg: { id: string; name: string } | null = null;
+    let currentContact: any = null;
+    let currentSite: any = null;
+    let availableContacts: any[] = [];
+    let availableSites: any[] = [];
+    if (job.org_id) {
+        const [{ data: org }, { data: contacts }, { data: sites }] = await Promise.all([
+            supabaseClient.from('orgs').select('id, name').eq('id', job.org_id).single(),
+            supabaseClient
+                .from('contacts')
+                .select('id, first_name, last_name, email, phone, contact_type, is_primary')
+                .eq('org_id', job.org_id)
+                .order('is_primary', { ascending: false })
+                .order('last_name', { ascending: true }),
+            supabaseClient
+                .from('org_sites')
+                .select(
+                    'id, name, address_line_1, address_line_2, city, county, postcode, country, is_primary, is_delivery_address'
+                )
+                .eq('org_id', job.org_id)
+                .order('is_delivery_address', { ascending: false })
+                .order('is_primary', { ascending: false })
+                .order('name', { ascending: true }),
+        ]);
+        clientOrg = org ?? null;
+        availableContacts = contacts ?? [];
+        availableSites = sites ?? [];
+        if (job.contact_id) {
+            currentContact = availableContacts.find((c) => c.id === job.contact_id) ?? null;
+        }
+        if (job.site_id) {
+            currentSite = availableSites.find((s) => s.id === job.site_id) ?? null;
+        }
     }
 
     const progress = getJobProgress(job.components);
@@ -244,6 +283,17 @@ export default async function ArtworkJobDetailPage({
 
                 {/* Right: Progress Sidebar */}
                 <div className="space-y-6">
+                    <ClientDeliveryCard
+                        artworkJobId={job.id}
+                        clientName={clientOrg?.name ?? job.client_name_snapshot ?? job.client_name ?? null}
+                        clientId={clientOrg?.id ?? null}
+                        currentContact={currentContact}
+                        currentSite={currentSite}
+                        availableContacts={availableContacts}
+                        availableSites={availableSites}
+                        readOnly={job.status === 'completed'}
+                    />
+
                     {job.production_item && (
                         <Card>
                             <h3 className="text-sm font-semibold text-neutral-900 mb-3">production context</h3>

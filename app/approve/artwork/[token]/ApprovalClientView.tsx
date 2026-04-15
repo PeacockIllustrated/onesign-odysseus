@@ -231,6 +231,38 @@ export default function ApprovalClientView({ data, token }: Props) {
                 </div>
             </div>
 
+            {/* Install / delivery address — snapshot of the site at link-generation time */}
+            {(approval.snapshot_site_name || approval.snapshot_site_address) && (
+                <div style={{
+                    border: '1px solid #e5e5e5',
+                    borderRadius: '8px',
+                    background: '#fff',
+                    marginBottom: '24px',
+                    padding: '16px 20px',
+                }}>
+                    <div style={{
+                        fontSize: '10px',
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.1em',
+                        color: '#888',
+                        marginBottom: '8px',
+                    }}>
+                        install / delivery address
+                    </div>
+                    {approval.snapshot_site_name && (
+                        <div style={{ fontSize: '14px', fontWeight: 600, color: '#111', marginBottom: '4px' }}>
+                            {approval.snapshot_site_name}
+                        </div>
+                    )}
+                    {approval.snapshot_site_address && (
+                        <div style={{ fontSize: '13px', color: '#444', lineHeight: 1.5, whiteSpace: 'pre-line' }}>
+                            {approval.snapshot_site_address}
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* Components Grid */}
             {components.length > 0 && (
                 <div style={{

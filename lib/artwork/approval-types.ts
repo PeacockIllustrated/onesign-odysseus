@@ -28,6 +28,12 @@ export const ArtworkApprovalSchema = z.object({
     signature_data: z.string().nullable(),
     approved_at: z.string().nullable(),
     created_by: z.string().uuid().nullable(),
+    // Snapshot fields (migration 041) — frozen at link-generation time so the
+    // signed approval remains faithful even if the org data later changes.
+    snapshot_contact_name: z.string().nullable().optional(),
+    snapshot_contact_email: z.string().nullable().optional(),
+    snapshot_site_name: z.string().nullable().optional(),
+    snapshot_site_address: z.string().nullable().optional(),
     created_at: z.string(),
     updated_at: z.string(),
 });

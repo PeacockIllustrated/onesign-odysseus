@@ -84,10 +84,10 @@ export async function generateApprovalLink(
 
     const supabase = await createServerClient();
 
-    // Verify job exists
+    // Verify job exists + pull linked contact + site for the snapshot
     const { data: job, error: jobError } = await supabase
         .from('artwork_jobs')
-        .select('id')
+        .select('id, contact_id, site_id')
         .eq('id', jobId)
         .single();
 
@@ -102,6 +102,45 @@ export async function generateApprovalLink(
         .eq('job_id', jobId)
         .eq('status', 'pending');
 
+    // Build snapshot: freeze contact + site at link-generation time so the
+    // signed approval remains a faithful record even if the org data changes.
+    let snapshotContactName: string | null = null;
+    let snapshotContactEmail: string | null = null;
+    let snapshotSiteName: string | null = null;
+    let snapshotSiteAddress: string | null = null;
+
+    if (job.contact_id) {
+        const { data: c } = await supabase
+            .from('contacts')
+            .select('first_name, last_name, email')
+            .eq('id', job.contact_id)
+            .single();
+        if (c) {
+            snapshotContactName = [c.first_name, c.last_name].filter(Boolean).join(' ') || null;
+            snapshotContactEmail = c.email ?? null;
+        }
+    }
+    if (job.site_id) {
+        const { data: s } = await supabase
+            .from('org_sites')
+            .select('name, address_line_1, address_line_2, city, county, postcode, country')
+            .eq('id', job.site_id)
+            .single();
+        if (s) {
+            snapshotSiteName = s.name ?? null;
+            snapshotSiteAddress = [
+                s.address_line_1,
+                s.address_line_2,
+                s.city,
+                s.county,
+                s.postcode,
+                s.country,
+            ]
+                .filter(Boolean)
+                .join('\n') || null;
+        }
+    }
+
     // Generate secure token
     const token = randomBytes(32).toString('hex');
     const expiresAt = new Date();
@@ -115,6 +154,10 @@ export async function generateApprovalLink(
             status: 'pending',
             expires_at: expiresAt.toISOString(),
             created_by: user.id,
+            snapshot_contact_name: snapshotContactName,
+            snapshot_contact_email: snapshotContactEmail,
+            snapshot_site_name: snapshotSiteName,
+            snapshot_site_address: snapshotSiteAddress,
         });
 
     if (insertError) {
