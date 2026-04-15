@@ -413,30 +413,14 @@ export async function submitApproval(
         return { error: 'this approval link has expired' };
     }
 
-    // Submit approval
-    const { error: updateError } = await supabase
-        .from('artwork_approvals')
-        .update({
-            status: 'approved',
-            client_name: validation.data.client_name,
-            client_email: validation.data.client_email,
-            client_company: validation.data.client_company || null,
-            signature_data: validation.data.signature_data,
-            approved_at: new Date().toISOString(),
-        })
-        .eq('id', approval.id);
-
-    if (updateError) {
-        console.error('error submitting approval:', updateError);
-        return { error: 'failed to submit approval' };
-    }
-
-    // If this was a visual_approval job, mark each chosen variant and flip status.
+    // For visual_approval jobs: validate selections BEFORE any mutation so a
+    // bad payload cannot leave the approval row stuck in 'approved' state
+    // with no variants chosen.
     const { data: job } = await supabase
         .from('artwork_jobs')
         .select('id, job_type, status')
         .eq('id', approval.job_id)
-        .single();
+        .maybeSingle();
 
     if (job?.job_type === 'visual_approval') {
         const selections = validation.data.variant_selections ?? [];
@@ -456,6 +440,29 @@ export async function submitApproval(
                 return { error: `component ${cid} has no chosen variant` };
             }
         }
+    }
+
+    // Submit approval
+    const { error: updateError } = await supabase
+        .from('artwork_approvals')
+        .update({
+            status: 'approved',
+            client_name: validation.data.client_name,
+            client_email: validation.data.client_email,
+            client_company: validation.data.client_company || null,
+            signature_data: validation.data.signature_data,
+            approved_at: new Date().toISOString(),
+        })
+        .eq('id', approval.id);
+
+    if (updateError) {
+        console.error('error submitting approval:', updateError);
+        return { error: 'failed to submit approval' };
+    }
+
+    // If this was a visual_approval job, write variant choices and flip job status.
+    if (job?.job_type === 'visual_approval') {
+        const selections = validation.data.variant_selections ?? [];
 
         // Write the is_chosen flags.
         for (const sel of selections) {
