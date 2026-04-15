@@ -37,19 +37,31 @@ export default async function ComponentDetailPage({
         notFound();
     }
 
-    // Generate a signed URL for the thumbnail if it exists (bucket is private)
-    let thumbnailSignedUrl: string | null = null;
-    if (component.artwork_thumbnail_url) {
-        const supabase = await createServerClient();
-        const urlParts = component.artwork_thumbnail_url.split('/artwork-assets/');
-        if (urlParts.length > 1) {
-            const storagePath = urlParts[1];
-            const { data } = await supabase.storage
-                .from('artwork-assets')
-                .createSignedUrl(storagePath, 3600);
-            thumbnailSignedUrl = data?.signedUrl || null;
-        }
-    }
+    // The artwork-assets bucket is private — public URLs 403 at the browser.
+    // Sign every thumbnail_url we're about to render (component-level + every
+    // sub-item's). One server client for both, bounded to one hour.
+    const supabase = await createServerClient();
+
+    const signAssetUrl = async (url: string | null): Promise<string | null> => {
+        if (!url) return null;
+        const parts = url.split('/artwork-assets/');
+        if (parts.length <= 1) return null;
+        const { data } = await supabase.storage
+            .from('artwork-assets')
+            .createSignedUrl(parts[1], 3600);
+        return data?.signedUrl ?? null;
+    };
+
+    const thumbnailSignedUrl = await signAssetUrl(component.artwork_thumbnail_url);
+
+    // Rewrite each sub-item's thumbnail_url to a signed URL so SubItemCard
+    // (a client component) can drop it into <img> without extra round-trips.
+    const subItemsForRender = await Promise.all(
+        (component.sub_items ?? []).map(async (si) => ({
+            ...si,
+            thumbnail_url: await signAssetUrl(si.thumbnail_url ?? null),
+        }))
+    );
 
     const jobCompleted = job.status === 'completed';
 
@@ -122,7 +134,7 @@ export default async function ComponentDetailPage({
                 </div>
                 <SubItemList
                     componentId={componentId}
-                    subItems={component.sub_items ?? []}
+                    subItems={subItemsForRender}
                     stages={stages}
                     jobCompleted={jobCompleted}
                 />
