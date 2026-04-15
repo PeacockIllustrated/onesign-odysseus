@@ -40,6 +40,28 @@ export interface ApprovalPackData {
     components: Array<
         ArtworkComponent & {
             thumbnailUrl: string | null;
+            /**
+             * Client-facing spec rows. One per distinct material/method on this
+             * component. Enough detail to remove ambiguity about what the
+             * client is approving (e.g. "Frosted Vinyl" vs "White Vinyl") —
+             * but intentionally not the production-internal fields (tolerance,
+             * sign-off timestamps, target department).
+             */
+            sub_items: Array<{
+                id: string;
+                label: string;
+                sort_order: number;
+                name: string | null;
+                material: string | null;
+                application_method: string | null;
+                finish: string | null;
+                width_mm: number | null;
+                height_mm: number | null;
+                returns_mm: number | null;
+                quantity: number;
+                thumbnail_url: string | null;
+            }>;
+            /** Legacy alias; same rows as sub_items. Kept for backwards-compat. */
             extra_items: Array<Pick<ArtworkComponentItem, 'id' | 'label' | 'sort_order' | 'width_mm' | 'height_mm' | 'returns_mm'>>;
         }
     >;
@@ -197,43 +219,71 @@ export async function getApprovalByToken(
         return { error: 'job not found', status: 'invalid' };
     }
 
-    // Fetch signed-off components
-    const { data: components } = await supabase
+    // Helper: sign a public artwork-assets URL (bucket is private)
+    const signAssetUrl = async (url: string | null): Promise<string | null> => {
+        if (!url) return null;
+        const parts = url.split('/artwork-assets/');
+        if (parts.length <= 1) return null;
+        const { data } = await supabase.storage
+            .from('artwork-assets')
+            .createSignedUrl(parts[1], 3600);
+        return data?.signedUrl ?? null;
+    };
+
+    // Pull every component + its sub-items in one go. A component is
+    // "showable" to the client when at least one of its sub-items has a
+    // design sign-off — or the legacy component-level field is set, for
+    // jobs predating the sub-items refactor.
+    const { data: allComponents } = await supabase
         .from('artwork_components')
-        .select('*')
+        .select('*, sub_items:artwork_component_items(*)')
         .eq('job_id', approval.job_id)
-        .not('design_signed_off_at', 'is', null)
         .order('sort_order', { ascending: true });
 
-    const printableComponents = (components || []) as ArtworkComponent[];
+    const printableComponents = (allComponents || []).filter((c: any) => {
+        if (c.design_signed_off_at) return true;
+        return (c.sub_items || []).some((si: any) => si.design_signed_off_at);
+    });
 
-    // Generate signed URLs and fetch extra items in parallel
     const enrichedComponents = await Promise.all(
-        printableComponents.map(async (component) => {
-            // Signed URL for thumbnail
-            let thumbnailUrl: string | null = null;
-            if (component.artwork_thumbnail_url) {
-                const urlParts = component.artwork_thumbnail_url.split('/artwork-assets/');
-                if (urlParts.length > 1) {
-                    const storagePath = urlParts[1];
-                    const { data } = await supabase.storage
-                        .from('artwork-assets')
-                        .createSignedUrl(storagePath, 3600);
-                    thumbnailUrl = data?.signedUrl || null;
-                }
-            }
+        printableComponents.map(async (component: any) => {
+            const thumbnailUrl = await signAssetUrl(component.artwork_thumbnail_url);
 
-            // Fetch extra items
-            const { data: items } = await supabase
-                .from('artwork_component_items')
-                .select('id, label, sort_order, width_mm, height_mm, returns_mm')
-                .eq('component_id', component.id)
-                .order('sort_order', { ascending: true });
+            // Sub-items: project to client-safe fields, sign per-item thumbnails.
+            const subItemsRaw = (component.sub_items ?? [])
+                .slice()
+                .sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+
+            const sub_items = await Promise.all(
+                subItemsRaw.map(async (si: any) => ({
+                    id: si.id,
+                    label: si.label,
+                    sort_order: si.sort_order,
+                    name: si.name ?? null,
+                    material: si.material ?? null,
+                    application_method: si.application_method ?? null,
+                    finish: si.finish ?? null,
+                    width_mm: si.width_mm ?? null,
+                    height_mm: si.height_mm ?? null,
+                    returns_mm: si.returns_mm ?? null,
+                    quantity: si.quantity ?? 1,
+                    thumbnail_url: await signAssetUrl(si.thumbnail_url ?? null),
+                }))
+            );
 
             return {
                 ...component,
                 thumbnailUrl,
-                extra_items: items || [],
+                sub_items,
+                // legacy alias
+                extra_items: subItemsRaw.map((si: any) => ({
+                    id: si.id,
+                    label: si.label,
+                    sort_order: si.sort_order,
+                    width_mm: si.width_mm,
+                    height_mm: si.height_mm,
+                    returns_mm: si.returns_mm,
+                })),
             };
         })
     );
