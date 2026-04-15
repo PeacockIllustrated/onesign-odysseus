@@ -373,6 +373,113 @@ export async function reverseSubItemSignOff(
 }
 
 // =============================================================================
+// THUMBNAIL UPLOAD
+// =============================================================================
+
+/**
+ * Upload a thumbnail image for a single sub-item. Image is stored under
+ * artwork-assets/<jobId>/<componentId>/sub-items/<subItemId>.<ext> with
+ * upsert semantics (re-uploading replaces the previous file).
+ */
+export async function uploadSubItemThumbnail(
+    subItemId: string,
+    formData: FormData
+): Promise<{ url: string } | { error: string }> {
+    const user = await getUser();
+    if (!user) return { error: 'not authenticated' };
+
+    const file = formData.get('file') as File | null;
+    if (!file) return { error: 'no file provided' };
+    if (file.size === 0) return { error: 'file is empty' };
+    if (file.size > 10 * 1024 * 1024) return { error: 'file too large (max 10 MB)' };
+    if (!file.type.startsWith('image/')) {
+        return { error: 'file must be an image' };
+    }
+
+    const supabase = await createServerClient();
+
+    const { data: sub } = await supabase
+        .from('artwork_component_items')
+        .select('id, component_id, artwork_components!inner(job_id)')
+        .eq('id', subItemId)
+        .single();
+    if (!sub) return { error: 'sub-item not found' };
+
+    const jobId = (sub as any).artwork_components?.job_id;
+    const componentId = (sub as any).component_id;
+    const ext = (file.name.split('.').pop() || 'png').toLowerCase();
+    const storagePath = `${jobId}/${componentId}/sub-items/${subItemId}.${ext}`;
+
+    const { error: uploadErr } = await supabase.storage
+        .from('artwork-assets')
+        .upload(storagePath, file, { upsert: true, contentType: file.type });
+
+    if (uploadErr) {
+        console.error('uploadSubItemThumbnail storage error:', uploadErr);
+        return { error: uploadErr.message };
+    }
+
+    const { data: urlData } = supabase.storage
+        .from('artwork-assets')
+        .getPublicUrl(storagePath);
+    const url = urlData.publicUrl;
+
+    const { error: updateErr } = await supabase
+        .from('artwork_component_items')
+        .update({ thumbnail_url: url })
+        .eq('id', subItemId);
+
+    if (updateErr) {
+        console.error('uploadSubItemThumbnail update error:', updateErr);
+        return { error: updateErr.message };
+    }
+
+    await revalidateComponent(supabase, componentId);
+    return { url };
+}
+
+/**
+ * Remove a sub-item's thumbnail. Clears the DB column and deletes the
+ * stored file (best-effort — failures to unlink the blob are logged
+ * but do not surface as action errors, since the DB column is what
+ * callers actually read).
+ */
+export async function removeSubItemThumbnail(
+    subItemId: string
+): Promise<{ ok: true } | { error: string }> {
+    const user = await getUser();
+    if (!user) return { error: 'not authenticated' };
+
+    const supabase = await createServerClient();
+
+    const { data: sub } = await supabase
+        .from('artwork_component_items')
+        .select('id, component_id, thumbnail_url')
+        .eq('id', subItemId)
+        .single();
+    if (!sub) return { error: 'sub-item not found' };
+
+    if (sub.thumbnail_url) {
+        const parts = sub.thumbnail_url.split('/artwork-assets/');
+        if (parts.length > 1) {
+            const { error: rmErr } = await supabase.storage
+                .from('artwork-assets')
+                .remove([parts[1]]);
+            if (rmErr) console.error('removeSubItemThumbnail blob rm warn:', rmErr);
+        }
+    }
+
+    const { error } = await supabase
+        .from('artwork_component_items')
+        .update({ thumbnail_url: null })
+        .eq('id', subItemId);
+
+    if (error) return { error: error.message };
+    await revalidateComponent(supabase, sub.component_id);
+    return { ok: true };
+}
+
+// =============================================================================
 // HELPERS
 // =============================================================================
 

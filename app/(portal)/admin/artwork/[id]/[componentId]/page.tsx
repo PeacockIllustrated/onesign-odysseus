@@ -15,6 +15,7 @@ import { ComponentStatus } from '@/lib/artwork/types';
 import { VersionHistory } from './components/VersionHistory';
 import { ComponentActions } from './components/ComponentActions';
 import { SubItemList } from './components/SubItemList';
+import { ComponentThumbnail } from './components/ComponentThumbnail';
 import { createServerClient } from '@/lib/supabase-server';
 
 export default async function ComponentDetailPage({
@@ -89,19 +90,22 @@ export default async function ComponentDetailPage({
                 </div>
             </div>
 
-            {/* Thumbnail (artwork file preview, component-level) */}
-            {thumbnailSignedUrl && (
-                <Card className="mb-6">
-                    <h2 className="text-sm font-semibold text-neutral-900 mb-3 uppercase tracking-wider">
+            {/* Artwork preview — component-level thumbnail with upload controls */}
+            <Card className="mb-6">
+                <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-sm font-semibold text-neutral-900 uppercase tracking-wider">
                         artwork preview
                     </h2>
-                    <img
-                        src={thumbnailSignedUrl}
-                        alt={component.name}
-                        className="max-w-full max-h-96 object-contain rounded border border-neutral-200"
-                    />
-                </Card>
-            )}
+                    <p className="text-xs text-neutral-500">
+                        component-level · sub-items can have their own below
+                    </p>
+                </div>
+                <ComponentThumbnail
+                    componentId={component.id}
+                    currentUrl={thumbnailSignedUrl ?? component.artwork_thumbnail_url ?? null}
+                    readOnly={jobCompleted}
+                />
+            </Card>
 
             {/* Sub-items — the spec-bearing cards */}
             <Card className="mb-6">

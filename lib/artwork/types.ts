@@ -417,6 +417,9 @@ export const ArtworkSubItemSchema = z.object({
     production_signed_off_at: z.string().nullable(),
     production_signed_off_by: z.string().uuid().nullable(),
 
+    // Optional per-sub-item thumbnail (migration 040)
+    thumbnail_url: z.string().nullable().optional(),
+
     created_at: z.string(),
     updated_at: z.string(),
 });

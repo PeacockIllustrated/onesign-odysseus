@@ -10,9 +10,12 @@ import {
     signOffSubItemDesign,
     submitSubItemProduction,
     reverseSubItemSignOff,
+    uploadSubItemThumbnail,
+    removeSubItemThumbnail,
 } from '@/lib/artwork/sub-item-actions';
 import type { ArtworkSubItem } from '@/lib/artwork/types';
 import type { ProductionStage } from '@/lib/production/types';
+import { ThumbnailUpload } from './ThumbnailUpload';
 
 interface Props {
     subItem: ArtworkSubItem;
@@ -168,6 +171,21 @@ export function SubItemCard({ subItem, stages, jobCompleted }: Props) {
                             {error}
                         </p>
                     )}
+
+                    {/* THUMBNAIL — optional per-sub-item close-up */}
+                    <section>
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-2">
+                            thumbnail <span className="text-neutral-400 normal-case">· optional</span>
+                        </h3>
+                        <ThumbnailUpload
+                            currentUrl={subItem.thumbnail_url ?? null}
+                            uploadAction={(fd) => uploadSubItemThumbnail(subItem.id, fd)}
+                            removeAction={() => removeSubItemThumbnail(subItem.id)}
+                            size="sm"
+                            label="sub-item thumbnail"
+                            readOnly={productionLocked || readOnly}
+                        />
+                    </section>
 
                     {/* DESIGN */}
                     <section>
