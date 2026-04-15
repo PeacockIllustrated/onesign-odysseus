@@ -1677,7 +1677,7 @@ export async function getComponentDetail(
         return null;
     }
 
-    const [versionsResult, checksResult, itemsResult] = await Promise.all([
+    const [versionsResult, checksResult, itemsResult, variantsResult] = await Promise.all([
         supabase
             .from('artwork_component_versions')
             .select('*')
@@ -1693,6 +1693,11 @@ export async function getComponentDetail(
             .select('*')
             .eq('component_id', componentId)
             .order('sort_order', { ascending: true }),
+        supabase
+            .from('artwork_variants')
+            .select('*')
+            .eq('component_id', componentId)
+            .order('sort_order', { ascending: true }),
     ]);
 
     const items = (itemsResult.data || []);
@@ -1702,6 +1707,7 @@ export async function getComponentDetail(
         production_checks: (checksResult.data || []),
         extra_items: items,    // legacy alias — same rows as sub_items
         sub_items: items,
+        variants: (variantsResult.data || []),
     } as ArtworkComponentWithVersions;
 }
 
