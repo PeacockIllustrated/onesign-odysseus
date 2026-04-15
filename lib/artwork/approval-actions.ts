@@ -459,6 +459,7 @@ export async function submitApproval(
             client_email: validation.data.client_email,
             client_company: validation.data.client_company || null,
             signature_data: validation.data.signature_data,
+            client_comments: validation.data.client_comments?.trim() || null,
             approved_at: new Date().toISOString(),
         })
         .eq('id', approval.id);

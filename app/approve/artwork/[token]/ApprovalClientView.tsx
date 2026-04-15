@@ -20,6 +20,7 @@ export default function ApprovalClientView({ data, token }: Props) {
     const [clientName, setClientName] = useState('');
     const [clientEmail, setClientEmail] = useState('');
     const [clientCompany, setClientCompany] = useState('');
+    const [clientComments, setClientComments] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(isApproved);
     const [isPending, startTransition] = useTransition();
@@ -74,6 +75,7 @@ export default function ApprovalClientView({ data, token }: Props) {
                 client_email: clientEmail.trim(),
                 client_company: clientCompany.trim() || undefined,
                 signature_data: signatureData,
+                client_comments: clientComments.trim() || undefined,
                 variant_selections,
             });
 
@@ -553,6 +555,34 @@ export default function ApprovalClientView({ data, token }: Props) {
                                 borderRadius: '6px',
                                 fontSize: '14px',
                                 outline: 'none',
+                            }}
+                        />
+                    </div>
+
+                    <div style={{ marginBottom: '16px' }}>
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#555', marginBottom: '4px' }}>
+                            comments / changes requested
+                            <span style={{ fontWeight: 400, color: '#999', marginLeft: '6px' }}>(optional)</span>
+                        </label>
+                        <p style={{ fontSize: '11px', color: '#888', marginTop: 0, marginBottom: '8px', lineHeight: 1.4 }}>
+                            any tweaks, corrections or notes for the design team
+                        </p>
+                        <textarea
+                            value={clientComments}
+                            onChange={(e) => setClientComments(e.target.value)}
+                            rows={3}
+                            maxLength={2000}
+                            placeholder="e.g. please tighten the kerning on the letters, swap the burgundy to navy, etc."
+                            style={{
+                                width: '100%',
+                                padding: '10px 12px',
+                                border: '1px solid #ddd',
+                                borderRadius: '6px',
+                                fontSize: '13px',
+                                outline: 'none',
+                                fontFamily: 'inherit',
+                                resize: 'vertical',
+                                minHeight: '72px',
                             }}
                         />
                     </div>

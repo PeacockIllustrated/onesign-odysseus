@@ -26,6 +26,7 @@ export const ArtworkApprovalSchema = z.object({
     client_email: z.string().nullable(),
     client_company: z.string().nullable(),
     signature_data: z.string().nullable(),
+    client_comments: z.string().nullable().optional(),
     approved_at: z.string().nullable(),
     created_by: z.string().uuid().nullable(),
     // Snapshot fields (migration 041) — frozen at link-generation time so the
@@ -48,6 +49,7 @@ export const SubmitApprovalInputSchema = z.object({
     client_email: z.string().email('valid email is required'),
     client_company: z.string().optional(),
     signature_data: z.string().min(1, 'signature is required'),
+    client_comments: z.string().max(2000).optional(),
     variant_selections: z.array(z.object({
         componentId: z.string().uuid(),
         variantId: z.string().uuid(),

@@ -122,6 +122,16 @@ export function ApprovalLinkSection({ jobId, approval, hasSignedOffComponents, n
                             />
                         </div>
                     )}
+                    {currentApproval.client_comments && (
+                        <div className="mt-2 p-3 border border-amber-200 bg-amber-50 rounded">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-amber-800 mb-1">
+                                Client comments
+                            </div>
+                            <p className="text-xs text-amber-900 whitespace-pre-wrap leading-relaxed">
+                                {currentApproval.client_comments}
+                            </p>
+                        </div>
+                    )}
                     <button
                         onClick={handleGenerate}
                         disabled={isPending || !hasSignedOffComponents}
