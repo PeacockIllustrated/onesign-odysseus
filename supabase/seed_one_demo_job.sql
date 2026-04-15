@@ -304,26 +304,36 @@ BEGIN
     ) VALUES (
         v_art_job_fascia_id,
         'Front fascia panel (TEST-O''S)',
-        'panel', 0, 'pending_design',
+        'panel', 0, 'design_signed_off',
         'halo', -- artwork_components.lighting is constrained to backlit|halo|edge_lit
         'Signed off by Terry via email 12 Apr. Halo lit (internal LED).',
         FALSE, FALSE, FALSE, FALSE
     )
     RETURNING id INTO v_comp_fascia_id;
 
+    -- Sub-items are signed off + routed so the job is release-ready. This
+    -- lets the demo exercise the "Release to Production" button end-to-end
+    -- without first having to manually sign off each sub-item.
     INSERT INTO public.artwork_component_items
         (component_id, label, sort_order,
          name, material, application_method, finish, quantity,
-         width_mm, height_mm, returns_mm)
+         width_mm, height_mm, returns_mm,
+         target_stage_id,
+         design_signed_off_at, production_signed_off_at,
+         material_confirmed, rip_no_scaling_confirmed)
     VALUES
         (v_comp_fascia_id, 'A', 0,
          'Fascia substrate', 'Aluminium composite (3mm)',
          'routed + folded returns', 'RAL 9010 pure white, satin',
-         1, 2400, 400, 50),
+         1, 2400, 400, 50,
+         s_cnc, -- panel routes to CNC first, then painters + assembly
+         now(), now(), TRUE, TRUE),
         (v_comp_fascia_id, 'B', 1,
          'TEST-O''S letters', 'Oracal 651 gold vinyl',
          'weeded, stuck to face', 'gloss gold',
-         7, 180, 220, NULL);
+         7, 180, 220, NULL,
+         s_vinyl, -- letters go straight to vinyl dept
+         now(), now(), TRUE, TRUE);
 
     -- 4b. Vinyl artwork component — no sub-items in quote, so seed one from line-level dims
     INSERT INTO public.artwork_components (
@@ -333,7 +343,7 @@ BEGIN
     ) VALUES (
         v_art_job_vinyl_id,
         'Window manifestation (frosted)',
-        'vinyl', 0, 'pending_design',
+        'vinyl', 0, 'design_signed_off',
         'Privacy band 1000mm up from floor, 400mm tall.',
         FALSE, FALSE, FALSE, FALSE
     )
@@ -341,11 +351,16 @@ BEGIN
 
     INSERT INTO public.artwork_component_items
         (component_id, label, sort_order,
-         name, quantity, width_mm, height_mm, returns_mm)
+         name, quantity, width_mm, height_mm, returns_mm,
+         target_stage_id,
+         design_signed_off_at, production_signed_off_at,
+         material_confirmed, rip_no_scaling_confirmed)
     VALUES
         (v_comp_vinyl_id, 'A', 0,
          'Window manifestation (frosted)',
-         1, 3200, 1800, NULL);
+         1, 3200, 1800, NULL,
+         s_vinyl,
+         now(), now(), TRUE, TRUE);
 
     -- =========================================================================
     -- 5. Delivery (scheduled) — so the Deliveries board shows a demo row
