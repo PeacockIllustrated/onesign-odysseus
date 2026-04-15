@@ -63,7 +63,8 @@ export function FlagProblemSheet({ subItem, jobItemId, stageId, onClose, onSubmi
 
                 <textarea
                     value={notes}
-                    onChange={(e) => setNotes(e.target.value.slice(0, 500))}
+                    onChange={(e) => setNotes(e.target.value)}
+                    maxLength={500}
                     placeholder="What's wrong? e.g. material is the wrong colour, dimensions don't match, artwork file missing…"
                     rows={5}
                     className="w-full p-3 rounded-lg border border-neutral-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"

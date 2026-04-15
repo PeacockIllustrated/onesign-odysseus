@@ -25,6 +25,9 @@ export function StepMeasure({
     subItem, measuredW, measuredH, onChangeW, onChangeH, onNext, onReportProblem,
 }: Props) {
     // Pre-fill from whatever's already on the sub-item (idempotent reloads).
+    // Intentional: dep is only `subItem.id`, not the measured inputs. We
+    // pre-fill once when the sub-item changes; in-progress edits are
+    // preserved and not overwritten by server values mid-typing.
     useEffect(() => {
         if (!measuredW && subItem.measured_width_mm != null) {
             onChangeW(String(subItem.measured_width_mm));

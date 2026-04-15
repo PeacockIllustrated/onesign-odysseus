@@ -59,12 +59,17 @@ export function GuidedCheckClient({ ctx }: Props) {
         setMeasuredW('');
         setMeasuredH('');
         if (next === null) {
+            // Last sub-item signed off — refresh so the server-side context
+            // reflects the final state and the completion screen renders
+            // from an up-to-date snapshot.
             router.refresh();
             setSubIdx(null);
         } else {
+            // Intermediate sign-off — skip the router.refresh(). The
+            // client state is the source of truth mid-walkthrough; a refetch
+            // here is wasted work and can cause visible flicker.
             setSubIdx(next);
             setStep('look');
-            router.refresh();
         }
     };
 
