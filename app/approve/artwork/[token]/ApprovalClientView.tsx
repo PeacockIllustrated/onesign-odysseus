@@ -3,6 +3,7 @@
 import { useState, useRef, useTransition, useCallback, useEffect } from 'react';
 import { submitApproval } from '@/lib/artwork/approval-actions';
 import type { ApprovalPackData } from '@/lib/artwork/approval-actions';
+import { VariantPicker } from './components/VariantPicker';
 import { formatDateTime } from '@/lib/artwork/utils';
 import SignatureCanvas, { type SignatureCanvasRef } from '@/components/SignatureCanvas';
 
@@ -15,6 +16,7 @@ export default function ApprovalClientView({ data, token }: Props) {
     const { approval, job, components, coverImageUrl } = data;
     const isApproved = approval.status === 'approved';
 
+    const [selections, setSelections] = useState<Record<string, string>>({});
     const [clientName, setClientName] = useState('');
     const [clientEmail, setClientEmail] = useState('');
     const [clientCompany, setClientCompany] = useState('');
@@ -66,11 +68,13 @@ export default function ApprovalClientView({ data, token }: Props) {
         const signatureData = signatureRef.current?.toDataURL() || '';
 
         startTransition(async () => {
+            const variant_selections = Object.entries(selections).map(([componentId, variantId]) => ({ componentId, variantId }));
             const result = await submitApproval(token, {
                 client_name: clientName.trim(),
                 client_email: clientEmail.trim(),
                 client_company: clientCompany.trim() || undefined,
                 signature_data: signatureData,
+                variant_selections,
             });
 
             if ('error' in result) {
@@ -317,97 +321,109 @@ export default function ApprovalClientView({ data, token }: Props) {
                                     {component.name}
                                 </div>
 
-                                {/* Specification list — one row per sub-item */}
-                                {component.sub_items && component.sub_items.length > 0 && (
-                                    <div style={{
-                                        border: '1px solid #eaeaea',
-                                        borderRadius: '6px',
-                                        overflow: 'hidden',
-                                        marginTop: '6px',
-                                    }}>
+                                {/* Specification list — one row per sub-item (production jobs)
+                                    or VariantPicker (visual approval jobs) */}
+                                {(job as any).job_type === 'visual_approval' ? (
+                                    <VariantPicker
+                                        componentName={component.name}
+                                        variants={(component as any).variants ?? []}
+                                        chosenVariantId={selections[component.id] ?? null}
+                                        onChoose={(variantId) =>
+                                            setSelections((prev) => ({ ...prev, [component.id]: variantId }))
+                                        }
+                                    />
+                                ) : (
+                                    component.sub_items && component.sub_items.length > 0 && (
                                         <div style={{
-                                            fontSize: '10px',
-                                            fontWeight: 700,
-                                            textTransform: 'uppercase',
-                                            letterSpacing: '0.08em',
-                                            color: '#666',
-                                            padding: '8px 12px',
-                                            background: '#fafafa',
-                                            borderBottom: '1px solid #eaeaea',
+                                            border: '1px solid #eaeaea',
+                                            borderRadius: '6px',
+                                            overflow: 'hidden',
+                                            marginTop: '6px',
                                         }}>
-                                            specification
-                                        </div>
-                                        {component.sub_items.map((si, i) => (
-                                            <div
-                                                key={si.id}
-                                                style={{
-                                                    padding: '12px',
-                                                    borderTop: i === 0 ? 'none' : '1px solid #f0f0f0',
-                                                    fontSize: '13px',
-                                                }}
-                                            >
-                                                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '6px' }}>
-                                                    <span style={{
-                                                        fontFamily: 'ui-monospace, monospace',
-                                                        fontWeight: 700,
-                                                        fontSize: '11px',
-                                                        background: '#111',
-                                                        color: '#fff',
-                                                        padding: '1px 6px',
-                                                        borderRadius: '3px',
-                                                        flexShrink: 0,
-                                                    }}>
-                                                        {si.label}
-                                                    </span>
-                                                    <span style={{ fontWeight: 600, color: '#111' }}>
-                                                        {si.name || <span style={{ color: '#999', fontStyle: 'italic' }}>unnamed</span>}
-                                                    </span>
-                                                    {si.quantity > 1 && (
-                                                        <span style={{ fontSize: '11px', color: '#666', marginLeft: 'auto' }}>
-                                                            × {si.quantity}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <dl style={{
-                                                    display: 'grid',
-                                                    gridTemplateColumns: 'max-content 1fr',
-                                                    rowGap: '3px',
-                                                    columnGap: '10px',
-                                                    fontSize: '12px',
-                                                    margin: 0,
-                                                    paddingLeft: '32px',
-                                                }}>
-                                                    {si.material && (
-                                                        <>
-                                                            <dt style={{ color: '#888', fontWeight: 600 }}>Material</dt>
-                                                            <dd style={{ margin: 0, color: '#111' }}>{si.material}</dd>
-                                                        </>
-                                                    )}
-                                                    {si.application_method && (
-                                                        <>
-                                                            <dt style={{ color: '#888', fontWeight: 600 }}>Method</dt>
-                                                            <dd style={{ margin: 0, color: '#111' }}>{si.application_method}</dd>
-                                                        </>
-                                                    )}
-                                                    {si.finish && (
-                                                        <>
-                                                            <dt style={{ color: '#888', fontWeight: 600 }}>Finish</dt>
-                                                            <dd style={{ margin: 0, color: '#111' }}>{si.finish}</dd>
-                                                        </>
-                                                    )}
-                                                    {si.width_mm && si.height_mm && (
-                                                        <>
-                                                            <dt style={{ color: '#888', fontWeight: 600 }}>Size</dt>
-                                                            <dd style={{ margin: 0, color: '#111', fontFamily: 'ui-monospace, monospace' }}>
-                                                                {si.width_mm} × {si.height_mm} mm
-                                                                {si.returns_mm ? ` · ${si.returns_mm}mm returns` : ''}
-                                                            </dd>
-                                                        </>
-                                                    )}
-                                                </dl>
+                                            <div style={{
+                                                fontSize: '10px',
+                                                fontWeight: 700,
+                                                textTransform: 'uppercase',
+                                                letterSpacing: '0.08em',
+                                                color: '#666',
+                                                padding: '8px 12px',
+                                                background: '#fafafa',
+                                                borderBottom: '1px solid #eaeaea',
+                                            }}>
+                                                specification
                                             </div>
-                                        ))}
-                                    </div>
+                                            {component.sub_items.map((si, i) => (
+                                                <div
+                                                    key={si.id}
+                                                    style={{
+                                                        padding: '12px',
+                                                        borderTop: i === 0 ? 'none' : '1px solid #f0f0f0',
+                                                        fontSize: '13px',
+                                                    }}
+                                                >
+                                                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '6px' }}>
+                                                        <span style={{
+                                                            fontFamily: 'ui-monospace, monospace',
+                                                            fontWeight: 700,
+                                                            fontSize: '11px',
+                                                            background: '#111',
+                                                            color: '#fff',
+                                                            padding: '1px 6px',
+                                                            borderRadius: '3px',
+                                                            flexShrink: 0,
+                                                        }}>
+                                                            {si.label}
+                                                        </span>
+                                                        <span style={{ fontWeight: 600, color: '#111' }}>
+                                                            {si.name || <span style={{ color: '#999', fontStyle: 'italic' }}>unnamed</span>}
+                                                        </span>
+                                                        {si.quantity > 1 && (
+                                                            <span style={{ fontSize: '11px', color: '#666', marginLeft: 'auto' }}>
+                                                                × {si.quantity}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <dl style={{
+                                                        display: 'grid',
+                                                        gridTemplateColumns: 'max-content 1fr',
+                                                        rowGap: '3px',
+                                                        columnGap: '10px',
+                                                        fontSize: '12px',
+                                                        margin: 0,
+                                                        paddingLeft: '32px',
+                                                    }}>
+                                                        {si.material && (
+                                                            <>
+                                                                <dt style={{ color: '#888', fontWeight: 600 }}>Material</dt>
+                                                                <dd style={{ margin: 0, color: '#111' }}>{si.material}</dd>
+                                                            </>
+                                                        )}
+                                                        {si.application_method && (
+                                                            <>
+                                                                <dt style={{ color: '#888', fontWeight: 600 }}>Method</dt>
+                                                                <dd style={{ margin: 0, color: '#111' }}>{si.application_method}</dd>
+                                                            </>
+                                                        )}
+                                                        {si.finish && (
+                                                            <>
+                                                                <dt style={{ color: '#888', fontWeight: 600 }}>Finish</dt>
+                                                                <dd style={{ margin: 0, color: '#111' }}>{si.finish}</dd>
+                                                            </>
+                                                        )}
+                                                        {si.width_mm && si.height_mm && (
+                                                            <>
+                                                                <dt style={{ color: '#888', fontWeight: 600 }}>Size</dt>
+                                                                <dd style={{ margin: 0, color: '#111', fontFamily: 'ui-monospace, monospace' }}>
+                                                                    {si.width_mm} × {si.height_mm} mm
+                                                                    {si.returns_mm ? ` · ${si.returns_mm}mm returns` : ''}
+                                                                </dd>
+                                                            </>
+                                                        )}
+                                                    </dl>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )
                                 )}
                             </div>
                         ))}
@@ -563,24 +579,31 @@ export default function ApprovalClientView({ data, token }: Props) {
                         </button>
                     </div>
 
-                    <button
-                        type="button"
-                        onClick={handleSubmit}
-                        disabled={isPending}
-                        style={{
-                            width: '100%',
-                            padding: '12px 32px',
-                            fontSize: '14px',
-                            fontWeight: 600,
-                            color: '#fff',
-                            background: isPending ? '#888' : '#111',
-                            border: 'none',
-                            borderRadius: '6px',
-                            cursor: isPending ? 'not-allowed' : 'pointer',
-                        }}
-                    >
-                        {isPending ? 'submitting...' : 'approve artwork'}
-                    </button>
+                    {(() => {
+                        const allComponentsChosen = (job as any).job_type !== 'visual_approval' ||
+                            ((job as any).components ?? components).every((c: any) => selections[c.id]);
+                        const submitDisabled = isPending || !allComponentsChosen;
+                        return (
+                            <button
+                                type="button"
+                                onClick={handleSubmit}
+                                disabled={submitDisabled}
+                                style={{
+                                    width: '100%',
+                                    padding: '12px 32px',
+                                    fontSize: '14px',
+                                    fontWeight: 600,
+                                    color: '#fff',
+                                    background: submitDisabled ? '#888' : '#111',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    cursor: submitDisabled ? 'not-allowed' : 'pointer',
+                                }}
+                            >
+                                {isPending ? 'submitting...' : 'approve artwork'}
+                            </button>
+                        );
+                    })()}
                 </div>
             )}
 
