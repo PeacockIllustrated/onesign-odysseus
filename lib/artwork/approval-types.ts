@@ -48,5 +48,9 @@ export const SubmitApprovalInputSchema = z.object({
     client_email: z.string().email('valid email is required'),
     client_company: z.string().optional(),
     signature_data: z.string().min(1, 'signature is required'),
+    variant_selections: z.array(z.object({
+        componentId: z.string().uuid(),
+        variantId: z.string().uuid(),
+    })).optional(),
 });
 export type SubmitApprovalInput = z.infer<typeof SubmitApprovalInputSchema>;

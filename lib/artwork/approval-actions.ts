@@ -29,6 +29,7 @@ export interface ApprovalPackData {
         id: string;
         job_name: string;
         job_reference: string;
+        job_type: string | null;
         client_name: string | null;
         description: string | null;
         cover_image_path: string | null;
@@ -60,6 +61,24 @@ export interface ApprovalPackData {
                 returns_mm: number | null;
                 quantity: number;
                 thumbnail_url: string | null;
+            }>;
+            variants?: Array<{
+                id: string;
+                component_id: string;
+                label: string;
+                sort_order: number;
+                name: string | null;
+                description: string | null;
+                thumbnail_url: string | null;
+                material: string | null;
+                application_method: string | null;
+                finish: string | null;
+                width_mm: number | null;
+                height_mm: number | null;
+                returns_mm: number | null;
+                is_chosen: boolean;
+                chosen_at: string | null;
+                notes: string | null;
             }>;
             /** Legacy alias; same rows as sub_items. Kept for backwards-compat. */
             extra_items: Array<Pick<ArtworkComponentItem, 'id' | 'label' | 'sort_order' | 'width_mm' | 'height_mm' | 'returns_mm'>>;
@@ -254,7 +273,7 @@ export async function getApprovalByToken(
     // Fetch job
     const { data: job, error: jobError } = await supabase
         .from('artwork_jobs')
-        .select('id, job_name, job_reference, client_name, description, cover_image_path, panel_size, paint_colour, status')
+        .select('id, job_name, job_reference, job_type, client_name, description, cover_image_path, panel_size, paint_colour, status')
         .eq('id', approval.job_id)
         .single();
 
@@ -279,7 +298,7 @@ export async function getApprovalByToken(
     // jobs predating the sub-items refactor.
     const { data: allComponents } = await supabase
         .from('artwork_components')
-        .select('*, sub_items:artwork_component_items(*)')
+        .select(`*, sub_items:artwork_component_items(*), variants:artwork_variants(*)`)
         .eq('job_id', approval.job_id)
         .order('sort_order', { ascending: true });
 
@@ -314,10 +333,22 @@ export async function getApprovalByToken(
                 }))
             );
 
+            const variantsRaw = ((component as any).variants ?? [])
+                .slice()
+                .sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+
+            const variants = await Promise.all(
+                variantsRaw.map(async (v: any) => ({
+                    ...v,
+                    thumbnail_url: await signAssetUrl(v.thumbnail_url ?? null),
+                }))
+            );
+
             return {
                 ...component,
                 thumbnailUrl,
                 sub_items,
+                variants,
                 // legacy alias
                 extra_items: subItemsRaw.map((si: any) => ({
                     id: si.id,
@@ -398,6 +429,51 @@ export async function submitApproval(
     if (updateError) {
         console.error('error submitting approval:', updateError);
         return { error: 'failed to submit approval' };
+    }
+
+    // If this was a visual_approval job, mark each chosen variant and flip status.
+    const { data: job } = await supabase
+        .from('artwork_jobs')
+        .select('id, job_type, status')
+        .eq('id', approval.job_id)
+        .single();
+
+    if (job?.job_type === 'visual_approval') {
+        const selections = validation.data.variant_selections ?? [];
+        if (selections.length === 0) {
+            return { error: 'visual approval requires variant selections' };
+        }
+
+        // Validate every component on the job has a selection.
+        const { data: components } = await supabase
+            .from('artwork_components')
+            .select('id')
+            .eq('job_id', approval.job_id);
+        const componentIds = new Set((components ?? []).map((c: any) => c.id));
+        const selectedComponents = new Set(selections.map((s) => s.componentId));
+        for (const cid of componentIds) {
+            if (!selectedComponents.has(cid)) {
+                return { error: `component ${cid} has no chosen variant` };
+            }
+        }
+
+        // Write the is_chosen flags.
+        for (const sel of selections) {
+            await supabase
+                .from('artwork_variants')
+                .update({
+                    is_chosen: true,
+                    chosen_at: new Date().toISOString(),
+                })
+                .eq('id', sel.variantId)
+                .eq('component_id', sel.componentId);
+        }
+
+        // Flip the job status to completed so the "create production" button lights up.
+        await supabase
+            .from('artwork_jobs')
+            .update({ status: 'completed' })
+            .eq('id', approval.job_id);
     }
 
     revalidatePath(`/admin/artwork/${approval.job_id}`);
