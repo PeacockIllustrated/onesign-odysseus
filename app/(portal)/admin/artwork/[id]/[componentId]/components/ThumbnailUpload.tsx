@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Upload, X, Loader2 } from 'lucide-react';
+import { ZoomableImage } from './ZoomableImage';
 
 interface Props {
     /** Current image URL to preview (null = no image yet) */
@@ -64,22 +65,25 @@ export function ThumbnailUpload({
     const height = size === 'sm' ? 'h-24' : 'h-48';
     const textSize = size === 'sm' ? 'text-[11px]' : 'text-xs';
 
+    const [zoomed, setZoomed] = useState(false);
+
     return (
         <div className="space-y-1.5">
             {currentUrl ? (
                 <div className="relative group">
-                    <img
+                    <ZoomableImage
                         src={currentUrl}
                         alt={label}
-                        className={`w-full ${height} object-contain rounded border border-neutral-200 bg-neutral-50`}
+                        className={`w-full ${height} rounded border border-neutral-200 bg-neutral-50`}
+                        onZoomChange={(z) => setZoomed(z > 1)}
                     />
-                    {!readOnly && (
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                    {!readOnly && !zoomed && (
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 pointer-events-none">
                             <button
                                 type="button"
                                 onClick={onPick}
                                 disabled={pending}
-                                className={`${textSize} btn-secondary bg-white inline-flex items-center gap-1 shadow-md`}
+                                className={`${textSize} btn-secondary bg-white inline-flex items-center gap-1 shadow-md pointer-events-auto`}
                             >
                                 <Upload size={12} /> replace
                             </button>
@@ -88,7 +92,7 @@ export function ThumbnailUpload({
                                     type="button"
                                     onClick={onRemove}
                                     disabled={pending}
-                                    className={`${textSize} bg-white text-red-700 border border-red-200 rounded px-2 py-1 inline-flex items-center gap-1 shadow-md hover:bg-red-50`}
+                                    className={`${textSize} bg-white text-red-700 border border-red-200 rounded px-2 py-1 inline-flex items-center gap-1 shadow-md hover:bg-red-50 pointer-events-auto`}
                                 >
                                     <X size={12} /> remove
                                 </button>
