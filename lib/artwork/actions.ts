@@ -1611,7 +1611,9 @@ export async function getArtworkJob(id: string): Promise<ArtworkJobWithProductio
     // sign-off is per-sub-item.
     const { data: components } = await supabase
         .from('artwork_components')
-        .select('*, sub_items:artwork_component_items(*)')
+        .select(
+            '*, sub_items:artwork_component_items(*), variants:artwork_variants(*)'
+        )
         .eq('job_id', id)
         .order('sort_order', { ascending: true });
 
@@ -1619,6 +1621,9 @@ export async function getArtworkJob(id: string): Promise<ArtworkJobWithProductio
     const normalisedComponents = (components || []).map((c: any) => ({
         ...c,
         sub_items: (c.sub_items || []).slice().sort(
+            (a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
+        ),
+        variants: (c.variants || []).slice().sort(
             (a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
         ),
     }));
