@@ -176,6 +176,98 @@ export async function createDeliveryFromJob(
     return { id: newDelivery.id, deliveryNumber: newDelivery.delivery_number };
 }
 
+/**
+ * Idempotently auto-create a scheduled delivery for a job that has just
+ * completed all production. Called from advanceItemToNextRoutedStage when
+ * the final job_item flips to completed. Safe to call multiple times —
+ * skips if a non-failed delivery already exists for this job.
+ *
+ * No super-admin gate because this is an internal trigger, not user-initiated.
+ * The advance action that calls this is itself already authenticated.
+ */
+export async function autoCreateDeliveryForCompletedJob(
+    jobId: string
+): Promise<{ id: string; deliveryNumber: string } | { skipped: true } | { error: string }> {
+    const user = await getUser();
+    if (!user) return { error: 'Not authenticated' };
+
+    const supabase = createAdminClient();
+
+    const { data: job, error: jobError } = await supabase
+        .from('production_jobs')
+        .select('id, org_id, site_id, contact_id, client_name, job_number')
+        .eq('id', jobId)
+        .single();
+
+    if (jobError || !job) return { error: 'Job not found' };
+
+    // Idempotency: skip if a non-failed delivery already exists.
+    const { data: existing } = await supabase
+        .from('deliveries')
+        .select('id')
+        .eq('production_job_id', jobId)
+        .neq('status', 'failed')
+        .maybeSingle();
+
+    if (existing) return { skipped: true };
+
+    // Default schedule = today (admin can edit). Driver + notes intentionally
+    // blank — staff fill those in on the delivery detail page.
+    const today = new Date().toISOString().slice(0, 10);
+
+    const { data: newDelivery, error: insertError } = await supabase
+        .from('deliveries')
+        .insert({
+            org_id: job.org_id,
+            production_job_id: jobId,
+            site_id: job.site_id ?? null,
+            contact_id: job.contact_id ?? null,
+            status: 'scheduled',
+            scheduled_date: today,
+            notes_internal: `Auto-created when ${job.job_number} reached goods-out.`,
+            created_by: user.id,
+        })
+        .select('id, delivery_number')
+        .single();
+
+    if (insertError || !newDelivery) {
+        console.error('autoCreateDeliveryForCompletedJob insert error:', insertError);
+        return { error: insertError?.message ?? 'Failed to auto-create delivery' };
+    }
+
+    // Populate delivery_items from job_items — same shape as the manual action.
+    const { data: jobItems } = await supabase
+        .from('job_items')
+        .select('id, description, quantity')
+        .eq('job_id', jobId)
+        .order('created_at', { ascending: true });
+
+    if (jobItems && jobItems.length > 0) {
+        const rows = jobItems.map((item: any, index: number) => ({
+            delivery_id: newDelivery.id,
+            job_item_id: item.id,
+            description: item.description,
+            quantity: item.quantity,
+            sort_order: index,
+        }));
+        const { error: itemsError } = await supabase
+            .from('delivery_items')
+            .insert(rows);
+        if (itemsError) {
+            console.error('autoCreateDeliveryForCompletedJob items error:', itemsError);
+            // Roll back the empty delivery so admin isn't left with an orphan.
+            await supabase.from('deliveries').delete().eq('id', newDelivery.id);
+            return { error: itemsError.message };
+        }
+    }
+
+    revalidatePath('/admin/deliveries');
+    revalidatePath('/admin/jobs');
+    revalidatePath(`/admin/jobs/${jobId}`);
+
+    return { id: newDelivery.id, deliveryNumber: newDelivery.delivery_number };
+}
+
 export async function updateDeliveryAction(
     input: UpdateDeliveryInput
 ): Promise<{ success: boolean } | { error: string }> {

@@ -159,6 +159,29 @@ export async function createJobFromQuote(
 
     if (!orderBookStage) return { error: 'Order Book stage not found — run migration 028 first' };
 
+    // Minimum safety-net routing. Stage-routing normally gets rebuilt from
+    // artwork sub-item target_stage_ids on completeArtworkAndAdvanceItem,
+    // but if staff advance an item before that (directly from the Kanban),
+    // a missing routing silently short-circuits the item to "completed".
+    // Seeding order-book → artwork-approval → goods-out guarantees a
+    // sensible forward path until the real routing is written on release.
+    const { data: artworkStage } = await supabase
+        .from('production_stages')
+        .select('id')
+        .eq('slug', 'artwork-approval')
+        .is('org_id', null)
+        .single();
+    const { data: goodsOutStage } = await supabase
+        .from('production_stages')
+        .select('id')
+        .eq('slug', 'goods-out')
+        .is('org_id', null)
+        .single();
+
+    const minimumRouting: string[] = [orderBookStage.id];
+    if (artworkStage) minimumRouting.push(artworkStage.id);
+    if (goodsOutStage) minimumRouting.push(goodsOutStage.id);
+
     const { data: quoteItems } = await supabase
         .from('quote_items')
         .select('id, item_type')
@@ -198,7 +221,7 @@ export async function createJobFromQuote(
                 const itemRouting = itemRoutings?.find(r => r.quoteItemId === item.id);
                 const stageRouting = itemRouting
                     ? [orderBookStage.id, ...itemRouting.stageIds.filter(id => id !== orderBookStage.id)]
-                    : [];
+                    : minimumRouting;
                 const description = itemRouting?.description
                     ?? (item.item_type === 'panel_letters_v1' ? 'Panel + Letters' : item.item_type)
                     ?? 'Item';
@@ -490,7 +513,23 @@ export async function advanceItemToNextRoutedStage(
                 notes: 'All items completed — job marked complete',
             });
 
+            // Auto-create a scheduled delivery so the completed job doesn't
+            // just sit there waiting for admin to remember the next step.
+            // Idempotent — safe if admin already created one manually.
+            // Dynamic import to avoid a circular dep between production +
+            // deliveries action modules.
+            try {
+                const { autoCreateDeliveryForCompletedJob } = await import('@/lib/deliveries/actions');
+                const result = await autoCreateDeliveryForCompletedJob(item.job_id);
+                if ('error' in result) {
+                    console.error('Auto-create delivery failed for job', item.job_id, result.error);
+                }
+            } catch (err) {
+                console.error('Auto-create delivery threw for job', item.job_id, err);
+            }
+
             revalidatePath('/admin/jobs');
+            revalidatePath('/admin/deliveries');
         }
 
         revalidatePath('/shop-floor');
