@@ -81,6 +81,9 @@ export const ArtworkJobSchema = z.object({
     is_orphan: z.boolean(),
     contact_id: z.string().uuid().nullable(),
     site_id: z.string().uuid().nullable(),            // migration 041
+    job_type: z.enum(['production', 'visual_approval']).default('production'),
+    quote_id: z.string().uuid().nullable().default(null),
+    parent_visual_job_id: z.string().uuid().nullable().default(null),
     description: z.string().nullable(),
     cover_image_path: z.string().nullable(),
     panel_size: z.string().nullable(),
