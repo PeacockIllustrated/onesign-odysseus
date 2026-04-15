@@ -42,7 +42,9 @@
       "Bash(ls \"C:/Users/peaco/Documents/onesign-portal/app/\\(print\\)/admin/deliveries/\")",
       "Bash(ls -la \"C:/Users/peaco/Documents/onesign-portal/app/\\(portal\\)/admin/deliveries/[id]/\")",
       "Bash(find /c/Users/peaco/Documents/onesign-portal/app -type f \\\\\\(-name *.tsx -o -name *.ts -o -name *.jsx -o -name *.js \\\\\\))",
-      "Bash(grep -E \"\\\\.tsx?$\")"
+      "Bash(grep -E \"\\\\.tsx?$\")",
+      "Bash(grep -i \"TODO\\\\|import\\\\|//\")",
+      "Bash(grep -n \"ALTER TABLE.*artwork_jobs\" /c/Users/peaco/Documents/onesign-odysseus/supabase/migrations/*.sql)"
     ]
   }
 }

@@ -29,6 +29,42 @@ This codebase was cloned from `onesign-growth`, which started as a marketing lea
 - **Hosting:** Vercel
 - **DNS:** Wix (onesignanddigital.com) — subdomains point via CNAME to Vercel
 
+## Work flow
+
+The canonical journey of a customer request through Odysseus:
+
+```
+QUOTE  ── line items describe the job; each line either makes something
+  │      (production work) or is a service (fitting, removal, survey).
+  │      Each line carries an inherited org_id + contact_id + site_id.
+  │
+  │ admin clicks "Accepted" → "Generate artwork"
+  ▼
+ARTWORK JOB  ── auto-generated skeleton. One artwork component per
+  │            production-work line item, with sub-items pre-filled from
+  │            the line item's structured spec (material, method, finish,
+  │            dimensions, qty). Service lines skip artwork entirely.
+  │            Designer uploads artwork files, verifies spec, gets client
+  │            sign-off via /approve/artwork/[token].
+  │
+  │ admin clicks "Release to production"
+  ▼
+PRODUCTION JOB  ── items appear on the department Kanban. Each item
+  │              routes through its sub-item's target departments
+  │              (CNC / Vinyl / Fabrication / Assembly / etc.).
+  │
+  │ all items reach "Goods Out"
+  ▼
+DELIVERY  ── install address inherited from upstream. Proof-of-delivery
+  │        via /delivery/[token] (driver signature + client signature).
+  │
+INVOICE (branches from quote acceptance, not gated on production)
+```
+
+**Inheritance chain.** Every record from quote onward carries `org_id`, `contact_id`, and `site_id`. The value is set at the quote, inherited automatically at each handoff, and overridable at any step (sometimes a specific job ships to a different site than the client's default). Downstream modules read *their own* record — most-recent edit wins.
+
+**Pricing.** The `panel_letters_v1` engine still calculates automatically for the signage shape it was built for. Generic quote items carry manually-entered prices. New engines can be added per job type without blocking the flow.
+
 ## Project structure (post-cleanup target)
 
 ```
@@ -96,34 +132,45 @@ onesign-odysseus/
 └── next.config.ts
 ```
 
-## Database schema (21 migrations)
+## Database schema (40 migrations as of 2026-04)
 
-### Existing tables (DO NOT modify without good reason)
-
+### Core portal (001–011)
 | Migration | Tables | Purpose |
 |-----------|--------|---------|
 | 001 | `marketing_leads` | Legacy lead capture (orphaned — no FK to orgs). Keep but don't extend. |
 | 002 | `orgs`, `org_members`, `subscriptions`, `deliverables`, `client_assets`, `reports` | Core portal data model with RLS |
-| 003-010 | Various fixes | RLS policies, signup flow, super admin role, org creation RPC |
+| 003–010 | Various | RLS policies, signup flow, super-admin role, org-creation RPC |
 | 011 | `architect_leads` | Architect-specific lead capture |
-| 012-013 | `pricing_sets`, `panel_prices`, `manufacturing_rates`, `illumination_profiles`, `letter_price_table`, `quotes`, `quote_items`, `quote_audits` | Signage quoter engine — the most complex module |
-| 014 | `design_packs`, `design_pack_sections` | Printable design pack system |
-| 015-021 | `artwork_jobs`, `artwork_component_items`, `artwork_component_types`, `artwork_lighting_specs`, `artwork_approvals` | Artwork compliance + external approval workflow |
 
-### New tables to build (Phase 1 of build plan)
+### Signage quoter (012–013)
+| 012–013 | `pricing_sets`, `panel_prices`, `manufacturing_rates`, `illumination_profiles`, `letter_price_table`, `quotes`, `quote_items`, `quote_audits` | Signage quoter engine with comprehensive Vitest coverage |
 
-| Table | Purpose |
-|-------|---------|
-| `production_stages` | Configurable stage definitions: Design, Print, Fabrication, Finishing, Artwork Approval, QC, Dispatch |
-| `production_jobs` | A job created from an accepted quote. Tracks status, priority, assignee, due date |
-| `job_items` | Individual production cards per quote line item — each can be at a different stage |
-| `job_stage_log` | Audit trail of every stage transition: who, when, notes. Powers turnaround analytics |
-| `department_instructions` | Specific notes attached to a job for a given stage/department |
+### Artwork compliance (015–020, 029, 032, 036–040)
+| 015–018 | `artwork_jobs`, `artwork_components`, `artwork_component_items`, `artwork_component_versions`, `artwork_production_checks`, `artwork_approvals` | Compliance workflow + external token-based client approval |
+| 029, 032 | fixes + types | Component-type enum extensions, approval sort-order fix |
+| 036–038 | org linkage + lineage view + CHECK constraint | Artwork jobs now enforce `org_id OR is_orphan`; `artwork_job_lineage` view surfaces quote→production→artwork in one query |
+| 039 | sub-item promotion | `artwork_component_items` gains material/method/finish/dimensions/target_stage_id/sign-off columns — it's now the spec-bearing row; components become containers |
+| 040 | per-sub-item thumbnails | Optional `thumbnail_url` per sub-item |
+
+### Production pipeline (024–025, 028)
+| 024 | `production_stages`, `production_jobs`, `job_items`, `job_stage_log`, `department_instructions`, `work_centres` | Kanban + shop-floor infrastructure |
+| 028 | real departments + work centres | Seeded production_stages with actual Onesign departments |
+
+### Purchase orders, invoices, deliveries (026–027, 033, 035)
+| 026 | quote enhancements | Added contact_id/site_id, project_name, customer_reference |
+| 027 | `purchase_orders`, `po_items` | Supplier PO generation |
+| 033 | `invoices`, `invoice_items` | Invoice generation from accepted quotes |
+| 034 | `contacts`, `org_sites` | Client CRM records; added contact_id+site_id FKs to quotes/production_jobs/deliveries/purchase_orders |
+| 035 | `deliveries`, `delivery_items` | Proof-of-delivery flow with token URLs |
 
 ## Key architectural decisions
 
-### 1. Artwork approval is a production stage, not a standalone module
-The Clarity audit explicitly requested "Internal Artwork Approval (Job board)" — artwork sign-off becomes a stage in the Kanban pipeline. When a job enters this stage, the existing tokenised approval flow at `/approve/artwork/[token]` triggers. When approved, the job auto-advances.
+### 1. Artwork is the spec-bearing record — it comes *before* production
+Earlier drafts of this project modelled artwork approval as a stage inside the production pipeline. The current model reverses that: **nothing enters production until artwork is signed off.** On quote acceptance, each production-work line item auto-generates a skeleton artwork component (type + name + sub-items with material/method/finish/dimensions already populated from the quote). The designer's job is to verify, upload artwork files, and sign off — not to retype the spec.
+
+Only after the client approves the artwork and staff click "Release to production" do the job_items appear on the department Kanban. The artwork module is therefore the authoritative specification; the production module is the fabrication tracker derived from it. Service-only line items (fitting, removal, site surveys) skip artwork and go straight to delivery/invoicing.
+
+Under the hood, production_jobs are still created at quote acceptance time (the schema hasn't been inverted). The difference is entirely in the user-facing flow and the narrative: artwork is the first thing staff touch after a quote accepts, and the Kanban surface for the production team only becomes relevant once artwork releases.
 
 ### 2. Shop floor is a standalone route, not inside the portal
 `/shop-floor` is a separate route with its own minimal layout — no sidebar, no admin nav. Large touch targets for Start, Pause, Complete. Staff log in and see only their department's queue. This runs on shop floor tablets.
@@ -151,34 +198,26 @@ The `/admin/booking` module (287K of code) was experimental and is not part of O
 - **Root boilerplate** (`app/page.tsx`) — was still the Next.js create-next-app template
 - **`app/app/` double-nesting** — flattened to `app/(portal)/`
 
-## Build plan phases
+## Build plan — current state
 
-### Phase 1: Production job board (Weeks 1–3) — CLARITY CANCELLATION MILESTONE
-- New migrations for production_stages, production_jobs, job_items, job_stage_log, department_instructions
-- `/admin/jobs` — Kanban WIP view (6 stages: Design → Print → Fabrication → Finishing → QC → Dispatch)
-- `/shop-floor` — Department queue with start/stop/complete actions
-- Artwork approval as a production stage
-- Quote → job conversion flow
-- Supabase Realtime for live progress
+### Shipped
+- **Production job board** (`/admin/jobs`) with Kanban across real Onesign departments, shop-floor queue at `/shop-floor`
+- **Quote → production handoff** (`createJobFromQuote`) with item-level stage routing
+- **Artwork compliance module** with sub-items, per-sub-item sign-off, release-to-production flow rebuilding `stage_routing` from signed-off sub-items
+- **Purchase orders, invoices, deliveries** — full CRUD + print views
+- **Client CRM** — `orgs` + `contacts` + `org_sites` with primary / billing / site / delivery address flags
+- **Backend hardening** — Zod validation across 6 server-action modules, error boundaries, startup env validation, super-admin gate on high-risk mutations
+- **Artwork QoL** — sub-item thumbnails with hover-zoom, component reorder, status override, delete with typed-reference confirmation, per-sub-item spec on client approval page
 
-### Phase 2: Quoting enhancements + purchase orders (Weeks 4–5)
-- Quick quote simplified route
-- Branded PDF quote templates (ReportLab)
-- Bespoke pricing templates
-- RRP / discount pricing
-- Purchase orders module with auto-generated PO references
+### In flight
+- **Generic quote items + artwork skeletons** (this spec): quote items no longer limited to `panel_letters_v1`; each production-work line item auto-generates an artwork component skeleton on acceptance. Service items (fitting, removal) skip artwork and go to delivery/invoicing. Details in `docs/superpowers/specs/2026-04-14-generic-quote-items-and-skeleton-artwork-design.md` (when written).
 
-### Phase 3: Deliveries + invoicing (Weeks 6–8)
-- Delivery scheduling with driver assignment
-- Proof of delivery (mobile camera + signature — modelled on NHS survey app pattern)
-- Invoice generation from accepted quotes
-- Partial/staged invoicing
-
-### Phase 4: Integrations + polish (Weeks 9–10)
-- Sage 50c invoice push
-- HubSpot contact sync
-- Auto-generated stage notification emails
-- Client portal enhancements
+### Deferred
+- **Email sending** (Resend wiring) — hook points exist in deliverables, leads, reports, and the approval flow; needs API key
+- **Sentry / observability** — error boundaries ready; DSN not provisioned
+- **Integration tests against live Supabase** — needs a dedicated test project
+- **AI artwork extraction** — scoped in `docs/artboard-template-example.html` / `docs/artboard-component-card-template.html`; standardised card template ready for Davey to trial
+- **Sage 50c invoice push, HubSpot contact sync** — downstream integrations; separate infra work
 
 ## Clarity Go audit results (30 March 2026)
 
@@ -196,12 +235,14 @@ Features left empty (skip): 20
 ## Conventions
 
 - All new tables use RLS with org-scoped policies matching the existing pattern
-- Auto-generated references follow the `OSD-YYYY-NNNNNN` pattern for quotes, `PO-YYYY-NNNNNN` for purchase orders, `INV-YYYY-NNNNNN` for invoices
+- Auto-generated references follow the `OSD-YYYY-NNNNNN` pattern for quotes, `AWC-YYYY-NNNNNN` for artwork jobs, `PO-YYYY-NNNNNN` for purchase orders, `INV-YYYY-NNNNNN` for invoices
 - Server actions in `lib/` directories, not inline in page files
 - Supabase client via `lib/supabase-server.ts` (server components) or `lib/supabase.ts` (client components)
-- Use `lib/supabase-admin.ts` (service role) only for operations that bypass RLS
-- Form validation with Zod schemas
-- Tests with Vitest for calculation-heavy logic (see `lib/quoter/engine/` for pattern)
+- Use `lib/supabase-admin.ts` (service role) only for operations that bypass RLS, and always gate on `requireSuperAdminOrError()` from `lib/auth.ts`
+- Form validation with Zod schemas; server actions `safeParse` their input at the top of the function, returning `{ error: issue.message }` on failure
+- Tests with Vitest for calculation-heavy logic (see `lib/quoter/engine/` for pattern); mock-heavy tests for server actions that hit Supabase are not the pattern — prefer schema-level / pure-function tests plus manual smoke
+- Artwork is the spec-bearing record, production is the fabrication tracker — when adding a new job-related feature, ask "does this belong on the artwork side (what we're making) or the production side (who's working on it)?"
+- `org_id` + `contact_id` + `site_id` are inherited at every downstream handoff (quote → artwork → production_job → delivery). Each record owns its own values and can be overridden. Downstream readers use the record-in-hand's values, never reach through to the parent
 
 ## GitHub
 

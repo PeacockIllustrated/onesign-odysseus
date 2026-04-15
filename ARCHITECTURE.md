@@ -47,46 +47,54 @@ app/
 
 **Route groups** `(portal)`, `(marketing)`, `(print)` do not affect URLs — they organise code and apply different layouts.
 
-## Database schema (23 migrations)
+## Database schema (40 migrations)
 
-### Core portal (migrations 001–010)
-- `marketing_leads` — legacy lead capture (no FK to orgs)
-- `orgs` — client organisations
-- `org_members` — user ↔ org membership with roles (member, admin, owner)
-- `profiles` — user profiles with `role` field (`super_admin` for Onesign staff)
-- `subscriptions` — org subscription management
-- `deliverables` — client deliverables
-- `client_assets` — uploaded client assets
-- `reports` — client reports
+### Core portal (001–011)
+- `marketing_leads` — legacy lead capture (orphaned; no FK to orgs)
+- `orgs` — client organisations (a "client" in the UI, an "org" in the schema)
+- `org_members` — Onesign staff ↔ client assignment with roles
+- `profiles` — user profiles with `role` (`super_admin` for Onesign staff)
+- `subscriptions`, `deliverables`, `client_assets`, `reports` — supporting tables
+- `architect_leads` — architect-specific lead capture (011)
 
-### Architect leads (migration 011)
-- `architect_leads` — architect-specific lead capture form submissions
+### Client CRM (034)
+- `contacts` — per-org contacts with `contact_type` (primary / billing / site / general)
+- `org_sites` — per-org addresses with flags for `is_primary` / `is_billing_address` / `is_delivery_address`
+- Added `contact_id` + `site_id` columns to `quotes`, `production_jobs`, `deliveries`, `purchase_orders` so every downstream record can inherit the client context
 
-### Signage quoter (migrations 012–013, 021–023)
+### Signage quoter (012–013, 026)
 - `pricing_sets` — versioned rate card sets
 - `panel_prices`, `manufacturing_rates`, `illumination_profiles`, `letter_price_table` — pricing lookup tables
-- `quotes` — quote headers with org, status, reference (OSD-YYYY-NNNNNN)
-- `quote_items` — individual line items per quote
+- `quotes` — quote headers (reference OSD-YYYY-NNNNNN)
+- `quote_items` — individual line items; currently typed as `panel_letters_v1` (engine-calculated) with a generic type under design
 - `quote_audits` — audit trail for quote changes
 
-### Design packs (migration 014)
+### Design packs (014)
 - `design_packs`, `design_pack_sections` — printable brand design pack system
 
-### Artwork compliance (migrations 015–020)
-- `artwork_jobs` — artwork compliance jobs linked to orgs
-- `artwork_component_items` — individual sign components within a job
-- `artwork_component_types` — configurable component type definitions
-- `artwork_lighting_specs` — lighting specification data
-- `artwork_approvals` — approval workflow records with tokens
+### Artwork compliance (015–018, 029, 032, 036–040)
+- `artwork_jobs` — the spec-bearing record linked to orgs (migration 036 promotes `org_id` to primary identifier). Reference `AWC-YYYY-NNNNNN`
+- `artwork_components` — physical assemblies (fascia, window, door, projection, etc.)
+- `artwork_component_items` — sub-items within a component; **this is the spec-bearing row after migration 039**. Holds material, method, finish, dimensions, target department, sign-off state, and optional thumbnail
+- `artwork_component_versions` — snapshot trail of design changes
+- `artwork_production_checks` — append-only log of production-stage verifications
+- `artwork_approvals` — token-based external client approval (64-char tokens, 7-day expiry)
+- `artwork_job_lineage` view (037) — one-query path from artwork job → production job → quote
 
-### Planned: Production pipeline
-- `production_stages` — configurable stage definitions (Design, Print, Fabrication, Finishing, QC, Dispatch)
-- `production_jobs` — jobs created from accepted quotes
-- `job_items` — individual production cards per quote line item
+### Production pipeline (024–025, 028)
+- `production_stages` — configurable stage definitions (Order Book, Artwork Approval, department stages, Goods Out)
+- `production_jobs` — fabrication tracker linked to quotes and orgs
+- `job_items` — individual cards with per-item `stage_routing` derived from artwork sub-item target stages
 - `job_stage_log` — audit trail of stage transitions
-- `department_instructions` — notes attached to a job for a given stage/department
+- `department_instructions` — stage-specific notes per job
+- `work_centres` — real Onesign production areas
 
-All tables use RLS with org-scoped policies.
+### Purchase orders, invoices, deliveries (027, 033, 035)
+- `purchase_orders`, `po_items` — supplier PO generation (PO-YYYY-NNNNNN)
+- `invoices`, `invoice_items` — generated from accepted quotes (INV-YYYY-NNNNNN)
+- `deliveries`, `delivery_items` — proof-of-delivery token flow (PoD signature capture)
+
+All tables use RLS. Super-admin access is checked via `is_super_admin()` on `profiles.role`; org-scoped reads use `is_org_member(org_id)`. Admin-client (service-role) callers must gate on `requireSuperAdminOrError()` from `lib/auth.ts` before bypassing RLS.
 
 ## Auth model
 
@@ -116,35 +124,49 @@ The signage quoter calculates prices for panel signs and illuminated letters.
 
 The engine is the most complex module. It has comprehensive tests and should not be modified without running the test suite.
 
-## Artwork approval (`lib/artwork/` + `/approve/artwork/[token]`)
+## Work flow (quote → artwork → production → delivery)
 
-External artwork approval workflow:
+Artwork is the spec-bearing record; production is the fabrication tracker derived from it. See `CLAUDE.md` "Work flow" for the canonical diagram.
 
-1. Onesign creates an artwork job with component items via `/app/admin/artwork`
-2. System generates a unique approval token
-3. Client receives a link to `/approve/artwork/[token]` (no auth required — token-based access)
-4. Client reviews component items and approves/rejects with comments
-5. Approval status is tracked in `artwork_approvals`
+Briefly:
+1. **Quote** line items capture what Onesign is making. Each line is either production-work or service (fitting, removal, survey). Each carries inherited `org_id` / `contact_id` / `site_id`.
+2. **On acceptance**, staff click "Generate artwork" → each production-work line spawns an artwork component skeleton with sub-items pre-filled from the line's structured spec. Service lines are skipped.
+3. **Designer** uploads artwork files, verifies spec, gets client sign-off via `/approve/artwork/[token]` (no auth — token-based).
+4. **Release to production** → the linked production_job's items appear on the department Kanban. Per-sub-item `target_stage_id` drives routing (CNC / Vinyl / Fabrication / Assembly / etc.).
+5. **Delivery** on completion inherits install address from upstream. `/delivery/[token]` captures PoD signature.
+6. **Invoice** branches from quote acceptance; not gated on production completion.
 
-In the production pipeline (Phase 1), artwork approval becomes a production stage — when a job enters the approval stage, the existing token flow triggers automatically.
+`artwork_job_lineage` view (migration 037) exposes the quote→production→artwork chain in one query.
 
 ## Key directories
 
 ```
 lib/
-├── artwork/       # Artwork compliance actions + types
-├── deliverables/  # Deliverables logic
-├── design-packs/  # Design pack generation
-├── offers/        # Marketing offers data
+├── artwork/       # Artwork compliance actions + types (the spec side)
+│   ├── actions.ts           # Job / component / release-to-production
+│   ├── sub-item-actions.ts  # Sub-item CRUD + sign-off (the spec-bearing row)
+│   ├── approval-actions.ts  # Token-based external client approval
+│   ├── types.ts
+│   └── utils.ts             # Pure helpers (tolerance, labels, release gaps)
+├── production/    # Production pipeline actions (the fabrication tracker)
 ├── quoter/        # Signage quoter engine (CORE — tested)
-├── auth.ts        # Auth utilities (getUser, requireAuth, getUserOrg, isSuperAdmin)
+│   └── engine/panel-letters-v1.ts   # Pricing engine for panel+letters shape
+├── invoices/      # Invoice CRUD + line-item recalc
+├── deliveries/    # Delivery CRUD + PoD token submission
+├── purchase-orders/  # Supplier POs
+├── clients/       # Client CRM (orgs + contacts + org_sites)
+├── deliverables/  # Legacy client deliverables (kept for reference)
+├── design-packs/  # Design pack generation
+├── offers/        # Marketing offers (legacy)
+├── auth.ts        # getUser, requireAuth, requireAdmin, requireSuperAdminOrError, isSuperAdmin
+├── env.ts         # Startup env validation (Zod)
 ├── supabase.ts    # Browser Supabase client
 ├── supabase-server.ts  # Server Supabase client (RLS)
-└── supabase-admin.ts   # Admin Supabase client (bypasses RLS)
+└── supabase-admin.ts   # Admin Supabase client — DANGER, gate every call site
 
 components/
-└── admin/         # Shared admin components
+└── admin/         # Shared admin components (ContactPicker, SitePicker, OrgPicker)
 
 supabase/
-└── migrations/    # 23 sequential migrations
+└── migrations/    # 40 sequential migrations as of 2026-04
 ```
