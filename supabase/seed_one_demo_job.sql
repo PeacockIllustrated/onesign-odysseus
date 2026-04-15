@@ -305,8 +305,8 @@ BEGIN
         v_art_job_fascia_id,
         'Front fascia panel (TEST-O''S)',
         'panel', 0, 'pending_design',
-        'internal led, halo',
-        'Signed off by Terry via email 12 Apr.',
+        'halo', -- artwork_components.lighting is constrained to backlit|halo|edge_lit
+        'Signed off by Terry via email 12 Apr. Halo lit (internal LED).',
         FALSE, FALSE, FALSE, FALSE
     )
     RETURNING id INTO v_comp_fascia_id;
