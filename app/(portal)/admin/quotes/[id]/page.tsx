@@ -14,6 +14,7 @@ import { CreateJobButton } from './CreateJobButton';
 import { CreateInvoiceButton } from './CreateInvoiceButton';
 import { GenerateArtworkButton } from './GenerateArtworkButton';
 import { AddItemPicker } from './AddItemPicker';
+import { VisualsForQuoteCard } from './components/VisualsForQuoteCard';
 
 interface PageProps {
     params: Promise<{ id: string }>;
@@ -88,6 +89,20 @@ export default async function QuoteDetailPage({ params }: PageProps) {
         .eq('quote_id', id)
         .neq('status', 'cancelled')
         .maybeSingle();
+
+    // Fetch visual approval jobs linked to this quote
+    const { data: visualJobs } = await supabase
+        .from('artwork_jobs')
+        .select('id, job_name, status')
+        .eq('quote_id', quote.id)
+        .eq('job_type', 'visual_approval')
+        .order('created_at', { ascending: false });
+
+    const { data: orgs } = await supabase
+        .from('orgs')
+        .select('id, name')
+        .order('name')
+        .limit(200);
 
     // Get rate card for this quote's pricing set
     const rateCard = await getRateCardForPricingSet(quote.pricing_set_id);
@@ -347,6 +362,16 @@ export default async function QuoteDetailPage({ params }: PageProps) {
                     </div>
                 )}
             </Card>
+
+            {/* Visuals linked to this quote */}
+            <div className="mb-6">
+                <VisualsForQuoteCard
+                    quoteId={quote.id}
+                    orgId={(quoteData as any).org_id ?? null}
+                    orgs={orgs ?? []}
+                    visualJobs={visualJobs ?? []}
+                />
+            </div>
 
             {/* Generic item picker (manual pricing) — for items outside the panel_letters_v1 shape */}
             {quote.status === 'draft' && <AddItemPicker quoteId={id} />}
