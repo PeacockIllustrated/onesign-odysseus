@@ -62,6 +62,8 @@ DECLARE
     v_comp_fascia_id     UUID;
     v_comp_vinyl_id      UUID;
 
+    v_delivery_id        UUID;
+
     -- Stage lookups
     s_order_book UUID;
     s_artwork    UUID;
@@ -394,19 +396,35 @@ BEGIN
          now(), now(), TRUE, TRUE);
 
     -- =========================================================================
-    -- 5. Delivery (scheduled) — so the Deliveries board shows a demo row
+    -- 5. Delivery (scheduled) + delivery_items + POD token so the public
+    --    /delivery/[token] page has real rows to sign for.
     -- =========================================================================
     INSERT INTO public.deliveries (
         org_id, production_job_id, site_id, contact_id,
-        status, scheduled_date, driver_name, notes_internal
+        status, scheduled_date, driver_name, notes_internal,
+        pod_token, pod_status
     ) VALUES (
         v_org_id, v_prod_job_id, v_site_id, v_contact_id,
         'scheduled', CURRENT_DATE + 7,
         NULL,
-        '[DEMO] Install booked with fitter for a half-day.'
-    );
+        '[DEMO] Install booked with fitter for a half-day.',
+        'demo-pod-' || encode(gen_random_bytes(16), 'hex'),
+        'pending'
+    )
+    RETURNING id INTO v_delivery_id;
 
-    RAISE NOTICE '[DEMO] Seed complete — Test-O''s: 1 client, 1 quote (accepted), 1 production job (2 items), 2 artwork jobs (3 sub-items), 1 delivery. Remove with: DELETE FROM orgs WHERE name LIKE ''[DEMO]%%''';
+    -- One delivery_item per production job_item so the POD page lists what
+    -- was actually brought to site (fitting is a service so it doesn't ship).
+    INSERT INTO public.delivery_items
+        (delivery_id, job_item_id, description, quantity, sort_order)
+    VALUES
+        (v_delivery_id, v_ji_fascia_id,
+         'Front fascia panel (TEST-O''S) — aluminium composite w/ applied letters',
+         1, 0),
+        (v_delivery_id, v_ji_vinyl_id,
+         'Window manifestation (frosted)', 1, 1);
+
+    RAISE NOTICE '[DEMO] Seed complete — Test-O''s: 1 client, 1 quote (accepted), 1 production job (2 items), 2 artwork jobs (3 sub-items), 1 delivery w/ 2 items + POD token. Remove with the 5-step teardown at the top of this file.';
 END $$;
 
 COMMIT;
