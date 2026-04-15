@@ -286,3 +286,91 @@ export async function deleteVariant(
     revalidatePath('/admin/artwork');
     return { ok: true };
 }
+
+// ---------------------------------------------------------------------------
+// Thumbnail upload / remove (mirrors uploadSubItemThumbnail pattern)
+// ---------------------------------------------------------------------------
+
+export async function uploadVariantThumbnail(
+    variantId: string,
+    formData: FormData
+): Promise<{ url: string } | { error: string }> {
+    const user = await getUser();
+    if (!user) return { error: 'not authenticated' };
+
+    const file = formData.get('file') as File | null;
+    if (!file) return { error: 'no file provided' };
+    if (file.size === 0) return { error: 'file is empty' };
+    if (file.size > 10 * 1024 * 1024) return { error: 'file too large (max 10 MB)' };
+    if (!file.type.startsWith('image/')) return { error: 'file must be an image' };
+
+    const supabase = await createServerClient();
+
+    const { data: variant } = await supabase
+        .from('artwork_variants')
+        .select('id, component_id, artwork_components!inner(job_id)')
+        .eq('id', variantId)
+        .single();
+    if (!variant) return { error: 'variant not found' };
+
+    const jobId = (variant as any).artwork_components?.job_id;
+    const componentId = (variant as any).component_id;
+    const ext = (file.name.split('.').pop() || 'png').toLowerCase();
+    const storagePath = `${jobId}/${componentId}/variants/${variantId}.${ext}`;
+
+    const { error: uploadErr } = await supabase.storage
+        .from('artwork-assets')
+        .upload(storagePath, file, { upsert: true, contentType: file.type });
+    if (uploadErr) return { error: uploadErr.message };
+
+    const { data: urlData } = supabase.storage
+        .from('artwork-assets')
+        .getPublicUrl(storagePath);
+    const url = urlData.publicUrl;
+
+    const { error: updateErr } = await supabase
+        .from('artwork_variants')
+        .update({ thumbnail_url: url })
+        .eq('id', variantId);
+    if (updateErr) return { error: updateErr.message };
+
+    revalidatePath('/admin/artwork');
+    return { url };
+}
+
+export async function removeVariantThumbnail(
+    variantId: string
+): Promise<{ ok: true } | { error: string }> {
+    const user = await getUser();
+    if (!user) return { error: 'not authenticated' };
+
+    const supabase = await createServerClient();
+
+    const { data: variant } = await supabase
+        .from('artwork_variants')
+        .select('id, component_id, thumbnail_url, artwork_components!inner(job_id)')
+        .eq('id', variantId)
+        .single();
+    if (!variant) return { error: 'variant not found' };
+
+    const { error: updErr } = await supabase
+        .from('artwork_variants')
+        .update({ thumbnail_url: null })
+        .eq('id', variantId);
+    if (updErr) return { error: updErr.message };
+
+    // Best-effort blob delete; not surfaced as an action error.
+    if ((variant as any).thumbnail_url) {
+        const jobId = (variant as any).artwork_components?.job_id;
+        const componentId = (variant as any).component_id;
+        const url: string = (variant as any).thumbnail_url;
+        const ext = url.split('.').pop() || 'png';
+        await supabase.storage
+            .from('artwork-assets')
+            .remove([`${jobId}/${componentId}/variants/${variantId}.${ext}`])
+            .catch((e) => console.warn('removeVariantThumbnail blob unlink failed:', e));
+    }
+
+    revalidatePath('/admin/artwork');
+    return { ok: true };
+}
