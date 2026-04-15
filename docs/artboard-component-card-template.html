@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Odysseus — element card</title>
+    <style>
+        :root {
+            --accent: #4e7e8c;
+            --accent-light: #e8f0f3;
+            --accent-dark: #3a5f6a;
+            --ink: #1a1f23;
+            --ink-2: #4a4f54;
+            --muted: #8a8f94;
+            --line: #d8dde1;
+            --paper: #ffffff;
+            --bg: #f4f5f6;
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            color: var(--ink);
+            font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            font-size: 14px;
+            line-height: 1.5;
+            min-height: 100vh;
+        }
+
+        .stage {
+            min-height: 100vh;
+            padding: 48px 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+        }
+
+        .caption {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+            color: var(--muted);
+        }
+
+        /* ═══════════════════════════════════════════════════════════
+           ELEMENT CARD — one per distinct material/method on the
+           artboard. Place next to the thing it describes. Fill
+           every field. Use — for not applicable.
+           ═══════════════════════════════════════════════════════════ */
+
+        .spec-card {
+            background: var(--paper);
+            border: 2px solid var(--ink);
+            border-radius: 4px;
+            width: 320px;
+            max-width: 100%;
+            position: relative;
+            font-family: ui-sans-serif, system-ui, sans-serif;
+        }
+
+        .spec-card::before,
+        .spec-card::after,
+        .spec-card > .corner-bl,
+        .spec-card > .corner-br {
+            content: '';
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            border-color: var(--ink);
+            border-style: solid;
+            pointer-events: none;
+        }
+        .spec-card::before {
+            top: -2px; left: -2px;
+            border-width: 2px 0 0 2px;
+            transform: translate(-3px, -3px);
+        }
+        .spec-card::after {
+            top: -2px; right: -2px;
+            border-width: 2px 2px 0 0;
+            transform: translate(3px, -3px);
+        }
+        .spec-card > .corner-bl,
+        .spec-card > .corner-br { bottom: -2px; }
+        .spec-card > .corner-bl {
+            left: -2px;
+            border-width: 0 0 2px 2px;
+            transform: translate(-3px, 3px);
+        }
+        .spec-card > .corner-br {
+            right: -2px;
+            border-width: 0 2px 2px 0;
+            transform: translate(3px, 3px);
+        }
+
+        /* Header strip */
+        .spec-header {
+            background: var(--ink);
+            color: white;
+            padding: 7px 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .brand-mark {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: ui-monospace, monospace;
+            font-weight: 700;
+            font-size: 9px;
+            color: white;
+            flex-shrink: 0;
+            letter-spacing: -0.5px;
+        }
+
+        .header-title {
+            font-weight: 700;
+            font-size: 11px;
+            letter-spacing: 0.1em;
+            flex: 1;
+        }
+
+        .header-badge {
+            font-family: ui-monospace, monospace;
+            font-size: 8px;
+            opacity: 0.75;
+            letter-spacing: 0.08em;
+        }
+
+        /* Body */
+        .spec-body {
+            padding: 10px 12px;
+        }
+
+        .row {
+            display: grid;
+            grid-template-columns: 70px 1fr;
+            align-items: baseline;
+            gap: 8px;
+            padding: 4px 0;
+            border-bottom: 1px dashed var(--line);
+        }
+        .row:last-child { border-bottom: none; }
+
+        .row.tight { padding: 4px 0; }
+
+        .label {
+            font-family: ui-monospace, monospace;
+            font-size: 9.5px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--accent-dark);
+            text-align: right;
+        }
+
+        .slot {
+            border-bottom: 1.2px solid var(--ink);
+            min-height: 18px;
+            font-family: ui-monospace, monospace;
+            font-size: 11px;
+            color: var(--ink);
+        }
+
+        /* Dimensions row */
+        .dims {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr auto auto 1fr;
+            gap: 4px;
+            align-items: baseline;
+        }
+        .dims .sep,
+        .dims .unit {
+            font-family: ui-monospace, monospace;
+            font-size: 9.5px;
+            color: var(--muted);
+        }
+
+        /* Qty + Dept row */
+        .qd {
+            display: grid;
+            grid-template-columns: 40px 1fr;
+            gap: 6px;
+            align-items: baseline;
+        }
+
+        .qd-block {
+            display: grid;
+            grid-template-columns: 70px 1fr;
+            align-items: baseline;
+            gap: 8px;
+        }
+
+        /* Footer */
+        .spec-footer {
+            padding: 6px 10px;
+            background: var(--ink);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-family: ui-monospace, monospace;
+            font-size: 8px;
+            letter-spacing: 0.08em;
+        }
+
+        .spec-footer-left {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .spec-footer-dot {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--accent);
+        }
+
+        @media print {
+            body { background: white; }
+            .stage { padding: 0; min-height: auto; }
+            .caption { display: none; }
+            .spec-card { break-inside: avoid; page-break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+<div class="stage">
+    <div class="spec-card">
+        <span class="corner-bl"></span><span class="corner-br"></span>
+
+        <div class="spec-header">
+            <div class="brand-mark">OD</div>
+            <div class="header-title">JOB SPEC · ELEMENT</div>
+            <div class="header-badge">v1</div>
+        </div>
+
+        <div class="spec-body">
+            <div class="row"><div class="label">Client</div><div class="slot"></div></div>
+            <div class="row"><div class="label">Component</div><div class="slot"></div></div>
+            <div class="row"><div class="label">Name</div><div class="slot"></div></div>
+            <div class="row"><div class="label">Material</div><div class="slot"></div></div>
+            <div class="row"><div class="label">Method</div><div class="slot"></div></div>
+            <div class="row"><div class="label">Finish</div><div class="slot"></div></div>
+
+            <div class="row">
+                <div class="label">W × H × R</div>
+                <div class="dims">
+                    <span class="slot"></span>
+                    <span class="sep">×</span>
+                    <span class="slot"></span>
+                    <span class="sep">×</span>
+                    <span class="slot"></span>
+                    <span class="unit">mm</span>
+                </div>
+            </div>
+
+            <div class="row"><div class="label">Qty</div><div class="slot"></div></div>
+            <div class="row"><div class="label">Dept</div><div class="slot"></div></div>
+        </div>
+
+        <div class="spec-footer">
+            <div class="spec-footer-left">
+                <span class="spec-footer-dot"></span>
+                <span>EXTRACT THIS BOX</span>
+            </div>
+            <span>OD-ELEM-v1</span>
+        </div>
+    </div>
+
+    <p class="caption">one card per element · place next to the artwork · fill every field</p>
+</div>
+</body>
+</html>

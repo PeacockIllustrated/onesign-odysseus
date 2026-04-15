@@ -2,14 +2,20 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Loader2 } from 'lucide-react';
+import { X, Loader2, Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import {
     createManualJob,
     createJobFromQuote,
     getAcceptedQuotesAction,
     getOrgListAction,
+    getProductionStagesAction,
+    getQuoteItemsForRoutingAction,
 } from '@/lib/production/actions';
+import type { ProductionStage } from '@/lib/production/types';
+import { ContactPicker } from '@/components/admin/ContactPicker';
+import { SitePicker } from '@/components/admin/SitePicker';
+import { CreateOrgModal, CreatedOrg } from '@/app/(portal)/admin/orgs/CreateOrgModal';
 
 interface CreateJobModalProps {
     open: boolean;
@@ -35,17 +41,36 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
     const [priority, setPriority] = useState<'urgent' | 'high' | 'normal' | 'low'>('normal');
     const [dueDate, setDueDate] = useState('');
     const [assignedInitials, setAssignedInitials] = useState('');
+    const [contactId, setContactId] = useState<string | null>(null);
+    const [siteId, setSiteId] = useState<string | null>(null);
 
     // Quote tab state
     const [quotes, setQuotes] = useState<Array<{ id: string; quote_number: string; customer_name: string | null }>>([]);
     const [selectedQuoteId, setSelectedQuoteId] = useState('');
     const [quotesLoading, setQuotesLoading] = useState(false);
 
-    // Fetch orgs and quotes when modal opens
+    // Routing state
+    const [stages, setStages] = useState<ProductionStage[]>([]);
+    const [quoteItems, setQuoteItems] = useState<Array<{ id: string; description: string }>>([]);
+    const [loadingItems, setLoadingItems] = useState(false);
+    const [itemRoutings, setItemRoutings] = useState<Map<string, Set<string>>>(new Map());
+
+    // Inline "new client" modal
+    const [clientModalOpen, setClientModalOpen] = useState(false);
+
+    const handleClientCreated = (newOrg?: CreatedOrg) => {
+        if (!newOrg) return;
+        setOrgs(prev => [{ id: newOrg.id, name: newOrg.name }, ...prev]);
+        setOrgId(newOrg.id);
+        setClientName(newOrg.name);
+    };
+
+    // Fetch orgs, quotes, and stages when modal opens
     useEffect(() => {
         if (!open) return;
 
         getOrgListAction().then(setOrgs);
+        getProductionStagesAction().then(setStages);
 
         setQuotesLoading(true);
         getAcceptedQuotesAction().then(q => {
@@ -53,6 +78,33 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
             setQuotesLoading(false);
         });
     }, [open]);
+
+    // Fetch quote items + set default routings when a quote is selected
+    useEffect(() => {
+        if (!selectedQuoteId) {
+            setQuoteItems([]);
+            setItemRoutings(new Map());
+            return;
+        }
+        setLoadingItems(true);
+        getQuoteItemsForRoutingAction(selectedQuoteId).then(items => {
+            setQuoteItems(items);
+            // Default: all non-approval, non-order-book, non-goods-out stages selected
+            const defaultRoutings = new Map<string, Set<string>>();
+            items.forEach(item => {
+                defaultRoutings.set(
+                    item.id,
+                    new Set(
+                        stages
+                            .filter(s => s.slug !== 'order-book' && s.slug !== 'goods-out')
+                            .map(s => s.id)
+                    )
+                );
+            });
+            setItemRoutings(defaultRoutings);
+            setLoadingItems(false);
+        });
+    }, [selectedQuoteId, stages]);
 
     // Reset form when closed
     useEffect(() => {
@@ -63,8 +115,12 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
             setPriority('normal');
             setDueDate('');
             setAssignedInitials('');
+            setContactId(null);
+            setSiteId(null);
             setOrgId('');
             setSelectedQuoteId('');
+            setQuoteItems([]);
+            setItemRoutings(new Map());
             setError(null);
             setTab('manual');
         }
@@ -84,6 +140,8 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
             priority,
             dueDate: dueDate || undefined,
             assignedInitials: assignedInitials.trim() || undefined,
+            contactId: contactId || undefined,
+            siteId: siteId || undefined,
         });
 
         setSubmitting(false);
@@ -101,7 +159,17 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
         setSubmitting(true);
         setError(null);
 
-        const result = await createJobFromQuote(selectedQuoteId, orgId);
+        const routingPayload = quoteItems.map(item => ({
+            quoteItemId: item.id,
+            stageIds: Array.from(itemRoutings.get(item.id) ?? []),
+            description: item.description,
+        }));
+
+        const result = await createJobFromQuote(
+            selectedQuoteId,
+            orgId,
+            routingPayload.length > 0 ? routingPayload : undefined
+        );
 
         setSubmitting(false);
         if ('error' in result) {
@@ -114,10 +182,13 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
 
     if (!open) return null;
 
+    // Stages shown as checkboxes (exclude order-book and goods-out — always auto-included)
+    const routingStages = stages.filter(s => s.slug !== 'order-book' && s.slug !== 'goods-out');
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
             <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-            <div className="relative bg-white rounded-[var(--radius-md)] shadow-2xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="relative bg-white rounded-[var(--radius-md)] shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
                 <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-200">
                     <h2 className="text-sm font-semibold text-neutral-900">New Production Job</h2>
                     <button onClick={onClose} className="text-neutral-400 hover:text-neutral-700 transition-colors">
@@ -149,16 +220,34 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
                         </p>
                     )}
 
-                    {/* Org picker (shared) */}
+                    {/* Client picker (shared) */}
                     <div className="mb-4">
-                        <label className="block text-xs font-medium text-neutral-700 mb-1">Client Org *</label>
+                        <div className="flex items-center justify-between mb-1">
+                            <label className="block text-xs font-medium text-neutral-700">Client *</label>
+                            <button
+                                type="button"
+                                onClick={() => setClientModalOpen(true)}
+                                className="inline-flex items-center gap-1 text-xs font-medium text-[#4e7e8c] hover:underline"
+                            >
+                                <Plus size={12} />
+                                new client
+                            </button>
+                        </div>
                         <select
                             value={orgId}
-                            onChange={e => setOrgId(e.target.value)}
+                            onChange={e => {
+                                const selectedId = e.target.value;
+                                setOrgId(selectedId);
+                                // Auto-fill client name with the org name
+                                const selectedOrg = orgs.find(o => o.id === selectedId);
+                                if (selectedOrg) {
+                                    setClientName(selectedOrg.name);
+                                }
+                            }}
                             required
                             className="w-full text-sm border border-neutral-200 rounded px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#4e7e8c]"
                         >
-                            <option value="">Select org…</option>
+                            <option value="">Select client…</option>
                             {orgs.map(o => (
                                 <option key={o.id} value={o.id}>{o.name}</option>
                             ))}
@@ -188,6 +277,14 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
                                     placeholder="e.g. Persimmon Homes"
                                     className="w-full text-sm border border-neutral-200 rounded px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#4e7e8c]"
                                 />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-neutral-700 mb-1">Contact</label>
+                                <ContactPicker orgId={orgId || null} value={contactId} onChange={setContactId} />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-neutral-700 mb-1">Site</label>
+                                <SitePicker orgId={orgId || null} value={siteId} onChange={setSiteId} />
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
@@ -261,6 +358,71 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
                                     </select>
                                 </div>
                             )}
+
+                            {/* Department routing — shown once a quote is selected */}
+                            {loadingItems && (
+                                <p className="text-xs text-neutral-500 text-center py-2 flex items-center justify-center gap-1.5">
+                                    <Loader2 size={12} className="animate-spin" /> Loading items…
+                                </p>
+                            )}
+
+                            {!loadingItems && quoteItems.length > 0 && routingStages.length > 0 && (
+                                <div>
+                                    <p className="text-xs font-semibold text-neutral-600 uppercase mb-2">
+                                        Department Routing
+                                    </p>
+                                    <p className="text-[11px] text-neutral-500 mb-3">
+                                        Order Book and Goods Out are always included. Choose which departments each item will visit.
+                                    </p>
+                                    <div className="space-y-3">
+                                        {quoteItems.map(item => {
+                                            const routing = itemRoutings.get(item.id) ?? new Set<string>();
+                                            return (
+                                                <div
+                                                    key={item.id}
+                                                    className="border border-neutral-200 rounded p-3"
+                                                >
+                                                    <p className="text-xs font-semibold text-neutral-800 mb-2">
+                                                        {item.description}
+                                                    </p>
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {routingStages.map(stage => (
+                                                            <label
+                                                                key={stage.id}
+                                                                className="flex items-center gap-1 cursor-pointer"
+                                                            >
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={routing.has(stage.id)}
+                                                                    onChange={e => {
+                                                                        const next = new Map(itemRoutings);
+                                                                        const stageSet = new Set(next.get(item.id) ?? []);
+                                                                        if (e.target.checked) stageSet.add(stage.id);
+                                                                        else stageSet.delete(stage.id);
+                                                                        next.set(item.id, stageSet);
+                                                                        setItemRoutings(next);
+                                                                    }}
+                                                                    className="rounded"
+                                                                />
+                                                                <span
+                                                                    className="text-[10px] font-medium px-1.5 py-0.5 rounded"
+                                                                    style={{
+                                                                        color: stage.color,
+                                                                        backgroundColor: `${stage.color}18`,
+                                                                    }}
+                                                                >
+                                                                    {stage.name}
+                                                                </span>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
                             <button
                                 type="submit"
                                 disabled={submitting || !selectedQuoteId || !orgId || quotes.length === 0}
@@ -273,6 +435,12 @@ export function CreateJobModal({ open, onClose }: CreateJobModalProps) {
                     )}
                 </div>
             </div>
+
+            <CreateOrgModal
+                open={clientModalOpen}
+                onClose={() => setClientModalOpen(false)}
+                onSuccess={handleClientCreated}
+            />
         </div>
     );
 }

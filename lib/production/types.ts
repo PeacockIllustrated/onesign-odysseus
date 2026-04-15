@@ -1,5 +1,31 @@
 // lib/production/types.ts
 
+import { z } from 'zod';
+
+// =============================================================================
+// INPUT SCHEMAS (server-action validation)
+// =============================================================================
+
+export const JobPriorityEnum = z.enum(['urgent', 'high', 'normal', 'low']);
+
+export const CreateManualJobInputSchema = z.object({
+    orgId: z.string().uuid(),
+    title: z.string().min(1, 'title is required').max(200),
+    clientName: z.string().min(1, 'client name is required').max(200),
+    description: z.string().max(4000).optional(),
+    priority: JobPriorityEnum,
+    dueDate: z.string().max(40).optional(),
+    assignedInitials: z.string().max(6).optional(),
+    contactId: z.string().uuid().optional(),
+    siteId: z.string().uuid().optional(),
+});
+
+export const ItemRoutingSchema = z.object({
+    quoteItemId: z.string().uuid(),
+    stageIds: z.array(z.string().uuid()).max(20),
+    description: z.string().max(500),
+});
+
 export type JobPriority = 'urgent' | 'high' | 'normal' | 'low';
 export type JobStatus = 'active' | 'paused' | 'completed' | 'cancelled';
 export type JobItemStatus = 'pending' | 'in_progress' | 'completed';
@@ -20,6 +46,8 @@ export interface ProductionJob {
     id: string;
     org_id: string;
     quote_id: string | null;
+    contact_id: string | null;
+    site_id: string | null;
     job_number: string;
     title: string;
     description: string | null;
@@ -37,6 +65,16 @@ export interface ProductionJob {
     completed_at: string | null;
 }
 
+export interface WorkCentre {
+    id: string;
+    stage_id: string;
+    name: string;
+    slug: string;
+    is_active: boolean;
+    sort_order: number;
+    created_at: string;
+}
+
 export interface JobItem {
     id: string;
     job_id: string;
@@ -47,6 +85,9 @@ export interface JobItem {
     status: JobItemStatus;
     notes: string | null;
     created_at: string;
+    item_number: string | null;
+    stage_routing: string[];
+    work_centre_id: string | null;
 }
 
 export interface JobStageLog {
@@ -70,15 +111,18 @@ export interface DepartmentInstruction {
     created_at: string;
 }
 
-// Rich view type used in Kanban — job with its resolved stage
-export interface JobWithStage extends ProductionJob {
+// Item as it appears on the item-level board, with parent job context
+export interface JobItemWithJob extends JobItem {
     stage: ProductionStage | null;
+    work_centre: WorkCentre | null;
+    job: Pick<ProductionJob, 'id' | 'job_number' | 'client_name' | 'title' | 'priority' | 'due_date' | 'org_id'>;
+    artwork_job_id?: string | null;
 }
 
-// Board column: a stage with its jobs
-export interface BoardColumn {
+// Item board column: a stage with its job items
+export interface ItemBoardColumn {
     stage: ProductionStage;
-    jobs: JobWithStage[];
+    items: JobItemWithJob[];
 }
 
 // Full detail for the slide-out panel

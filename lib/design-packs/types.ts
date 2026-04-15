@@ -221,6 +221,8 @@ export const DesignPackSchema = z.object({
     project_name: z.string().min(1, 'project name is required'),
     client_name: z.string().min(1, 'client name is required'),
     client_email: z.string().email().nullable(),
+    org_id: z.string().uuid().nullable(),
+    contact_id: z.string().uuid().nullable(),
     status: DesignPackStatusEnum,
     data_json: DesignPackDataSchema,
     created_at: z.string().datetime(),
@@ -238,6 +240,8 @@ export const CreateDesignPackInputSchema = z.object({
     project_name: z.string().min(1, 'project name is required'),
     client_name: z.string().min(1, 'client name is required'),
     client_email: z.string().email().optional(),
+    org_id: z.string().uuid().optional(),
+    contact_id: z.string().uuid().optional(),
 });
 
 export type CreateDesignPackInput = z.infer<typeof CreateDesignPackInputSchema>;

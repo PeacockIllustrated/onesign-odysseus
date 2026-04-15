@@ -62,7 +62,7 @@ function LoginForm() {
             {/* Header */}
             <div className="text-center mb-8">
                 <div className="flex justify-center mb-2">
-                    <img src="/logo-black.svg" alt="OneSign" className="h-8" />
+                    <img src="/Odysseus-Logo-Black.svg" alt="Onesign Odysseus" className="h-20 w-auto" />
                 </div>
                 <p className="text-sm text-neutral-500">Sign in to your account</p>
             </div>

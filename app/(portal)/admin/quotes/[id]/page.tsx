@@ -11,6 +11,7 @@ import { ArrowLeft, Printer, Copy, AlertTriangle, History, Send } from 'lucide-r
 import { DuplicateQuoteButton } from './DuplicateQuoteButton';
 import { QuoteHeaderEdit } from './QuoteHeaderEdit';
 import { CreateJobButton } from './CreateJobButton';
+import { CreateInvoiceButton } from './CreateInvoiceButton';
 
 interface PageProps {
     params: Promise<{ id: string }>;
@@ -78,6 +79,14 @@ export default async function QuoteDetailPage({ params }: PageProps) {
         .eq('quote_id', id)
         .maybeSingle();
 
+    // Check for existing invoice
+    const { data: existingInvoice } = await supabase
+        .from('invoices')
+        .select('id, invoice_number')
+        .eq('quote_id', id)
+        .neq('status', 'cancelled')
+        .maybeSingle();
+
     // Get rate card for this quote's pricing set
     const rateCard = await getRateCardForPricingSet(quote.pricing_set_id);
 
@@ -136,11 +145,20 @@ export default async function QuoteDetailPage({ params }: PageProps) {
                             Client PDF
                         </Link>
                         {quoteData.status === 'accepted' && (
-                            <CreateJobButton
-                                quoteId={id}
-                                existingJobId={existingProductionJob?.id ?? null}
-                                existingJobNumber={existingProductionJob?.job_number ?? null}
-                            />
+                            <>
+                                <CreateJobButton
+                                    quoteId={id}
+                                    existingJobId={existingProductionJob?.id ?? null}
+                                    existingJobNumber={existingProductionJob?.job_number ?? null}
+                                    quoteOrgId={(quoteData as any).org_id ?? null}
+                                />
+                                <CreateInvoiceButton
+                                    quoteId={id}
+                                    orgId={(quoteData as any).org_id || ''}
+                                    existingInvoiceId={existingInvoice?.id ?? null}
+                                    existingInvoiceNumber={existingInvoice?.invoice_number ?? null}
+                                />
+                            </>
                         )}
                         <Chip variant={getStatusVariant(quoteData.status)}>
                             {quoteData.status}

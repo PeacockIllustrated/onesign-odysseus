@@ -1,10 +1,10 @@
-# CLAUDE.md — Onesign Portal
+# CLAUDE.md — Onesign Odysseus
 
 ## What this project is
 
-Onesign Portal is the internal production management platform for **Onesign & Digital**, a signage and digital products agency based in Team Valley, Gateshead. It replaces Clarity Go (a third-party production/workflow SaaS at ~£55/user/month) with a bespoke, Onesign-owned system.
+Onesign Odysseus is the internal production management platform for **Onesign & Digital**, a signage and digital products agency based in Team Valley, Gateshead. It replaces Clarity Go (a third-party production/workflow SaaS at ~£55/user/month) with a bespoke, Onesign-owned system.
 
-This codebase was cloned from `onesign-growth`, which started as a marketing lead capture wizard and evolved into a company portal with a quoter engine and artwork compliance workflow. The project has been deliberately forked and renamed to `onesign-portal` to reflect its actual purpose. The old `onesign-growth` repo is archived as a reference.
+This codebase was cloned from `onesign-growth`, which started as a marketing lead capture wizard and evolved into a company portal with a quoter engine and artwork compliance workflow. The project was subsequently forked and renamed — first to `onesign-portal`, then rebranded to `onesign-odysseus`. The old `onesign-growth` repo is archived as a reference.
 
 ## Brand
 
@@ -32,7 +32,7 @@ This codebase was cloned from `onesign-growth`, which started as a marketing lea
 ## Project structure (post-cleanup target)
 
 ```
-onesign-portal/
+onesign-odysseus/
 ├── app/
 │   ├── (portal)/              # ← Main authenticated app (was app/app/(portal))
 │   │   ├── admin/             # Super-admin routes
@@ -92,7 +92,7 @@ onesign-portal/
 │   └── fonts/
 ├── CLAUDE.md                  # This file
 ├── ARCHITECTURE.md            # ★ NEW — Written during cleanup sprint
-├── package.json               # name: "onesign-portal"
+├── package.json               # name: "onesign-odysseus"
 └── next.config.ts
 ```
 
@@ -128,14 +128,22 @@ The Clarity audit explicitly requested "Internal Artwork Approval (Job board)" �
 ### 2. Shop floor is a standalone route, not inside the portal
 `/shop-floor` is a separate route with its own minimal layout — no sidebar, no admin nav. Large touch targets for Start, Pause, Complete. Staff log in and see only their department's queue. This runs on shop floor tablets.
 
-### 3. Multi-tenant monolith
-This codebase will eventually consolidate the separate client portals (persimmon-fulfillment, balfour-fulfilment, sks-construction, slick-construction) as configured tenants. Each client becomes an org with a `sector_config` driving branding, enabled modules, and client-specific behaviour. Subdomain resolution via middleware. This is future work but influences schema design now.
+### 3. Single-tenant internal platform — clients are records, not users
+
+Onesign Odysseus is used **only by Onesign & Digital staff** to run the internal production pipeline. It is not a customer-facing portal. The businesses Onesign does work for never log in here — they interact with Onesign via email, the tokenised artwork-approval links at `/approve/artwork/[token]`, and proof-of-delivery links at `/delivery/[token]`.
+
+Terminology:
+- **Client** — the external business Onesign does signage work for (Persimmon, Balfour, SKS Construction, Slick Construction, etc.). A client is a data record, not a portal user.
+- **Org** — the database-level term for a client. The `orgs` table, `org_id` foreign keys, and `org_members` linkage all exist because this codebase was forked from a multi-tenant SaaS. In Odysseus, "org" and "client" refer to the same entity. **User-facing UI says "client"; code and schema say "org".** Do not introduce new "Organisation" wording in the UI — if you see it, rename it to "client".
+- **org_members** — kept for historical reasons; in Odysseus it only holds Onesign staff assigned to a client. Clients themselves have no portal accounts.
+
+The previously-planned external client portals (persimmon-fulfillment, balfour-fulfilment, sks-construction, slick-construction) are no longer on the roadmap. Any lingering multi-tenancy hooks (subdomain middleware, `sector_config`, etc.) are dormant infrastructure — leave them alone unless a task explicitly calls for removal.
 
 ### 4. External integrations stay external
 HubSpot handles CRM/sales. Sage 50c handles accounting. This platform handles production, quoting, artwork, and delivery. Don't rebuild what external tools do better.
 
 ### 5. Booking OS is deprecated
-The `/admin/booking` module (287K of code) was experimental and is not part of Onesign Portal. It should be removed during the cleanup sprint.
+The `/admin/booking` module (287K of code) was experimental and is not part of Onesign Odysseus. It should be removed during the cleanup sprint.
 
 ## What was removed from onesign-growth
 
@@ -197,6 +205,6 @@ Features left empty (skip): 20
 
 ## GitHub
 
-- **Repo:** `PeacockIllustrated/onesign-portal`
+- **Repo:** `PeacockIllustrated/onesign-odysseus`
 - **Branch:** `master`
 - **Original repo:** `PeacockIllustrated/onesign-growth` (archived reference)

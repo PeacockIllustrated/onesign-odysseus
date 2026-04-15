@@ -19,6 +19,7 @@ import {
     DollarSign,
     Palette,
     ClipboardCheck,
+    Truck,
     X,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -49,12 +50,14 @@ const adminNavGroups: NavGroup[] = [
             { label: 'Job Board', href: '/admin/jobs', icon: LayoutGrid },
             { label: 'Shop Floor', href: '/shop-floor', icon: Zap },
             { label: 'Artwork', href: '/admin/artwork', icon: ClipboardCheck },
+            { label: 'Deliveries', href: '/admin/deliveries', icon: Truck },
         ],
     },
     {
         label: 'Sales',
         items: [
             { label: 'Quotes', href: '/admin/quotes', icon: Calculator },
+            { label: 'Invoices', href: '/admin/invoices', icon: FileText },
             { label: 'Purchase Orders', href: '/admin/purchase-orders', icon: ShoppingCart },
             { label: 'Pricing', href: '/admin/pricing', icon: DollarSign },
         ],
@@ -62,7 +65,7 @@ const adminNavGroups: NavGroup[] = [
     {
         label: 'Clients',
         items: [
-            { label: 'Organisations', href: '/admin/orgs', icon: Building2 },
+            { label: 'Clients', href: '/admin/clients', icon: Building2 },
             { label: 'Design Packs', href: '/admin/design-packs', icon: Palette },
             { label: 'Reports', href: '/admin/reports', icon: FileText },
         ],
@@ -190,12 +193,12 @@ export function Sidebar({ isAdmin }: SidebarProps) {
                 `}
             >
                 {/* Logo + collapse toggle */}
-                <div className="h-14 flex items-center justify-between px-4 border-b border-neutral-100">
+                <div className="h-16 flex items-center justify-between px-4 border-b border-neutral-100">
                     <Link href={homeHref} className="flex items-center">
                         {collapsed ? (
-                            <img src="/onesign-icon.svg" alt="OneSign" className="h-6" />
+                            <img src="/Odysseus-Icon_Black.svg" alt="Onesign Odysseus" className="h-8 w-auto" />
                         ) : (
-                            <img src="/logo-black.svg" alt="OneSign" className="h-5" />
+                            <img src="/Odysseus-Logo-Black.svg" alt="Onesign Odysseus" className="h-9 w-auto" />
                         )}
                     </Link>
                     <button
@@ -222,9 +225,9 @@ export function Sidebar({ isAdmin }: SidebarProps) {
                     {/* Drawer */}
                     <aside className="relative w-72 max-w-[85vw] h-full bg-white shadow-xl flex flex-col animate-slide-in">
                         {/* Logo + close */}
-                        <div className="h-14 flex items-center justify-between px-4 border-b border-neutral-100">
+                        <div className="h-16 flex items-center justify-between px-4 border-b border-neutral-100">
                             <Link href={homeHref} className="flex items-center" onClick={closeMobile}>
-                                <img src="/logo-black.svg" alt="OneSign" className="h-5" />
+                                <img src="/Odysseus-Logo-Black.svg" alt="Onesign Odysseus" className="h-9 w-auto" />
                             </Link>
                             <button
                                 onClick={closeMobile}

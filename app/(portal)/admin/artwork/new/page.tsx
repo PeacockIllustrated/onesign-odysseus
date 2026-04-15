@@ -1,4 +1,5 @@
 import { requireAdmin } from '@/lib/auth';
+import { createServerClient } from '@/lib/supabase-server';
 import { PageHeader, Card } from '@/app/(portal)/components/ui';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
@@ -6,6 +7,40 @@ import { NewArtworkJobForm } from './NewArtworkJobForm';
 
 export default async function NewArtworkJobPage() {
     await requireAdmin();
+
+    const supabase = await createServerClient();
+    const [orgsRes, itemsRes, existingRes] = await Promise.all([
+        supabase.from('orgs').select('id, name').order('name'),
+        supabase
+            .from('job_items')
+            .select(`
+                id,
+                description,
+                item_number,
+                production_jobs!inner(job_number, client_name, status)
+            `)
+            .order('created_at', { ascending: false })
+            .limit(100),
+        supabase.from('artwork_jobs').select('job_item_id'),
+    ]);
+
+    const taken = new Set(
+        (existingRes.data ?? [])
+            .map((r: any) => r.job_item_id)
+            .filter(Boolean)
+    );
+
+    const items = (itemsRes.data ?? [])
+        .filter(
+            (i: any) =>
+                (i.production_jobs?.status === 'active' ||
+                    i.production_jobs?.status === 'paused') &&
+                !taken.has(i.id)
+        )
+        .map((i: any) => ({
+            id: i.id,
+            label: `${i.production_jobs.job_number}${i.item_number ? ' · ' + i.item_number : ''} — ${i.description ?? ''}`,
+        }));
 
     return (
         <div className="p-6 max-w-3xl mx-auto">
@@ -19,11 +54,11 @@ export default async function NewArtworkJobPage() {
 
             <PageHeader
                 title="new artwork job"
-                description="create a new signage job for design-to-production compliance tracking"
+                description="spawn from a production item, or create an orphan for warranty / rework"
             />
 
             <Card>
-                <NewArtworkJobForm />
+                <NewArtworkJobForm orgs={orgsRes.data ?? []} items={items} />
             </Card>
 
             <div className="mt-6 p-4 bg-neutral-50 rounded-[var(--radius-md)] border border-neutral-200">

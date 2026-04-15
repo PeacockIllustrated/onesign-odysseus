@@ -18,8 +18,13 @@ export default async function ArtworkVisualPackPrintPage({
         notFound();
     }
 
-    // Only include components with signed-off designs
-    const printableComponents = job.components.filter(c => c.design_signed_off_at);
+    // A component is printable when it has at least one sub-item with a
+    // signed-off design (post sub-items refactor) — or a legacy
+    // component-level sign-off for jobs that pre-date the refactor.
+    const printableComponents = job.components.filter((c: any) => {
+        if (c.design_signed_off_at) return true;
+        return (c.sub_items || []).some((si: any) => si.design_signed_off_at);
+    });
 
     if (printableComponents.length === 0) {
         return (
@@ -27,14 +32,18 @@ export default async function ArtworkVisualPackPrintPage({
                 <p style={{ fontSize: '16px', color: '#666' }}>
                     no components with signed-off designs to print
                 </p>
+                <p style={{ fontSize: '12px', color: '#aaa', marginTop: '8px' }}>
+                    Sign off at least one sub-item&rsquo;s design to enable the compliance sheet.
+                </p>
             </div>
         );
     }
 
-    // Generate signed URLs, fetch extra items, and get cover image
     const supabase = await createServerClient();
     const thumbnailUrls: Record<string, string | null> = {};
-    const itemsByComponent: Record<string, Array<{ id: string; label: string; sort_order: number; width_mm: number | null; height_mm: number | null; returns_mm: number | null }>> = {};
+    const subItemThumbnailUrls: Record<string, string | null> = {};
+    // Full sub-item payload (including new Phase 2 fields) keyed by component id.
+    const itemsByComponent: Record<string, Array<any>> = {};
 
     // Cover image signed URL
     let coverImageUrl: string | null = null;
@@ -45,29 +54,38 @@ export default async function ArtworkVisualPackPrintPage({
         coverImageUrl = data?.signedUrl || null;
     }
 
+    // Helper: turn a public artwork-assets URL into a short-lived signed URL
+    // (the bucket is private; public URLs still return 403 without a token).
+    const toSignedUrl = async (publicUrl: string | null): Promise<string | null> => {
+        if (!publicUrl) return null;
+        const parts = publicUrl.split('/artwork-assets/');
+        if (parts.length <= 1) return null;
+        const { data } = await supabase.storage
+            .from('artwork-assets')
+            .createSignedUrl(parts[1], 3600);
+        return data?.signedUrl || null;
+    };
+
     await Promise.all(
-        printableComponents.map(async (component) => {
-            if (component.artwork_thumbnail_url) {
-                const urlParts = component.artwork_thumbnail_url.split('/artwork-assets/');
-                if (urlParts.length > 1) {
-                    const storagePath = urlParts[1];
-                    const { data } = await supabase.storage
-                        .from('artwork-assets')
-                        .createSignedUrl(storagePath, 3600);
-                    thumbnailUrls[component.id] = data?.signedUrl || null;
-                } else {
-                    thumbnailUrls[component.id] = null;
-                }
-            } else {
-                thumbnailUrls[component.id] = null;
-            }
+        printableComponents.map(async (component: any) => {
+            thumbnailUrls[component.id] = await toSignedUrl(component.artwork_thumbnail_url);
 
             const { data: items } = await supabase
                 .from('artwork_component_items')
-                .select('id, label, sort_order, width_mm, height_mm, returns_mm')
+                .select('*')
                 .eq('component_id', component.id)
                 .order('sort_order', { ascending: true });
+
             itemsByComponent[component.id] = items || [];
+
+            // Per-sub-item thumbnails (optional, post-migration 040)
+            for (const si of items || []) {
+                if ((si as any).thumbnail_url) {
+                    subItemThumbnailUrls[(si as any).id] = await toSignedUrl(
+                        (si as any).thumbnail_url
+                    );
+                }
+            }
         })
     );
 
@@ -570,7 +588,7 @@ export default async function ArtworkVisualPackPrintPage({
                 <div className="cover-page">
                     <div className="cover-top">
                         <div className="vp-logo">
-                            <img src="/logo-black.svg" alt="OneSign" />
+                            <img src="/Odysseus-Logo-Black.svg" alt="OneSign" />
                         </div>
                         <div className="vp-header-right">
                             artwork approval pack
@@ -699,7 +717,7 @@ export default async function ArtworkVisualPackPrintPage({
                             {/* Header */}
                             <div className="vp-header">
                                 <div className="vp-logo">
-                                    <img src="/logo-black.svg" alt="OneSign" />
+                                    <img src="/Odysseus-Logo-Black.svg" alt="OneSign" />
                                 </div>
                                 <div className="vp-header-right">
                                     sheet {sheetNumber} of {printableComponents.length}
@@ -725,28 +743,32 @@ export default async function ArtworkVisualPackPrintPage({
                                     <div className="vp-component-type">{getComponentTypeLabel(component.component_type)}</div>
 
                                     {hasItems ? (
-                                        <table className="vp-items-table">
+                                        <table className="vp-items-table" style={{ fontSize: '8px' }}>
                                             <thead>
                                                 <tr>
                                                     <th>item</th>
-                                                    <th>width</th>
-                                                    <th>height</th>
-                                                    <th>returns</th>
+                                                    <th>name</th>
+                                                    <th>material</th>
+                                                    <th>method</th>
+                                                    <th>finish</th>
+                                                    <th>W (mm)</th>
+                                                    <th>H (mm)</th>
+                                                    <th>R (mm)</th>
+                                                    <th>qty</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                <tr>
-                                                    <td style={{ fontWeight: 700 }}>A</td>
-                                                    <td>{component.width_mm ? `${component.width_mm} mm` : '—'}</td>
-                                                    <td>{component.height_mm ? `${component.height_mm} mm` : '—'}</td>
-                                                    <td>{component.returns_mm ? `${component.returns_mm} mm` : 'n/a'}</td>
-                                                </tr>
-                                                {componentItems.map(item => (
+                                                {componentItems.map((item: any) => (
                                                     <tr key={item.id}>
                                                         <td style={{ fontWeight: 700 }}>{item.label}</td>
-                                                        <td>{item.width_mm ? `${item.width_mm} mm` : '—'}</td>
-                                                        <td>{item.height_mm ? `${item.height_mm} mm` : '—'}</td>
-                                                        <td>{item.returns_mm ? `${item.returns_mm} mm` : 'n/a'}</td>
+                                                        <td>{item.name ?? '—'}</td>
+                                                        <td>{item.material ?? '—'}</td>
+                                                        <td>{item.application_method ?? '—'}</td>
+                                                        <td>{item.finish ?? '—'}</td>
+                                                        <td>{item.width_mm ?? '—'}</td>
+                                                        <td>{item.height_mm ?? '—'}</td>
+                                                        <td>{item.returns_mm ?? 'n/a'}</td>
+                                                        <td>{item.quantity ?? 1}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -778,19 +800,12 @@ export default async function ArtworkVisualPackPrintPage({
                                         </div>
                                     )}
 
-                                    {/* Show material/lighting for multi-item too */}
-                                    {hasItems && (
+                                    {hasItems && component.lighting && (
                                         <div className="vp-specs" style={{ marginTop: '2mm' }}>
                                             <div className="vp-spec-item">
-                                                <span className="vp-spec-label">material</span>
-                                                <span className="vp-spec-value">{component.material || '—'}</span>
+                                                <span className="vp-spec-label">lighting</span>
+                                                <span className="vp-spec-value">{getLightingTypeLabel(component.lighting)}</span>
                                             </div>
-                                            {component.lighting && (
-                                                <div className="vp-spec-item">
-                                                    <span className="vp-spec-label">lighting</span>
-                                                    <span className="vp-spec-value">{getLightingTypeLabel(component.lighting)}</span>
-                                                </div>
-                                            )}
                                         </div>
                                     )}
 

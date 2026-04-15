@@ -1,9 +1,11 @@
 import { createServerClient } from '@/lib/supabase-server';
 import { requireAdmin } from '@/lib/auth';
 import { PageHeader } from '@/app/(portal)/components/ui';
-import { AlertCircle, LayoutGrid, FileText, ShoppingCart, Zap } from 'lucide-react';
+import { AlertCircle, LayoutGrid, FileText, ShoppingCart, Zap, Receipt, Truck } from 'lucide-react';
 import Link from 'next/link';
 import { getProductionStats } from '@/lib/production/queries';
+import { formatPence, INVOICE_STATUS_COLORS, INVOICE_STATUS_LABELS } from '@/lib/invoices/utils';
+import type { InvoiceStatus } from '@/lib/invoices/types';
 
 export default async function AdminPage() {
     await requireAdmin();
@@ -67,6 +69,57 @@ export default async function AdminPage() {
     } catch {
         // production tables not available
     }
+
+    // Invoice stats
+    const { data: invoiceStats } = await supabase
+        .from('invoices')
+        .select('id, status, total_pence');
+
+    const invoiceCounts = {
+        draft: 0,
+        sent: 0,
+        paid: 0,
+        overdue: 0,
+    };
+    let totalOutstanding = 0;
+    let totalPaid = 0;
+    (invoiceStats || []).forEach((inv: { id: string; status: string; total_pence: number }) => {
+        if (inv.status in invoiceCounts) {
+            invoiceCounts[inv.status as keyof typeof invoiceCounts]++;
+        }
+        if (inv.status === 'sent' || inv.status === 'overdue') {
+            totalOutstanding += inv.total_pence;
+        }
+        if (inv.status === 'paid') {
+            totalPaid += inv.total_pence;
+        }
+    });
+
+    const { data: recentInvoices } = await supabase
+        .from('invoices')
+        .select('id, invoice_number, customer_name, status, total_pence, invoice_date')
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+    // Delivery stats
+    const { data: deliveryStats } = await supabase
+        .from('deliveries')
+        .select('id, status, scheduled_date');
+
+    const deliveryCounts = { scheduled: 0, in_transit: 0, delivered: 0, failed: 0 };
+    let overdueDeliveries = 0;
+    const todayStr = new Date().toISOString().split('T')[0];
+    (deliveryStats || []).forEach((d: any) => {
+        if (d.status in deliveryCounts) deliveryCounts[d.status as keyof typeof deliveryCounts]++;
+        if ((d.status === 'scheduled' || d.status === 'in_transit') && d.scheduled_date < todayStr) overdueDeliveries++;
+    });
+
+    const { data: upcomingDeliveries } = await supabase
+        .from('deliveries')
+        .select('id, delivery_number, scheduled_date, status, driver_name')
+        .in('status', ['scheduled', 'in_transit'])
+        .order('scheduled_date', { ascending: true })
+        .limit(5);
 
     const quoteStatusOrder = ['draft', 'sent', 'accepted', 'rejected', 'cancelled'];
     const quoteStatusLabels: Record<string, string> = {
@@ -181,7 +234,7 @@ export default async function AdminPage() {
                                 {overdueJobs.map(job => (
                                     <Link
                                         key={job.id}
-                                        href={`/admin/jobs/${job.id}`}
+                                        href="/admin/jobs"
                                         className="flex items-center justify-between p-2 rounded hover:bg-neutral-50 transition-colors"
                                     >
                                         <span className="text-sm text-neutral-900 truncate">{job.title}</span>
@@ -218,6 +271,119 @@ export default async function AdminPage() {
                         )}
                     </div>
                 </div>
+            </div>
+
+            {/* Invoices */}
+            <div className="mb-6">
+                <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                        <Receipt size={15} className="text-neutral-500" />
+                        <h2 className="text-sm font-semibold text-neutral-900">Invoices</h2>
+                    </div>
+                    <Link href="/admin/invoices" className="text-xs text-neutral-500 hover:underline">View all</Link>
+                </div>
+
+                <div className="bg-white rounded-[var(--radius-md)] border border-neutral-200 p-4">
+                    {/* Stats grid */}
+                    <div className="grid grid-cols-4 gap-3 mb-4">
+                        {([
+                            { key: 'draft' as const, color: 'bg-neutral-50 border-neutral-200', textColor: 'text-neutral-600' },
+                            { key: 'sent' as const, color: 'bg-blue-50 border-blue-200', textColor: 'text-blue-700' },
+                            { key: 'overdue' as const, color: 'bg-red-50 border-red-200', textColor: 'text-red-600' },
+                            { key: 'paid' as const, color: 'bg-green-50 border-green-200', textColor: 'text-green-700' },
+                        ]).map(({ key, color, textColor }) => (
+                            <div key={key} className={`rounded border p-2.5 text-center ${color}`}>
+                                <span className={`text-2xl font-bold ${textColor}`}>{invoiceCounts[key]}</span>
+                                <p className={`text-[10px] font-medium mt-0.5 ${textColor}`}>{INVOICE_STATUS_LABELS[key]}</p>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Outstanding / Paid summary */}
+                    <div className="flex items-center gap-4 mb-4 text-sm">
+                        <div>
+                            <span className="text-neutral-500">Outstanding:</span>{' '}
+                            <span className="font-semibold text-neutral-900">{formatPence(totalOutstanding)}</span>
+                        </div>
+                        <div>
+                            <span className="text-neutral-500">Collected:</span>{' '}
+                            <span className="font-semibold text-green-700">{formatPence(totalPaid)}</span>
+                        </div>
+                    </div>
+
+                    {/* Recent invoices mini-table */}
+                    {(recentInvoices && recentInvoices.length > 0) ? (
+                        <div className="border-t border-neutral-100 pt-3">
+                            <p className="text-[10px] font-medium text-neutral-400 uppercase tracking-wider mb-2">Recent Invoices</p>
+                            <div className="space-y-1.5">
+                                {recentInvoices.map((inv: { id: string; invoice_number: string; customer_name: string; status: string; total_pence: number; invoice_date: string }) => (
+                                    <Link
+                                        key={inv.id}
+                                        href={`/admin/invoices/${inv.id}`}
+                                        className="flex items-center justify-between p-1.5 rounded hover:bg-neutral-50 transition-colors"
+                                    >
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <span className="text-xs font-medium text-neutral-900 shrink-0">{inv.invoice_number}</span>
+                                            <span className="text-xs text-neutral-500 truncate">{inv.customer_name}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0 ml-2">
+                                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${INVOICE_STATUS_COLORS[inv.status as InvoiceStatus] || ''}`}>
+                                                {INVOICE_STATUS_LABELS[inv.status as InvoiceStatus] || inv.status}
+                                            </span>
+                                            <span className="text-xs font-medium text-neutral-700">{formatPence(inv.total_pence)}</span>
+                                        </div>
+                                    </Link>
+                                ))}
+                            </div>
+                        </div>
+                    ) : (
+                        <p className="text-sm text-neutral-400 text-center py-2">No invoices yet</p>
+                    )}
+                </div>
+            </div>
+
+            {/* Deliveries */}
+            <div className="mb-6">
+                <div className="flex items-center gap-2 mb-4">
+                    <Truck size={18} className="text-neutral-500" />
+                    <h2 className="text-sm font-semibold text-neutral-900">Deliveries</h2>
+                    <Link href="/admin/deliveries" className="ml-auto text-xs text-[#4e7e8c] hover:underline">View all →</Link>
+                </div>
+
+                {/* Stats grid */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                    <div className="bg-blue-50 rounded-lg p-3">
+                        <p className="text-2xl font-bold text-blue-700">{deliveryCounts.scheduled}</p>
+                        <p className="text-xs text-blue-600">Scheduled</p>
+                    </div>
+                    <div className="bg-amber-50 rounded-lg p-3">
+                        <p className="text-2xl font-bold text-amber-700">{deliveryCounts.in_transit}</p>
+                        <p className="text-xs text-amber-600">In Transit</p>
+                    </div>
+                    <div className="bg-green-50 rounded-lg p-3">
+                        <p className="text-2xl font-bold text-green-700">{deliveryCounts.delivered}</p>
+                        <p className="text-xs text-green-600">Delivered</p>
+                    </div>
+                    <div className="bg-red-50 rounded-lg p-3">
+                        <p className="text-2xl font-bold text-red-700">{overdueDeliveries}</p>
+                        <p className="text-xs text-red-600">Overdue</p>
+                    </div>
+                </div>
+
+                {/* Upcoming deliveries */}
+                {upcomingDeliveries && upcomingDeliveries.length > 0 && (
+                    <div className="bg-white rounded-lg border border-neutral-200 divide-y divide-neutral-100">
+                        {upcomingDeliveries.map((d: any) => (
+                            <Link key={d.id} href={`/admin/deliveries/${d.id}`} className="flex items-center justify-between px-4 py-2.5 hover:bg-neutral-50 transition-colors">
+                                <div>
+                                    <code className="text-xs font-mono text-[#4e7e8c] font-semibold">{d.delivery_number}</code>
+                                    {d.driver_name && <span className="text-xs text-neutral-500 ml-2">{d.driver_name}</span>}
+                                </div>
+                                <span className="text-xs text-neutral-500">{new Date(d.scheduled_date + 'T12:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</span>
+                            </Link>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* Quick links */}

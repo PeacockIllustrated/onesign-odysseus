@@ -24,7 +24,7 @@ export function Topbar({ org, isAdmin }: TopbarProps) {
     }
 
     return (
-        <header className="h-14 bg-white border-b border-neutral-200 flex items-center justify-between px-4 md:px-6">
+        <header className="h-16 bg-white border-b border-neutral-200 flex items-center justify-between px-4 md:px-6">
             {/* Left: hamburger (mobile) + org name */}
             <div className="flex items-center gap-2">
                 <button

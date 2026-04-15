@@ -214,6 +214,11 @@ const componentTypeLabels: Record<string, string> = {
     dibond: 'dibond',
     aperture_cut: 'aperture cut panel',
     foamex: 'foamex',
+    digital_print: 'digital print',
+    flat_cut_letters: 'flat-cut letters',
+    channel_letters: 'channel letters',
+    engraved: 'engraved',
+    led_module: 'LED module',
     other: 'other',
 };
 
@@ -229,4 +234,63 @@ const lightingTypeLabels: Record<string, string> = {
 
 export function getLightingTypeLabel(type: string): string {
     return lightingTypeLabels[type] || type;
+}
+
+// =============================================================================
+// SUB-ITEM LABEL ASSIGNMENT
+// =============================================================================
+
+/**
+ * Compute the set of release-blocking gaps for an artwork job's components.
+ * Each sub-item must be fully signed off (design + production) and routed
+ * to a target department. Returns a human-readable list of every gap,
+ * naming the offending sub-item + component precisely.
+ */
+export function computeReleaseGaps(
+    components: Array<{
+        name: string;
+        sub_items: Array<{
+            label: string;
+            name: string | null;
+            design_signed_off_at: string | null;
+            production_signed_off_at: string | null;
+            target_stage_id: string | null;
+        }>;
+    }>
+): { gaps: string[]; targetStageIds: string[] } {
+    const gaps: string[] = [];
+    const targetStageIds = new Set<string>();
+    for (const comp of components) {
+        if (!comp.sub_items || comp.sub_items.length === 0) {
+            gaps.push(`"${comp.name}" has no sub-items`);
+            continue;
+        }
+        for (const si of comp.sub_items) {
+            const ref = `sub-item ${si.label}${si.name ? ` (${si.name})` : ''} of "${comp.name}"`;
+            if (!si.design_signed_off_at) gaps.push(`${ref} — design not signed off`);
+            if (!si.production_signed_off_at) gaps.push(`${ref} — production not signed off`);
+            if (!si.target_stage_id) gaps.push(`${ref} — no target department`);
+            if (si.target_stage_id) targetStageIds.add(si.target_stage_id);
+        }
+    }
+    return { gaps, targetStageIds: Array.from(targetStageIds) };
+}
+
+/**
+ * Given a list of existing sub-item labels, return the next available letter.
+ * Fills gaps first (A, B, D → C). Overflows to AA, AB after Z.
+ */
+export function nextItemLabel(existing: string[]): string {
+    const used = new Set(existing);
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    for (const ch of alphabet) {
+        if (!used.has(ch)) return ch;
+    }
+    for (const a of alphabet) {
+        for (const b of alphabet) {
+            const two = a + b;
+            if (!used.has(two)) return two;
+        }
+    }
+    return 'Z';
 }

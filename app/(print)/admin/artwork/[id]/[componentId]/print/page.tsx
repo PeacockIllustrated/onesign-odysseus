@@ -21,8 +21,9 @@ export default async function ArtworkComponentVisualPrintPage({
         notFound();
     }
 
-    const extraItems = component.extra_items || [];
-    const hasExtraItems = extraItems.length > 0;
+    const subItems = (component.sub_items ?? component.extra_items ?? [])
+        .slice()
+        .sort((a: any, b: any) => a.sort_order - b.sort_order);
 
     // Generate a signed URL for the thumbnail
     let thumbnailUrl: string | null = null;
@@ -335,7 +336,7 @@ export default async function ArtworkComponentVisualPrintPage({
                 {/* Header */}
                 <div className="vp-header">
                     <div className="vp-logo">
-                        <img src="/logo-black.svg" alt="OneSign" />
+                        <img src="/Odysseus-Logo-Black.svg" alt="OneSign" />
                     </div>
                     <div className="vp-header-right">
                         {job.job_reference}
@@ -360,72 +361,47 @@ export default async function ArtworkComponentVisualPrintPage({
                         <div className="vp-component-name">{component.name}</div>
                         <div className="vp-component-type">{getComponentTypeLabel(component.component_type)}</div>
 
-                        {hasExtraItems ? (
+                        {subItems.length > 0 ? (
                             <table className="vp-items-table">
                                 <thead>
                                     <tr>
                                         <th>item</th>
-                                        <th>width</th>
-                                        <th>height</th>
-                                        <th>returns</th>
+                                        <th>name</th>
+                                        <th>material</th>
+                                        <th>method</th>
+                                        <th>finish</th>
+                                        <th>W (mm)</th>
+                                        <th>H (mm)</th>
+                                        <th>R (mm)</th>
+                                        <th>qty</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr>
-                                        <td style={{ fontWeight: 700 }}>A</td>
-                                        <td>{component.width_mm ? `${component.width_mm} mm` : '—'}</td>
-                                        <td>{component.height_mm ? `${component.height_mm} mm` : '—'}</td>
-                                        <td>{component.returns_mm ? `${component.returns_mm} mm` : 'n/a'}</td>
-                                    </tr>
-                                    {extraItems.map(item => (
-                                        <tr key={item.id}>
-                                            <td style={{ fontWeight: 700 }}>{item.label}</td>
-                                            <td>{item.width_mm ? `${item.width_mm} mm` : '—'}</td>
-                                            <td>{item.height_mm ? `${item.height_mm} mm` : '—'}</td>
-                                            <td>{item.returns_mm ? `${item.returns_mm} mm` : 'n/a'}</td>
+                                    {subItems.map((si: any) => (
+                                        <tr key={si.id}>
+                                            <td style={{ fontWeight: 700 }}>{si.label}</td>
+                                            <td>{si.name ?? '—'}</td>
+                                            <td>{si.material ?? '—'}</td>
+                                            <td>{si.application_method ?? '—'}</td>
+                                            <td>{si.finish ?? '—'}</td>
+                                            <td>{si.width_mm ? `${si.width_mm}` : '—'}</td>
+                                            <td>{si.height_mm ? `${si.height_mm}` : '—'}</td>
+                                            <td>{si.returns_mm ? `${si.returns_mm}` : 'n/a'}</td>
+                                            <td>{si.quantity ?? 1}</td>
                                         </tr>
                                     ))}
                                 </tbody>
                             </table>
                         ) : (
-                            <div className="vp-specs">
-                                <div className="vp-spec-item">
-                                    <span className="vp-spec-label">dimensions</span>
-                                    <span className="vp-spec-value">
-                                        {component.width_mm && component.height_mm
-                                            ? formatDimensionWithReturns(
-                                                Number(component.width_mm),
-                                                Number(component.height_mm),
-                                                component.returns_mm ? Number(component.returns_mm) : null
-                                            )
-                                            : '—'}
-                                    </span>
-                                </div>
-                                <div className="vp-spec-item">
-                                    <span className="vp-spec-label">material</span>
-                                    <span className="vp-spec-value">{component.material || '—'}</span>
-                                </div>
-                                {component.lighting && (
-                                    <div className="vp-spec-item">
-                                        <span className="vp-spec-label">lighting</span>
-                                        <span className="vp-spec-value">{getLightingTypeLabel(component.lighting)}</span>
-                                    </div>
-                                )}
-                            </div>
+                            <p className="vp-notes">No sub-items defined.</p>
                         )}
 
-                        {hasExtraItems && (
+                        {component.lighting && (
                             <div className="vp-specs" style={{ marginTop: '2mm' }}>
                                 <div className="vp-spec-item">
-                                    <span className="vp-spec-label">material</span>
-                                    <span className="vp-spec-value">{component.material || '—'}</span>
+                                    <span className="vp-spec-label">lighting</span>
+                                    <span className="vp-spec-value">{getLightingTypeLabel(component.lighting)}</span>
                                 </div>
-                                {component.lighting && (
-                                    <div className="vp-spec-item">
-                                        <span className="vp-spec-label">lighting</span>
-                                        <span className="vp-spec-value">{getLightingTypeLabel(component.lighting)}</span>
-                                    </div>
-                                )}
                             </div>
                         )}
 

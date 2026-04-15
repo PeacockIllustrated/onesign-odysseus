@@ -55,6 +55,10 @@
     --surface-200: 0 0% 90%;
     --surface-300: 0 0% 80%;
 
+    /* Brand Accent — Onesign Teal */
+    --brand-accent: #4e7e8c;
+    --brand-accent-light: #e8f0f3;
+
     /* Action Tokens */
     --action-primary: 0 0% 0%;
     --action-primary-fg: 0 0% 100%;
@@ -80,6 +84,27 @@
     background: hsl(var(--background));
     font-family: var(--font-body);
     -webkit-font-smoothing: antialiased;
+    accent-color: var(--brand-accent);
+  }
+
+  /* Text selection highlight — Onesign teal */
+  ::selection {
+    background-color: var(--brand-accent-light);
+    color: hsl(var(--foreground));
+  }
+
+  /* Focus rings — Onesign teal */
+  select:focus,
+  input:focus,
+  textarea:focus {
+    outline-color: var(--brand-accent);
+  }
+
+  /* Option highlight in selects (Chromium) */
+  option:checked,
+  option:hover {
+    background-color: var(--brand-accent-light);
+    color: hsl(var(--foreground));
   }
 
   h1,

@@ -4,7 +4,7 @@ import { useState, useRef, useTransition, useCallback, useEffect } from 'react';
 import { submitApproval } from '@/lib/artwork/approval-actions';
 import type { ApprovalPackData } from '@/lib/artwork/approval-actions';
 import { formatDateTime } from '@/lib/artwork/utils';
-import SignatureCanvas, { type SignatureCanvasRef } from './SignatureCanvas';
+import SignatureCanvas, { type SignatureCanvasRef } from '@/components/SignatureCanvas';
 
 interface Props {
     data: ApprovalPackData;
@@ -133,12 +133,24 @@ export default function ApprovalClientView({ data, token }: Props) {
                 </div>
             )}
 
-            {/* Header */}
+            {/* Header — uses the Onesign & Digital company mark, not the
+                internal Odysseus product logo. Clients see the brand they
+                commissioned the work from. */}
             <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-                <div style={{ marginBottom: '4px', display: 'flex', justifyContent: 'center' }}>
-                    <img src="/logo-black.svg" alt="OneSign" style={{ height: '18px', width: 'auto' }} />
+                <div style={{ marginBottom: '10px', display: 'flex', justifyContent: 'center' }}>
+                    <img
+                        src="/Onesign-Logo-Black.svg"
+                        alt="Onesign & Digital"
+                        style={{ height: '56px', width: 'auto', maxWidth: '320px' }}
+                    />
                 </div>
-                <div style={{ fontSize: '10px', color: '#999', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}>
+                <div style={{
+                    fontSize: '11px',
+                    color: '#888',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.14em',
+                    fontWeight: 600,
+                }}>
                     artwork approval
                 </div>
             </div>
@@ -237,14 +249,9 @@ export default function ApprovalClientView({ data, token }: Props) {
                         </p>
                     </div>
 
-                    <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: components.length === 1 ? '1fr' : 'repeat(2, 1fr)',
-                        gap: '1px',
-                        background: '#eee',
-                    }}>
+                    <div className="grid grid-cols-1 gap-px bg-neutral-200">
                         {components.map((component) => (
-                            <div key={component.id} style={{ background: '#fff', padding: '16px' }}>
+                            <div key={component.id} style={{ background: '#fff', padding: '20px' }}>
                                 {/* Thumbnail */}
                                 <div
                                     onClick={() => component.thumbnailUrl && openLightbox(component.thumbnailUrl, component.name)}
@@ -254,8 +261,8 @@ export default function ApprovalClientView({ data, token }: Props) {
                                         justifyContent: 'center',
                                         background: '#fafafa',
                                         borderRadius: '6px',
-                                        height: '160px',
-                                        marginBottom: '10px',
+                                        minHeight: '180px',
+                                        marginBottom: '12px',
                                         overflow: 'hidden',
                                         cursor: component.thumbnailUrl ? 'zoom-in' : 'default',
                                     }}
@@ -264,7 +271,7 @@ export default function ApprovalClientView({ data, token }: Props) {
                                         <img
                                             src={component.thumbnailUrl}
                                             alt={component.name}
-                                            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                                            style={{ maxWidth: '100%', maxHeight: '320px', objectFit: 'contain' }}
                                         />
                                     ) : (
                                         <span style={{ color: '#ccc', fontSize: '12px', fontStyle: 'italic' }}>
@@ -274,11 +281,121 @@ export default function ApprovalClientView({ data, token }: Props) {
                                 </div>
 
                                 {/* Name */}
-                                <div style={{ fontSize: '13px', fontWeight: 600, color: '#111' }}>
+                                <div style={{ fontSize: '15px', fontWeight: 700, color: '#111', marginBottom: '10px' }}>
                                     {component.name}
                                 </div>
+
+                                {/* Specification list — one row per sub-item */}
+                                {component.sub_items && component.sub_items.length > 0 && (
+                                    <div style={{
+                                        border: '1px solid #eaeaea',
+                                        borderRadius: '6px',
+                                        overflow: 'hidden',
+                                        marginTop: '6px',
+                                    }}>
+                                        <div style={{
+                                            fontSize: '10px',
+                                            fontWeight: 700,
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.08em',
+                                            color: '#666',
+                                            padding: '8px 12px',
+                                            background: '#fafafa',
+                                            borderBottom: '1px solid #eaeaea',
+                                        }}>
+                                            specification
+                                        </div>
+                                        {component.sub_items.map((si, i) => (
+                                            <div
+                                                key={si.id}
+                                                style={{
+                                                    padding: '12px',
+                                                    borderTop: i === 0 ? 'none' : '1px solid #f0f0f0',
+                                                    fontSize: '13px',
+                                                }}
+                                            >
+                                                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '6px' }}>
+                                                    <span style={{
+                                                        fontFamily: 'ui-monospace, monospace',
+                                                        fontWeight: 700,
+                                                        fontSize: '11px',
+                                                        background: '#111',
+                                                        color: '#fff',
+                                                        padding: '1px 6px',
+                                                        borderRadius: '3px',
+                                                        flexShrink: 0,
+                                                    }}>
+                                                        {si.label}
+                                                    </span>
+                                                    <span style={{ fontWeight: 600, color: '#111' }}>
+                                                        {si.name || <span style={{ color: '#999', fontStyle: 'italic' }}>unnamed</span>}
+                                                    </span>
+                                                    {si.quantity > 1 && (
+                                                        <span style={{ fontSize: '11px', color: '#666', marginLeft: 'auto' }}>
+                                                            × {si.quantity}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <dl style={{
+                                                    display: 'grid',
+                                                    gridTemplateColumns: 'max-content 1fr',
+                                                    rowGap: '3px',
+                                                    columnGap: '10px',
+                                                    fontSize: '12px',
+                                                    margin: 0,
+                                                    paddingLeft: '32px',
+                                                }}>
+                                                    {si.material && (
+                                                        <>
+                                                            <dt style={{ color: '#888', fontWeight: 600 }}>Material</dt>
+                                                            <dd style={{ margin: 0, color: '#111' }}>{si.material}</dd>
+                                                        </>
+                                                    )}
+                                                    {si.application_method && (
+                                                        <>
+                                                            <dt style={{ color: '#888', fontWeight: 600 }}>Method</dt>
+                                                            <dd style={{ margin: 0, color: '#111' }}>{si.application_method}</dd>
+                                                        </>
+                                                    )}
+                                                    {si.finish && (
+                                                        <>
+                                                            <dt style={{ color: '#888', fontWeight: 600 }}>Finish</dt>
+                                                            <dd style={{ margin: 0, color: '#111' }}>{si.finish}</dd>
+                                                        </>
+                                                    )}
+                                                    {si.width_mm && si.height_mm && (
+                                                        <>
+                                                            <dt style={{ color: '#888', fontWeight: 600 }}>Size</dt>
+                                                            <dd style={{ margin: 0, color: '#111', fontFamily: 'ui-monospace, monospace' }}>
+                                                                {si.width_mm} × {si.height_mm} mm
+                                                                {si.returns_mm ? ` · ${si.returns_mm}mm returns` : ''}
+                                                            </dd>
+                                                        </>
+                                                    )}
+                                                </dl>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         ))}
+                    </div>
+
+                    {/* Liability note — sits inside the component card, bottom */}
+                    <div style={{
+                        padding: '12px 20px',
+                        fontSize: '12px',
+                        color: '#555',
+                        borderTop: '1px solid #eee',
+                        background: '#fafafa',
+                        lineHeight: 1.5,
+                    }}>
+                        <strong style={{ color: '#111' }}>What you&rsquo;re approving:</strong>{' '}
+                        the artwork and the specification shown above for each component &mdash;
+                        including material type (e.g. frosted vinyl vs. white vinyl), finish,
+                        dimensions, and quantity. Please check each spec carefully before
+                        signing. Once approved, production works to these specs and changes
+                        may incur re-make costs.
                     </div>
                 </div>
             )}
@@ -330,7 +447,7 @@ export default function ApprovalClientView({ data, token }: Props) {
                         </div>
                     )}
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                         <div>
                             <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#555', marginBottom: '4px' }}>
                                 your name *
@@ -435,8 +552,8 @@ export default function ApprovalClientView({ data, token }: Props) {
                 </div>
             )}
 
-            <div style={{ textAlign: 'center', padding: '12px', fontSize: '12px', color: '#ccc' }}>
-                powered by onesign & digital
+            <div style={{ textAlign: 'center', padding: '16px', fontSize: '12px', color: '#bbb' }}>
+                onesign &amp; digital &middot; team valley, gateshead
             </div>
         </div>
     );
