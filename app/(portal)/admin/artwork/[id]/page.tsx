@@ -26,6 +26,8 @@ import { JobFieldsForm } from './components/JobFieldsForm';
 import { ReleaseToProductionButton } from './components/ReleaseToProductionButton';
 import { DeleteArtworkJobButton } from './components/DeleteArtworkJobButton';
 import { ReorderControls } from './components/ReorderControls';
+import { LinkedQuoteCard } from './components/LinkedQuoteCard';
+import { CreateProductionFromVisualButton } from './components/CreateProductionFromVisualButton';
 
 export default async function ArtworkJobDetailPage({
     params,
@@ -55,6 +57,39 @@ export default async function ArtworkJobDetailPage({
             .from('artwork-assets')
             .createSignedUrl(job.cover_image_path, 3600);
         coverImageUrl = data?.signedUrl || null;
+    }
+
+    // Visual-approval extra data
+    let spawnedProduction: { id: string } | null = null;
+    let linkableQuotes: { id: string; quote_number: string; customer_name: string | null }[] = [];
+    let currentQuote: { id: string; quote_number: string; customer_name: string | null } | null = null;
+
+    if (job.job_type === 'visual_approval') {
+        const [{ data: spawned }, { data: quotes }] = await Promise.all([
+            supabaseClient
+                .from('artwork_jobs')
+                .select('id')
+                .eq('parent_visual_job_id', id)
+                .eq('job_type', 'production')
+                .maybeSingle(),
+            supabaseClient
+                .from('quotes')
+                .select('id, quote_number, customer_name')
+                .in('status', ['draft', 'sent', 'accepted'])
+                .order('created_at', { ascending: false })
+                .limit(50),
+        ]);
+        spawnedProduction = spawned ?? null;
+        linkableQuotes = quotes ?? [];
+
+        if (job.quote_id) {
+            const { data: linked } = await supabaseClient
+                .from('quotes')
+                .select('id, quote_number, customer_name')
+                .eq('id', job.quote_id)
+                .maybeSingle();
+            currentQuote = linked ?? null;
+        }
     }
 
     // Load client context (contact list + site list for the override dropdowns,
@@ -165,6 +200,11 @@ export default async function ArtworkJobDetailPage({
                                 <Printer size={16} />
                                 print all sheets
                             </Link>
+                        )}
+                        {job.job_type === 'visual_approval' && (
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
+                                Visual
+                            </span>
                         )}
                         <Chip variant={getJobStatusVariant(job.status as ArtworkJobStatus)}>
                             {getJobStatusLabel(job.status as ArtworkJobStatus)}
@@ -293,6 +333,22 @@ export default async function ArtworkJobDetailPage({
                         availableSites={availableSites}
                         readOnly={job.status === 'completed'}
                     />
+
+                    {job.job_type === 'visual_approval' && (
+                        <>
+                            <LinkedQuoteCard
+                                artworkJobId={id}
+                                currentQuote={currentQuote}
+                                availableQuotes={linkableQuotes}
+                            />
+                            {job.status === 'completed' && (
+                                <CreateProductionFromVisualButton
+                                    visualJobId={id}
+                                    existingProductionJobId={spawnedProduction?.id ?? null}
+                                />
+                            )}
+                        </>
+                    )}
 
                     {job.production_item && (
                         <Card>
