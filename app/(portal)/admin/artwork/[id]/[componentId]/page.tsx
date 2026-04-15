@@ -17,6 +17,7 @@ import { ComponentActions } from './components/ComponentActions';
 import { SubItemList } from './components/SubItemList';
 import { ComponentThumbnail } from './components/ComponentThumbnail';
 import { StatusOverride } from './components/StatusOverride';
+import { VariantsPanel } from './components/VariantsPanel';
 import { createServerClient } from '@/lib/supabase-server';
 
 export default async function ComponentDetailPage({
@@ -122,23 +123,31 @@ export default async function ComponentDetailPage({
                 />
             </Card>
 
-            {/* Sub-items — the spec-bearing cards */}
-            <Card className="mb-6">
-                <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-sm font-semibold text-neutral-900 uppercase tracking-wider">
-                        sub-items
-                    </h2>
-                    <p className="text-xs text-neutral-500">
-                        each sub-item has its own material, method, dimensions, and target department
-                    </p>
-                </div>
-                <SubItemList
-                    componentId={componentId}
-                    subItems={subItemsForRender}
-                    stages={stages}
-                    jobCompleted={jobCompleted}
+            {/* Sub-items — the spec-bearing cards (production jobs) or variants (visual approval jobs) */}
+            {job.job_type === 'visual_approval' ? (
+                <VariantsPanel
+                    componentId={component.id}
+                    variants={(component as any).variants ?? []}
+                    readOnly={jobCompleted}
                 />
-            </Card>
+            ) : (
+                <Card className="mb-6">
+                    <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-sm font-semibold text-neutral-900 uppercase tracking-wider">
+                            sub-items
+                        </h2>
+                        <p className="text-xs text-neutral-500">
+                            each sub-item has its own material, method, dimensions, and target department
+                        </p>
+                    </div>
+                    <SubItemList
+                        componentId={componentId}
+                        subItems={subItemsForRender}
+                        stages={stages}
+                        jobCompleted={jobCompleted}
+                    />
+                </Card>
+            )}
 
             {/* Version history — component-level artwork file versions */}
             {component.versions.length > 0 && (
