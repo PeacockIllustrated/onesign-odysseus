@@ -53,6 +53,13 @@ const COMPONENT_TYPES = [
     { value: 'other', label: 'other' },
 ];
 
+const SERVICE_TYPES = [
+    { value: '', label: '— select service —' },
+    { value: 'Fitting', label: 'Fitting' },
+    { value: 'Removal', label: 'Removal' },
+    { value: 'Survey', label: 'Survey' },
+];
+
 interface Props {
     quoteId: string;
     onDone?: () => void;
@@ -63,10 +70,11 @@ export function GenericItemForm({ quoteId, onDone }: Props) {
     const [pending, startTransition] = useTransition();
     const [error, setError] = useState<string | null>(null);
 
+    const [isService, setIsService] = useState(false);
+    const [serviceType, setServiceType] = useState('');
     const [partLabel, setPartLabel] = useState('');
     const [description, setDescription] = useState('');
     const [componentType, setComponentType] = useState('');
-    const [isProductionWork, setIsProductionWork] = useState(true);
     const [quantity, setQuantity] = useState('1');
     const [unitPrice, setUnitPrice] = useState('');
     const [discountPercent, setDiscountPercent] = useState('0');
@@ -82,7 +90,17 @@ export function GenericItemForm({ quoteId, onDone }: Props) {
     const submit = () => {
         setError(null);
 
-        if (!partLabel.trim()) {
+        // Services use the selected service type as the part label if the user
+        // hasn't filled one in themselves.
+        const effectiveLabel = isService
+            ? (partLabel.trim() || serviceType.trim())
+            : partLabel.trim();
+
+        if (isService && !serviceType) {
+            setError('please pick a service type (fitting, removal, survey)');
+            return;
+        }
+        if (!effectiveLabel) {
             setError('part label is required');
             return;
         }
@@ -93,31 +111,33 @@ export function GenericItemForm({ quoteId, onDone }: Props) {
 
         const unitPricePence = Math.round(Number(unitPrice) * 100);
 
-        const subItemsPayload = subItems
-            .filter((r) => r.name || r.material || r.width_mm || r.height_mm)
-            .map((r) => ({
-                name: r.name || undefined,
-                material: r.material || undefined,
-                application_method: r.application_method || undefined,
-                finish: r.finish || undefined,
-                quantity: r.quantity ? Number(r.quantity) : undefined,
-                width_mm: r.width_mm ? Number(r.width_mm) : undefined,
-                height_mm: r.height_mm ? Number(r.height_mm) : undefined,
-                returns_mm: r.returns_mm ? Number(r.returns_mm) : undefined,
-                notes: r.notes || undefined,
-            }));
+        const subItemsPayload = isService
+            ? []
+            : subItems
+                  .filter((r) => r.name || r.material || r.width_mm || r.height_mm)
+                  .map((r) => ({
+                      name: r.name || undefined,
+                      material: r.material || undefined,
+                      application_method: r.application_method || undefined,
+                      finish: r.finish || undefined,
+                      quantity: r.quantity ? Number(r.quantity) : undefined,
+                      width_mm: r.width_mm ? Number(r.width_mm) : undefined,
+                      height_mm: r.height_mm ? Number(r.height_mm) : undefined,
+                      returns_mm: r.returns_mm ? Number(r.returns_mm) : undefined,
+                      notes: r.notes || undefined,
+                  }));
 
         startTransition(async () => {
             const res = await addGenericQuoteItemAction(quoteId, {
-                part_label: partLabel.trim(),
+                part_label: effectiveLabel,
                 description: description.trim() || undefined,
-                component_type: componentType || undefined,
-                is_production_work: isProductionWork,
+                component_type: isService ? undefined : (componentType || undefined),
+                is_production_work: !isService,
                 quantity: Number(quantity) || 1,
                 unit_price_pence: unitPricePence,
                 discount_percent: Number(discountPercent) || 0,
                 markup_percent: Number(markupPercent) || 0,
-                lighting: lighting || undefined,
+                lighting: isService ? undefined : (lighting || undefined),
                 spec_notes: specNotes || undefined,
                 sub_items: subItemsPayload,
             });
@@ -126,10 +146,11 @@ export function GenericItemForm({ quoteId, onDone }: Props) {
                 return;
             }
             // Reset
+            setIsService(false);
+            setServiceType('');
             setPartLabel('');
             setDescription('');
             setComponentType('');
-            setIsProductionWork(true);
             setQuantity('1');
             setUnitPrice('');
             setDiscountPercent('0');
@@ -154,14 +175,56 @@ export function GenericItemForm({ quoteId, onDone }: Props) {
                 </div>
             )}
 
+            {/* Service toggle — top-of-form so staff can pick the line shape first. */}
+            <div className="p-3 bg-neutral-50 border border-neutral-200 rounded space-y-3">
+                <label className="flex items-start gap-2 text-sm text-neutral-800">
+                    <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={isService}
+                        onChange={(e) => {
+                            setIsService(e.target.checked);
+                            if (!e.target.checked) setServiceType('');
+                        }}
+                    />
+                    <span>
+                        <span className="font-medium">this line is a service</span>
+                        <span className="text-neutral-500"> — fitting, removal, or survey (no artwork, no production work)</span>
+                    </span>
+                </label>
+
+                {isService && (
+                    <div>
+                        <label className={labelCls}>service type *</label>
+                        <select
+                            className={inputCls}
+                            value={serviceType}
+                            onChange={(e) => setServiceType(e.target.value)}
+                        >
+                            {SERVICE_TYPES.map((s) => (
+                                <option key={s.value} value={s.value}>
+                                    {s.label}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="sm:col-span-2">
-                    <label className={labelCls}>part label *</label>
+                    <label className={labelCls}>
+                        part label {isService ? '(optional — defaults to service type)' : '*'}
+                    </label>
                     <input
                         className={inputCls}
                         value={partLabel}
                         onChange={(e) => setPartLabel(e.target.value)}
-                        placeholder='e.g. "Main fascia panel", "Fitting", "Frosted window vinyl"'
+                        placeholder={
+                            isService
+                                ? 'leave blank to use the service type above'
+                                : 'e.g. "Main fascia panel", "Frosted window vinyl"'
+                        }
                     />
                 </div>
                 <div className="sm:col-span-2">
@@ -174,39 +237,34 @@ export function GenericItemForm({ quoteId, onDone }: Props) {
                         placeholder="free-form description, size, colour, material notes…"
                     />
                 </div>
-                <div>
-                    <label className={labelCls}>component type</label>
-                    <select
-                        className={inputCls}
-                        value={componentType}
-                        onChange={(e) => setComponentType(e.target.value)}
-                    >
-                        {COMPONENT_TYPES.map((ct) => (
-                            <option key={ct.value} value={ct.value}>
-                                {ct.label}
-                            </option>
-                        ))}
-                    </select>
-                </div>
-                <div>
-                    <label className={labelCls}>lighting (optional)</label>
-                    <input
-                        className={inputCls}
-                        value={lighting}
-                        onChange={(e) => setLighting(e.target.value)}
-                        placeholder="e.g. internal led, halo, backlit"
-                    />
-                </div>
+                {!isService && (
+                    <>
+                        <div>
+                            <label className={labelCls}>component type</label>
+                            <select
+                                className={inputCls}
+                                value={componentType}
+                                onChange={(e) => setComponentType(e.target.value)}
+                            >
+                                {COMPONENT_TYPES.map((ct) => (
+                                    <option key={ct.value} value={ct.value}>
+                                        {ct.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className={labelCls}>lighting (optional)</label>
+                            <input
+                                className={inputCls}
+                                value={lighting}
+                                onChange={(e) => setLighting(e.target.value)}
+                                placeholder="e.g. internal led, halo, backlit"
+                            />
+                        </div>
+                    </>
+                )}
             </div>
-
-            <label className="flex items-center gap-2 text-sm text-neutral-700">
-                <input
-                    type="checkbox"
-                    checked={isProductionWork}
-                    onChange={(e) => setIsProductionWork(e.target.checked)}
-                />
-                this line is production work (uncheck for services: fitting, removal, survey)
-            </label>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div>
@@ -257,7 +315,7 @@ export function GenericItemForm({ quoteId, onDone }: Props) {
             </div>
 
             {/* Sub-items editor — only relevant for production work */}
-            {isProductionWork && (
+            {!isService && (
                 <div className="pt-4 border-t border-neutral-200">
                     <div className="flex items-center justify-between mb-2">
                         <div>
@@ -391,7 +449,7 @@ export function GenericItemForm({ quoteId, onDone }: Props) {
                     className="btn-primary inline-flex items-center gap-2"
                 >
                     {pending && <Loader2 size={16} className="animate-spin" />}
-                    {pending ? 'adding…' : 'add generic item'}
+                    {pending ? 'adding…' : isService ? 'add service' : 'add line item'}
                 </button>
             </div>
         </div>
