@@ -1,6 +1,6 @@
 'use client';
 
-import { Check } from 'lucide-react';
+import { Check, Maximize2 } from 'lucide-react';
 
 interface Variant {
     id: string;
@@ -15,9 +15,31 @@ interface Props {
     variants: Variant[];
     chosenVariantId: string | null;
     onChoose: (variantId: string) => void;
+    /** Optional — when provided, each variant thumbnail gets a "zoom"
+     *  corner button that opens the image in the caller's lightbox
+     *  without selecting the variant. */
+    onZoom?: (url: string, alt: string) => void;
 }
 
-export function VariantPicker({ componentName, variants, chosenVariantId, onChoose }: Props) {
+/**
+ * Small zoom overlay button. Positioned absolute top-right of the
+ * thumbnail wrapper. stopPropagation so tapping it doesn't also fire
+ * the variant's onChoose handler.
+ */
+function ZoomBtn({ onClick }: { onClick: (e: React.MouseEvent) => void }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            aria-label="Zoom image"
+            className="absolute top-2 left-2 z-10 bg-black/65 hover:bg-black/80 text-white rounded-full p-1.5 shadow-md"
+        >
+            <Maximize2 size={12} />
+        </button>
+    );
+}
+
+export function VariantPicker({ componentName, variants, chosenVariantId, onChoose, onZoom }: Props) {
     if (variants.length === 0) {
         return (
             <p className="text-sm italic text-neutral-500">
@@ -25,6 +47,12 @@ export function VariantPicker({ componentName, variants, chosenVariantId, onChoo
             </p>
         );
     }
+
+    const handleZoom = (url: string, alt: string) => (e: React.MouseEvent) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (onZoom) onZoom(url, alt);
+    };
 
     if (variants.length === 1) {
         const v = variants[0];
@@ -39,7 +67,16 @@ export function VariantPicker({ componentName, variants, chosenVariantId, onChoo
             >
                 <div className="flex items-start gap-3">
                     {v.thumbnail_url && (
-                        <img src={v.thumbnail_url} alt={v.name ?? v.label} className="w-24 h-24 object-cover rounded" />
+                        <div className="relative shrink-0">
+                            <img
+                                src={v.thumbnail_url}
+                                alt={v.name ?? v.label}
+                                className="w-24 h-24 object-cover rounded"
+                            />
+                            {onZoom && (
+                                <ZoomBtn onClick={handleZoom(v.thumbnail_url, v.name ?? `Option ${v.label}`)} />
+                            )}
+                        </div>
                     )}
                     <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold">{v.name ?? `Option ${v.label}`}</p>
@@ -73,11 +110,16 @@ export function VariantPicker({ componentName, variants, chosenVariantId, onChoo
                             </span>
                         )}
                         {v.thumbnail_url && (
-                            <img
-                                src={v.thumbnail_url}
-                                alt={v.name ?? v.label}
-                                className="w-full h-40 object-cover rounded mb-2"
-                            />
+                            <div className="relative mb-2">
+                                <img
+                                    src={v.thumbnail_url}
+                                    alt={v.name ?? v.label}
+                                    className="w-full h-40 object-cover rounded"
+                                />
+                                {onZoom && (
+                                    <ZoomBtn onClick={handleZoom(v.thumbnail_url, v.name ?? `Option ${v.label}`)} />
+                                )}
+                            </div>
                         )}
                         <p className="text-sm font-bold">
                             {v.label}{v.name ? ` — ${v.name}` : ''}

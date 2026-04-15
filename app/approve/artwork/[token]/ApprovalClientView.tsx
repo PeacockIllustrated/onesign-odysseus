@@ -331,6 +331,7 @@ export default function ApprovalClientView({ data, token }: Props) {
                                         onChoose={(variantId) =>
                                             setSelections((prev) => ({ ...prev, [component.id]: variantId }))
                                         }
+                                        onZoom={openLightbox}
                                     />
                                 ) : (
                                     component.sub_items && component.sub_items.length > 0 && (
