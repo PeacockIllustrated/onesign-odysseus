@@ -580,6 +580,22 @@ export default function ApprovalClientView({ data, token }: Props) {
                     </div>
 
                     {(() => {
+                        if ((job as any).job_type !== 'visual_approval') return null;
+                        const missing = (job as any).components
+                            ? (job as any).components.filter((c: any) => !((c as any).variants?.length))
+                            : components.filter((c: any) => !(c.variants?.length));
+                        if (missing.length === 0) return null;
+                        return (
+                            <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-900">
+                                This approval is incomplete — component{missing.length > 1 ? 's' : ''}{' '}
+                                <strong>{missing.map((c: any) => c.name).join(', ')}</strong>{' '}
+                                {missing.length > 1 ? 'have' : 'has'} no design options attached.
+                                Please contact Onesign to finish setting up this approval.
+                            </div>
+                        );
+                    })()}
+
+                    {(() => {
                         const allComponentsChosen = (job as any).job_type !== 'visual_approval' ||
                             ((job as any).components ?? components).every((c: any) => selections[c.id]);
                         const submitDisabled = isPending || !allComponentsChosen;
