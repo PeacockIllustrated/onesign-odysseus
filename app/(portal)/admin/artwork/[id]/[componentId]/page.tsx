@@ -64,6 +64,16 @@ export default async function ComponentDetailPage({
         }))
     );
 
+    // Same treatment for variants — the artwork-assets bucket is private, so
+    // the raw public URL stored on `artwork_variants.thumbnail_url` would 403
+    // in the browser.
+    const variantsForRender = await Promise.all(
+        ((component as any).variants ?? []).map(async (v: any) => ({
+            ...v,
+            thumbnail_url: await signAssetUrl(v.thumbnail_url ?? null),
+        }))
+    );
+
     const jobCompleted = job.status === 'completed';
 
     return (
@@ -127,7 +137,7 @@ export default async function ComponentDetailPage({
             {job.job_type === 'visual_approval' ? (
                 <VariantsPanel
                     componentId={component.id}
-                    variants={(component as any).variants ?? []}
+                    variants={variantsForRender}
                     readOnly={jobCompleted}
                 />
             ) : (
