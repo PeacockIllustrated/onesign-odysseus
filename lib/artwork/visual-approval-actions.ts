@@ -6,6 +6,10 @@ import { getUser } from '@/lib/auth';
 import {
     CreateVisualJobInputSchema,
     type CreateVisualJobInput,
+    CreateVariantInputSchema,
+    UpdateVariantInputSchema,
+    type CreateVariantInput,
+    type UpdateVariantInput,
 } from './variant-types';
 
 // ---------------------------------------------------------------------------
@@ -117,5 +121,168 @@ export async function detachQuoteFromVisualJob(
 
     revalidatePath(`/admin/artwork/${artworkJobId}`);
     if (existing?.quote_id) revalidatePath(`/admin/quotes/${existing.quote_id}`);
+    return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Variant CRUD
+// ---------------------------------------------------------------------------
+
+const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+function nextLabel(existing: string[]): string {
+    const used = new Set(existing);
+    for (const ch of ALPHABET) if (!used.has(ch)) return ch;
+    for (const a of ALPHABET) for (const b of ALPHABET) {
+        const two = a + b;
+        if (!used.has(two)) return two;
+    }
+    return 'X';
+}
+
+async function assertJobNotApprovedByComponent(
+    supabase: Awaited<ReturnType<typeof createServerClient>>,
+    componentId: string
+): Promise<string | null> {
+    const { data } = await supabase
+        .from('artwork_components')
+        .select('job_id, artwork_jobs!inner(status, job_type)')
+        .eq('id', componentId)
+        .single();
+    const job = (data as any)?.artwork_jobs;
+    if (!job) return 'parent component not found';
+    if (job.job_type !== 'visual_approval') {
+        return 'variants can only be added to visual approval jobs';
+    }
+    if (job.status === 'completed') {
+        return 'job is already approved — variants are frozen';
+    }
+    return null;
+}
+
+async function assertVariantEditable(
+    supabase: Awaited<ReturnType<typeof createServerClient>>,
+    variantId: string
+): Promise<{ componentId: string } | { error: string }> {
+    const { data: variant } = await supabase
+        .from('artwork_variants')
+        .select('id, component_id, is_chosen, artwork_components!inner(artwork_jobs!inner(status))')
+        .eq('id', variantId)
+        .single();
+    if (!variant) return { error: 'variant not found' };
+    if ((variant as any).is_chosen) {
+        return { error: 'variant has been chosen by the client — immutable' };
+    }
+    const parentStatus = (variant as any).artwork_components?.artwork_jobs?.status;
+    if (parentStatus === 'completed') {
+        return { error: 'job is already approved — variants are frozen' };
+    }
+    return { componentId: (variant as any).component_id };
+}
+
+export async function addVariantToComponent(
+    input: CreateVariantInput
+): Promise<{ id: string; label: string } | { error: string }> {
+    const user = await getUser();
+    if (!user) return { error: 'not authenticated' };
+
+    const validation = CreateVariantInputSchema.safeParse(input);
+    if (!validation.success) return { error: validation.error.issues[0].message };
+    const parsed = validation.data;
+
+    const supabase = await createServerClient();
+
+    const guard = await assertJobNotApprovedByComponent(supabase, parsed.componentId);
+    if (guard) return { error: guard };
+
+    const { data: existing } = await supabase
+        .from('artwork_variants')
+        .select('label, sort_order')
+        .eq('component_id', parsed.componentId);
+
+    const label = nextLabel((existing ?? []).map((r: any) => r.label));
+    const sortOrder = (existing?.length ?? 0);
+
+    const { data: variant, error } = await supabase
+        .from('artwork_variants')
+        .insert({
+            component_id: parsed.componentId,
+            label,
+            sort_order: sortOrder,
+            name: parsed.name ?? null,
+            description: parsed.description ?? null,
+            material: parsed.material ?? null,
+            application_method: parsed.applicationMethod ?? null,
+            finish: parsed.finish ?? null,
+            width_mm: parsed.widthMm ?? null,
+            height_mm: parsed.heightMm ?? null,
+            returns_mm: parsed.returnsMm ?? null,
+            notes: parsed.notes ?? null,
+        })
+        .select('id, label')
+        .single();
+
+    if (error || !variant) return { error: error?.message ?? 'failed to add variant' };
+
+    revalidatePath('/admin/artwork');
+    return { id: variant.id, label: variant.label };
+}
+
+export async function updateVariant(
+    variantId: string,
+    patch: UpdateVariantInput
+): Promise<{ ok: true } | { error: string }> {
+    const user = await getUser();
+    if (!user) return { error: 'not authenticated' };
+
+    const validation = UpdateVariantInputSchema.safeParse(patch);
+    if (!validation.success) return { error: validation.error.issues[0].message };
+    const parsed = validation.data;
+
+    const supabase = await createServerClient();
+
+    const guard = await assertVariantEditable(supabase, variantId);
+    if ('error' in guard) return guard;
+
+    // Translate camelCase input keys to snake_case DB columns.
+    const updates: Record<string, unknown> = {};
+    if (parsed.name !== undefined) updates.name = parsed.name;
+    if (parsed.description !== undefined) updates.description = parsed.description;
+    if (parsed.material !== undefined) updates.material = parsed.material;
+    if (parsed.applicationMethod !== undefined) updates.application_method = parsed.applicationMethod;
+    if (parsed.finish !== undefined) updates.finish = parsed.finish;
+    if (parsed.widthMm !== undefined) updates.width_mm = parsed.widthMm;
+    if (parsed.heightMm !== undefined) updates.height_mm = parsed.heightMm;
+    if (parsed.returnsMm !== undefined) updates.returns_mm = parsed.returnsMm;
+    if (parsed.notes !== undefined) updates.notes = parsed.notes;
+
+    const { error } = await supabase
+        .from('artwork_variants')
+        .update(updates)
+        .eq('id', variantId);
+    if (error) return { error: error.message };
+
+    revalidatePath('/admin/artwork');
+    return { ok: true };
+}
+
+export async function deleteVariant(
+    variantId: string
+): Promise<{ ok: true } | { error: string }> {
+    const user = await getUser();
+    if (!user) return { error: 'not authenticated' };
+
+    const supabase = await createServerClient();
+
+    const guard = await assertVariantEditable(supabase, variantId);
+    if ('error' in guard) return guard;
+
+    const { error } = await supabase
+        .from('artwork_variants')
+        .delete()
+        .eq('id', variantId);
+    if (error) return { error: error.message };
+
+    revalidatePath('/admin/artwork');
     return { ok: true };
 }
