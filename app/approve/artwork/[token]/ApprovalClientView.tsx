@@ -323,10 +323,10 @@ export default function ApprovalClientView({ data, token }: Props) {
 
                                 {/* Specification list — one row per sub-item (production jobs)
                                     or VariantPicker (visual approval jobs) */}
-                                {(job as any).job_type === 'visual_approval' ? (
+                                {job.job_type === 'visual_approval' ? (
                                     <VariantPicker
                                         componentName={component.name}
-                                        variants={(component as any).variants ?? []}
+                                        variants={component.variants ?? []}
                                         chosenVariantId={selections[component.id] ?? null}
                                         onChoose={(variantId) =>
                                             setSelections((prev) => ({ ...prev, [component.id]: variantId }))
@@ -580,10 +580,8 @@ export default function ApprovalClientView({ data, token }: Props) {
                     </div>
 
                     {(() => {
-                        if ((job as any).job_type !== 'visual_approval') return null;
-                        const missing = (job as any).components
-                            ? (job as any).components.filter((c: any) => !((c as any).variants?.length))
-                            : components.filter((c: any) => !(c.variants?.length));
+                        if (job.job_type !== 'visual_approval') return null;
+                        const missing = components.filter((c) => !(c.variants?.length));
                         if (missing.length === 0) return null;
                         return (
                             <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-900">
@@ -596,8 +594,8 @@ export default function ApprovalClientView({ data, token }: Props) {
                     })()}
 
                     {(() => {
-                        const allComponentsChosen = (job as any).job_type !== 'visual_approval' ||
-                            ((job as any).components ?? components).every((c: any) => selections[c.id]);
+                        const allComponentsChosen = job.job_type !== 'visual_approval' ||
+                            components.every((c) => selections[c.id]);
                         const submitDisabled = isPending || !allComponentsChosen;
                         return (
                             <button
