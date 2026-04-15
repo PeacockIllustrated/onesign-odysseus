@@ -467,7 +467,11 @@ export async function createProductionFromVisual(
         .single();
     if (prodErr || !prod) {
         console.error('createProductionFromVisual insert job error:', prodErr);
-        return { error: prodErr?.message ?? 'failed to create production job' };
+        const msg = prodErr?.message ?? '';
+        if ((prodErr as any)?.code === '23505' || msg.includes('idx_artwork_jobs_one_prod_per_visual')) {
+            return { error: 'a production job already exists for this visual' };
+        }
+        return { error: msg || 'failed to create production job' };
     }
 
     // 5. Create each component + seed one sub-item from the chosen variant.
