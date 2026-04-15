@@ -100,25 +100,32 @@ export function ThumbnailUpload({
                         </div>
                     )}
                 </div>
+            ) : readOnly ? (
+                // Locked + no thumbnail: render a muted placeholder so the
+                // caller's "THUMBNAIL · optional" label isn't followed by a
+                // confusing empty void. Explains *why* nothing's here.
+                <div
+                    className={`w-full ${height} border-2 border-dashed border-neutral-200 rounded flex items-center justify-center ${textSize} text-neutral-400 italic bg-neutral-50`}
+                >
+                    no {label} — locked after sign-off
+                </div>
             ) : (
-                !readOnly && (
-                    <button
-                        type="button"
-                        onClick={onPick}
-                        disabled={pending}
-                        className={`w-full ${height} border-2 border-dashed border-neutral-200 hover:border-neutral-400 rounded flex items-center justify-center gap-1.5 ${textSize} text-neutral-500 hover:text-neutral-700 disabled:opacity-50`}
-                    >
-                        {pending ? (
-                            <>
-                                <Loader2 size={14} className="animate-spin" /> uploading…
-                            </>
-                        ) : (
-                            <>
-                                <Upload size={14} /> upload {label}
-                            </>
-                        )}
-                    </button>
-                )
+                <button
+                    type="button"
+                    onClick={onPick}
+                    disabled={pending}
+                    className={`w-full ${height} border-2 border-dashed border-neutral-200 hover:border-neutral-400 rounded flex items-center justify-center gap-1.5 ${textSize} text-neutral-500 hover:text-neutral-700 disabled:opacity-50`}
+                >
+                    {pending ? (
+                        <>
+                            <Loader2 size={14} className="animate-spin" /> uploading…
+                        </>
+                    ) : (
+                        <>
+                            <Upload size={14} /> upload {label}
+                        </>
+                    )}
+                </button>
             )}
             <input
                 ref={inputRef}
