@@ -13,6 +13,7 @@ import { revalidatePath } from 'next/cache';
 import { getRateCardForPricingSet } from './rate-card';
 import { calculatePanelLettersV1 } from './engine/panel-letters-v1';
 import { PanelLettersV1Input, Quote, QuoteItem, QuoteStatus, PanelLettersV1Output } from './types';
+import { GenericQuoteItemInputSchema, GenericQuoteItemInput } from './types';
 
 // =============================================================================
 // HELPERS
@@ -726,4 +727,110 @@ async function logQuoteAudit(supabase: any, audit: {
     if (error) {
         console.error('Error logging quote audit:', error);
     }
+}
+
+// =============================================================================
+// GENERIC QUOTE ITEMS (migration 041)
+// =============================================================================
+
+/**
+ * Compute line total for a generic item.
+ *   base     = unit_price * quantity
+ *   afterDisc= base * (1 - discount/100)
+ *   total    = afterDisc * (1 + markup/100)
+ * Returns integer pence, rounded.
+ */
+function calcGenericLineTotalPence(
+    unitPricePence: number,
+    quantity: number,
+    discountPercent: number,
+    markupPercent: number
+): number {
+    const base = unitPricePence * quantity;
+    const afterDisc = base * (1 - discountPercent / 100);
+    const total = afterDisc * (1 + markupPercent / 100);
+    return Math.round(total);
+}
+
+/**
+ * Add a generic (non-engine) quote line item. Manual pricing, free-form
+ * description, optional sub-items for skeleton artwork generation.
+ */
+export async function addGenericQuoteItemAction(
+    quoteId: string,
+    input: GenericQuoteItemInput
+): Promise<{ id: string } | { error: string }> {
+    const user = await getUser();
+    if (!user) return { error: 'not authenticated' };
+
+    const validation = GenericQuoteItemInputSchema.safeParse(input);
+    if (!validation.success) {
+        return { error: validation.error.issues[0].message };
+    }
+    const parsed = validation.data;
+
+    const supabase = await createServerClient();
+
+    const quoteCheck = await assertQuoteDraft(supabase, quoteId);
+    if ('error' in quoteCheck) return { error: quoteCheck.error };
+
+    const qty = parsed.quantity ?? 1;
+    const discount = parsed.discount_percent ?? 0;
+    const markup = parsed.markup_percent ?? 0;
+    const lineTotal = calcGenericLineTotalPence(
+        parsed.unit_price_pence,
+        qty,
+        discount,
+        markup
+    );
+
+    const itemType = parsed.is_production_work === false ? 'service' : 'generic';
+
+    // Store sub_items + manual flags in input_json so the row reads cleanly
+    // as a structured spec on acceptance / skeleton generation.
+    const inputJson = {
+        sub_items: parsed.sub_items ?? [],
+        lighting: parsed.lighting ?? null,
+        spec_notes: parsed.spec_notes ?? null,
+    };
+
+    const { data, error } = await supabase
+        .from('quote_items')
+        .insert({
+            quote_id: quoteId,
+            item_type: itemType,
+            input_json: inputJson,
+            output_json: {},
+            line_total_pence: lineTotal,
+            part_label: parsed.part_label,
+            description: parsed.description ?? null,
+            component_type: parsed.component_type ?? null,
+            is_production_work: parsed.is_production_work ?? true,
+            unit_cost_pence: parsed.unit_cost_pence ?? 0,
+            quantity: qty,
+            markup_percent: markup,
+            discount_percent: discount,
+            lighting: parsed.lighting ?? null,
+            spec_notes: parsed.spec_notes ?? null,
+            created_by: user.id,
+        })
+        .select('id')
+        .single();
+
+    if (error) {
+        console.error('addGenericQuoteItemAction error:', error);
+        return { error: error.message };
+    }
+
+    await logQuoteAudit(supabase, {
+        quote_id: quoteId,
+        user_id: user.id,
+        user_email: user.email ?? '',
+        action: 'add_generic_item',
+        summary: `Added generic item: ${parsed.part_label}`,
+        new_data: { part_label: parsed.part_label, line_total_pence: lineTotal, is_production_work: parsed.is_production_work ?? true },
+    });
+
+    revalidatePath(`/admin/quotes/${quoteId}`);
+    return { id: data.id };
 }
