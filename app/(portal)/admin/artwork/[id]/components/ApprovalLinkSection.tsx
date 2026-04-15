@@ -11,9 +11,13 @@ interface Props {
     jobId: string;
     approval: ArtworkApproval | null;
     hasSignedOffComponents: boolean;
+    /** Optional label override for the "not ready" hint. Defaults to the
+     *  production-artwork wording ("sign off component designs…"). Visual
+     *  jobs pass a variant-centric message instead. */
+    notReadyHint?: string;
 }
 
-export function ApprovalLinkSection({ jobId, approval, hasSignedOffComponents }: Props) {
+export function ApprovalLinkSection({ jobId, approval, hasSignedOffComponents, notReadyHint }: Props) {
     const [copied, setCopied] = useState(false);
     const [generatedToken, setGeneratedToken] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -170,7 +174,9 @@ export function ApprovalLinkSection({ jobId, approval, hasSignedOffComponents }:
                     {isExpired && <p className="text-xs text-amber-600">previous link has expired</p>}
                     {currentApproval?.status === 'revoked' && <p className="text-xs text-neutral-400">previous link was revoked</p>}
                     {!hasSignedOffComponents ? (
-                        <p className="text-xs text-neutral-400">sign off component designs to enable client approval</p>
+                        <p className="text-xs text-neutral-400">
+                            {notReadyHint ?? 'sign off component designs to enable client approval'}
+                        </p>
                     ) : (
                         <button
                             onClick={handleGenerate}

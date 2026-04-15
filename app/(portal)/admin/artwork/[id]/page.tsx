@@ -133,11 +133,20 @@ export default async function ArtworkJobDetailPage({
     // A component is "printable" if at least one sub-item has had its design
     // signed off. Legacy jobs (pre sub-items refactor) may still have the
     // design_signed_off_at on the component itself — check that too.
-    const hasSignedOffComponents = job.components.some(
-        (c: any) =>
-            c.design_signed_off_at ||
-            (c.sub_items || []).some((si: any) => si.design_signed_off_at)
-    );
+    // For visual_approval jobs there is no per-sub-item sign-off step —
+    // readiness means every component has at least one variant attached
+    // (the client picks a variant at approval time).
+    const hasSignedOffComponents =
+        job.job_type === 'visual_approval'
+            ? job.components.length > 0 &&
+              job.components.every(
+                  (c: any) => ((c as any).variants ?? []).length > 0
+              )
+            : job.components.some(
+                  (c: any) =>
+                      c.design_signed_off_at ||
+                      (c.sub_items || []).some((si: any) => si.design_signed_off_at)
+              );
 
     return (
         <div className="p-6 max-w-7xl mx-auto">
@@ -468,6 +477,11 @@ export default async function ArtworkJobDetailPage({
                         jobId={id}
                         approval={approval}
                         hasSignedOffComponents={hasSignedOffComponents}
+                        notReadyHint={
+                            job.job_type === 'visual_approval'
+                                ? 'add at least one variant to every component to enable client approval'
+                                : undefined
+                        }
                     />
                 </div>
             </div>
