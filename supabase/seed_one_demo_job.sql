@@ -18,11 +18,25 @@
 -- Run AFTER migrations 001-041 in the Supabase SQL Editor.
 -- Requires at least one active pricing_set to exist.
 --
--- TO REMOVE ALL DEMO DATA:
+-- TO REMOVE ALL DEMO DATA — run these in order (artwork_jobs.org_id is
+-- ON DELETE RESTRICT per migration 036, so a plain DELETE FROM orgs fails):
+--
+--   DELETE FROM public.deliveries
+--    WHERE org_id IN (SELECT id FROM public.orgs WHERE name LIKE '[DEMO]%');
+--
+--   DELETE FROM public.artwork_jobs
+--    WHERE org_id IN (SELECT id FROM public.orgs WHERE name LIKE '[DEMO]%');
+--
+--   DELETE FROM public.production_jobs
+--    WHERE org_id IN (SELECT id FROM public.orgs WHERE name LIKE '[DEMO]%');
+--
+--   DELETE FROM public.quotes
+--    WHERE org_id IN (SELECT id FROM public.orgs WHERE name LIKE '[DEMO]%');
+--
 --   DELETE FROM public.orgs WHERE name LIKE '[DEMO]%';
---   (Cascades to contacts, sites, quotes, quote_items, production_jobs,
---    job_items, artwork_jobs, artwork_components, artwork_component_items,
---    deliveries via the existing FKs.)
+--
+-- (quote_items, job_items, artwork_components, artwork_component_items,
+--  contacts, org_sites all cascade from their parent so aren't listed.)
 -- =============================================================================
 
 BEGIN;
