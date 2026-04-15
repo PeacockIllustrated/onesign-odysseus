@@ -12,8 +12,8 @@
 --      populated from the quote spec, just like generateArtworkFromQuote does)
 --   -> delivery (scheduled)
 --
--- Everything is prefixed with [DEMO] and the org name is "[DEMO] Queen Bee
--- Aesthetics & Academy" so it's easy to find and remove.
+-- Everything is prefixed with [DEMO] and the org name is "[DEMO] Test-O's"
+-- so it's easy to find and remove.
 --
 -- Run AFTER migrations 001-041 in the Supabase SQL Editor.
 -- Requires at least one active pricing_set to exist.
@@ -83,12 +83,15 @@ BEGIN
     -- =========================================================================
     -- 1. Client (org) + contact + site
     -- =========================================================================
-    INSERT INTO public.orgs (name, phone, email, business_type, notes, tags)
+    -- slug must be unique — append a short random suffix so repeat runs
+    -- never collide even if the previous [DEMO] org is still present.
+    INSERT INTO public.orgs (name, slug, phone, email, business_type, notes, tags)
     VALUES (
-        '[DEMO] Queen Bee Aesthetics & Academy',
+        '[DEMO] Test-O''s',
+        'demo-test-os-' || substr(md5(random()::text), 1, 8),
         '0191 000 0000',
-        'hello@queenbee-demo.test',
-        'Aesthetics clinic',
+        'hello@test-os-demo.test',
+        'Signage demo client',
         'Demo client — full end-to-end seed for visualising the flow.',
         ARRAY['demo']
     )
@@ -97,7 +100,7 @@ BEGIN
     INSERT INTO public.contacts
         (org_id, first_name, last_name, email, phone, job_title, contact_type, is_primary)
     VALUES
-        (v_org_id, 'Nikki', 'Owner', 'nikki@queenbee-demo.test',
+        (v_org_id, 'Terry', 'Osborne', 'terry@test-os-demo.test',
          '07700 900000', 'Owner', 'primary', TRUE)
     RETURNING id INTO v_contact_id;
 
@@ -105,7 +108,7 @@ BEGIN
         (org_id, name, address_line_1, address_line_2, city, county, postcode,
          site_contact_id, is_primary, is_billing_address, is_delivery_address)
     VALUES
-        (v_org_id, 'Queen Bee Clinic', '14 High Street', NULL,
+        (v_org_id, 'Test-O''s HQ', '14 High Street', NULL,
          'Gateshead', 'Tyne and Wear', 'NE8 1AA',
          v_contact_id, TRUE, TRUE, TRUE)
     RETURNING id INTO v_site_id;
@@ -118,14 +121,14 @@ BEGIN
          org_id, contact_id, site_id, project_name, customer_reference,
          notes_internal, notes_client)
     VALUES
-        ('Queen Bee Aesthetics & Academy',
-         'nikki@queenbee-demo.test', '07700 900000',
+        ('Test-O''s',
+         'terry@test-os-demo.test', '07700 900000',
          'accepted', v_pricing_set_id,
          v_org_id, v_contact_id, v_site_id,
-         '[DEMO] Clinic front of house signage',
-         'QB-2026-01',
+         '[DEMO] Shop front signage',
+         'TST-2026-01',
          '[DEMO] seed — exercises generic items, sub-items, services, and artwork skeleton.',
-         'Hi Nikki, here''s the quote for your clinic fascia and window graphics.')
+         'Hi Terry, here''s the quote for your shop fascia and window graphics.')
     RETURNING id INTO v_quote_id;
 
     -- 2a. Fascia panel with sub-items (panel + vinyl letters on it)
@@ -141,7 +144,7 @@ BEGIN
             'height_mm', 400,
             'returns_mm', 50,
             'lighting', 'internal led, halo',
-            'spec_notes', 'Signed off by Nikki via email 12 Apr.',
+            'spec_notes', 'Signed off by Terry via email 12 Apr.',
             'sub_items', jsonb_build_array(
                 jsonb_build_object(
                     'name', 'Fascia substrate',
@@ -154,11 +157,11 @@ BEGIN
                     'returns_mm', 50
                 ),
                 jsonb_build_object(
-                    'name', 'QUEEN BEE letters',
+                    'name', 'TEST-O''S letters',
                     'material', 'Oracal 651 gold vinyl',
                     'application_method', 'weeded, stuck to face',
                     'finish', 'gloss gold',
-                    'quantity', 9,
+                    'quantity', 7,
                     'width_mm', 180,
                     'height_mm', 220
                 )
@@ -166,12 +169,12 @@ BEGIN
         ),
         '{}'::jsonb,
         120000, -- £1,200.00
-        'Front fascia panel (QUEEN BEE)',
-        'Main clinic fascia — aluminium composite panel with applied vinyl letters, halo lit.',
+        'Front fascia panel (TEST-O''S)',
+        'Main shop fascia — aluminium composite panel with applied vinyl letters, halo lit.',
         'panel', TRUE,
         60000, 1, 15.00, 0.00,
         'internal led, halo',
-        'Signed off by Nikki via email 12 Apr.'
+        'Signed off by Terry via email 12 Apr.'
     )
     RETURNING id INTO v_qi_fascia_id;
 
@@ -194,7 +197,7 @@ BEGIN
         '{}'::jsonb,
         34500, -- £345.00
         'Window manifestation (frosted)',
-        'Full-height window frosted vinyl with privacy band at eye level.',
+        'Full-height shop window frosted vinyl with privacy band at eye level.',
         'vinyl', TRUE,
         15000, 1, 15.00, 0.00,
         NULL,
@@ -214,7 +217,7 @@ BEGIN
         '{}'::jsonb,
         28000, -- £280.00
         'Fitting',
-        'On-site installation of fascia + window graphics. Two-person team, half-day.',
+        'On-site install of fascia + window graphics. Two-person team, half-day.',
         NULL, FALSE,
         14000, 1, 0.00, 0.00,
         NULL, NULL
@@ -230,8 +233,8 @@ BEGIN
         total_items, contact_id, site_id
     ) VALUES (
         v_org_id, v_quote_id,
-        '[DEMO] Queen Bee — clinic front of house',
-        '[DEMO] Queen Bee Aesthetics & Academy',
+        '[DEMO] Test-O''s — shop front signage',
+        '[DEMO] Test-O''s',
         'Demo production job — fascia + window vinyl. Fitting booked separately.',
         s_artwork, 'normal', 'active', 'KR', CURRENT_DATE + 7,
         2, v_contact_id, v_site_id
@@ -242,7 +245,7 @@ BEGIN
         (job_id, quote_item_id, description, quantity, current_stage_id, status)
     VALUES
         (v_prod_job_id, v_qi_fascia_id,
-         'Front fascia panel (QUEEN BEE)', 1,
+         'Front fascia panel (TEST-O''S)', 1,
          s_artwork, 'in_progress')
     RETURNING id INTO v_ji_fascia_id;
 
@@ -269,10 +272,10 @@ BEGIN
         job_name, job_reference, client_name, description, status,
         job_item_id, org_id, contact_id, site_id, is_orphan, created_by
     ) VALUES (
-        'Front fascia panel (QUEEN BEE)',
+        'Front fascia panel (TEST-O''S)',
         'AWC-DEMO-' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS') || '-F',
         NULL,
-        'Main clinic fascia — aluminium composite panel with applied vinyl letters, halo lit.',
+        'Main shop fascia — aluminium composite panel with applied vinyl letters, halo lit.',
         'draft',
         v_ji_fascia_id, v_org_id, v_contact_id, v_site_id, FALSE,
         NULL
@@ -286,7 +289,7 @@ BEGIN
         'Window manifestation (frosted)',
         'AWC-DEMO-' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS') || '-V',
         NULL,
-        'Full-height window frosted vinyl with privacy band at eye level.',
+        'Full-height shop window frosted vinyl with privacy band at eye level.',
         'draft',
         v_ji_vinyl_id, v_org_id, v_contact_id, v_site_id, FALSE,
         NULL
@@ -300,10 +303,10 @@ BEGIN
         scale_confirmed, bleed_included, material_confirmed, rip_no_scaling_confirmed
     ) VALUES (
         v_art_job_fascia_id,
-        'Front fascia panel (QUEEN BEE)',
+        'Front fascia panel (TEST-O''S)',
         'panel', 0, 'pending_design',
         'internal led, halo',
-        'Signed off by Nikki via email 12 Apr.',
+        'Signed off by Terry via email 12 Apr.',
         FALSE, FALSE, FALSE, FALSE
     )
     RETURNING id INTO v_comp_fascia_id;
@@ -318,9 +321,9 @@ BEGIN
          'routed + folded returns', 'RAL 9010 pure white, satin',
          1, 2400, 400, 50),
         (v_comp_fascia_id, 'B', 1,
-         'QUEEN BEE letters', 'Oracal 651 gold vinyl',
+         'TEST-O''S letters', 'Oracal 651 gold vinyl',
          'weeded, stuck to face', 'gloss gold',
-         9, 180, 220, NULL);
+         7, 180, 220, NULL);
 
     -- 4b. Vinyl artwork component — no sub-items in quote, so seed one from line-level dims
     INSERT INTO public.artwork_components (
@@ -354,10 +357,10 @@ BEGIN
         v_org_id, v_prod_job_id, v_site_id, v_contact_id,
         'scheduled', CURRENT_DATE + 7,
         NULL,
-        '[DEMO] Install booked with fitter for the full-day.'
+        '[DEMO] Install booked with fitter for a half-day.'
     );
 
-    RAISE NOTICE '[DEMO] Seed complete — 1 client, 1 quote (accepted), 1 production job (2 items), 2 artwork jobs (3 sub-items), 1 delivery. Remove with: DELETE FROM orgs WHERE name LIKE ''[DEMO]%%''';
+    RAISE NOTICE '[DEMO] Seed complete — Test-O''s: 1 client, 1 quote (accepted), 1 production job (2 items), 2 artwork jobs (3 sub-items), 1 delivery. Remove with: DELETE FROM orgs WHERE name LIKE ''[DEMO]%%''';
 END $$;
 
 COMMIT;
