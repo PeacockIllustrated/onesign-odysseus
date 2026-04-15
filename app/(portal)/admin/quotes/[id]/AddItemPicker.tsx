@@ -1,13 +1,13 @@
 'use client';
 
 /**
- * Picker that sits above the existing panel_letters_v1 add-form.
- * Lets the user choose between the engine-calculated form and the
- * generic manual-priced form.
+ * Primary add-line-item card. Opens the generic manual-priced form — the
+ * default path, works for any job type. The panel_letters_v1 engine-priced
+ * form lives in a separate secondary card below (QuoteDetailClient).
  */
 
 import { useState } from 'react';
-import { Plus, Calculator, FileText } from 'lucide-react';
+import { Plus, FileText } from 'lucide-react';
 import { Card } from '@/app/(portal)/components/ui';
 import { GenericItemForm } from './GenericItemForm';
 
@@ -16,39 +16,47 @@ interface Props {
 }
 
 export function AddItemPicker({ quoteId }: Props) {
-    const [mode, setMode] = useState<'closed' | 'generic'>('closed');
+    const [open, setOpen] = useState(false);
 
-    if (mode === 'generic') {
+    if (open) {
         return (
             <Card className="mt-6">
                 <div className="flex items-center justify-between mb-4">
                     <div>
                         <h2 className="text-sm font-semibold text-neutral-900">
-                            add generic line item
+                            Add line item
                         </h2>
-                        <p className="text-xs text-neutral-500">
-                            manual pricing · for anything the panel + letters engine doesn&rsquo;t cover
+                        <p className="text-xs text-neutral-500 mt-0.5">
+                            manual pricing · works for any job type
                         </p>
                     </div>
                 </div>
-                <GenericItemForm quoteId={quoteId} onDone={() => setMode('closed')} />
+                <GenericItemForm quoteId={quoteId} onDone={() => setOpen(false)} />
             </Card>
         );
     }
 
     return (
-        <div className="mt-6 flex flex-wrap gap-2">
-            <button
-                type="button"
-                onClick={() => setMode('generic')}
-                className="btn-secondary inline-flex items-center gap-2"
-            >
-                <FileText size={14} />
-                add generic item <span className="text-neutral-400 text-xs">(manual price)</span>
-            </button>
-            <p className="text-xs text-neutral-500 self-center ml-2">
-                use the engine-calculated form below for panel + letters jobs
-            </p>
-        </div>
+        <Card className="mt-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="min-w-0">
+                    <h2 className="text-sm font-semibold text-neutral-900 flex items-center gap-2">
+                        <FileText size={16} className="text-neutral-500" />
+                        Add line item
+                    </h2>
+                    <p className="text-xs text-neutral-500 mt-0.5">
+                        manual pricing · works for any signage or service item
+                    </p>
+                </div>
+                <button
+                    type="button"
+                    onClick={() => setOpen(true)}
+                    className="btn-primary inline-flex items-center gap-2 whitespace-nowrap"
+                >
+                    <Plus size={14} />
+                    add item
+                </button>
+            </div>
+        </Card>
     );
 }

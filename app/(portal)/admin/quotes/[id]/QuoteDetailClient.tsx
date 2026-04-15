@@ -136,44 +136,54 @@ export function QuoteDetailClient({
         );
     }
 
-    // Add form mode
+    // Add form mode — the engine-priced Panel + Letters calculator.
+    // This is the SECONDARY path; the primary "Add line item" (manual price,
+    // any job type) lives in AddItemPicker above.
     return (
-        <Card>
-            <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-semibold text-neutral-900">Add Line Item</h2>
+        <Card className="mt-6 bg-neutral-50 border-neutral-200">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-semibold text-neutral-700">
+                            Specialised: Panel + Letters calculator
+                        </h3>
+                        <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
+                            engine
+                        </span>
+                    </div>
+                    <p className="text-xs text-neutral-500 mt-0.5">
+                        engine-priced from the rate card · dynamic pricing for more job types is coming in later phases
+                    </p>
+                </div>
                 <button
                     type="button"
                     onClick={() => setShowForm(!showForm)}
-                    className="flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700"
+                    className="btn-secondary inline-flex items-center gap-2 whitespace-nowrap"
                 >
                     {showForm ? (
                         <>
-                            <ChevronUp size={16} />
-                            Hide Form
+                            <ChevronUp size={14} />
+                            hide calculator
                         </>
                     ) : (
                         <>
-                            <Plus size={16} />
-                            Panel + Letters (v1)
+                            <Plus size={14} />
+                            use calculator
                         </>
                     )}
                 </button>
             </div>
 
             {showForm && (
-                <QuoteLineItemForm
-                    quoteId={quoteId}
-                    pricingSetId={pricingSetId}
-                    rateCard={rateCard}
-                    onSuccess={handleSuccess}
-                    onCancel={() => setShowForm(false)}
-                />
-            )}
-
-            {!showForm && (
-                <p className="text-sm text-neutral-500 py-4 text-center">
-                    Click &quot;Panel + Letters (v1)&quot; to add a line item
-                </p>
+                <div className="mt-4 pt-4 border-t border-neutral-200">
+                    <QuoteLineItemForm
+                        quoteId={quoteId}
+                        pricingSetId={pricingSetId}
+                        rateCard={rateCard}
+                        onSuccess={handleSuccess}
+                        onCancel={() => setShowForm(false)}
+                    />
+                </div>
             )}
         </Card>
     );
