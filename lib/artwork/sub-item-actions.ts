@@ -8,6 +8,7 @@
  * method, finish, dimensions, target department, and sign-off state.
  */
 
+import { z } from 'zod';
 import { createServerClient } from '@/lib/supabase-server';
 import { getUser } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
@@ -369,6 +370,65 @@ export async function reverseSubItemSignOff(
 
     if (error) return { error: error.message };
     await revalidateComponent(supabase, si.component_id);
+    return { ok: true };
+}
+
+// =============================================================================
+// MANUAL STATUS OVERRIDE
+// =============================================================================
+
+/**
+ * Manually override a component's status.
+ *
+ * The system normally derives status from sub-item sign-off state — but
+ * real-world edge cases (a component that's physically complete but flagged
+ * during QC, or one stuck in design waiting on client feedback) sometimes
+ * need the operator to force a particular status. This action records the
+ * override; it does NOT change sign-off timestamps on sub-items.
+ *
+ * Valid statuses mirror the ComponentStatusEnum in types.ts.
+ */
+const ComponentStatusOverrideSchema = z.enum([
+    'pending_design',
+    'design_submitted',
+    'design_signed_off',
+    'in_production',
+    'production_complete',
+    'flagged',
+]);
+
+export async function overrideComponentStatus(
+    componentId: string,
+    status: string
+): Promise<{ ok: true } | { error: string }> {
+    const user = await getUser();
+    if (!user) return { error: 'not authenticated' };
+
+    const validation = ComponentStatusOverrideSchema.safeParse(status);
+    if (!validation.success) return { error: 'invalid status value' };
+
+    const supabase = await createServerClient();
+
+    const { data: component } = await supabase
+        .from('artwork_components')
+        .select('id, job_id')
+        .eq('id', componentId)
+        .single();
+    if (!component) return { error: 'component not found' };
+
+    const { error } = await supabase
+        .from('artwork_components')
+        .update({ status: validation.data })
+        .eq('id', componentId);
+
+    if (error) {
+        console.error('overrideComponentStatus error:', error);
+        return { error: error.message };
+    }
+
+    revalidatePath(`/admin/artwork/${component.job_id}`);
+    revalidatePath(`/admin/artwork/${component.job_id}/${componentId}`);
+    revalidatePath('/admin/artwork');
     return { ok: true };
 }
 

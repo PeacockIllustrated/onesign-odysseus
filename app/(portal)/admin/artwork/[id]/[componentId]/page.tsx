@@ -16,6 +16,7 @@ import { VersionHistory } from './components/VersionHistory';
 import { ComponentActions } from './components/ComponentActions';
 import { SubItemList } from './components/SubItemList';
 import { ComponentThumbnail } from './components/ComponentThumbnail';
+import { StatusOverride } from './components/StatusOverride';
 import { createServerClient } from '@/lib/supabase-server';
 
 export default async function ComponentDetailPage({
@@ -84,9 +85,11 @@ export default async function ComponentDetailPage({
                             print compliance sheet
                         </Link>
                     )}
-                    <Chip variant={getComponentStatusVariant(component.status as ComponentStatus)}>
-                        {getComponentStatusLabel(component.status as ComponentStatus)}
-                    </Chip>
+                    <StatusOverride
+                        componentId={component.id}
+                        currentStatus={component.status as ComponentStatus}
+                        disabled={jobCompleted}
+                    />
                 </div>
             </div>
 

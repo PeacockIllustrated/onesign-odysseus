@@ -55,7 +55,14 @@ export default async function ArtworkJobDetailPage({
     }
 
     const progress = getJobProgress(job.components);
-    const hasSignedOffComponents = job.components.some(c => c.design_signed_off_at);
+    // A component is "printable" if at least one sub-item has had its design
+    // signed off. Legacy jobs (pre sub-items refactor) may still have the
+    // design_signed_off_at on the component itself — check that too.
+    const hasSignedOffComponents = job.components.some(
+        (c: any) =>
+            c.design_signed_off_at ||
+            (c.sub_items || []).some((si: any) => si.design_signed_off_at)
+    );
 
     return (
         <div className="p-6 max-w-7xl mx-auto">

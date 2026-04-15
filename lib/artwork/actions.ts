@@ -1515,15 +1515,26 @@ export async function getArtworkJob(id: string): Promise<ArtworkJobWithProductio
         return null;
     }
 
+    // Pull components + their sub-items in one round-trip. Print / detail
+    // UIs need sub-items to decide "is anything signed off yet?" now that
+    // sign-off is per-sub-item.
     const { data: components } = await supabase
         .from('artwork_components')
-        .select('*')
+        .select('*, sub_items:artwork_component_items(*)')
         .eq('job_id', id)
         .order('sort_order', { ascending: true });
 
+    // Normalise: sort each component's sub-items by sort_order
+    const normalisedComponents = (components || []).map((c: any) => ({
+        ...c,
+        sub_items: (c.sub_items || []).slice().sort(
+            (a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
+        ),
+    }));
+
     const result = {
         ...job,
-        components: (components || []) as ArtworkComponent[],
+        components: normalisedComponents as ArtworkComponent[],
     } as ArtworkJobWithComponents;
 
     // Fetch production context when linked to a production job item
