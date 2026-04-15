@@ -297,9 +297,14 @@ BEGIN
     RETURNING id INTO v_art_job_vinyl_id;
 
     -- 4a. Fascia artwork component + sub-items copied from quote spec
+    -- Component-level target_stage_id + design_signed_off_at are also set
+    -- because the ReleaseToProductionButton's client-side gate reads the
+    -- component row directly (not just sub-items). The true per-sub-item
+    -- routing still lives on artwork_component_items below.
     INSERT INTO public.artwork_components (
         job_id, name, component_type, sort_order, status,
         lighting, notes,
+        target_stage_id, design_signed_off_at,
         scale_confirmed, bleed_included, material_confirmed, rip_no_scaling_confirmed
     ) VALUES (
         v_art_job_fascia_id,
@@ -307,7 +312,8 @@ BEGIN
         'panel', 0, 'design_signed_off',
         'halo', -- artwork_components.lighting is constrained to backlit|halo|edge_lit
         'Signed off by Terry via email 12 Apr. Halo lit (internal LED).',
-        FALSE, FALSE, FALSE, FALSE
+        s_cnc, now(),
+        TRUE, TRUE, TRUE, TRUE
     )
     RETURNING id INTO v_comp_fascia_id;
 
@@ -339,13 +345,15 @@ BEGIN
     INSERT INTO public.artwork_components (
         job_id, name, component_type, sort_order, status,
         notes,
+        target_stage_id, design_signed_off_at,
         scale_confirmed, bleed_included, material_confirmed, rip_no_scaling_confirmed
     ) VALUES (
         v_art_job_vinyl_id,
         'Window manifestation (frosted)',
         'vinyl', 0, 'design_signed_off',
         'Privacy band 1000mm up from floor, 400mm tall.',
-        FALSE, FALSE, FALSE, FALSE
+        s_vinyl, now(),
+        TRUE, TRUE, TRUE, TRUE
     )
     RETURNING id INTO v_comp_vinyl_id;
 
