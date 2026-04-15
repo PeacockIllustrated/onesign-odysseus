@@ -2,6 +2,7 @@
 'use client';
 
 import { useState, useEffect, useTransition } from 'react';
+import Link from 'next/link';
 import { Play, Pause, CheckCircle, ChevronDown, AlertCircle } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase';
 import {
@@ -197,8 +198,8 @@ export function ShopFloorClient({ stages, initialJobs, initialStageSlug }: ShopF
                                 item.status === 'in_progress' ? 'border-neutral-200' : 'border-amber-300 opacity-80'
                             }`}
                         >
-                            {/* Card header */}
-                            <div className="p-4">
+                            {/* Card header — tapping navigates to guided check */}
+                            <Link href={`/shop-floor/check/${item.id}`} className="block p-4" aria-label={`Open check for ${item.description}`}>
                                 <div className="flex items-start justify-between gap-3 mb-2">
                                     <div className="flex-1 min-w-0">
                                         <code className="text-xs font-mono text-[#4e7e8c] font-semibold">
@@ -235,12 +236,13 @@ export function ShopFloorClient({ stages, initialJobs, initialStageSlug }: ShopF
                                         )}
                                     </div>
                                 </div>
+                            </Link>
 
-                                {/* Action buttons — large touch targets */}
-                                <div className="flex gap-2 mt-3">
+                            {/* Action buttons — large touch targets */}
+                            <div className="px-4 pb-4 flex gap-2">
                                     {item.status !== 'in_progress' && (
                                         <button
-                                            onClick={() => handleStart(item.id)}
+                                            onClick={(e) => { e.stopPropagation(); handleStart(item.id); }}
                                             disabled={pendingJobId === item.id}
                                             className="flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 flex-1"
                                         >
@@ -250,7 +252,7 @@ export function ShopFloorClient({ stages, initialJobs, initialStageSlug }: ShopF
                                     )}
                                     {item.status === 'in_progress' && (
                                         <button
-                                            onClick={() => handlePause(item.id)}
+                                            onClick={(e) => { e.stopPropagation(); handlePause(item.id); }}
                                             disabled={pendingJobId === item.id}
                                             className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50"
                                         >
@@ -259,7 +261,7 @@ export function ShopFloorClient({ stages, initialJobs, initialStageSlug }: ShopF
                                         </button>
                                     )}
                                     <button
-                                        onClick={() => handleAdvance(item.id)}
+                                        onClick={(e) => { e.stopPropagation(); handleAdvance(item.id); }}
                                         disabled={pendingJobId === item.id}
                                         className="flex items-center gap-2 px-4 py-2.5 bg-[#4e7e8c] hover:bg-[#3a5f6a] text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 flex-1"
                                     >
@@ -267,7 +269,7 @@ export function ShopFloorClient({ stages, initialJobs, initialStageSlug }: ShopF
                                         Complete → Next Stage
                                     </button>
                                     <button
-                                        onClick={() => handleExpand(item.id)}
+                                        onClick={(e) => { e.stopPropagation(); handleExpand(item.id); }}
                                         className="p-2.5 bg-neutral-100 hover:bg-neutral-200 rounded-lg transition-colors"
                                         aria-label="View details"
                                     >
@@ -276,7 +278,6 @@ export function ShopFloorClient({ stages, initialJobs, initialStageSlug }: ShopF
                                             className={`transition-transform ${expandedItemId === item.id ? 'rotate-180' : ''}`}
                                         />
                                     </button>
-                                </div>
                             </div>
 
                             {/* Expanded department instructions */}
