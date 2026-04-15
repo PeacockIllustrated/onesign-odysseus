@@ -177,7 +177,11 @@ export async function getSubItemsForItemAtStage(
 // reportShopFloorProblem
 // ---------------------------------------------------------------------------
 
-export const ReportProblemInputSchema = z.object({
+// Schema kept internal: Next.js's strict 'use server' only allows async
+// function exports from a "use server" file, so the Zod object itself
+// cannot be exported. The inferred TypeScript type is stripped at compile
+// time so the type export remains safe.
+const ReportProblemInputSchema = z.object({
     subItemId: z.string().uuid(),
     jobItemId: z.string().uuid(),
     stageId: z.string().uuid().nullable(),
