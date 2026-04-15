@@ -3,12 +3,8 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-    LayoutDashboard,
     LayoutGrid,
-    CheckSquare,
-    FolderOpen,
     FileText,
-    CreditCard,
     Shield,
     ChevronLeft,
     ChevronRight,
@@ -17,7 +13,6 @@ import {
     Calculator,
     ShoppingCart,
     DollarSign,
-    Palette,
     ClipboardCheck,
     Truck,
     X,
@@ -27,7 +22,12 @@ import type { LucideIcon } from 'lucide-react';
 import { useSidebar } from './SidebarContext';
 
 interface SidebarProps {
-    isAdmin: boolean;
+    /**
+     * Retained for caller compatibility but no longer used — Odysseus is
+     * single-tenant internal-only (CLAUDE.md §3). Every authed user gets the
+     * full admin sidebar.
+     */
+    isAdmin?: boolean;
 }
 
 interface NavItem {
@@ -45,8 +45,11 @@ const adminOverview: NavItem = { label: 'Overview', href: '/admin', icon: Shield
 
 const adminNavGroups: NavGroup[] = [
     {
+        // Ordered to match the actual flow: quote is the top of the chain,
+        // then job board → shop floor → artwork → deliveries follow downstream.
         label: 'Production',
         items: [
+            { label: 'Quotes', href: '/admin/quotes', icon: Calculator },
             { label: 'Job Board', href: '/admin/jobs', icon: LayoutGrid },
             { label: 'Shop Floor', href: '/shop-floor', icon: Zap },
             { label: 'Artwork', href: '/admin/artwork', icon: ClipboardCheck },
@@ -56,7 +59,6 @@ const adminNavGroups: NavGroup[] = [
     {
         label: 'Sales',
         items: [
-            { label: 'Quotes', href: '/admin/quotes', icon: Calculator },
             { label: 'Invoices', href: '/admin/invoices', icon: FileText },
             { label: 'Purchase Orders', href: '/admin/purchase-orders', icon: ShoppingCart },
             { label: 'Pricing', href: '/admin/pricing', icon: DollarSign },
@@ -66,18 +68,9 @@ const adminNavGroups: NavGroup[] = [
         label: 'Clients',
         items: [
             { label: 'Clients', href: '/admin/clients', icon: Building2 },
-            { label: 'Design Packs', href: '/admin/design-packs', icon: Palette },
             { label: 'Reports', href: '/admin/reports', icon: FileText },
         ],
     },
-];
-
-const clientNavItems: NavItem[] = [
-    { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    { label: 'Deliverables', href: '/deliverables', icon: CheckSquare },
-    { label: 'Assets', href: '/assets', icon: FolderOpen },
-    { label: 'Reports', href: '/reports', icon: FileText },
-    { label: 'Billing', href: '/billing', icon: CreditCard },
 ];
 
 function isItemActive(pathname: string, href: string): boolean {
@@ -87,88 +80,49 @@ function isItemActive(pathname: string, href: string): boolean {
     return pathname === href || pathname.startsWith(href + '/');
 }
 
-export function Sidebar({ isAdmin }: SidebarProps) {
+export function Sidebar(_props: SidebarProps) {
     const pathname = usePathname();
     const [collapsed, setCollapsed] = useState(false);
     const { mobileOpen, closeMobile } = useSidebar();
 
-    const homeHref = isAdmin ? '/admin' : '/dashboard';
+    // Odysseus is single-tenant internal-only (CLAUDE.md §3). Every authed user
+    // is Onesign staff; the non-admin branch no longer has its own UI.
+    const homeHref = '/admin';
 
     const sidebarContent = (
         <>
             {/* Navigation */}
             <nav className="flex-1 py-4 px-2 overflow-y-auto">
-                {isAdmin ? (
-                    <>
-                        {/* Admin Overview */}
-                        <NavLink
-                            item={adminOverview}
-                            isActive={isItemActive(pathname, adminOverview.href)}
-                            collapsed={collapsed}
-                            onNavigate={closeMobile}
-                        />
+                {/* Admin Overview */}
+                <NavLink
+                    item={adminOverview}
+                    isActive={isItemActive(pathname, adminOverview.href)}
+                    collapsed={collapsed}
+                    onNavigate={closeMobile}
+                />
 
-                        {/* Admin Nav Groups */}
-                        {adminNavGroups.map((group) => (
-                            <div key={group.label} className="mt-4">
-                                {!collapsed && (
-                                    <div className="px-3 py-1 text-[10px] font-semibold text-neutral-400 uppercase tracking-widest">
-                                        {group.label}
-                                    </div>
-                                )}
-                                <ul className="space-y-0.5">
-                                    {group.items.map((item) => (
-                                        <li key={item.href}>
-                                            <NavLink
-                                                item={item}
-                                                isActive={isItemActive(pathname, item.href)}
-                                                collapsed={collapsed}
-                                                onNavigate={closeMobile}
-                                            />
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        ))}
-
-                        {/* Separator */}
-                        <div className="my-4 mx-2 border-t border-neutral-200" />
-
-                        {/* Client View section */}
+                {/* Admin Nav Groups */}
+                {adminNavGroups.map((group) => (
+                    <div key={group.label} className="mt-4">
                         {!collapsed && (
                             <div className="px-3 py-1 text-[10px] font-semibold text-neutral-400 uppercase tracking-widest">
-                                Client View
+                                {group.label}
                             </div>
                         )}
                         <ul className="space-y-0.5">
-                            {clientNavItems.map((item) => (
+                            {group.items.map((item) => (
                                 <li key={item.href}>
                                     <NavLink
                                         item={item}
                                         isActive={isItemActive(pathname, item.href)}
                                         collapsed={collapsed}
-                                        muted
                                         onNavigate={closeMobile}
                                     />
                                 </li>
                             ))}
                         </ul>
-                    </>
-                ) : (
-                    /* Client-only view */
-                    <ul className="space-y-1">
-                        {clientNavItems.map((item) => (
-                            <li key={item.href}>
-                                <NavLink
-                                    item={item}
-                                    isActive={isItemActive(pathname, item.href)}
-                                    collapsed={collapsed}
-                                    onNavigate={closeMobile}
-                                />
-                            </li>
-                        ))}
-                    </ul>
-                )}
+                    </div>
+                ))}
             </nav>
 
             {/* Footer */}
@@ -238,70 +192,34 @@ export function Sidebar({ isAdmin }: SidebarProps) {
                             </button>
                         </div>
 
-                        {/* Reuse the same nav content, never collapsed on mobile */}
+                        {/* Mobile nav content — same groups as desktop, never collapsed */}
                         <nav className="flex-1 py-4 px-2 overflow-y-auto">
-                            {isAdmin ? (
-                                <>
-                                    <NavLink
-                                        item={adminOverview}
-                                        isActive={isItemActive(pathname, adminOverview.href)}
-                                        collapsed={false}
-                                        onNavigate={closeMobile}
-                                    />
+                            <NavLink
+                                item={adminOverview}
+                                isActive={isItemActive(pathname, adminOverview.href)}
+                                collapsed={false}
+                                onNavigate={closeMobile}
+                            />
 
-                                    {adminNavGroups.map((group) => (
-                                        <div key={group.label} className="mt-4">
-                                            <div className="px-3 py-1 text-[10px] font-semibold text-neutral-400 uppercase tracking-widest">
-                                                {group.label}
-                                            </div>
-                                            <ul className="space-y-0.5">
-                                                {group.items.map((item) => (
-                                                    <li key={item.href}>
-                                                        <NavLink
-                                                            item={item}
-                                                            isActive={isItemActive(pathname, item.href)}
-                                                            collapsed={false}
-                                                            onNavigate={closeMobile}
-                                                        />
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    ))}
-
-                                    <div className="my-4 mx-2 border-t border-neutral-200" />
-
+                            {adminNavGroups.map((group) => (
+                                <div key={group.label} className="mt-4">
                                     <div className="px-3 py-1 text-[10px] font-semibold text-neutral-400 uppercase tracking-widest">
-                                        Client View
+                                        {group.label}
                                     </div>
                                     <ul className="space-y-0.5">
-                                        {clientNavItems.map((item) => (
+                                        {group.items.map((item) => (
                                             <li key={item.href}>
                                                 <NavLink
                                                     item={item}
                                                     isActive={isItemActive(pathname, item.href)}
                                                     collapsed={false}
-                                                    muted
                                                     onNavigate={closeMobile}
                                                 />
                                             </li>
                                         ))}
                                     </ul>
-                                </>
-                            ) : (
-                                <ul className="space-y-1">
-                                    {clientNavItems.map((item) => (
-                                        <li key={item.href}>
-                                            <NavLink
-                                                item={item}
-                                                isActive={isItemActive(pathname, item.href)}
-                                                collapsed={false}
-                                                onNavigate={closeMobile}
-                                            />
-                                        </li>
-                                    ))}
-                                </ul>
-                            )}
+                                </div>
+                            ))}
                         </nav>
 
                         <div className="p-4 border-t border-neutral-100">
