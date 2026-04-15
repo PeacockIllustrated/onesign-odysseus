@@ -133,12 +133,24 @@ export default function ApprovalClientView({ data, token }: Props) {
                 </div>
             )}
 
-            {/* Header */}
+            {/* Header — uses the Onesign & Digital company mark, not the
+                internal Odysseus product logo. Clients see the brand they
+                commissioned the work from. */}
             <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-                <div style={{ marginBottom: '4px', display: 'flex', justifyContent: 'center' }}>
-                    <img src="/Odysseus-Logo-Black.svg" alt="Onesign Odysseus" style={{ height: '36px', width: 'auto' }} />
+                <div style={{ marginBottom: '10px', display: 'flex', justifyContent: 'center' }}>
+                    <img
+                        src="/Onesign-Logo-Black.svg"
+                        alt="Onesign & Digital"
+                        style={{ height: '56px', width: 'auto', maxWidth: '320px' }}
+                    />
                 </div>
-                <div style={{ fontSize: '10px', color: '#999', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}>
+                <div style={{
+                    fontSize: '11px',
+                    color: '#888',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.14em',
+                    fontWeight: 600,
+                }}>
                     artwork approval
                 </div>
             </div>
@@ -540,8 +552,8 @@ export default function ApprovalClientView({ data, token }: Props) {
                 </div>
             )}
 
-            <div style={{ textAlign: 'center', padding: '12px', fontSize: '12px', color: '#ccc' }}>
-                powered by onesign & digital
+            <div style={{ textAlign: 'center', padding: '16px', fontSize: '12px', color: '#bbb' }}>
+                onesign &amp; digital &middot; team valley, gateshead
             </div>
         </div>
     );

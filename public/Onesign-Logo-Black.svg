@@ -1,0 +1,9 @@
+<!--
+    PLACEHOLDER — replace with the real Onesign & Digital company logo.
+    Same path (/Onesign-Logo-Black.svg) is referenced by the client-facing
+    artwork approval page. Keep the viewBox roughly 5:1 width-to-height so
+    sizing in the header renders consistently.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 64" width="320" height="64">
+    <text x="0" y="44" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="34" font-weight="700" fill="#111" letter-spacing="-0.02em">onesign<tspan font-weight="400" fill="#4e7e8c"> &amp; digital</tspan></text>
+</svg>
