@@ -45,14 +45,15 @@ const adminOverview: NavItem = { label: 'Overview', href: '/admin', icon: Shield
 
 const adminNavGroups: NavGroup[] = [
     {
-        // Ordered to match the actual flow: quote is the top of the chain,
-        // then job board → shop floor → artwork → deliveries follow downstream.
+        // Ordered to match the actual flow: Quote → Artwork → Job Board →
+        // Shop Floor → Deliveries. Artwork is the spec-bearing step that
+        // gates production (CLAUDE.md §1).
         label: 'Production',
         items: [
             { label: 'Quotes', href: '/admin/quotes', icon: Calculator },
+            { label: 'Artwork', href: '/admin/artwork', icon: ClipboardCheck },
             { label: 'Job Board', href: '/admin/jobs', icon: LayoutGrid },
             { label: 'Shop Floor', href: '/shop-floor', icon: Zap },
-            { label: 'Artwork', href: '/admin/artwork', icon: ClipboardCheck },
             { label: 'Deliveries', href: '/admin/deliveries', icon: Truck },
         ],
     },
