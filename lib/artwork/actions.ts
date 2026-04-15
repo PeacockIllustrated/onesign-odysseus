@@ -180,6 +180,67 @@ export async function updateArtworkJob(
  *  - Returns a structured result so the UI can surface errors instead
  *    of silently redirecting.
  */
+/**
+ * Move a component up or down by one position within its artwork job.
+ * Swaps sort_order with the neighbour. No-op if already at the end in
+ * the requested direction.
+ */
+export async function moveComponent(
+    componentId: string,
+    direction: 'up' | 'down'
+): Promise<{ ok: true } | { error: string }> {
+    const user = await getUser();
+    if (!user) return { error: 'not authenticated' };
+
+    const supabase = await createServerClient();
+
+    const { data: current } = await supabase
+        .from('artwork_components')
+        .select('id, job_id, sort_order')
+        .eq('id', componentId)
+        .single();
+    if (!current) return { error: 'component not found' };
+
+    const { data: siblings } = await supabase
+        .from('artwork_components')
+        .select('id, sort_order')
+        .eq('job_id', current.job_id)
+        .order('sort_order', { ascending: true });
+    if (!siblings || siblings.length === 0) {
+        return { error: 'no siblings to swap with' };
+    }
+
+    const idx = siblings.findIndex((s: any) => s.id === componentId);
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= siblings.length) {
+        return { ok: true }; // already at the edge — no-op
+    }
+
+    const other = siblings[targetIdx] as { id: string; sort_order: number };
+
+    // Two-step swap to avoid unique constraint on (job_id, sort_order) if one
+    // ever gets added in future. Park current in a sentinel slot first.
+    const sentinel = -1 - idx; // negative = guaranteed unused
+    const swaps = [
+        { id: current.id, sort_order: sentinel },
+        { id: other.id, sort_order: current.sort_order },
+        { id: current.id, sort_order: other.sort_order },
+    ];
+    for (const s of swaps) {
+        const { error } = await supabase
+            .from('artwork_components')
+            .update({ sort_order: s.sort_order })
+            .eq('id', s.id);
+        if (error) {
+            console.error('moveComponent swap error:', error);
+            return { error: error.message };
+        }
+    }
+
+    revalidatePath(`/admin/artwork/${current.job_id}`);
+    return { ok: true };
+}
+
 export async function deleteArtworkJob(
     id: string
 ): Promise<{ ok: true } | { error: string }> {

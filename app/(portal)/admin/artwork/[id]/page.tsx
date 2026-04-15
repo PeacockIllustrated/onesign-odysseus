@@ -24,6 +24,7 @@ import { CoverImageUpload } from './components/CoverImageUpload';
 import { JobFieldsForm } from './components/JobFieldsForm';
 import { ReleaseToProductionButton } from './components/ReleaseToProductionButton';
 import { DeleteArtworkJobButton } from './components/DeleteArtworkJobButton';
+import { ReorderControls } from './components/ReorderControls';
 
 export default async function ArtworkJobDetailPage({
     params,
@@ -171,7 +172,12 @@ export default async function ArtworkJobDetailPage({
                                         className="block"
                                     >
                                         <Card className="hover:border-neutral-300 transition-colors cursor-pointer">
-                                            <div className="flex items-start justify-between">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <ReorderControls
+                                                    componentId={component.id}
+                                                    isFirst={index === 0}
+                                                    isLast={index === job.components.length - 1}
+                                                />
                                                 <div className="flex-1">
                                                     <div className="flex items-center gap-2 mb-1">
                                                         <span className="text-xs font-mono text-neutral-400">
