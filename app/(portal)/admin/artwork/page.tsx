@@ -1,15 +1,20 @@
 import { requireAdmin } from '@/lib/auth';
 import { getArtworkDashboardData } from '@/lib/artwork/actions';
+import { createServerClient } from '@/lib/supabase-server';
 import { PageHeader, Card, Chip } from '@/app/(portal)/components/ui';
 import Link from 'next/link';
 import { formatDate, getJobStatusLabel, getJobStatusVariant } from '@/lib/artwork/utils';
 import { ArtworkJobStatus, ArtworkDashboardFilterEnum } from '@/lib/artwork/types';
 import { Settings } from 'lucide-react';
 import { StartArtworkButton } from './StartArtworkButton';
+import { NewVisualJobButton } from './components/NewVisualJobButton';
+
+type JobTypeFilter = 'all' | 'production' | 'visual_approval';
 
 interface SearchParams {
     filter?: string;
     search?: string;
+    type?: string;
 }
 
 const FILTER_LABELS: Record<string, string> = {
@@ -33,10 +38,26 @@ export default async function ArtworkJobsPage({
     const filterParse = ArtworkDashboardFilterEnum.safeParse(params.filter ?? 'all');
     const filter = filterParse.success ? filterParse.data : 'all';
 
-    const { jobs, ghostRows, counts } = await getArtworkDashboardData({
+    const rawType = params.type ?? 'all';
+    const typeFilter: JobTypeFilter = (rawType === 'production' || rawType === 'visual_approval')
+        ? rawType
+        : 'all';
+
+    const { jobs: allJobs, ghostRows, counts } = await getArtworkDashboardData({
         filter,
         search: params.search,
     });
+
+    const jobs = typeFilter === 'all'
+        ? allJobs
+        : allJobs.filter((j) => j.job_type === typeFilter);
+
+    const supabase = await createServerClient();
+    const { data: orgs } = await supabase
+        .from('orgs')
+        .select('id, name')
+        .order('name')
+        .limit(200);
 
     return (
         <div className="p-6 max-w-7xl mx-auto">
@@ -51,6 +72,7 @@ export default async function ArtworkJobsPage({
                         <Link href="/admin/artwork/settings" className="btn-secondary p-2" title="Settings">
                             <Settings size={16} />
                         </Link>
+                        <NewVisualJobButton orgs={orgs ?? []} />
                         <Link href="/admin/artwork/new" className="btn-primary">
                             new artwork job
                         </Link>
@@ -59,12 +81,13 @@ export default async function ArtworkJobsPage({
             />
 
             {/* Filter chips */}
-            <div className="flex flex-wrap gap-2 mb-4">
+            <div className="flex flex-wrap gap-2 mb-3">
                 {Object.keys(FILTER_LABELS).map((key) => {
                     const active = key === filter;
                     const count = counts[key as keyof typeof counts] ?? 0;
                     const searchQs = params.search ? `&search=${encodeURIComponent(params.search)}` : '';
-                    const href = `/admin/artwork?filter=${key}${searchQs}`;
+                    const typeQs = typeFilter !== 'all' ? `&type=${typeFilter}` : '';
+                    const href = `/admin/artwork?filter=${key}${searchQs}${typeQs}`;
                     return (
                         <Link
                             key={key}
@@ -77,10 +100,31 @@ export default async function ArtworkJobsPage({
                 })}
             </div>
 
+            {/* Type filter */}
+            <div className="flex gap-1 mb-4">
+                {(['all', 'production', 'visual_approval'] as const).map((t) => {
+                    const active = t === typeFilter;
+                    const filterQs = filter !== 'all' ? `&filter=${filter}` : '';
+                    const searchQs = params.search ? `&search=${encodeURIComponent(params.search)}` : '';
+                    const href = `/admin/artwork?type=${t}${filterQs}${searchQs}`;
+                    const label = t === 'all' ? 'All' : t === 'production' ? 'Production' : 'Visuals';
+                    return (
+                        <Link
+                            key={t}
+                            href={href}
+                            className={`text-xs font-semibold px-3 py-1 rounded border transition-colors ${active ? 'bg-black text-white border-black' : 'bg-white text-neutral-700 border-neutral-200 hover:border-neutral-400'}`}
+                        >
+                            {label}
+                        </Link>
+                    );
+                })}
+            </div>
+
             {/* Search */}
             <Card className="mb-4">
                 <form method="get" className="flex gap-2">
                     <input type="hidden" name="filter" value={filter} />
+                    {typeFilter !== 'all' && <input type="hidden" name="type" value={typeFilter} />}
                     <input
                         type="text"
                         name="search"
@@ -165,6 +209,11 @@ export default async function ArtworkJobsPage({
                                             <Link href={`/admin/artwork/${job.id}`} className="font-medium text-black hover:underline">
                                                 {job.job_name}
                                             </Link>
+                                            <span className={`ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                                                job.job_type === 'visual_approval' ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'
+                                            }`}>
+                                                {job.job_type === 'visual_approval' ? 'Visual' : 'Production'}
+                                            </span>
                                             {job.is_orphan && (
                                                 <span className="ml-2 text-[10px] uppercase px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-semibold">
                                                     orphan
