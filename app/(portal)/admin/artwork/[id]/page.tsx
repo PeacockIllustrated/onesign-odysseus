@@ -23,6 +23,7 @@ import { ApprovalLinkSection } from './components/ApprovalLinkSection';
 import { CoverImageUpload } from './components/CoverImageUpload';
 import { JobFieldsForm } from './components/JobFieldsForm';
 import { ReleaseToProductionButton } from './components/ReleaseToProductionButton';
+import { DeleteArtworkJobButton } from './components/DeleteArtworkJobButton';
 
 export default async function ArtworkJobDetailPage({
     params,
@@ -121,6 +122,10 @@ export default async function ArtworkJobDetailPage({
                         <Chip variant={getJobStatusVariant(job.status as ArtworkJobStatus)}>
                             {getJobStatusLabel(job.status as ArtworkJobStatus)}
                         </Chip>
+                        <DeleteArtworkJobButton
+                            artworkJobId={id}
+                            jobReference={job.job_reference}
+                        />
                     </div>
                 }
             />

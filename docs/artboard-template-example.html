@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Odysseus — AI-friendly artboard template</title>
+    <style>
+        :root {
+            --accent: #4e7e8c;
+            --accent-light: #e8f0f3;
+            --accent-dark: #3a5f6a;
+            --ink: #1a1f23;
+            --ink-2: #4a4f54;
+            --muted: #8a8f94;
+            --line: #d8dde1;
+            --paper: #ffffff;
+            --bg: #f4f5f6;
+            --warn-bg: #fff4e1;
+            --warn-line: #d9a441;
+            --ok-bg: #e8f3ec;
+            --ok-line: #4e8c66;
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            color: var(--ink);
+            font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .sheet {
+            width: 210mm;
+            max-width: 100%;
+            margin: 20px auto;
+            background: var(--paper);
+            padding: 20mm 18mm;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            page-break-after: always;
+        }
+
+        .sheet:last-child { page-break-after: auto; }
+
+        h1 {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin: 0 0 4px;
+        }
+
+        h2 {
+            font-size: 16px;
+            font-weight: 700;
+            margin: 0 0 16px;
+            padding: 0 0 6px;
+            border-bottom: 2px solid var(--ink);
+            letter-spacing: -0.01em;
+        }
+
+        h3 {
+            font-size: 13px;
+            font-weight: 700;
+            margin: 0 0 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .eyebrow {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--accent);
+            margin: 0 0 12px;
+        }
+
+        .lede {
+            font-size: 13px;
+            color: var(--ink-2);
+            margin: 0 0 20px;
+        }
+
+        /* ─ Elevation diagram (hero) ───────────────────────────── */
+
+        .elevation {
+            width: 100%;
+            height: auto;
+            background: #f8f9fa;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            padding: 16px;
+            margin: 0 0 24px;
+        }
+
+        .legend {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin: 0 0 28px;
+        }
+
+        .legend-item {
+            padding: 10px 12px;
+            border: 1px solid var(--line);
+            border-left: 3px solid var(--accent);
+            border-radius: 4px;
+            background: var(--paper);
+        }
+
+        .legend-item .num {
+            font-family: ui-monospace, "SF Mono", monospace;
+            font-weight: 700;
+            color: var(--accent);
+            font-size: 11px;
+        }
+
+        .legend-item .name {
+            font-weight: 600;
+            font-size: 13px;
+            margin: 2px 0 0;
+        }
+
+        .legend-item .sub {
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        /* ─ Component detail cards ─────────────────────────────── */
+
+        .component-card {
+            border: 1.5px solid var(--ink);
+            border-radius: 6px;
+            overflow: hidden;
+            margin: 0 0 18mm;
+        }
+
+        .component-header {
+            padding: 10px 14px;
+            background: var(--ink);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .component-header .title {
+            font-weight: 700;
+            font-size: 14px;
+        }
+
+        .component-header .meta {
+            font-size: 10px;
+            font-family: ui-monospace, "SF Mono", monospace;
+            opacity: 0.85;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .component-body {
+            display: grid;
+            grid-template-columns: 1fr 1.2fr;
+        }
+
+        .component-visual {
+            padding: 14px;
+            border-right: 1px solid var(--line);
+            background: #fafbfc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 200px;
+        }
+
+        .component-items {
+            padding: 14px;
+        }
+
+        .sub-item {
+            border-left: 3px solid var(--accent);
+            padding: 8px 12px;
+            margin: 0 0 10px;
+            background: var(--accent-light);
+            border-radius: 0 4px 4px 0;
+        }
+
+        .sub-item:last-child { margin-bottom: 0; }
+
+        .sub-item .label {
+            display: inline-block;
+            font-family: ui-monospace, "SF Mono", monospace;
+            font-weight: 700;
+            background: var(--ink);
+            color: white;
+            padding: 2px 7px;
+            border-radius: 3px;
+            font-size: 10px;
+            margin-right: 8px;
+        }
+
+        .sub-item .sub-name {
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        .sub-item dl {
+            display: grid;
+            grid-template-columns: max-content 1fr;
+            gap: 2px 10px;
+            margin: 6px 0 0;
+            font-size: 11.5px;
+            font-family: ui-monospace, "SF Mono", monospace;
+        }
+
+        .sub-item dt {
+            color: var(--accent-dark);
+            font-weight: 600;
+        }
+
+        .sub-item dd {
+            margin: 0;
+            color: var(--ink);
+        }
+
+        /* ─ Do / Don't blocks ─────────────────────────────────── */
+
+        .rule-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin: 16px 0;
+        }
+
+        .rule-col h3 { margin-bottom: 8px; }
+
+        .rule-col.ok h3 { color: var(--ok-line); }
+        .rule-col.no h3 { color: #b84747; }
+
+        .rule-col ul {
+            margin: 0;
+            padding-left: 18px;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .rule-col ul li { margin-bottom: 6px; }
+
+        /* ─ Compact example blocks ─────────────────────────────── */
+
+        .example {
+            border: 1px solid var(--line);
+            border-radius: 4px;
+            padding: 10px 12px;
+            margin: 8px 0;
+            background: #fafbfc;
+            font-family: ui-monospace, "SF Mono", monospace;
+            font-size: 11.5px;
+            white-space: pre;
+            color: var(--ink);
+        }
+
+        .example.good {
+            border-color: var(--ok-line);
+            background: var(--ok-bg);
+        }
+
+        .example.bad {
+            border-color: #c47676;
+            background: #fbecec;
+        }
+
+        .tag {
+            display: inline-block;
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin-bottom: 4px;
+        }
+
+        .tag.ok { background: var(--ok-line); color: white; }
+        .tag.no { background: #b84747; color: white; }
+
+        /* ─ Print adjustments ──────────────────────────────────── */
+
+        @media print {
+            body { background: white; }
+            .sheet {
+                margin: 0;
+                box-shadow: none;
+                padding: 15mm;
+            }
+        }
+
+        /* ─ Callout lines (overlay on elevation) ──────────────── */
+
+        .callout-label {
+            fill: white;
+            font-weight: 700;
+            font-family: ui-monospace, monospace;
+            font-size: 11px;
+        }
+
+        .callout-bg {
+            fill: var(--ink);
+        }
+
+        .callout-line {
+            stroke: var(--ink);
+            stroke-width: 1.2;
+            fill: none;
+        }
+    </style>
+</head>
+<body>
+
+<!-- ─────────────────────────────────────────────────────────────
+     Page 1 — Hero elevation + overview
+───────────────────────────────────────────────────────────────── -->
+<div class="sheet">
+    <p class="eyebrow">Odysseus · artboard template · v1</p>
+    <h1>AI-friendly artboard annotation</h1>
+    <p class="lede">
+        This is the canonical format for shopfront artboards so the AI extractor can
+        reliably turn them into production jobs. Use this layout for fascia signs,
+        window vinyls, door vinyls, and projection signs. The AI will read each
+        component&rsquo;s card, extract its sub-items, and pre-populate the job.
+        Human review still required before anything is committed.
+    </p>
+
+    <h2>Example shopfront — BRIGHT &amp; CO</h2>
+
+    <!-- Elevation SVG -->
+    <div class="elevation">
+        <svg viewBox="0 0 720 360" style="width: 100%; height: auto;" xmlns="http://www.w3.org/2000/svg">
+            <!-- Sky / wall background -->
+            <rect x="0" y="0" width="720" height="360" fill="#eef1f3"/>
+            <rect x="0" y="260" width="720" height="100" fill="#d4d8db"/>
+
+            <!-- Wall -->
+            <rect x="80" y="40" width="560" height="260" fill="#c9b89c" stroke="#a08860" stroke-width="1"/>
+
+            <!-- Fascia panel (1) -->
+            <rect x="110" y="60" width="500" height="60" fill="#3a3a3a" stroke="#222" stroke-width="1"/>
+            <text x="360" y="95" text-anchor="middle" font-family="serif" font-size="28" font-weight="700"
+                  fill="url(#roseGold)" letter-spacing="2">BRIGHT &amp; CO</text>
+            <text x="360" y="112" text-anchor="middle" font-family="sans-serif" font-size="9"
+                  fill="white" letter-spacing="3">EST. 1999 · ARTISAN COFFEE</text>
+
+            <defs>
+                <linearGradient id="roseGold" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stop-color="#f3c5b5"/>
+                    <stop offset="50%" stop-color="#d89885"/>
+                    <stop offset="100%" stop-color="#b06f5c"/>
+                </linearGradient>
+                <pattern id="frosted" x="0" y="0" width="4" height="4" patternUnits="userSpaceOnUse">
+                    <rect x="0" y="0" width="4" height="4" fill="white" opacity="0.65"/>
+                </pattern>
+            </defs>
+
+            <!-- Large window (2) -->
+            <rect x="110" y="150" width="280" height="130" fill="#a8c8d8" stroke="#555" stroke-width="2"/>
+            <rect x="110" y="150" width="280" height="130" fill="url(#frosted)" opacity="0.35"/>
+            <!-- Window content: monogram -->
+            <text x="210" y="235" text-anchor="middle" font-family="serif" font-size="44" font-weight="700"
+                  fill="white" opacity="0.9">B&amp;C</text>
+            <!-- Window content: hours strip -->
+            <text x="310" y="175" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600"
+                  fill="white" letter-spacing="2">OPEN MON–SAT · 8—6</text>
+            <rect x="255" y="180" width="110" height="1" fill="white" opacity="0.8"/>
+
+            <!-- Door (3) -->
+            <rect x="400" y="150" width="90" height="150" fill="#8a9aa5" stroke="#444" stroke-width="2"/>
+            <circle cx="478" cy="225" r="3" fill="#222"/>
+            <!-- Door monogram -->
+            <text x="445" y="195" text-anchor="middle" font-family="serif" font-size="18" font-weight="700"
+                  fill="white" opacity="0.9">B&amp;C</text>
+            <!-- Push strip -->
+            <rect x="410" y="250" width="70" height="18" fill="white" opacity="0.35"/>
+            <text x="445" y="262" text-anchor="middle" font-family="sans-serif" font-size="8" font-weight="700"
+                  fill="#1a1a1a" letter-spacing="2">PUSH</text>
+
+            <!-- Right window -->
+            <rect x="500" y="150" width="110" height="130" fill="#a8c8d8" stroke="#555" stroke-width="2"/>
+            <rect x="500" y="150" width="110" height="130" fill="url(#frosted)" opacity="0.35"/>
+
+            <!-- Projection sign (4) -->
+            <line x1="80" y1="145" x2="40" y2="145" stroke="#555" stroke-width="1"/>
+            <rect x="20" y="130" width="60" height="45" fill="#3a3a3a" stroke="#222" stroke-width="1"/>
+            <text x="50" y="150" text-anchor="middle" font-family="serif" font-size="14" font-weight="700"
+                  fill="url(#roseGold)">B&amp;C</text>
+            <text x="50" y="163" text-anchor="middle" font-family="sans-serif" font-size="6"
+                  fill="white" letter-spacing="1">COFFEE</text>
+            <!-- Bracket -->
+            <rect x="74" y="140" width="8" height="20" fill="#888"/>
+
+            <!-- Ground shadow -->
+            <rect x="80" y="295" width="560" height="4" fill="#000" opacity="0.08"/>
+
+            <!-- Callouts: number badges -->
+            <g>
+                <!-- 1: Fascia -->
+                <line x1="620" y1="90" x2="660" y2="90" class="callout-line"/>
+                <circle cx="670" cy="90" r="12" class="callout-bg"/>
+                <text x="670" y="94" text-anchor="middle" class="callout-label">1</text>
+
+                <!-- 2: Window -->
+                <line x1="250" y1="285" x2="250" y2="315" class="callout-line"/>
+                <circle cx="250" cy="325" r="12" class="callout-bg"/>
+                <text x="250" y="329" text-anchor="middle" class="callout-label">2</text>
+
+                <!-- 3: Door -->
+                <line x1="445" y1="305" x2="445" y2="320" class="callout-line"/>
+                <circle cx="445" cy="330" r="12" class="callout-bg"/>
+                <text x="445" y="334" text-anchor="middle" class="callout-label">3</text>
+
+                <!-- 4: Projection -->
+                <line x1="50" y1="180" x2="50" y2="205" class="callout-line"/>
+                <circle cx="50" cy="215" r="12" class="callout-bg"/>
+                <text x="50" y="219" text-anchor="middle" class="callout-label">4</text>
+            </g>
+        </svg>
+    </div>
+
+    <div class="legend">
+        <div class="legend-item">
+            <span class="num">COMPONENT 1</span>
+            <div class="name">Fascia sign</div>
+            <div class="sub">brown panel + acrylic letters + vinyl subtitle</div>
+        </div>
+        <div class="legend-item">
+            <span class="num">COMPONENT 2</span>
+            <div class="name">Window vinyl</div>
+            <div class="sub">frosted vinyl · monogram + hours strip</div>
+        </div>
+        <div class="legend-item">
+            <span class="num">COMPONENT 3</span>
+            <div class="name">Door vinyl</div>
+            <div class="sub">monogram + push/pull</div>
+        </div>
+        <div class="legend-item">
+            <span class="num">COMPONENT 4</span>
+            <div class="name">Projection sign</div>
+            <div class="sub">double-sided wall-mounted</div>
+        </div>
+    </div>
+
+    <p class="lede" style="font-size:12px; border-top:1px solid var(--line); padding-top:12px;">
+        <strong>Rule of thumb:</strong> one <em>physical assembly</em> = one component.
+        The fascia is one component even though it has both acrylic and vinyl on it
+        &mdash; because it&rsquo;s one panel that gets installed as one unit. The door
+        is one component because the vinyls get applied to the same door. Components
+        split when they install separately. Each component lives on its own
+        &ldquo;card&rdquo; on the artboard, as shown in pages 2&ndash;3.
+    </p>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────
+     Page 2 — Component 1: Fascia + Component 2: Window
+───────────────────────────────────────────────────────────────── -->
+<div class="sheet">
+    <h2>Component cards — canonical format</h2>
+
+    <!-- COMPONENT 1 -->
+    <div class="component-card">
+        <div class="component-header">
+            <div class="title">Component 1 · Fascia sign</div>
+            <div class="meta">BRIGHT &amp; CO · FASCIA · PANEL_LETTERS</div>
+        </div>
+        <div class="component-body">
+            <div class="component-visual">
+                <svg viewBox="0 0 280 100" width="100%" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="0" y="0" width="280" height="100" fill="#3a3a3a" stroke="#222"/>
+                    <text x="140" y="55" text-anchor="middle" font-family="serif" font-size="28" font-weight="700"
+                          fill="url(#rg2)" letter-spacing="2">BRIGHT &amp; CO</text>
+                    <text x="140" y="80" text-anchor="middle" font-family="sans-serif" font-size="9"
+                          fill="white" letter-spacing="3">EST. 1999 · ARTISAN COFFEE</text>
+                    <defs>
+                        <linearGradient id="rg2" x1="0" x2="0" y1="0" y2="1">
+                            <stop offset="0%" stop-color="#f3c5b5"/>
+                            <stop offset="100%" stop-color="#b06f5c"/>
+                        </linearGradient>
+                    </defs>
+                    <!-- A callout -->
+                    <line x1="140" y1="50" x2="140" y2="12" stroke="#c74" stroke-width="0.8"/>
+                    <circle cx="140" cy="10" r="7" fill="#c74"/>
+                    <text x="140" y="13" text-anchor="middle" fill="white" font-size="9" font-weight="700">A</text>
+                    <!-- B callout -->
+                    <line x1="195" y1="78" x2="230" y2="92" stroke="#c74" stroke-width="0.8"/>
+                    <circle cx="235" cy="94" r="7" fill="#c74"/>
+                    <text x="235" y="97" text-anchor="middle" fill="white" font-size="9" font-weight="700">B</text>
+                </svg>
+            </div>
+            <div class="component-items">
+                <div class="sub-item">
+                    <span class="label">A</span>
+                    <span class="sub-name">BRIGHT &amp; CO letters</span>
+                    <dl>
+                        <dt>Material:</dt><dd>5mm rose-gold mirrored acrylic</dd>
+                        <dt>Method:</dt><dd>stuck to face with VHB tape</dd>
+                        <dt>Finish:</dt><dd>rose gold mirror</dd>
+                        <dt>W × H:</dt><dd>1500 × 280 mm</dd>
+                        <dt>Returns:</dt><dd>n/a</dd>
+                        <dt>Qty:</dt><dd>1</dd>
+                        <dt>Dept:</dt><dd>CNC / acrylic finishing</dd>
+                    </dl>
+                </div>
+                <div class="sub-item">
+                    <span class="label">B</span>
+                    <span class="sub-name">EST. 1999 · ARTISAN COFFEE strapline</span>
+                    <dl>
+                        <dt>Material:</dt><dd>white gloss vinyl</dd>
+                        <dt>Method:</dt><dd>weeded and applied</dd>
+                        <dt>Finish:</dt><dd>matte white</dd>
+                        <dt>W × H:</dt><dd>1450 × 18 mm</dd>
+                        <dt>Qty:</dt><dd>1</dd>
+                        <dt>Dept:</dt><dd>Vinyl plotter</dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- COMPONENT 2 -->
+    <div class="component-card">
+        <div class="component-header">
+            <div class="title">Component 2 · Main window vinyl</div>
+            <div class="meta">BRIGHT &amp; CO · WINDOW · VINYL</div>
+        </div>
+        <div class="component-body">
+            <div class="component-visual">
+                <svg viewBox="0 0 220 180" width="100%" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="0" y="0" width="220" height="180" fill="#a8c8d8" stroke="#444" stroke-width="1.5"/>
+                    <rect x="0" y="0" width="220" height="180" fill="white" opacity="0.3"/>
+                    <text x="80" y="130" text-anchor="middle" font-family="serif" font-size="58" font-weight="700"
+                          fill="white">B&amp;C</text>
+                    <text x="165" y="35" text-anchor="middle" font-family="sans-serif" font-size="8" font-weight="600"
+                          fill="white" letter-spacing="2">OPEN MON–SAT · 8—6</text>
+                    <rect x="118" y="42" width="94" height="1.5" fill="white"/>
+
+                    <!-- A callout -->
+                    <line x1="80" y1="115" x2="15" y2="60" stroke="#c74" stroke-width="0.8"/>
+                    <circle cx="12" cy="58" r="7" fill="#c74"/>
+                    <text x="12" y="61" text-anchor="middle" fill="white" font-size="9" font-weight="700">A</text>
+                    <!-- B callout -->
+                    <line x1="165" y1="30" x2="210" y2="18" stroke="#c74" stroke-width="0.8"/>
+                    <circle cx="215" cy="18" r="7" fill="#c74"/>
+                    <text x="215" y="21" text-anchor="middle" fill="white" font-size="9" font-weight="700">B</text>
+                </svg>
+            </div>
+            <div class="component-items">
+                <div class="sub-item">
+                    <span class="label">A</span>
+                    <span class="sub-name">B&amp;C monogram</span>
+                    <dl>
+                        <dt>Material:</dt><dd>frosted window vinyl</dd>
+                        <dt>Method:</dt><dd>applied to inside face of glass</dd>
+                        <dt>Finish:</dt><dd>etched frost</dd>
+                        <dt>W × H:</dt><dd>680 × 420 mm</dd>
+                        <dt>Qty:</dt><dd>1</dd>
+                        <dt>Dept:</dt><dd>Vinyl plotter</dd>
+                    </dl>
+                </div>
+                <div class="sub-item">
+                    <span class="label">B</span>
+                    <span class="sub-name">Opening hours strip</span>
+                    <dl>
+                        <dt>Material:</dt><dd>frosted window vinyl</dd>
+                        <dt>Method:</dt><dd>applied to inside face of glass</dd>
+                        <dt>Finish:</dt><dd>etched frost</dd>
+                        <dt>W × H:</dt><dd>420 × 22 mm</dd>
+                        <dt>Qty:</dt><dd>1</dd>
+                        <dt>Dept:</dt><dd>Vinyl plotter</dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────
+     Page 3 — Component 3: Door + Component 4: Projection
+───────────────────────────────────────────────────────────────── -->
+<div class="sheet">
+    <h2>Component cards &mdash; continued</h2>
+
+    <!-- COMPONENT 3 -->
+    <div class="component-card">
+        <div class="component-header">
+            <div class="title">Component 3 · Door vinyl</div>
+            <div class="meta">BRIGHT &amp; CO · DOOR · VINYL</div>
+        </div>
+        <div class="component-body">
+            <div class="component-visual">
+                <svg viewBox="0 0 140 220" width="100%" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="0" y="0" width="140" height="220" fill="#8a9aa5" stroke="#444" stroke-width="1.5"/>
+                    <!-- Monogram -->
+                    <text x="70" y="75" text-anchor="middle" font-family="serif" font-size="30" font-weight="700"
+                          fill="white">B&amp;C</text>
+                    <!-- Push strip -->
+                    <rect x="18" y="140" width="104" height="28" fill="white" opacity="0.7"/>
+                    <text x="70" y="159" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="700"
+                          fill="#1a1a1a" letter-spacing="3">PUSH</text>
+                    <!-- Hours -->
+                    <text x="70" y="200" text-anchor="middle" font-family="sans-serif" font-size="7" font-weight="600"
+                          fill="white" letter-spacing="1">MON–SAT · 8—6</text>
+                    <circle cx="125" cy="110" r="3" fill="#222"/>
+
+                    <!-- A -->
+                    <line x1="70" y1="70" x2="130" y2="38" stroke="#c74" stroke-width="0.8"/>
+                    <circle cx="133" cy="36" r="7" fill="#c74"/>
+                    <text x="133" y="39" text-anchor="middle" fill="white" font-size="9" font-weight="700">A</text>
+                    <!-- B -->
+                    <line x1="70" y1="154" x2="132" y2="154" stroke="#c74" stroke-width="0.8"/>
+                    <circle cx="135" cy="154" r="7" fill="#c74"/>
+                    <text x="135" y="157" text-anchor="middle" fill="white" font-size="9" font-weight="700">B</text>
+                    <!-- C -->
+                    <line x1="70" y1="198" x2="132" y2="200" stroke="#c74" stroke-width="0.8"/>
+                    <circle cx="135" cy="200" r="7" fill="#c74"/>
+                    <text x="135" y="203" text-anchor="middle" fill="white" font-size="9" font-weight="700">C</text>
+                </svg>
+            </div>
+            <div class="component-items">
+                <div class="sub-item">
+                    <span class="label">A</span>
+                    <span class="sub-name">B&amp;C monogram</span>
+                    <dl>
+                        <dt>Material:</dt><dd>white gloss vinyl</dd>
+                        <dt>Method:</dt><dd>applied to outside face of door</dd>
+                        <dt>Finish:</dt><dd>gloss white</dd>
+                        <dt>W × H:</dt><dd>220 × 140 mm</dd>
+                        <dt>Qty:</dt><dd>1</dd>
+                        <dt>Dept:</dt><dd>Vinyl plotter</dd>
+                    </dl>
+                </div>
+                <div class="sub-item">
+                    <span class="label">B</span>
+                    <span class="sub-name">PUSH strip</span>
+                    <dl>
+                        <dt>Material:</dt><dd>frosted vinyl</dd>
+                        <dt>Method:</dt><dd>applied to outside face of door</dd>
+                        <dt>Finish:</dt><dd>etched frost with black print</dd>
+                        <dt>W × H:</dt><dd>260 × 70 mm</dd>
+                        <dt>Qty:</dt><dd>1</dd>
+                        <dt>Dept:</dt><dd>Vinyl plotter</dd>
+                    </dl>
+                </div>
+                <div class="sub-item">
+                    <span class="label">C</span>
+                    <span class="sub-name">Opening hours line</span>
+                    <dl>
+                        <dt>Material:</dt><dd>white gloss vinyl</dd>
+                        <dt>Method:</dt><dd>applied to outside face of door</dd>
+                        <dt>Finish:</dt><dd>gloss white</dd>
+                        <dt>W × H:</dt><dd>200 × 12 mm</dd>
+                        <dt>Qty:</dt><dd>1</dd>
+                        <dt>Dept:</dt><dd>Vinyl plotter</dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- COMPONENT 4 -->
+    <div class="component-card">
+        <div class="component-header">
+            <div class="title">Component 4 · Projection sign</div>
+            <div class="meta">BRIGHT &amp; CO · PROJECTION · DOUBLE-SIDED</div>
+        </div>
+        <div class="component-body">
+            <div class="component-visual">
+                <svg viewBox="0 0 240 180" width="100%" xmlns="http://www.w3.org/2000/svg">
+                    <!-- bracket -->
+                    <rect x="210" y="80" width="22" height="20" fill="#888"/>
+                    <line x1="210" y1="90" x2="190" y2="90" stroke="#555" stroke-width="1"/>
+                    <!-- sign face -->
+                    <rect x="40" y="60" width="160" height="60" fill="#3a3a3a" stroke="#222" stroke-width="1.5"/>
+                    <text x="120" y="92" text-anchor="middle" font-family="serif" font-size="22" font-weight="700"
+                          fill="url(#rg3)">B&amp;C</text>
+                    <text x="120" y="110" text-anchor="middle" font-family="sans-serif" font-size="8"
+                          fill="white" letter-spacing="2">COFFEE</text>
+                    <defs>
+                        <linearGradient id="rg3" x1="0" x2="0" y1="0" y2="1">
+                            <stop offset="0%" stop-color="#f3c5b5"/>
+                            <stop offset="100%" stop-color="#b06f5c"/>
+                        </linearGradient>
+                    </defs>
+                    <!-- A -->
+                    <line x1="120" y1="90" x2="120" y2="25" stroke="#c74" stroke-width="0.8"/>
+                    <circle cx="120" cy="22" r="7" fill="#c74"/>
+                    <text x="120" y="25" text-anchor="middle" fill="white" font-size="9" font-weight="700">A</text>
+                    <!-- B -->
+                    <line x1="80" y1="115" x2="20" y2="145" stroke="#c74" stroke-width="0.8"/>
+                    <circle cx="15" cy="147" r="7" fill="#c74"/>
+                    <text x="15" y="150" text-anchor="middle" fill="white" font-size="9" font-weight="700">B</text>
+                </svg>
+            </div>
+            <div class="component-items">
+                <div class="sub-item">
+                    <span class="label">A</span>
+                    <span class="sub-name">Panel face (both sides)</span>
+                    <dl>
+                        <dt>Material:</dt><dd>3mm aluminium composite, both faces</dd>
+                        <dt>Method:</dt><dd>digitally printed, laminated, bracket-mounted</dd>
+                        <dt>Finish:</dt><dd>matte black background</dd>
+                        <dt>W × H:</dt><dd>600 × 300 mm</dd>
+                        <dt>Returns:</dt><dd>n/a</dd>
+                        <dt>Qty:</dt><dd>1 (prints 2 sides)</dd>
+                        <dt>Dept:</dt><dd>Print / finishing</dd>
+                    </dl>
+                </div>
+                <div class="sub-item">
+                    <span class="label">B</span>
+                    <span class="sub-name">Wall-mount bracket</span>
+                    <dl>
+                        <dt>Material:</dt><dd>powder-coated steel bracket, 90° arm</dd>
+                        <dt>Method:</dt><dd>wall-fixed with M10 rawl bolts</dd>
+                        <dt>Finish:</dt><dd>matte black</dd>
+                        <dt>Dimensions:</dt><dd>400mm arm, 200mm wall plate</dd>
+                        <dt>Qty:</dt><dd>1</dd>
+                        <dt>Dept:</dt><dd>Fabrication</dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────
+     Page 4 — Rules + bad examples
+───────────────────────────────────────────────────────────────── -->
+<div class="sheet">
+    <h2>Rules that make extraction reliable</h2>
+    <p class="lede">
+        The AI reads your artboard left-to-right, top-to-bottom, card by card.
+        Keeping the structure below means it maps cleanly into a sub-item with
+        high confidence. Deviations don&rsquo;t break extraction &mdash; they
+        just drop confidence and force manual review of more fields.
+    </p>
+
+    <div class="rule-grid">
+        <div class="rule-col ok">
+            <h3>Do</h3>
+            <ul>
+                <li>One <strong>physical assembly</strong> per component card. Fascia = one card, projection sign = one card.</li>
+                <li>Label every sub-item with a <strong>single capital letter</strong> (A, B, C…) at the callout.</li>
+                <li>Always use the <strong>key: value</strong> format with these exact labels: <code>Material:</code>, <code>Method:</code>, <code>Finish:</code>, <code>W × H:</code>, <code>Returns:</code>, <code>Qty:</code>, <code>Dept:</code>.</li>
+                <li>Every dimension includes the unit: <code>1500 × 280 mm</code>. Never bare numbers.</li>
+                <li>Name the sub-item in a short readable phrase — &ldquo;BRIGHT &amp; CO letters&rdquo;, not just &ldquo;A&rdquo;.</li>
+                <li>State the <strong>target department</strong> explicitly. The model should not guess this.</li>
+                <li>Keep annotation text <strong>typeset</strong>. Avoid handwriting.</li>
+                <li>Put the component name + type in a visible header on each card (&ldquo;Component 1 · Fascia sign&rdquo;).</li>
+            </ul>
+        </div>
+        <div class="rule-col no">
+            <h3>Don&rsquo;t</h3>
+            <ul>
+                <li>Don&rsquo;t mix two components on one card. If it installs separately, split it.</li>
+                <li>Don&rsquo;t use numbers (1, 2, 3) for sub-items. Numbers are for components.</li>
+                <li>Don&rsquo;t write prose: <em>&ldquo;big letters in rose gold acrylic about 1.5m across stuck on the front&rdquo;</em> forces the model to guess at parsing.</li>
+                <li>Don&rsquo;t omit units. <code>1500 x 280</code> without &ldquo;mm&rdquo; is ambiguous.</li>
+                <li>Don&rsquo;t skip the material when it&rsquo;s &ldquo;obvious from the image&rdquo; &mdash; the model can&rsquo;t tell acrylic from composite by looking.</li>
+                <li>Don&rsquo;t use ambiguous arrows that cross another callout&rsquo;s line.</li>
+                <li>Don&rsquo;t rely on colour alone to differentiate sub-items. Colour doesn&rsquo;t survive greyscale prints or screenshots.</li>
+                <li>Don&rsquo;t cross-reference between components (&ldquo;same material as Component 1&rdquo;). Restate the spec on each card.</li>
+            </ul>
+        </div>
+    </div>
+
+    <h3 style="margin-top:20px;">Side-by-side — reading the same element two ways</h3>
+
+    <div class="example good" style="white-space: pre-wrap;"><span class="tag ok">Extractable</span>
+A. BRIGHT &amp; CO letters
+Material: 5mm rose-gold mirrored acrylic
+Method:   stuck to face with VHB tape
+Finish:   rose gold mirror
+W × H:    1500 × 280 mm
+Qty:      1
+Dept:     CNC / acrylic finishing</div>
+
+    <div class="example bad" style="white-space: pre-wrap;"><span class="tag no">Will produce a wrong job</span>
+Letters — rose gold, ~1.5m, stuck on
+(the rest as usual)</div>
+
+    <p class="lede" style="font-size:12px; border-top:1px solid var(--line); padding-top:12px; margin-top:20px;">
+        Two different annotations describing the same physical thing. The first
+        extracts as a clean sub-item. The second produces a sub-item with
+        &ldquo;inferred&rdquo; markers on material, dimensions, method, finish, and
+        department &mdash; which is exactly the situation the AI feature is
+        <em>not</em> meant to replace human review for. If Davey writes
+        the first format consistently, extraction becomes reliable. If the
+        second format creeps in, the tool stops saving time because the
+        reviewer has to fill in everything that was left vague.
+    </p>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────
+     Page 5 — At-a-glance reference
+───────────────────────────────────────────────────────────────── -->
+<div class="sheet">
+    <h2>One-page reference</h2>
+    <p class="lede">
+        Pin this up in the studio. The shape below is all the model needs to
+        produce a clean sub-item with no guesses.
+    </p>
+
+    <div class="example good" style="white-space: pre-wrap; font-size: 13px; padding: 18px 20px;">Component <strong>N</strong> · <strong>[Client name]</strong> · <strong>[Type: fascia | window | door | projection | lightbox | …]</strong>
+
+<strong>A</strong>. [Short readable name of this sub-item]
+Material: [exact spec, including thickness / brand / colour where relevant]
+Method:   [how it is applied, fixed, or assembled]
+Finish:   [surface finish / colour / texture]
+W × H:    [width] × [height] mm
+Returns:  [depth] mm  ← only when relevant (e.g. built-up letters)
+Qty:      [integer]
+Dept:     [one of: CNC / acrylic finishing · Vinyl plotter · Print / finishing · Fabrication · Electrical · Install]
+
+<strong>B</strong>. [Next sub-item in the same component, same shape]
+…</div>
+
+    <h3 style="margin-top:24px;">Component type shorthand</h3>
+    <p style="font-size:13px; color:var(--ink-2); margin-top:8px;">
+        These are the canonical component-type words the model recognises.
+        Using other words is fine but reduces confidence on the
+        &ldquo;component type&rdquo; field.
+    </p>
+    <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; margin-top:8px; font-size:12px;">
+        <div><code>fascia</code> &mdash; horizontal signboard above shopfront</div>
+        <div><code>window</code> &mdash; vinyl or film applied to glazing</div>
+        <div><code>door</code> &mdash; vinyls / fittings on the entrance door</div>
+        <div><code>projection</code> &mdash; wall-mounted perpendicular sign</div>
+        <div><code>lightbox</code> &mdash; illuminated face-lit or edge-lit unit</div>
+        <div><code>built_up_letters</code> &mdash; standalone 3D letters</div>
+        <div><code>flat_cut_letters</code> &mdash; flat acrylic / composite letters</div>
+        <div><code>totem</code> &mdash; free-standing external sign</div>
+        <div><code>wayfinding</code> &mdash; internal directional signage</div>
+    </div>
+
+    <h3 style="margin-top:24px;">Department shorthand</h3>
+    <p style="font-size:13px; color:var(--ink-2); margin-top:8px;">
+        Use these exact department names &mdash; they map 1:1 to stages in the
+        production pipeline. If the department isn&rsquo;t in this list, the
+        sub-item will come back with <em>inferred</em> on Dept and Davey (or
+        whoever reviews the draft) has to pick one manually.
+    </p>
+    <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:6px; margin-top:8px; font-size:12px;">
+        <div>• <code>CNC / acrylic finishing</code></div>
+        <div>• <code>Vinyl plotter</code></div>
+        <div>• <code>Print / finishing</code></div>
+        <div>• <code>Fabrication</code></div>
+        <div>• <code>Electrical</code></div>
+        <div>• <code>Install</code></div>
+    </div>
+
+    <p style="font-size:11px; color:var(--muted); border-top:1px solid var(--line); padding-top:12px; margin-top:28px;">
+        Odysseus · artboard template v1 · every extraction is a <strong>draft</strong>;
+        sub-items and departments are pre-populated but nothing enters production
+        until a human reviews and signs off each card.
+    </p>
+</div>
+
+</body>
+</html>

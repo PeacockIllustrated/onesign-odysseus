@@ -169,20 +169,69 @@ export async function updateArtworkJob(
 }
 
 /**
- * Delete an artwork job
+ * Delete an artwork compliance job (and all its components, sub-items,
+ * versions, production checks, approvals — cascaded by FK on delete).
+ *
+ * Safety:
+ *  - Super-admin only.
+ *  - Refused if the linked production item has already advanced past
+ *    the artwork-approval stage (i.e. real work has started downstream).
+ *    Operator must reset the production item first.
+ *  - Returns a structured result so the UI can surface errors instead
+ *    of silently redirecting.
  */
-export async function deleteArtworkJob(id: string): Promise<void> {
+export async function deleteArtworkJob(
+    id: string
+): Promise<{ ok: true } | { error: string }> {
     const user = await getUser();
-    if (!user) {
-        redirect('/login');
-    }
+    if (!user) return { error: 'not authenticated' };
+
+    const { requireSuperAdminOrError } = await import('@/lib/auth');
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { error: gate.error };
 
     const supabase = await createServerClient();
 
-    await supabase.from('artwork_jobs').delete().eq('id', id);
+    const { data: job, error: jobErr } = await supabase
+        .from('artwork_jobs')
+        .select('id, job_item_id')
+        .eq('id', id)
+        .single();
+    if (jobErr || !job) return { error: 'artwork job not found' };
+
+    // If linked to a production item, refuse delete when production has
+    // moved on. The artwork stage is gating; if the item is past it,
+    // someone is already producing real things downstream.
+    if (job.job_item_id) {
+        const { data: jobItem } = await supabase
+            .from('job_items')
+            .select('id, current_stage_id, production_stages!inner(slug)')
+            .eq('id', job.job_item_id)
+            .single();
+
+        const slug = (jobItem as any)?.production_stages?.slug;
+        if (slug && slug !== 'order-book' && slug !== 'artwork-approval') {
+            return {
+                error:
+                    'cannot delete: linked production item has advanced past artwork. Reset the production item to the artwork stage first.',
+            };
+        }
+    }
+
+    const { error: delErr } = await supabase
+        .from('artwork_jobs')
+        .delete()
+        .eq('id', id);
+
+    if (delErr) {
+        console.error('deleteArtworkJob error:', delErr);
+        return { error: delErr.message };
+    }
 
     revalidatePath('/admin/artwork');
-    redirect('/admin/artwork');
+    revalidatePath('/admin/jobs');
+    revalidatePath('/shop-floor');
+    return { ok: true };
 }
 
 // =============================================================================
