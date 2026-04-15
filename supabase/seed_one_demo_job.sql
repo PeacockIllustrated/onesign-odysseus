@@ -241,20 +241,29 @@ BEGIN
     )
     RETURNING id INTO v_prod_job_id;
 
+    -- stage_routing mirrors what completeArtworkAndAdvanceItem would build
+    -- from the sub-items' target_stage_ids: [order-book, artwork-approval,
+    -- ...departments in sort order..., goods-out]. Without this array the
+    -- shop-floor "advance" call finds current_stage outside the routing
+    -- and short-circuits the item to "completed" (so it disappears).
     INSERT INTO public.job_items
-        (job_id, quote_item_id, description, quantity, current_stage_id, status)
+        (job_id, quote_item_id, description, quantity, current_stage_id, status,
+         stage_routing)
     VALUES
         (v_prod_job_id, v_qi_fascia_id,
          'Front fascia panel (TEST-O''S)', 1,
-         s_artwork, 'in_progress')
+         s_artwork, 'in_progress',
+         ARRAY[s_order_book, s_artwork, s_cnc, s_vinyl, s_painters, s_assembly, s_goods_out])
     RETURNING id INTO v_ji_fascia_id;
 
     INSERT INTO public.job_items
-        (job_id, quote_item_id, description, quantity, current_stage_id, status)
+        (job_id, quote_item_id, description, quantity, current_stage_id, status,
+         stage_routing)
     VALUES
         (v_prod_job_id, v_qi_vinyl_id,
          'Window manifestation (frosted)', 1,
-         s_artwork, 'in_progress')
+         s_artwork, 'in_progress',
+         ARRAY[s_order_book, s_artwork, s_vinyl, s_goods_out])
     RETURNING id INTO v_ji_vinyl_id;
 
     INSERT INTO public.job_stage_log
