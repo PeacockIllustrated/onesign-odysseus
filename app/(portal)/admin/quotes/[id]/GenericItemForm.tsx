@@ -1,15 +1,24 @@
 'use client';
 
 /**
- * Form for adding a generic (manual-priced) quote line item. Complements the
- * existing panel_letters_v1 form in QuoteLineItemForm. Captures a short label,
- * optional structured sub-items (which flow through to artwork skeleton
- * generation on quote acceptance), and manual pricing.
+ * Form for adding a generic (manual-priced) quote line item.
+ *
+ * UX shape:
+ *   1. a compact "is this a service?" row at the very top
+ *   2. the essentials block — name, W×H×R, qty, unit price — everything
+ *      needed for 90% of lines
+ *   3. collapsibles for "more details" (description, component type,
+ *      lighting, discount/markup, spec notes) and "multi-part sub-items"
+ *      (only needed when one line item contains several distinct parts —
+ *      e.g. a panel with vinyl letters on it)
+ *
+ * Everything the user fills in flows through to artwork skeleton generation
+ * on quote acceptance.
  */
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Trash2, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { addGenericQuoteItemAction } from '@/lib/quoter/actions';
 
 interface SubItemRow {
@@ -70,13 +79,23 @@ export function GenericItemForm({ quoteId, onDone }: Props) {
     const [pending, startTransition] = useTransition();
     const [error, setError] = useState<string | null>(null);
 
+    // Top-level shape
     const [isService, setIsService] = useState(false);
     const [serviceType, setServiceType] = useState('');
+
+    // Essentials
     const [partLabel, setPartLabel] = useState('');
-    const [description, setDescription] = useState('');
-    const [componentType, setComponentType] = useState('');
+    const [widthMm, setWidthMm] = useState('');
+    const [heightMm, setHeightMm] = useState('');
+    const [returnsMm, setReturnsMm] = useState('');
     const [quantity, setQuantity] = useState('1');
     const [unitPrice, setUnitPrice] = useState('');
+
+    // Advanced (collapsibles)
+    const [showMoreDetails, setShowMoreDetails] = useState(false);
+    const [showSubItems, setShowSubItems] = useState(false);
+    const [description, setDescription] = useState('');
+    const [componentType, setComponentType] = useState('');
     const [discountPercent, setDiscountPercent] = useState('0');
     const [markupPercent, setMarkupPercent] = useState('0');
     const [lighting, setLighting] = useState('');
@@ -87,11 +106,17 @@ export function GenericItemForm({ quoteId, onDone }: Props) {
         setSubItems((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
     };
 
+    // Live preview of the line total so staff can sanity-check as they type.
+    const qtyNum = Number(quantity) || 1;
+    const unitNum = Number(unitPrice) || 0;
+    const discNum = Number(discountPercent) || 0;
+    const markNum = Number(markupPercent) || 0;
+    const lineTotalPreview =
+        unitNum * qtyNum * (1 - discNum / 100) * (1 + markNum / 100);
+
     const submit = () => {
         setError(null);
 
-        // Services use the selected service type as the part label if the user
-        // hasn't filled one in themselves.
         const effectiveLabel = isService
             ? (partLabel.trim() || serviceType.trim())
             : partLabel.trim();
@@ -101,7 +126,7 @@ export function GenericItemForm({ quoteId, onDone }: Props) {
             return;
         }
         if (!effectiveLabel) {
-            setError('part label is required');
+            setError('item name is required');
             return;
         }
         if (!unitPrice || Number(unitPrice) < 0) {
@@ -133,6 +158,9 @@ export function GenericItemForm({ quoteId, onDone }: Props) {
                 description: description.trim() || undefined,
                 component_type: isService ? undefined : (componentType || undefined),
                 is_production_work: !isService,
+                width_mm: isService || !widthMm ? undefined : Number(widthMm),
+                height_mm: isService || !heightMm ? undefined : Number(heightMm),
+                returns_mm: isService || !returnsMm ? undefined : Number(returnsMm),
                 quantity: Number(quantity) || 1,
                 unit_price_pence: unitPricePence,
                 discount_percent: Number(discountPercent) || 0,
@@ -149,6 +177,9 @@ export function GenericItemForm({ quoteId, onDone }: Props) {
             setIsService(false);
             setServiceType('');
             setPartLabel('');
+            setWidthMm('');
+            setHeightMm('');
+            setReturnsMm('');
             setDescription('');
             setComponentType('');
             setQuantity('1');
@@ -158,6 +189,8 @@ export function GenericItemForm({ quoteId, onDone }: Props) {
             setLighting('');
             setSpecNotes('');
             setSubItems([]);
+            setShowMoreDetails(false);
+            setShowSubItems(false);
             onDone?.();
             router.refresh();
         });
@@ -165,19 +198,20 @@ export function GenericItemForm({ quoteId, onDone }: Props) {
 
     const inputCls =
         'w-full text-sm border border-neutral-200 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black';
-    const labelCls = 'block text-xs font-medium text-neutral-900 mb-1';
+    const labelCls = 'block text-xs font-medium text-neutral-700 mb-1';
+    const sectionCls = 'pt-4 border-t border-neutral-200';
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-5">
             {error && (
                 <div className="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
                     {error}
                 </div>
             )}
 
-            {/* Service toggle — top-of-form so staff can pick the line shape first. */}
+            {/* 1. Line shape — service or production work */}
             <div className="p-3 bg-neutral-50 border border-neutral-200 rounded space-y-3">
-                <label className="flex items-start gap-2 text-sm text-neutral-800">
+                <label className="flex items-start gap-2 text-sm text-neutral-800 cursor-pointer">
                     <input
                         type="checkbox"
                         className="mt-0.5"
@@ -189,7 +223,7 @@ export function GenericItemForm({ quoteId, onDone }: Props) {
                     />
                     <span>
                         <span className="font-medium">this line is a service</span>
-                        <span className="text-neutral-500"> — fitting, removal, or survey (no artwork, no production work)</span>
+                        <span className="text-neutral-500"> — fitting, removal, or survey (no artwork, no production)</span>
                     </span>
                 </label>
 
@@ -211,10 +245,11 @@ export function GenericItemForm({ quoteId, onDone }: Props) {
                 )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="sm:col-span-2">
+            {/* 2. Essentials */}
+            <div className="space-y-3">
+                <div>
                     <label className={labelCls}>
-                        part label {isService ? '(optional — defaults to service type)' : '*'}
+                        {isService ? 'name (optional — defaults to service type)' : 'item name *'}
                     </label>
                     <input
                         className={inputCls}
@@ -227,212 +262,300 @@ export function GenericItemForm({ quoteId, onDone }: Props) {
                         }
                     />
                 </div>
-                <div className="sm:col-span-2">
-                    <label className={labelCls}>description</label>
-                    <textarea
-                        className={inputCls}
-                        rows={3}
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        placeholder="free-form description, size, colour, material notes…"
-                    />
-                </div>
+
                 {!isService && (
-                    <>
-                        <div>
-                            <label className={labelCls}>component type</label>
-                            <select
-                                className={inputCls}
-                                value={componentType}
-                                onChange={(e) => setComponentType(e.target.value)}
-                            >
-                                {COMPONENT_TYPES.map((ct) => (
-                                    <option key={ct.value} value={ct.value}>
-                                        {ct.label}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label className={labelCls}>lighting (optional)</label>
+                    <div>
+                        <label className={labelCls}>dimensions (mm)</label>
+                        <div className="grid grid-cols-3 gap-2">
                             <input
+                                type="number"
+                                min={0}
                                 className={inputCls}
-                                value={lighting}
-                                onChange={(e) => setLighting(e.target.value)}
-                                placeholder="e.g. internal led, halo, backlit"
+                                value={widthMm}
+                                placeholder="width"
+                                onChange={(e) => setWidthMm(e.target.value)}
+                            />
+                            <input
+                                type="number"
+                                min={0}
+                                className={inputCls}
+                                value={heightMm}
+                                placeholder="height"
+                                onChange={(e) => setHeightMm(e.target.value)}
+                            />
+                            <input
+                                type="number"
+                                className={inputCls}
+                                value={returnsMm}
+                                placeholder="returns (optional)"
+                                onChange={(e) => setReturnsMm(e.target.value)}
                             />
                         </div>
-                    </>
+                        <p className="text-[11px] text-neutral-500 mt-1">
+                            carried through to the artwork skeleton — saves re-typing later
+                        </p>
+                    </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <label className={labelCls}>quantity</label>
+                        <input
+                            type="number"
+                            min={1}
+                            className={inputCls}
+                            value={quantity}
+                            onChange={(e) => setQuantity(e.target.value)}
+                        />
+                    </div>
+                    <div>
+                        <label className={labelCls}>unit price (£) *</label>
+                        <input
+                            type="number"
+                            min={0}
+                            step={0.01}
+                            className={inputCls}
+                            value={unitPrice}
+                            onChange={(e) => setUnitPrice(e.target.value)}
+                            placeholder="0.00"
+                        />
+                    </div>
+                </div>
+
+                {unitNum > 0 && (
+                    <div className="text-xs text-neutral-600 bg-neutral-50 border border-neutral-200 rounded px-3 py-2 flex items-center justify-between">
+                        <span>line total</span>
+                        <span className="font-mono font-semibold text-neutral-900">
+                            £{(lineTotalPreview / 1).toFixed(2)}
+                        </span>
+                    </div>
                 )}
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div>
-                    <label className={labelCls}>quantity</label>
-                    <input
-                        type="number"
-                        min={1}
-                        className={inputCls}
-                        value={quantity}
-                        onChange={(e) => setQuantity(e.target.value)}
-                    />
-                </div>
-                <div>
-                    <label className={labelCls}>unit price (£) *</label>
-                    <input
-                        type="number"
-                        min={0}
-                        step={0.01}
-                        className={inputCls}
-                        value={unitPrice}
-                        onChange={(e) => setUnitPrice(e.target.value)}
-                    />
-                </div>
-                <div>
-                    <label className={labelCls}>discount %</label>
-                    <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        step={0.1}
-                        className={inputCls}
-                        value={discountPercent}
-                        onChange={(e) => setDiscountPercent(e.target.value)}
-                    />
-                </div>
-                <div>
-                    <label className={labelCls}>markup %</label>
-                    <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        step={0.1}
-                        className={inputCls}
-                        value={markupPercent}
-                        onChange={(e) => setMarkupPercent(e.target.value)}
-                    />
-                </div>
+            {/* 3. More details — collapsible */}
+            <div className={sectionCls}>
+                <button
+                    type="button"
+                    onClick={() => setShowMoreDetails(!showMoreDetails)}
+                    className="w-full flex items-center justify-between text-sm text-neutral-700 hover:text-black"
+                >
+                    <span className="font-medium">
+                        more details
+                        <span className="text-neutral-400 font-normal ml-2">
+                            description, discount, markup, {isService ? 'notes' : 'component type, lighting, notes'}
+                        </span>
+                    </span>
+                    {showMoreDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </button>
+
+                {showMoreDetails && (
+                    <div className="mt-3 space-y-3">
+                        <div>
+                            <label className={labelCls}>description</label>
+                            <textarea
+                                className={inputCls}
+                                rows={2}
+                                value={description}
+                                onChange={(e) => setDescription(e.target.value)}
+                                placeholder="free-form description, colour, material notes…"
+                            />
+                        </div>
+
+                        {!isService && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className={labelCls}>component type</label>
+                                    <select
+                                        className={inputCls}
+                                        value={componentType}
+                                        onChange={(e) => setComponentType(e.target.value)}
+                                    >
+                                        {COMPONENT_TYPES.map((ct) => (
+                                            <option key={ct.value} value={ct.value}>
+                                                {ct.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className={labelCls}>lighting</label>
+                                    <input
+                                        className={inputCls}
+                                        value={lighting}
+                                        onChange={(e) => setLighting(e.target.value)}
+                                        placeholder="internal led, halo, backlit…"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className={labelCls}>discount %</label>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    step={0.1}
+                                    className={inputCls}
+                                    value={discountPercent}
+                                    onChange={(e) => setDiscountPercent(e.target.value)}
+                                />
+                            </div>
+                            <div>
+                                <label className={labelCls}>markup %</label>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    step={0.1}
+                                    className={inputCls}
+                                    value={markupPercent}
+                                    onChange={(e) => setMarkupPercent(e.target.value)}
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className={labelCls}>spec notes</label>
+                            <textarea
+                                className={inputCls}
+                                rows={2}
+                                value={specNotes}
+                                onChange={(e) => setSpecNotes(e.target.value)}
+                                placeholder="RAL colour, shadow gap, push-through, any extra spec info…"
+                            />
+                        </div>
+                    </div>
+                )}
             </div>
 
-            {/* Sub-items editor — only relevant for production work */}
+            {/* 4. Sub-items — collapsible, only for production work */}
             {!isService && (
-                <div className="pt-4 border-t border-neutral-200">
-                    <div className="flex items-center justify-between mb-2">
-                        <div>
-                            <h3 className="text-sm font-semibold text-neutral-900">sub-items</h3>
+                <div className={sectionCls}>
+                    <button
+                        type="button"
+                        onClick={() => setShowSubItems(!showSubItems)}
+                        className="w-full flex items-center justify-between text-sm text-neutral-700 hover:text-black"
+                    >
+                        <span className="font-medium">
+                            multi-part breakdown
+                            <span className="text-neutral-400 font-normal ml-2">
+                                only if this one line contains several distinct parts
+                                {subItems.length > 0 && ` · ${subItems.length} added`}
+                            </span>
+                        </span>
+                        {showSubItems ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </button>
+
+                    {showSubItems && (
+                        <div className="mt-3 space-y-3">
                             <p className="text-xs text-neutral-500">
-                                one row per distinct material/method — pre-populates the artwork skeleton on acceptance
+                                skip this if the dimensions above already describe the whole line.
+                                use it only when one line is e.g. a panel <em>plus</em> vinyl letters —
+                                each sub-part needs its own material/finish/size.
                             </p>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => setSubItems((prev) => [...prev, emptyRow()])}
-                            className="btn-secondary text-xs inline-flex items-center gap-1"
-                        >
-                            <Plus size={12} /> add sub-item
-                        </button>
-                    </div>
-                    {subItems.length === 0 ? (
-                        <p className="text-xs text-neutral-400 italic">
-                            no sub-items yet — the artwork skeleton will contain an empty placeholder that the designer fills in
-                        </p>
-                    ) : (
-                        <div className="space-y-3">
-                            {subItems.map((r, i) => (
-                                <div
-                                    key={i}
-                                    className="border border-neutral-200 rounded p-3 bg-neutral-50 space-y-2"
+                            <div className="flex justify-end">
+                                <button
+                                    type="button"
+                                    onClick={() => setSubItems((prev) => [...prev, emptyRow()])}
+                                    className="btn-secondary text-xs inline-flex items-center gap-1"
                                 >
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-xs font-mono font-bold text-neutral-600">
-                                            {String.fromCharCode(65 + i)}
-                                        </span>
-                                        <button
-                                            type="button"
-                                            onClick={() =>
-                                                setSubItems((prev) => prev.filter((_, idx) => idx !== i))
-                                            }
-                                            className="text-xs text-red-700 hover:underline inline-flex items-center gap-1"
+                                    <Plus size={12} /> add sub-part
+                                </button>
+                            </div>
+                            {subItems.length === 0 ? (
+                                <p className="text-xs text-neutral-400 italic">
+                                    no sub-parts yet
+                                </p>
+                            ) : (
+                                <div className="space-y-3">
+                                    {subItems.map((r, i) => (
+                                        <div
+                                            key={i}
+                                            className="border border-neutral-200 rounded p-3 bg-neutral-50 space-y-2"
                                         >
-                                            <Trash2 size={10} /> remove
-                                        </button>
-                                    </div>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                        <input
-                                            className={inputCls}
-                                            value={r.name}
-                                            placeholder="name (e.g. 'QUEEN BEE letters')"
-                                            onChange={(e) => updateSubItem(i, { name: e.target.value })}
-                                        />
-                                        <input
-                                            className={inputCls}
-                                            value={r.material}
-                                            placeholder="material"
-                                            onChange={(e) => updateSubItem(i, { material: e.target.value })}
-                                        />
-                                        <input
-                                            className={inputCls}
-                                            value={r.application_method}
-                                            placeholder="method (stuck to face, weeded...)"
-                                            onChange={(e) =>
-                                                updateSubItem(i, { application_method: e.target.value })
-                                            }
-                                        />
-                                        <input
-                                            className={inputCls}
-                                            value={r.finish}
-                                            placeholder="finish"
-                                            onChange={(e) => updateSubItem(i, { finish: e.target.value })}
-                                        />
-                                    </div>
-                                    <div className="grid grid-cols-4 gap-2">
-                                        <input
-                                            type="number"
-                                            className={inputCls}
-                                            value={r.width_mm}
-                                            placeholder="W (mm)"
-                                            onChange={(e) => updateSubItem(i, { width_mm: e.target.value })}
-                                        />
-                                        <input
-                                            type="number"
-                                            className={inputCls}
-                                            value={r.height_mm}
-                                            placeholder="H (mm)"
-                                            onChange={(e) => updateSubItem(i, { height_mm: e.target.value })}
-                                        />
-                                        <input
-                                            type="number"
-                                            className={inputCls}
-                                            value={r.returns_mm}
-                                            placeholder="R (mm)"
-                                            onChange={(e) => updateSubItem(i, { returns_mm: e.target.value })}
-                                        />
-                                        <input
-                                            type="number"
-                                            min={1}
-                                            className={inputCls}
-                                            value={r.quantity}
-                                            placeholder="qty"
-                                            onChange={(e) => updateSubItem(i, { quantity: e.target.value })}
-                                        />
-                                    </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-xs font-mono font-bold text-neutral-600">
+                                                    {String.fromCharCode(65 + i)}
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setSubItems((prev) => prev.filter((_, idx) => idx !== i))
+                                                    }
+                                                    className="text-xs text-red-700 hover:underline inline-flex items-center gap-1"
+                                                >
+                                                    <Trash2 size={10} /> remove
+                                                </button>
+                                            </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                <input
+                                                    className={inputCls}
+                                                    value={r.name}
+                                                    placeholder="name (e.g. 'QUEEN BEE letters')"
+                                                    onChange={(e) => updateSubItem(i, { name: e.target.value })}
+                                                />
+                                                <input
+                                                    className={inputCls}
+                                                    value={r.material}
+                                                    placeholder="material"
+                                                    onChange={(e) => updateSubItem(i, { material: e.target.value })}
+                                                />
+                                                <input
+                                                    className={inputCls}
+                                                    value={r.application_method}
+                                                    placeholder="method (stuck to face, weeded…)"
+                                                    onChange={(e) =>
+                                                        updateSubItem(i, { application_method: e.target.value })
+                                                    }
+                                                />
+                                                <input
+                                                    className={inputCls}
+                                                    value={r.finish}
+                                                    placeholder="finish"
+                                                    onChange={(e) => updateSubItem(i, { finish: e.target.value })}
+                                                />
+                                            </div>
+                                            <div className="grid grid-cols-4 gap-2">
+                                                <input
+                                                    type="number"
+                                                    className={inputCls}
+                                                    value={r.width_mm}
+                                                    placeholder="W (mm)"
+                                                    onChange={(e) => updateSubItem(i, { width_mm: e.target.value })}
+                                                />
+                                                <input
+                                                    type="number"
+                                                    className={inputCls}
+                                                    value={r.height_mm}
+                                                    placeholder="H (mm)"
+                                                    onChange={(e) => updateSubItem(i, { height_mm: e.target.value })}
+                                                />
+                                                <input
+                                                    type="number"
+                                                    className={inputCls}
+                                                    value={r.returns_mm}
+                                                    placeholder="R (mm)"
+                                                    onChange={(e) => updateSubItem(i, { returns_mm: e.target.value })}
+                                                />
+                                                <input
+                                                    type="number"
+                                                    min={1}
+                                                    className={inputCls}
+                                                    value={r.quantity}
+                                                    placeholder="qty"
+                                                    onChange={(e) => updateSubItem(i, { quantity: e.target.value })}
+                                                />
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
-                            ))}
+                            )}
                         </div>
                     )}
                 </div>
             )}
-
-            <div>
-                <label className={labelCls}>spec notes (optional)</label>
-                <textarea
-                    className={inputCls}
-                    rows={2}
-                    value={specNotes}
-                    onChange={(e) => setSpecNotes(e.target.value)}
-                    placeholder="RAL colour, shadow gap, push-through, any extra spec info..."
-                />
-            </div>
 
             <div className="flex justify-end gap-2 pt-4 border-t border-neutral-200">
                 <button

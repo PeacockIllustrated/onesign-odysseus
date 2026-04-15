@@ -2040,8 +2040,12 @@ export async function generateArtworkFromQuote(
                 console.error('generateArtworkFromQuote sub-items insert error:', siErr);
             }
         } else {
-            // No structured sub-items — seed one empty sub-item so the designer has
-            // a slot to fill in (per sub-items refactor, a component must have ≥ 1 sub-item).
+            // No structured sub-items — seed one sub-item, carrying any line-item
+            // level dimensions through so the designer has something concrete to
+            // verify rather than an empty row.
+            const lineWidth = (qi.input_json as any)?.width_mm ?? null;
+            const lineHeight = (qi.input_json as any)?.height_mm ?? null;
+            const lineReturns = (qi.input_json as any)?.returns_mm ?? null;
             await supabase
                 .from('artwork_component_items')
                 .insert({
@@ -2050,6 +2054,9 @@ export async function generateArtworkFromQuote(
                     sort_order: 0,
                     name: componentName,
                     quantity: qi.quantity ?? 1,
+                    width_mm: lineWidth,
+                    height_mm: lineHeight,
+                    returns_mm: lineReturns,
                 });
         }
     }

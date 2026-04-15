@@ -792,6 +792,11 @@ export async function addGenericQuoteItemAction(
         sub_items: parsed.sub_items ?? [],
         lighting: parsed.lighting ?? null,
         spec_notes: parsed.spec_notes ?? null,
+        // Line-item dimensions — used by generateArtworkFromQuote to seed
+        // the first sub-item if no explicit sub-items were provided.
+        width_mm: parsed.width_mm ?? null,
+        height_mm: parsed.height_mm ?? null,
+        returns_mm: parsed.returns_mm ?? null,
     };
 
     const { data, error } = await supabase

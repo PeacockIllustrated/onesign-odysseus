@@ -348,6 +348,13 @@ export const GenericQuoteItemInputSchema = z.object({
     // Optional: maps to artwork ComponentTypeEnum on skeleton generation.
     component_type: z.string().max(60).optional(),
     is_production_work: z.boolean().optional(),
+    // Line-item level dimensions. Optional because services + some multi-part
+    // lines defer dimensions to sub-items, but having them at the top level
+    // means a single-item line ("one fascia panel, 2400×400mm") can be fully
+    // described without the sub-items editor. Feeds the artwork skeleton.
+    width_mm: z.number().positive().nullable().optional(),
+    height_mm: z.number().positive().nullable().optional(),
+    returns_mm: z.number().nullable().optional(),
     quantity: z.number().int().min(1).optional(),
     unit_cost_pence: z.number().int().min(0).optional(),
     unit_price_pence: z.number().int().min(0),
