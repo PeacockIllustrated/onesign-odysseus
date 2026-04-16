@@ -3,9 +3,10 @@
 import { useState, useTransition } from 'react';
 import { generateApprovalLink, revokeApproval } from '@/lib/artwork/approval-actions';
 import type { ArtworkApproval } from '@/lib/artwork/approval-types';
+import Link from 'next/link';
 import { Card, Chip } from '@/app/(portal)/components/ui';
 import { formatDateTime } from '@/lib/artwork/utils';
-import { Link2, Copy, Check, X, Send } from 'lucide-react';
+import { Link2, Copy, Check, X, Send, Download } from 'lucide-react';
 
 interface Props {
     jobId: string;
@@ -132,6 +133,14 @@ export function ApprovalLinkSection({ jobId, approval, hasSignedOffComponents, n
                             </p>
                         </div>
                     )}
+                    <Link
+                        href={`/admin/artwork/${jobId}/approval-pack`}
+                        target="_blank"
+                        className="btn-primary w-full text-xs mt-2 inline-flex items-center justify-center gap-1"
+                    >
+                        <Download size={12} />
+                        download approval pack
+                    </Link>
                     <button
                         onClick={handleGenerate}
                         disabled={isPending || !hasSignedOffComponents}
