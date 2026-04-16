@@ -9,7 +9,7 @@ import { z } from 'zod';
 // ENUMS
 // =============================================================================
 
-export const ApprovalStatusEnum = z.enum(['pending', 'approved', 'expired', 'revoked']);
+export const ApprovalStatusEnum = z.enum(['pending', 'approved', 'expired', 'revoked', 'changes_requested']);
 export type ApprovalStatus = z.infer<typeof ApprovalStatusEnum>;
 
 // =============================================================================

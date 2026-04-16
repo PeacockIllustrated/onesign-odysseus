@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useTransition, useCallback, useEffect } from 'react';
-import { submitApproval } from '@/lib/artwork/approval-actions';
+import { submitApproval, requestApprovalChanges } from '@/lib/artwork/approval-actions';
 import type { ApprovalPackData } from '@/lib/artwork/approval-actions';
 import { VariantPicker } from './components/VariantPicker';
 import { ResilientImage } from './components/ResilientImage';
@@ -22,6 +22,8 @@ export default function ApprovalClientView({ data, token }: Props) {
     const [clientEmail, setClientEmail] = useState('');
     const [clientCompany, setClientCompany] = useState('');
     const [clientComments, setClientComments] = useState('');
+    const [showRequestChanges, setShowRequestChanges] = useState(false);
+    const [changesComments, setChangesComments] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(isApproved);
     const [isPending, startTransition] = useTransition();
@@ -650,6 +652,117 @@ export default function ApprovalClientView({ data, token }: Props) {
                             </button>
                         );
                     })()}
+
+                    {/* Divider */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '16px 0' }}>
+                        <div style={{ flex: 1, height: 1, background: '#e0e0e0' }} />
+                        <span style={{ fontSize: 11, color: '#999', textTransform: 'uppercase', letterSpacing: '0.1em' }}>or</span>
+                        <div style={{ flex: 1, height: 1, background: '#e0e0e0' }} />
+                    </div>
+
+                    {/* Request changes — no signature or variant selection required */}
+                    {!showRequestChanges ? (
+                        <button
+                            type="button"
+                            onClick={() => setShowRequestChanges(true)}
+                            style={{
+                                width: '100%',
+                                padding: '10px 24px',
+                                fontSize: '13px',
+                                fontWeight: 600,
+                                color: '#a37800',
+                                background: '#fffbeb',
+                                border: '1px solid #f0d98a',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            not quite right? request changes
+                        </button>
+                    ) : (
+                        <div style={{
+                            padding: 16,
+                            border: '1px solid #f0d98a',
+                            background: '#fffbeb',
+                            borderRadius: 8,
+                        }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: '#6b5900', marginBottom: 8 }}>
+                                Request changes
+                            </div>
+                            <p style={{ fontSize: 12, color: '#8a7000', marginBottom: 12, lineHeight: 1.4 }}>
+                                Let us know what you&apos;d like changed — no signature needed. We&apos;ll revise and
+                                send you a new link to review.
+                            </p>
+                            <textarea
+                                value={changesComments}
+                                onChange={(e) => setChangesComments(e.target.value)}
+                                maxLength={2000}
+                                rows={4}
+                                placeholder="e.g. I'd prefer the gold to be more muted, can we try navy instead of black, the logo needs to be larger..."
+                                style={{
+                                    width: '100%',
+                                    padding: '10px 12px',
+                                    border: '1px solid #e0d5a0',
+                                    borderRadius: '6px',
+                                    fontSize: '13px',
+                                    outline: 'none',
+                                    fontFamily: 'inherit',
+                                    resize: 'vertical',
+                                    minHeight: '80px',
+                                    marginBottom: 8,
+                                }}
+                            />
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                <button
+                                    type="button"
+                                    disabled={isPending || !changesComments.trim()}
+                                    onClick={() => {
+                                        setError(null);
+                                        startTransition(async () => {
+                                            const result = await requestApprovalChanges(token, {
+                                                client_name: clientName.trim(),
+                                                client_email: clientEmail.trim(),
+                                                client_comments: changesComments.trim(),
+                                            });
+                                            if ('error' in result) {
+                                                setError(result.error);
+                                            } else {
+                                                setSuccess(true);
+                                            }
+                                        });
+                                    }}
+                                    style={{
+                                        flex: 1,
+                                        padding: '10px 16px',
+                                        fontSize: '13px',
+                                        fontWeight: 600,
+                                        color: '#fff',
+                                        background: (!changesComments.trim() || isPending) ? '#ccc' : '#a37800',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        cursor: (!changesComments.trim() || isPending) ? 'not-allowed' : 'pointer',
+                                    }}
+                                >
+                                    {isPending ? 'sending...' : 'send feedback'}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowRequestChanges(false)}
+                                    style={{
+                                        padding: '10px 16px',
+                                        fontSize: '13px',
+                                        color: '#666',
+                                        background: '#fff',
+                                        border: '1px solid #ddd',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    cancel
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 

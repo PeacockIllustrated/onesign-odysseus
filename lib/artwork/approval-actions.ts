@@ -495,3 +495,52 @@ export async function submitApproval(
     revalidatePath(`/admin/artwork/${approval.job_id}`);
     return { success: true };
 }
+
+/**
+ * Submit a "request changes" response — the client doesn't approve,
+ * but leaves feedback so the admin can revise and re-send.
+ * No signature required, no variant selection required.
+ * Public, token-gated (same as submitApproval).
+ */
+export async function requestApprovalChanges(
+    token: string,
+    input: { client_name: string; client_email: string; client_comments: string }
+): Promise<{ success: true } | { error: string }> {
+    if (!input.client_name?.trim()) return { error: 'your name is required' };
+    if (!input.client_email?.trim()) return { error: 'your email is required' };
+    if (!input.client_comments?.trim()) return { error: 'please describe what changes you need' };
+
+    const supabase = createAdminClient();
+
+    const { data: approval, error: fetchError } = await supabase
+        .from('artwork_approvals')
+        .select('id, status, expires_at, job_id')
+        .eq('token', token)
+        .single();
+
+    if (fetchError || !approval) return { error: 'invalid approval link' };
+    if (approval.status !== 'pending') {
+        return { error: 'this approval has already been submitted' };
+    }
+    if (new Date(approval.expires_at) < new Date()) {
+        return { error: 'this approval link has expired' };
+    }
+
+    const { error: updateError } = await supabase
+        .from('artwork_approvals')
+        .update({
+            status: 'changes_requested',
+            client_name: input.client_name.trim(),
+            client_email: input.client_email.trim(),
+            client_comments: input.client_comments.trim(),
+        })
+        .eq('id', approval.id);
+
+    if (updateError) {
+        console.error('error requesting changes:', updateError);
+        return { error: 'failed to submit feedback' };
+    }
+
+    revalidatePath(`/admin/artwork/${approval.job_id}`);
+    return { success: true };
+}

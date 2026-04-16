@@ -187,8 +187,43 @@ export function ApprovalLinkSection({ jobId, approval, hasSignedOffComponents, n
                 </div>
             )}
 
+            {/* Changes requested state */}
+            {currentApproval?.status === 'changes_requested' && (
+                <div className="space-y-2">
+                    <Chip variant="review">changes requested</Chip>
+                    <div className="space-y-1 text-sm">
+                        <div className="flex justify-between">
+                            <span className="text-neutral-500">from</span>
+                            <span className="font-medium">{currentApproval.client_name}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-neutral-500">email</span>
+                            <span className="font-medium text-xs">{currentApproval.client_email}</span>
+                        </div>
+                    </div>
+                    {currentApproval.client_comments && (
+                        <div className="p-3 border border-amber-200 bg-amber-50 rounded">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-amber-800 mb-1">
+                                Client feedback
+                            </div>
+                            <p className="text-xs text-amber-900 whitespace-pre-wrap leading-relaxed">
+                                {currentApproval.client_comments}
+                            </p>
+                        </div>
+                    )}
+                    <button
+                        onClick={handleGenerate}
+                        disabled={isPending || !hasSignedOffComponents}
+                        className="btn-primary w-full text-xs mt-2 inline-flex items-center justify-center gap-1"
+                    >
+                        <Send size={12} />
+                        revise & send new link
+                    </button>
+                </div>
+            )}
+
             {/* No active approval or expired/revoked */}
-            {(!currentApproval || isExpired || currentApproval.status === 'revoked') && !isApproved && (
+            {(!currentApproval || isExpired || currentApproval.status === 'revoked') && !isApproved && currentApproval?.status !== 'changes_requested' && (
                 <div className="space-y-2">
                     {isExpired && <p className="text-xs text-amber-600">previous link has expired</p>}
                     {currentApproval?.status === 'revoked' && <p className="text-xs text-neutral-400">previous link was revoked</p>}
