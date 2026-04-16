@@ -105,10 +105,11 @@ export async function createArtworkJob(
             if (primary) contactId = primary.id;
         }
     } else {
-        // orphan
+        // orphan / standalone
         isOrphan = true;
-        orgId = parsed.org_id;
+        orgId = parsed.org_id ?? null;
         contactId = parsed.contact_id ?? null;
+        siteId = parsed.site_id ?? null;
     }
 
     const { data, error } = await supabase

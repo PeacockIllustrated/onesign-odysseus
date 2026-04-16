@@ -9,7 +9,7 @@ export default async function NewArtworkJobPage() {
     await requireAdmin();
 
     const supabase = await createServerClient();
-    const [orgsRes, itemsRes, existingRes] = await Promise.all([
+    const [orgsRes, itemsRes, existingRes, contactsRes, sitesRes] = await Promise.all([
         supabase.from('orgs').select('id, name').order('name'),
         supabase
             .from('job_items')
@@ -22,6 +22,14 @@ export default async function NewArtworkJobPage() {
             .order('created_at', { ascending: false })
             .limit(100),
         supabase.from('artwork_jobs').select('job_item_id'),
+        supabase
+            .from('contacts')
+            .select('id, org_id, first_name, last_name')
+            .order('first_name'),
+        supabase
+            .from('org_sites')
+            .select('id, org_id, name')
+            .order('name'),
     ]);
 
     const taken = new Set(
@@ -54,23 +62,17 @@ export default async function NewArtworkJobPage() {
 
             <PageHeader
                 title="new artwork job"
-                description="spawn from a production item, or create an orphan for warranty / rework"
+                description="create a production artwork job — optionally link to a client and/or a production item"
             />
 
             <Card>
-                <NewArtworkJobForm orgs={orgsRes.data ?? []} items={items} />
+                <NewArtworkJobForm
+                    orgs={orgsRes.data ?? []}
+                    items={items}
+                    contacts={(contactsRes.data ?? []) as any}
+                    sites={(sitesRes.data ?? []) as any}
+                />
             </Card>
-
-            <div className="mt-6 p-4 bg-neutral-50 rounded-[var(--radius-md)] border border-neutral-200">
-                <h3 className="text-sm font-medium text-neutral-900 mb-2">how it works</h3>
-                <ul className="text-sm text-neutral-600 space-y-1">
-                    <li>1. create the job and add fabrication components</li>
-                    <li>2. submit design specifications per component (dimensions, material, artwork)</li>
-                    <li>3. sign off each component when design is confirmed</li>
-                    <li>4. print A4 compliance sheets for production verification</li>
-                    <li>5. production records measurements and signs off</li>
-                </ul>
-            </div>
         </div>
     );
 }

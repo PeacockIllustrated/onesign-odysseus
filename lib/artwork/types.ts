@@ -210,8 +210,9 @@ const LinkedCreateArtworkJobInputSchema = z.object({
 const OrphanCreateArtworkJobInputSchema = z.object({
     kind: z.literal('orphan'),
     job_name: z.string().min(1, 'job name is required'),
-    org_id: z.string().uuid('org is required for orphan jobs'),
+    org_id: z.string().uuid().optional(),
     contact_id: z.string().uuid().optional(),
+    site_id: z.string().uuid().optional(),
     description: z.string().optional(),
     acknowledge_orphan: z.literal(true, {
         error: 'orphan jobs require explicit acknowledgement',
