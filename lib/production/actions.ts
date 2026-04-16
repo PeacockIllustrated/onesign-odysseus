@@ -480,7 +480,15 @@ export async function advanceItemToNextRoutedStage(
         revalidatePath('/shop-floor');
         return { success: true };
     } else {
-        // At last stage in routing, or no routing / stage not found in routing — complete item
+        // At last stage in routing, or no routing / stage not found in routing — complete item.
+        // Log a warning if routing is empty/missing — this usually means the item
+        // was advanced before Release to Production rebuilt the routing (finding #18).
+        if (routing.length === 0 || currentIdx < 0) {
+            console.warn(
+                `advanceItemToNextRoutedStage: item ${itemId} has empty or mismatched routing ` +
+                `(routing length=${routing.length}, currentIdx=${currentIdx}). Completing item as fallback.`
+            );
+        }
         await supabase
             .from('job_items')
             .update({ status: 'completed' })

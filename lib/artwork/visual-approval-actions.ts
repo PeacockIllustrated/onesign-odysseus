@@ -502,6 +502,17 @@ export async function createProductionFromVisual(
         }
 
         const subItem = mapVariantToSubItemInput(chosen);
+        // Log a warning if the chosen variant has incomplete spec — the
+        // sub-item will be created with nulls and the designer must fill
+        // them in before production release (finding #8).
+        if (!subItem.material || subItem.width_mm == null || subItem.height_mm == null) {
+            console.warn(
+                `createProductionFromVisual: chosen variant for component "${raw.name}" ` +
+                `has incomplete spec (material=${subItem.material ?? 'null'}, ` +
+                `dims=${subItem.width_mm ?? 'null'}×${subItem.height_mm ?? 'null'}). ` +
+                `Designer will need to complete the sub-item before release.`
+            );
+        }
         await supabase.from('artwork_component_items').insert({
             component_id: newComp.id,
             label: subItem.label,

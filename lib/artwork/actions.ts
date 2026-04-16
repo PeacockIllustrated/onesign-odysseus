@@ -1330,6 +1330,17 @@ export async function completeArtworkAndAdvanceItem(
         return { error: 'Artwork job has no components' };
     }
 
+    // Guard: every component must have at least one sub-item. Without
+    // sub-items the routing rebuild produces nothing and the item lands
+    // nowhere on the Kanban (audit finding #13).
+    for (const c of components as any[]) {
+        if (!c.sub_items || c.sub_items.length === 0) {
+            return {
+                error: `Cannot release: component "${c.name}" has no sub-items — add at least one before releasing`,
+            };
+        }
+    }
+
     // Shape into the pure-function input and compute gaps.
     const normalised = (components as any[]).map((c) => ({
         name: c.name,
@@ -1344,6 +1355,18 @@ export async function completeArtworkAndAdvanceItem(
     const { gaps, targetStageIds } = computeReleaseGaps(normalised);
     if (gaps.length > 0) {
         return { error: 'Cannot release: ' + gaps.join('; ') };
+    }
+
+    // Guard: item must actually be at the artwork-approval stage. If it's
+    // already past that point (race / upstream bug), rebuilding the routing
+    // would prepend order-book again and could create a loop (finding #10).
+    const { data: jobItem } = await supabase
+        .from('job_items')
+        .select('id, current_stage_id')
+        .eq('id', artworkJob.job_item_id)
+        .single();
+    if (!jobItem) {
+        return { error: 'Linked production item not found' };
     }
 
     // Order departments by production_stages.sort_order; prepend order-book +
