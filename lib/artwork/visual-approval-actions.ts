@@ -479,6 +479,11 @@ export async function createProductionFromVisual(
         const raw = c as any;
         const chosen = (raw.variants ?? []).find((v: any) => v.is_chosen);
 
+        // Carry the client-approved artwork through so the designer has
+        // the image they're working from — not just the spec text.
+        const chosenThumbnail = chosen.thumbnail_url ?? null;
+        const chosenDescription = chosen.description ?? null;
+
         const { data: newComp, error: compErr } = await supabase
             .from('artwork_components')
             .insert({
@@ -488,7 +493,10 @@ export async function createProductionFromVisual(
                 sort_order: raw.sort_order ?? 0,
                 status: 'pending_design',
                 lighting: raw.lighting ?? null,
-                notes: raw.notes ?? null,
+                // Merge: visual component notes + chosen variant description
+                notes: [raw.notes, chosenDescription].filter(Boolean).join('\n\n') || null,
+                // The approved mockup becomes the component's artwork preview
+                artwork_thumbnail_url: chosenThumbnail,
                 scale_confirmed: false,
                 bleed_included: false,
                 material_confirmed: false,
@@ -526,6 +534,9 @@ export async function createProductionFromVisual(
             returns_mm: subItem.returns_mm,
             quantity: subItem.quantity,
             notes: subItem.notes,
+            // The approved mockup is also set as the sub-item thumbnail so
+            // it's visible on the compliance sheet + shop-floor check.
+            thumbnail_url: chosenThumbnail,
         });
     }
 
