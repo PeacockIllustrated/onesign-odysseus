@@ -4,6 +4,7 @@ import { useState, useRef, useTransition, useCallback, useEffect } from 'react';
 import { submitApproval } from '@/lib/artwork/approval-actions';
 import type { ApprovalPackData } from '@/lib/artwork/approval-actions';
 import { VariantPicker } from './components/VariantPicker';
+import { ResilientImage } from './components/ResilientImage';
 import { formatDateTime } from '@/lib/artwork/utils';
 import SignatureCanvas, { type SignatureCanvasRef } from '@/components/SignatureCanvas';
 
@@ -124,7 +125,7 @@ export default function ApprovalClientView({ data, token }: Props) {
                     >
                         ×
                     </button>
-                    <img
+                    <ResilientImage
                         src={lightboxSrc}
                         alt={lightboxAlt}
                         onClick={(e) => e.stopPropagation()}
@@ -306,7 +307,7 @@ export default function ApprovalClientView({ data, token }: Props) {
                                     }}
                                 >
                                     {component.thumbnailUrl ? (
-                                        <img
+                                        <ResilientImage
                                             src={component.thumbnailUrl}
                                             alt={component.name}
                                             style={{ maxWidth: '100%', maxHeight: '320px', objectFit: 'contain' }}

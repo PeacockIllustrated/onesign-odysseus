@@ -1,5 +1,7 @@
 'use client';
 
+import { ResilientImage } from './ResilientImage';
+
 interface Variant {
     id: string;
     label: string;
@@ -56,7 +58,7 @@ export function VariantPicker({ componentName, variants, chosenVariantId, onChoo
                                 className="block w-full cursor-zoom-in relative group"
                                 aria-label={`Zoom ${alt}`}
                             >
-                                <img
+                                <ResilientImage
                                     src={v.thumbnail_url}
                                     alt={alt}
                                     className="w-full h-48 sm:h-56 object-cover"
