@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { RouteCard } from './components/RouteCard';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -352,6 +353,15 @@ export function DeliveryDetail({ delivery: initialDelivery }: DeliveryDetailProp
                             <p className="text-sm text-neutral-400">No delivery address set</p>
                         )}
                     </div>
+
+                    {/* Route card */}
+                    {delivery.delivery_site?.latitude != null && delivery.delivery_site?.longitude != null && (
+                        <RouteCard
+                            destLat={delivery.delivery_site.latitude}
+                            destLng={delivery.delivery_site.longitude}
+                            siteName={delivery.delivery_site.name}
+                        />
+                    )}
 
                     {/* Contact card */}
                     <div className="border border-neutral-200 rounded-lg p-5">
