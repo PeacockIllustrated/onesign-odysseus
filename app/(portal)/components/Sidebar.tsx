@@ -19,6 +19,7 @@ import {
     MapPin,
     Wrench,
     X,
+    Calendar,
 } from 'lucide-react';
 import { useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
@@ -58,6 +59,7 @@ const adminNavGroups: NavGroup[] = [
             { label: 'Job Board', href: '/admin/jobs', icon: LayoutGrid },
             { label: 'Shop Floor', href: '/shop-floor', icon: Zap },
             { label: 'Deliveries', href: '/admin/deliveries', icon: Truck },
+            { label: 'Planning', href: '/admin/planning', icon: Calendar },
             { label: 'Map', href: '/admin/map', icon: MapPin },
         ],
     },
