@@ -65,7 +65,7 @@ export function RouteCard({ destLat, destLng, siteName }: Props) {
     const trafficColour = route ? TRAFFIC_COLOURS[route.trafficStatus] : '#999';
 
     return (
-        <div className="rounded-lg border border-neutral-200 bg-white overflow-hidden">
+        <div className="bg-white">
             <div className="px-4 py-3 border-b border-neutral-100 flex items-center gap-2">
                 <Navigation size={14} className="text-[#4e7e8c]" />
                 <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-600">
@@ -101,7 +101,7 @@ export function RouteCard({ destLat, destLng, siteName }: Props) {
                 </div>
 
                 {/* Map */}
-                <div className="rounded border border-neutral-200 overflow-hidden" style={{ height: 280 }}>
+                <div className="rounded border border-neutral-200 overflow-hidden" style={{ height: 'clamp(250px, 40vh, 450px)' }}>
                     <Map
                         mapboxAccessToken={TOKEN}
                         mapStyle="mapbox://styles/mapbox/light-v11"

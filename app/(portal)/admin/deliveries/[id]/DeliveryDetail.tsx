@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import {
     ArrowLeft, Printer, Edit2, X, Save, Loader2,
     Trash2, AlertCircle, ExternalLink, MapPin, User,
-    Briefcase, ClipboardCheck, Copy, Check, Link2,
+    Briefcase, ClipboardCheck, Copy, Check, Link2, Truck, Calendar,
 } from 'lucide-react';
 import {
     getDeliveryWithItemsAction,
@@ -51,23 +51,16 @@ export function DeliveryDetail({ delivery: initialDelivery }: DeliveryDetailProp
         setErrorMessage(null);
         startTransition(async () => {
             const result = await updateDeliveryStatusAction(delivery.id, newStatus);
-            if ('error' in result) {
-                setErrorMessage(result.error);
-            } else {
-                await refresh();
-            }
+            if ('error' in result) setErrorMessage(result.error);
+            else await refresh();
         });
     }
 
     function handleDelete() {
         startTransition(async () => {
             const result = await deleteDeliveryAction(delivery.id);
-            if ('error' in result) {
-                setErrorMessage(result.error);
-                setShowDeleteConfirm(false);
-            } else {
-                router.push('/admin/deliveries');
-            }
+            if ('error' in result) { setErrorMessage(result.error); setShowDeleteConfirm(false); }
+            else router.push('/admin/deliveries');
         });
     }
 
@@ -75,11 +68,8 @@ export function DeliveryDetail({ delivery: initialDelivery }: DeliveryDetailProp
         setErrorMessage(null);
         startTransition(async () => {
             const result = await generatePodLink(delivery.id);
-            if ('error' in result) {
-                setErrorMessage(result.error);
-            } else {
-                await refresh();
-            }
+            if ('error' in result) setErrorMessage(result.error);
+            else await refresh();
         });
     }
 
@@ -91,46 +81,83 @@ export function DeliveryDetail({ delivery: initialDelivery }: DeliveryDetailProp
         setTimeout(() => setCopiedPodLink(false), 2000);
     }
 
-    // Build status transition buttons
-    const transitionButtons: Array<{ status: DeliveryStatus; label: string; colorCls: string }> = [];
+    // Status transitions
+    const transitionButtons: Array<{ status: DeliveryStatus; label: string; cls: string }> = [];
     if (delivery.status === 'scheduled') {
-        if (canTransitionTo(delivery.status, 'in_transit')) {
-            transitionButtons.push({ status: 'in_transit', label: 'Mark In Transit', colorCls: 'border-amber-300 text-amber-700 hover:bg-amber-50' });
-        }
-        if (canTransitionTo(delivery.status, 'failed')) {
-            transitionButtons.push({ status: 'failed', label: 'Cancel', colorCls: 'border-red-200 text-red-600 hover:bg-red-50' });
-        }
+        if (canTransitionTo(delivery.status, 'in_transit'))
+            transitionButtons.push({ status: 'in_transit', label: 'Mark In Transit', cls: 'bg-amber-600 hover:bg-amber-700 text-white' });
+        if (canTransitionTo(delivery.status, 'failed'))
+            transitionButtons.push({ status: 'failed', label: 'Cancel', cls: 'bg-white border border-red-300 text-red-600 hover:bg-red-50' });
     } else if (delivery.status === 'in_transit') {
-        if (canTransitionTo(delivery.status, 'delivered')) {
-            transitionButtons.push({ status: 'delivered', label: 'Mark Delivered', colorCls: 'border-green-300 text-green-700 hover:bg-green-50' });
-        }
-        if (canTransitionTo(delivery.status, 'failed')) {
-            transitionButtons.push({ status: 'failed', label: 'Mark Failed', colorCls: 'border-red-200 text-red-600 hover:bg-red-50' });
-        }
+        if (canTransitionTo(delivery.status, 'delivered'))
+            transitionButtons.push({ status: 'delivered', label: 'Mark Delivered', cls: 'bg-green-700 hover:bg-green-800 text-white' });
+        if (canTransitionTo(delivery.status, 'failed'))
+            transitionButtons.push({ status: 'failed', label: 'Mark Failed', cls: 'bg-white border border-red-300 text-red-600 hover:bg-red-50' });
     } else if (delivery.status === 'failed') {
-        if (canTransitionTo(delivery.status, 'scheduled')) {
-            transitionButtons.push({ status: 'scheduled', label: 'Reschedule', colorCls: 'border-blue-300 text-blue-700 hover:bg-blue-50' });
-        }
+        if (canTransitionTo(delivery.status, 'scheduled'))
+            transitionButtons.push({ status: 'scheduled', label: 'Reschedule', cls: 'bg-[#4e7e8c] hover:bg-[#3a5f6a] text-white' });
     }
 
     const podUrl = delivery.pod_token
         ? `${typeof window !== 'undefined' ? window.location.origin : ''}/delivery/${delivery.pod_token}`
         : null;
 
+    const site = delivery.delivery_site;
+    const contact = delivery.delivery_contact;
+    const job = delivery.linked_job;
+
     return (
-        <div className="p-6 max-w-5xl mx-auto">
-            {/* Breadcrumb */}
-            <div className="flex items-center gap-2 mb-6">
-                <Link href="/admin/deliveries" className="flex items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-900">
-                    <ArrowLeft size={14} />
-                    Deliveries
-                </Link>
-                <span className="text-neutral-300">/</span>
-                <span className="text-sm font-medium text-neutral-900 font-mono">{delivery.delivery_number}</span>
+        <div className="max-w-6xl mx-auto">
+            {/* ── Header bar ── */}
+            <div className="px-4 md:px-6 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200">
+                <div className="flex items-center gap-3">
+                    <Link href="/admin/deliveries" className="text-neutral-400 hover:text-neutral-900">
+                        <ArrowLeft size={18} />
+                    </Link>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <h1 className="text-lg font-bold font-mono text-neutral-900">{delivery.delivery_number}</h1>
+                            <span className={`px-2.5 py-0.5 text-xs font-semibold rounded-full ${DELIVERY_STATUS_COLORS[delivery.status]}`}>
+                                {DELIVERY_STATUS_LABELS[delivery.status]}
+                            </span>
+                            {overdue && (
+                                <span className="px-2 py-0.5 text-xs font-semibold rounded-full text-red-700 bg-red-50">
+                                    Overdue
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-xs text-neutral-500 mt-0.5">
+                            {formatDeliveryDate(delivery.scheduled_date)}
+                            {delivery.driver_name && ` · ${delivery.driver_name}`}
+                        </p>
+                    </div>
+                </div>
+                <div className="flex items-center gap-2">
+                    {transitionButtons.map((btn) => (
+                        <button
+                            key={btn.status}
+                            onClick={() => handleStatusChange(btn.status)}
+                            disabled={isPending}
+                            className={`px-4 py-2 text-sm font-semibold rounded-lg disabled:opacity-50 ${btn.cls}`}
+                        >
+                            {isPending && <Loader2 size={14} className="animate-spin inline mr-1" />}
+                            {btn.label}
+                        </button>
+                    ))}
+                    <a
+                        href={`/admin/deliveries/${delivery.id}/print`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2 border border-neutral-200 rounded-lg hover:bg-neutral-50"
+                        title="Print delivery note"
+                    >
+                        <Printer size={16} className="text-neutral-600" />
+                    </a>
+                </div>
             </div>
 
             {errorMessage && (
-                <div className="bg-red-50 border border-red-200 text-red-800 rounded-lg p-3 mb-4 flex items-center justify-between">
+                <div className="mx-4 md:mx-6 mt-4 bg-red-50 border border-red-200 text-red-800 rounded-lg p-3 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <AlertCircle size={14} className="flex-shrink-0" />
                         <span className="text-sm font-medium">{errorMessage}</span>
@@ -139,71 +166,28 @@ export function DeliveryDetail({ delivery: initialDelivery }: DeliveryDetailProp
                 </div>
             )}
 
-            {/* Header card */}
-            <div className="border border-neutral-200 rounded-lg p-5 mb-4">
-                <div className="flex items-start justify-between">
-                    <div>
-                        <div className="flex items-center gap-3">
-                            <h1 className="text-lg font-semibold font-mono text-neutral-900">{delivery.delivery_number}</h1>
-                            <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full ${DELIVERY_STATUS_COLORS[delivery.status]}`}>
-                                {DELIVERY_STATUS_LABELS[delivery.status]}
-                            </span>
-                            {overdue && (
-                                <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-red-700 bg-red-50">
-                                    Overdue
-                                </span>
-                            )}
-                        </div>
-                        <p className="text-sm text-neutral-500 mt-1">
-                            Scheduled {formatDeliveryDate(delivery.scheduled_date)}
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <a
-                            href={`/admin/deliveries/${delivery.id}/print`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-neutral-200 rounded hover:bg-neutral-50"
-                        >
-                            <Printer size={12} />
-                            Print Delivery Note
-                        </a>
-                    </div>
-                </div>
-            </div>
-
-            {/* Status transition buttons */}
-            {transitionButtons.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-4">
-                    {transitionButtons.map(btn => (
-                        <button
-                            key={btn.status}
-                            onClick={() => handleStatusChange(btn.status)}
-                            disabled={isPending}
-                            className={`px-4 py-2 text-sm font-medium border rounded disabled:opacity-50 ${btn.colorCls}`}
-                        >
-                            {isPending ? <Loader2 size={14} className="animate-spin inline mr-1" /> : null}
-                            {btn.label}
-                        </button>
-                    ))}
+            {/* ── Route map — full width, prominent ── */}
+            {site?.latitude != null && site?.longitude != null && (
+                <div className="border-b border-neutral-200">
+                    <RouteCard
+                        destLat={site.latitude}
+                        destLng={site.longitude}
+                        siteName={site.name}
+                    />
                 </div>
             )}
 
-            {/* Two-column layout */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                {/* Left column (2/3) */}
-                <div className="lg:col-span-2 space-y-4">
-                    {/* Delivery Info card */}
-                    <div className="border border-neutral-200 rounded-lg p-5">
-                        <div className="flex items-center justify-between mb-4">
-                            <h2 className="text-sm font-semibold text-neutral-900">Delivery Info</h2>
+            {/* ── Info grid ── */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-0 border-b border-neutral-200">
+                {/* Left: delivery info + items */}
+                <div className="md:border-r border-neutral-200">
+                    {/* Driver + date + notes */}
+                    <div className="px-4 md:px-6 py-5 border-b border-neutral-100">
+                        <div className="flex items-center justify-between mb-3">
+                            <h2 className="text-xs font-bold uppercase tracking-wider text-neutral-500">Delivery Info</h2>
                             {delivery.status === 'scheduled' && !isEditing && (
-                                <button
-                                    onClick={() => setIsEditing(true)}
-                                    className="flex items-center gap-1.5 text-xs font-medium text-neutral-600 hover:text-neutral-900"
-                                >
-                                    <Edit2 size={12} />
-                                    Edit
+                                <button onClick={() => setIsEditing(true)} className="text-xs text-[#4e7e8c] hover:underline flex items-center gap-1">
+                                    <Edit2 size={11} /> edit
                                 </button>
                             )}
                         </div>
@@ -216,218 +200,126 @@ export function DeliveryDetail({ delivery: initialDelivery }: DeliveryDetailProp
                                 onError={setErrorMessage}
                             />
                         ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                                <div>
-                                    <div className="text-[10px] font-medium text-neutral-400 uppercase mb-0.5">Driver</div>
-                                    <div className="text-neutral-900">{delivery.driver_name || 'Not assigned'}</div>
-                                    {delivery.driver_phone && (
-                                        <div className="text-neutral-500 text-xs">{delivery.driver_phone}</div>
-                                    )}
+                            <div className="grid grid-cols-2 gap-3 text-sm">
+                                <div className="flex items-start gap-2">
+                                    <Truck size={14} className="text-neutral-400 mt-0.5 shrink-0" />
+                                    <div>
+                                        <div className="font-semibold text-neutral-900">{delivery.driver_name || 'Unassigned'}</div>
+                                        {delivery.driver_phone && <div className="text-xs text-neutral-500">{delivery.driver_phone}</div>}
+                                    </div>
                                 </div>
-                                <div>
-                                    <div className="text-[10px] font-medium text-neutral-400 uppercase mb-0.5">Scheduled Date</div>
-                                    <div className="text-neutral-900">{formatDeliveryDate(delivery.scheduled_date)}</div>
+                                <div className="flex items-start gap-2">
+                                    <Calendar size={14} className="text-neutral-400 mt-0.5 shrink-0" />
+                                    <div>
+                                        <div className="font-semibold text-neutral-900">{formatDeliveryDate(delivery.scheduled_date)}</div>
+                                    </div>
                                 </div>
                                 {delivery.notes_internal && (
-                                    <div className="sm:col-span-2">
-                                        <div className="text-[10px] font-medium text-neutral-400 uppercase mb-0.5">Internal Notes</div>
-                                        <p className="text-neutral-600 whitespace-pre-wrap">{delivery.notes_internal}</p>
+                                    <div className="col-span-2 text-xs text-neutral-600 bg-neutral-50 rounded p-2 whitespace-pre-wrap">
+                                        {delivery.notes_internal}
                                     </div>
                                 )}
                                 {delivery.notes_driver && (
-                                    <div className="sm:col-span-2">
-                                        <div className="text-[10px] font-medium text-neutral-400 uppercase mb-0.5">Notes for Driver</div>
-                                        <p className="text-neutral-600 whitespace-pre-wrap">{delivery.notes_driver}</p>
+                                    <div className="col-span-2 text-xs text-amber-800 bg-amber-50 rounded p-2 whitespace-pre-wrap">
+                                        <span className="font-semibold">Driver notes:</span> {delivery.notes_driver}
                                     </div>
                                 )}
                             </div>
                         )}
                     </div>
 
-                    {/* Items table */}
-                    <div className="border border-neutral-200 rounded-lg overflow-hidden">
-                        <div className="px-5 py-3 bg-neutral-50 border-b border-neutral-200">
-                            <h2 className="text-sm font-semibold text-neutral-900">Items</h2>
-                        </div>
-
+                    {/* Items */}
+                    <div className="px-4 md:px-6 py-5">
+                        <h2 className="text-xs font-bold uppercase tracking-wider text-neutral-500 mb-3">
+                            Items ({delivery.items.length})
+                        </h2>
                         {delivery.items.length === 0 ? (
-                            <div className="px-5 py-8 text-center text-sm text-neutral-400">
-                                No items on this delivery.
-                            </div>
+                            <p className="text-sm text-neutral-400 italic">No items</p>
                         ) : (
-                            <table className="w-full text-sm">
-                                <thead className="border-b border-neutral-100">
-                                    <tr>
-                                        <th className="text-left px-5 py-2 text-[10px] font-semibold text-neutral-400 uppercase w-8">#</th>
-                                        <th className="text-left px-5 py-2 text-[10px] font-semibold text-neutral-400 uppercase">Description</th>
-                                        <th className="text-right px-5 py-2 text-[10px] font-semibold text-neutral-400 uppercase w-20">Qty</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-neutral-50">
-                                    {delivery.items.map((item, idx) => (
-                                        <tr key={item.id} className="hover:bg-neutral-50">
-                                            <td className="px-5 py-3 text-neutral-400 text-xs">{idx + 1}</td>
-                                            <td className="px-5 py-3 text-neutral-800">{item.description}</td>
-                                            <td className="px-5 py-3 text-right text-neutral-600">{item.quantity}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                            <ul className="space-y-1">
+                                {delivery.items.map((item, idx) => (
+                                    <li key={item.id} className="flex items-center justify-between text-sm py-1.5 px-2 rounded bg-neutral-50">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-neutral-400 font-mono text-xs w-4">{idx + 1}</span>
+                                            <span className="text-neutral-800">{item.description}</span>
+                                        </div>
+                                        <span className="text-neutral-500 text-xs">×{item.quantity}</span>
+                                    </li>
+                                ))}
+                            </ul>
                         )}
                     </div>
-
-                    {/* Delete button (scheduled only) */}
-                    {delivery.status === 'scheduled' && (
-                        <div className="pt-4 border-t border-neutral-100">
-                            {!showDeleteConfirm ? (
-                                <button
-                                    onClick={() => setShowDeleteConfirm(true)}
-                                    className="flex items-center gap-1.5 text-xs text-red-600 hover:text-red-800"
-                                >
-                                    <Trash2 size={12} />
-                                    Delete this delivery
-                                </button>
-                            ) : (
-                                <div className="flex items-center gap-3">
-                                    <span className="text-sm text-neutral-700">Are you sure? This cannot be undone.</span>
-                                    <button
-                                        onClick={handleDelete}
-                                        disabled={isPending}
-                                        className="px-3 py-1.5 text-xs font-medium bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
-                                    >
-                                        Delete
-                                    </button>
-                                    <button
-                                        onClick={() => setShowDeleteConfirm(false)}
-                                        className="px-3 py-1.5 text-xs font-medium text-neutral-600 hover:text-neutral-900"
-                                    >
-                                        Cancel
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    )}
                 </div>
 
-                {/* Right column (1/3) */}
-                <div className="space-y-4">
-                    {/* Delivery Address card */}
-                    <div className="border border-neutral-200 rounded-lg p-5">
-                        <div className="flex items-center gap-2 mb-3">
-                            <MapPin size={14} className="text-neutral-400" />
-                            <h2 className="text-sm font-semibold text-neutral-900">Delivery Address</h2>
-                        </div>
-                        {delivery.delivery_site ? (
-                            <div className="text-sm space-y-1">
-                                <div className="font-medium text-neutral-900">{delivery.delivery_site.name}</div>
-                                {delivery.delivery_site.address_line_1 && (
-                                    <div className="text-neutral-600">{delivery.delivery_site.address_line_1}</div>
+                {/* Right: destination + contact + linked job */}
+                <div>
+                    {/* Destination */}
+                    <div className="px-4 md:px-6 py-5 border-b border-neutral-100">
+                        <h2 className="text-xs font-bold uppercase tracking-wider text-neutral-500 mb-3 flex items-center gap-1.5">
+                            <MapPin size={12} /> Destination
+                        </h2>
+                        {site ? (
+                            <div className="text-sm space-y-0.5">
+                                <div className="font-semibold text-neutral-900">{site.name}</div>
+                                {site.address_line_1 && <div className="text-neutral-600">{site.address_line_1}</div>}
+                                {site.address_line_2 && <div className="text-neutral-600">{site.address_line_2}</div>}
+                                {(site.city || site.county) && (
+                                    <div className="text-neutral-600">{[site.city, site.county].filter(Boolean).join(', ')}</div>
                                 )}
-                                {delivery.delivery_site.address_line_2 && (
-                                    <div className="text-neutral-600">{delivery.delivery_site.address_line_2}</div>
-                                )}
-                                {(delivery.delivery_site.city || delivery.delivery_site.county) && (
-                                    <div className="text-neutral-600">
-                                        {[delivery.delivery_site.city, delivery.delivery_site.county].filter(Boolean).join(', ')}
-                                    </div>
-                                )}
-                                {delivery.delivery_site.postcode && (
-                                    <div className="text-neutral-600">{delivery.delivery_site.postcode}</div>
-                                )}
-                                {delivery.delivery_site.phone && (
-                                    <div className="text-neutral-500 text-xs mt-2">{delivery.delivery_site.phone}</div>
-                                )}
-                                {delivery.delivery_site.postcode && (
-                                    <a
-                                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(delivery.delivery_site.postcode)}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 mt-2"
-                                    >
-                                        <ExternalLink size={11} />
-                                        View on Map
-                                    </a>
-                                )}
+                                {site.postcode && <div className="text-neutral-600 font-mono text-xs">{site.postcode}</div>}
                             </div>
                         ) : (
-                            <p className="text-sm text-neutral-400">No delivery address set</p>
+                            <p className="text-sm text-neutral-400 italic">No address set</p>
                         )}
                     </div>
 
-                    {/* Route card */}
-                    {delivery.delivery_site?.latitude != null && delivery.delivery_site?.longitude != null && (
-                        <RouteCard
-                            destLat={delivery.delivery_site.latitude}
-                            destLng={delivery.delivery_site.longitude}
-                            siteName={delivery.delivery_site.name}
-                        />
-                    )}
-
-                    {/* Contact card */}
-                    <div className="border border-neutral-200 rounded-lg p-5">
-                        <div className="flex items-center gap-2 mb-3">
-                            <User size={14} className="text-neutral-400" />
-                            <h2 className="text-sm font-semibold text-neutral-900">Contact</h2>
-                        </div>
-                        {delivery.delivery_contact ? (
-                            <div className="text-sm space-y-1">
-                                <div className="font-medium text-neutral-900">
-                                    {delivery.delivery_contact.first_name} {delivery.delivery_contact.last_name}
-                                </div>
-                                {delivery.delivery_contact.email && (
-                                    <div className="text-neutral-500 text-xs">{delivery.delivery_contact.email}</div>
-                                )}
-                                {delivery.delivery_contact.phone && (
-                                    <div className="text-neutral-500 text-xs">{delivery.delivery_contact.phone}</div>
-                                )}
+                    {/* Contact */}
+                    <div className="px-4 md:px-6 py-5 border-b border-neutral-100">
+                        <h2 className="text-xs font-bold uppercase tracking-wider text-neutral-500 mb-3 flex items-center gap-1.5">
+                            <User size={12} /> Contact
+                        </h2>
+                        {contact ? (
+                            <div className="text-sm space-y-0.5">
+                                <div className="font-semibold text-neutral-900">{contact.first_name} {contact.last_name}</div>
+                                {contact.email && <div className="text-neutral-500 text-xs">{contact.email}</div>}
+                                {contact.phone && <div className="text-neutral-500 text-xs">{contact.phone}</div>}
                             </div>
                         ) : (
-                            <p className="text-sm text-neutral-400">No delivery contact set</p>
+                            <p className="text-sm text-neutral-400 italic">No contact set</p>
                         )}
                     </div>
 
-                    {/* Linked Job card */}
-                    {delivery.linked_job && (
-                        <div className="border border-neutral-200 rounded-lg p-5">
-                            <div className="flex items-center gap-2 mb-3">
-                                <Briefcase size={14} className="text-neutral-400" />
-                                <h2 className="text-sm font-semibold text-neutral-900">Linked Job</h2>
-                            </div>
+                    {/* Linked job */}
+                    {job && (
+                        <div className="px-4 md:px-6 py-5 border-b border-neutral-100">
+                            <h2 className="text-xs font-bold uppercase tracking-wider text-neutral-500 mb-3 flex items-center gap-1.5">
+                                <Briefcase size={12} /> Linked Job
+                            </h2>
                             <div className="text-sm space-y-1">
-                                <Link
-                                    href="/admin/jobs"
-                                    className="flex items-center gap-1.5 font-medium text-neutral-900 hover:text-blue-700"
-                                >
-                                    <span className="font-mono">{delivery.linked_job.job_number}</span>
-                                    <ExternalLink size={11} />
+                                <Link href="/admin/jobs" className="font-mono text-[#4e7e8c] hover:underline flex items-center gap-1">
+                                    {job.job_number} <ExternalLink size={11} />
                                 </Link>
-                                <div className="text-neutral-600">{delivery.linked_job.title}</div>
-                                <div className="text-neutral-500 text-xs">{delivery.linked_job.client_name}</div>
-                                <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded-full bg-neutral-100 text-neutral-600 mt-1">
-                                    {delivery.linked_job.status}
-                                </span>
+                                <div className="text-neutral-600">{job.title}</div>
+                                <div className="text-neutral-400 text-xs">{job.client_name}</div>
                             </div>
                         </div>
                     )}
 
-                    {/* POD Section card */}
-                    <div className="border border-neutral-200 rounded-lg p-5">
-                        <div className="flex items-center gap-2 mb-3">
-                            <ClipboardCheck size={14} className="text-neutral-400" />
-                            <h2 className="text-sm font-semibold text-neutral-900">Proof of Delivery</h2>
-                        </div>
+                    {/* POD */}
+                    <div className="px-4 md:px-6 py-5">
+                        <h2 className="text-xs font-bold uppercase tracking-wider text-neutral-500 mb-3 flex items-center gap-1.5">
+                            <ClipboardCheck size={12} /> Proof of Delivery
+                        </h2>
 
                         {!delivery.pod_token && (
-                            <div>
-                                <button
-                                    onClick={handleGeneratePod}
-                                    disabled={isPending}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-neutral-200 rounded hover:bg-neutral-50 disabled:opacity-50"
-                                >
-                                    {isPending ? <Loader2 size={12} className="animate-spin" /> : <Link2 size={12} />}
-                                    Generate POD Link
-                                </button>
-                            </div>
+                            <button
+                                onClick={handleGeneratePod}
+                                disabled={isPending}
+                                className="btn-secondary text-xs inline-flex items-center gap-1.5"
+                            >
+                                {isPending ? <Loader2 size={12} className="animate-spin" /> : <Link2 size={12} />}
+                                Generate POD Link
+                            </button>
                         )}
 
                         {delivery.pod_token && delivery.pod_status === 'pending' && (
@@ -435,99 +327,83 @@ export function DeliveryDetail({ delivery: initialDelivery }: DeliveryDetailProp
                                 <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full ${POD_STATUS_COLORS.pending}`}>
                                     {POD_STATUS_LABELS.pending}
                                 </span>
-                                <div className="bg-neutral-50 rounded p-2 text-xs font-mono text-neutral-600 break-all">
+                                <div className="bg-neutral-50 rounded p-2 text-[11px] font-mono text-neutral-500 break-all">
                                     {podUrl}
                                 </div>
-                                <button
-                                    onClick={handleCopyPodLink}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-neutral-200 rounded hover:bg-neutral-50"
-                                >
-                                    {copiedPodLink ? (
-                                        <>
-                                            <Check size={12} className="text-green-600" />
-                                            Copied
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Copy size={12} />
-                                            Copy Link
-                                        </>
-                                    )}
+                                <button onClick={handleCopyPodLink} className="btn-secondary text-xs inline-flex items-center gap-1.5">
+                                    {copiedPodLink ? <><Check size={12} className="text-green-600" /> Copied</> : <><Copy size={12} /> Copy Link</>}
                                 </button>
                             </div>
                         )}
 
                         {delivery.pod_status === 'signed' && (
-                            <div className="space-y-3">
+                            <div className="space-y-2">
                                 <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full ${POD_STATUS_COLORS.signed}`}>
                                     {POD_STATUS_LABELS.signed}
                                 </span>
                                 {delivery.pod_signed_by && (
                                     <div className="text-sm">
-                                        <div className="text-[10px] font-medium text-neutral-400 uppercase mb-0.5">Signed by</div>
-                                        <div className="text-neutral-900">{delivery.pod_signed_by}</div>
-                                    </div>
-                                )}
-                                {delivery.pod_signed_at && (
-                                    <div className="text-sm">
-                                        <div className="text-[10px] font-medium text-neutral-400 uppercase mb-0.5">Signed at</div>
-                                        <div className="text-neutral-600">
-                                            {new Date(delivery.pod_signed_at).toLocaleString('en-GB', {
-                                                day: '2-digit', month: 'short', year: 'numeric',
-                                                hour: '2-digit', minute: '2-digit',
-                                            })}
-                                        </div>
+                                        <span className="text-neutral-500 text-xs">Signed by </span>
+                                        <span className="font-semibold">{delivery.pod_signed_by}</span>
+                                        {delivery.pod_signed_at && (
+                                            <span className="text-neutral-400 text-xs ml-1">
+                                                {new Date(delivery.pod_signed_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                            </span>
+                                        )}
                                     </div>
                                 )}
                                 {delivery.pod_signature_data && (
-                                    <div>
-                                        <div className="text-[10px] font-medium text-neutral-400 uppercase mb-1">Signature</div>
-                                        <div className="border border-neutral-200 rounded bg-white p-2">
-                                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                                            <img
-                                                src={delivery.pod_signature_data}
-                                                alt="Signature"
-                                                className="max-h-24 w-auto"
-                                            />
-                                        </div>
+                                    <div className="border border-neutral-200 rounded bg-white p-2 inline-block">
+                                        <img src={delivery.pod_signature_data} alt="Signature" className="max-h-16 w-auto" />
                                     </div>
                                 )}
                                 {delivery.pod_notes && (
-                                    <div className="text-sm">
-                                        <div className="text-[10px] font-medium text-neutral-400 uppercase mb-0.5">Notes</div>
-                                        <p className="text-neutral-600 whitespace-pre-wrap">{delivery.pod_notes}</p>
-                                    </div>
+                                    <p className="text-xs text-neutral-600 whitespace-pre-wrap">{delivery.pod_notes}</p>
                                 )}
                             </div>
                         )}
 
                         {delivery.pod_status === 'refused' && (
-                            <div className="space-y-3">
+                            <div className="space-y-2">
                                 <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full ${POD_STATUS_COLORS.refused}`}>
                                     {POD_STATUS_LABELS.refused}
                                 </span>
-                                {delivery.pod_notes && (
-                                    <div className="text-sm">
-                                        <div className="text-[10px] font-medium text-neutral-400 uppercase mb-0.5">Refusal Notes</div>
-                                        <p className="text-neutral-600 whitespace-pre-wrap">{delivery.pod_notes}</p>
-                                    </div>
-                                )}
+                                {delivery.pod_notes && <p className="text-xs text-neutral-600 whitespace-pre-wrap">{delivery.pod_notes}</p>}
                             </div>
                         )}
                     </div>
                 </div>
             </div>
+
+            {/* ── Delete (scheduled only) ── */}
+            {delivery.status === 'scheduled' && (
+                <div className="px-4 md:px-6 py-4">
+                    {!showDeleteConfirm ? (
+                        <button onClick={() => setShowDeleteConfirm(true)} className="text-xs text-red-600 hover:underline flex items-center gap-1">
+                            <Trash2 size={12} /> Delete this delivery
+                        </button>
+                    ) : (
+                        <div className="flex items-center gap-3">
+                            <span className="text-sm text-neutral-700">Are you sure?</span>
+                            <button onClick={handleDelete} disabled={isPending}
+                                className="px-3 py-1.5 text-xs font-medium bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50">
+                                Delete
+                            </button>
+                            <button onClick={() => setShowDeleteConfirm(false)} className="text-xs text-neutral-500 hover:text-neutral-900">
+                                Cancel
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }
 
-// ---- Inline edit form --------------------------------------------------------
+// ── Inline edit form ──
 
 function DeliveryEditForm({
-    delivery,
-    onSaved,
-    onCancel,
-    onError,
+    delivery, onSaved, onCancel, onError,
 }: {
     delivery: DeliveryWithItems;
     onSaved: () => void;
@@ -563,11 +439,8 @@ function DeliveryEditForm({
                 notes_internal: form.notes_internal || undefined,
                 notes_driver: form.notes_driver || undefined,
             });
-            if ('error' in result) {
-                onError(result.error);
-            } else {
-                onSaved();
-            }
+            if ('error' in result) onError(result.error);
+            else onSaved();
         } finally {
             setIsSaving(false);
         }
@@ -576,18 +449,18 @@ function DeliveryEditForm({
     const inputCls = 'w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-black';
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-4 pt-4 border-t border-neutral-100">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <form onSubmit={handleSubmit} className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                    <label className="block text-[10px] font-medium text-neutral-500 uppercase mb-1">Driver Name</label>
+                    <label className="block text-[10px] font-medium text-neutral-500 uppercase mb-1">Driver</label>
                     <input {...field('driver_name')} className={inputCls} />
                 </div>
                 <div>
-                    <label className="block text-[10px] font-medium text-neutral-500 uppercase mb-1">Driver Phone</label>
+                    <label className="block text-[10px] font-medium text-neutral-500 uppercase mb-1">Phone</label>
                     <input type="tel" {...field('driver_phone')} className={inputCls} />
                 </div>
                 <div>
-                    <label className="block text-[10px] font-medium text-neutral-500 uppercase mb-1">Scheduled Date</label>
+                    <label className="block text-[10px] font-medium text-neutral-500 uppercase mb-1">Date</label>
                     <input type="date" required {...field('scheduled_date')} className={inputCls} />
                 </div>
             </div>
@@ -596,14 +469,13 @@ function DeliveryEditForm({
                 <textarea {...field('notes_internal')} rows={2} className={inputCls} />
             </div>
             <div>
-                <label className="block text-[10px] font-medium text-neutral-500 uppercase mb-1">Notes for Driver</label>
+                <label className="block text-[10px] font-medium text-neutral-500 uppercase mb-1">Driver Notes</label>
                 <textarea {...field('notes_driver')} rows={2} className={inputCls} />
             </div>
-            <div className="flex justify-end gap-3">
-                <button type="button" onClick={onCancel} className="px-3 py-1.5 text-xs font-medium text-neutral-600 hover:text-neutral-900">Cancel</button>
-                <button type="submit" disabled={isSaving} className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-black text-white rounded hover:bg-neutral-800 disabled:opacity-50">
-                    {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-                    Save
+            <div className="flex justify-end gap-2">
+                <button type="button" onClick={onCancel} className="text-xs text-neutral-500 hover:text-neutral-900">Cancel</button>
+                <button type="submit" disabled={isSaving} className="btn-primary text-xs inline-flex items-center gap-1">
+                    {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Save
                 </button>
             </div>
         </form>
