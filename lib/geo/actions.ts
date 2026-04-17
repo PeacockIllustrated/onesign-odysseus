@@ -22,18 +22,24 @@ export async function geocodeSite(siteId: string): Promise<void> {
     if (site.latitude != null) return;
 
     try {
-        const encoded = encodeURIComponent(site.postcode.replace(/\s+/g, ''));
-        const res = await fetch(`https://api.postcodes.io/postcodes/${encoded}`, {
-            next: { revalidate: 86400 },
-        });
+        const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+        if (!token) {
+            console.warn('geocodeSite: NEXT_PUBLIC_MAPBOX_TOKEN not set');
+            return;
+        }
+        const encoded = encodeURIComponent(site.postcode.trim());
+        const res = await fetch(
+            `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json` +
+            `?country=gb&types=postcode&limit=1&access_token=${token}`
+        );
         if (!res.ok) {
-            console.warn(`geocodeSite: postcodes.io returned ${res.status} for "${site.postcode}"`);
+            console.warn(`geocodeSite: Mapbox returned ${res.status} for "${site.postcode}"`);
             return;
         }
         const json = await res.json();
-        const lat = json?.result?.latitude;
-        const lng = json?.result?.longitude;
-        if (lat == null || lng == null) return;
+        const feature = json.features?.[0];
+        if (!feature?.center) return;
+        const [lng, lat] = feature.center;
 
         await supabase
             .from('org_sites')
@@ -63,13 +69,18 @@ export async function geocodeAllSites(): Promise<{ geocoded: number; skipped: nu
 
     for (const site of sites ?? []) {
         try {
-            const encoded = encodeURIComponent(site.postcode.replace(/\s+/g, ''));
-            const res = await fetch(`https://api.postcodes.io/postcodes/${encoded}`);
+            const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+            if (!token) { skipped++; continue; }
+            const encoded = encodeURIComponent(site.postcode.trim());
+            const res = await fetch(
+                `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json` +
+                `?country=gb&types=postcode&limit=1&access_token=${token}`
+            );
             if (!res.ok) { skipped++; continue; }
             const json = await res.json();
-            const lat = json?.result?.latitude;
-            const lng = json?.result?.longitude;
-            if (lat == null || lng == null) { skipped++; continue; }
+            const feature = json.features?.[0];
+            if (!feature?.center) { skipped++; continue; }
+            const [lng, lat] = feature.center;
 
             await supabase
                 .from('org_sites')
