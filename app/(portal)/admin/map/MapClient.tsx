@@ -1,20 +1,18 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import MarkerClusterGroup from 'react-leaflet-cluster';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import { useState, useMemo, useCallback } from 'react';
+import Map, { Marker, Popup, NavigationControl } from 'react-map-gl/mapbox';
+import 'mapbox-gl/dist/mapbox-gl.css';
 import type { SitePin } from './page';
 import { MapPopup } from './MapPopup';
 
-// Fix Leaflet's default icon path issue in bundled environments.
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-    iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-    iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
+const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
+
+// Mapbox style URL — customisable via env var. Default is Mapbox light.
+// To brand for Onesign: create a custom style in Mapbox Studio with
+// #4e7e8c accent, #1a1f23 dark tones, and paste the style URL here.
+const MAP_STYLE = process.env.NEXT_PUBLIC_MAPBOX_STYLE
+    ?? 'mapbox://styles/mapbox/light-v11';
 
 const COLOUR_MAP: Record<string, string> = {
     red: '#dc2626',
@@ -23,16 +21,6 @@ const COLOUR_MAP: Record<string, string> = {
     blue: '#2563eb',
     grey: '#9ca3af',
 };
-
-function colourIcon(colour: string) {
-    const hex = COLOUR_MAP[colour] ?? COLOUR_MAP.grey;
-    return L.divIcon({
-        className: '',
-        html: `<div style="width:14px;height:14px;border-radius:50%;background:${hex};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.3);"></div>`,
-        iconSize: [14, 14],
-        iconAnchor: [7, 7],
-    });
-}
 
 const FILTER_KEYS = ['quotes', 'artwork', 'production', 'deliveries', 'maintenance'] as const;
 type FilterKey = typeof FILTER_KEYS[number];
@@ -57,6 +45,7 @@ export function MapClient({ pins }: Props) {
         deliveries: true,
         maintenance: true,
     });
+    const [selectedPin, setSelectedPin] = useState<SitePin | null>(null);
 
     const toggle = (key: FilterKey) => {
         setFilters((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -68,7 +57,22 @@ export function MapClient({ pins }: Props) {
         });
     }, [pins, filters]);
 
-    const centre: [number, number] = [54.5, -2.5];
+    const handleMarkerClick = useCallback((pin: SitePin) => {
+        setSelectedPin(pin);
+    }, []);
+
+    if (!MAPBOX_TOKEN) {
+        return (
+            <div className="h-[600px] bg-neutral-100 rounded-lg flex items-center justify-center text-neutral-500 text-sm">
+                <div className="text-center space-y-2">
+                    <p className="font-semibold">Mapbox token not configured</p>
+                    <p className="text-xs text-neutral-400">
+                        Set <code className="bg-neutral-200 px-1 rounded">NEXT_PUBLIC_MAPBOX_TOKEN</code> in your environment variables.
+                    </p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div>
@@ -95,30 +99,59 @@ export function MapClient({ pins }: Props) {
 
             {/* Map */}
             <div className="rounded-lg overflow-hidden border border-neutral-200" style={{ height: 600 }}>
-                <MapContainer
-                    center={centre}
-                    zoom={6}
-                    scrollWheelZoom={true}
-                    style={{ height: '100%', width: '100%' }}
+                <Map
+                    mapboxAccessToken={MAPBOX_TOKEN}
+                    mapStyle={MAP_STYLE}
+                    initialViewState={{
+                        latitude: 54.5,
+                        longitude: -2.5,
+                        zoom: 5.5,
+                    }}
+                    style={{ width: '100%', height: '100%' }}
                 >
-                    <TileLayer
-                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    />
-                    <MarkerClusterGroup chunkedLoading>
-                        {visiblePins.map((pin) => (
+                    <NavigationControl position="top-right" />
+
+                    {visiblePins.map((pin) => {
+                        const colour = COLOUR_MAP[pin.colour] ?? COLOUR_MAP.grey;
+                        return (
                             <Marker
                                 key={pin.siteId}
-                                position={[pin.lat, pin.lng]}
-                                icon={colourIcon(pin.colour)}
+                                latitude={pin.lat}
+                                longitude={pin.lng}
+                                anchor="center"
+                                onClick={(e) => {
+                                    e.originalEvent.stopPropagation();
+                                    handleMarkerClick(pin);
+                                }}
                             >
-                                <Popup>
-                                    <MapPopup pin={pin} />
-                                </Popup>
+                                <div
+                                    style={{
+                                        width: 16,
+                                        height: 16,
+                                        borderRadius: '50%',
+                                        background: colour,
+                                        border: '2.5px solid #fff',
+                                        boxShadow: '0 1px 4px rgba(0,0,0,.3)',
+                                        cursor: 'pointer',
+                                    }}
+                                />
                             </Marker>
-                        ))}
-                    </MarkerClusterGroup>
-                </MapContainer>
+                        );
+                    })}
+
+                    {selectedPin && (
+                        <Popup
+                            latitude={selectedPin.lat}
+                            longitude={selectedPin.lng}
+                            anchor="bottom"
+                            onClose={() => setSelectedPin(null)}
+                            closeOnClick={false}
+                            offset={12}
+                        >
+                            <MapPopup pin={selectedPin} />
+                        </Popup>
+                    )}
+                </Map>
             </div>
         </div>
     );

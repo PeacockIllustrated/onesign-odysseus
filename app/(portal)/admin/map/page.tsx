@@ -3,6 +3,7 @@ import { createServerClient } from '@/lib/supabase-server';
 import { PageHeader } from '@/app/(portal)/components/ui';
 import { formatSiteAddress, pinColour, type RecordCounts } from '@/lib/geo/utils';
 import { MapLoader } from './MapLoader';
+import { GeocodeBackfillButton } from './GeocodeBackfillButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,8 +39,9 @@ export default async function MapPage() {
         return (
             <div className="p-6 max-w-6xl mx-auto">
                 <PageHeader title="Map" description="site-centric overview of active work across the UK" />
-                <div className="mt-6 p-8 bg-neutral-50 border border-neutral-200 rounded-lg text-center text-sm text-neutral-500">
-                    No geocoded sites yet. Add a postcode to a client site and it will appear here.
+                <div className="mt-6 p-8 bg-neutral-50 border border-neutral-200 rounded-lg text-center text-sm text-neutral-500 space-y-3">
+                    <p>No geocoded sites yet. Sites with postcodes need geocoding to appear on the map.</p>
+                    <GeocodeBackfillButton />
                 </div>
             </div>
         );
