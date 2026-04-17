@@ -5,6 +5,7 @@ import type { SitePin } from './page';
 
 interface Props {
     pin: SitePin;
+    onShowRoute?: (pin: SitePin) => void;
 }
 
 const ROW_CONFIG = [
@@ -15,7 +16,7 @@ const ROW_CONFIG = [
     { key: 'maintenance' as const, emoji: '🔧', label: 'maintenance', href: '/admin/maintenance' },
 ] as const;
 
-export function MapPopup({ pin }: Props) {
+export function MapPopup({ pin, onShowRoute }: Props) {
     return (
         <div style={{ minWidth: 200, fontFamily: 'system-ui, sans-serif' }}>
             <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{pin.siteName}</div>
@@ -47,6 +48,28 @@ export function MapPopup({ pin }: Props) {
                     );
                 })}
             </div>
+            {onShowRoute && pin.deliveries > 0 && (
+                <button
+                    type="button"
+                    onClick={() => onShowRoute(pin)}
+                    style={{
+                        display: 'block',
+                        width: '100%',
+                        marginTop: 6,
+                        paddingTop: 6,
+                        borderTop: '1px solid #eee',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: '#4e7e8c',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        textAlign: 'center',
+                    }}
+                >
+                    show route from HQ
+                </button>
+            )}
         </div>
     );
 }

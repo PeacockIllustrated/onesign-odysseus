@@ -5,6 +5,10 @@ import Map, { Marker, Popup, NavigationControl } from 'react-map-gl/mapbox';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import type { SitePin } from './page';
 import { MapPopup } from './MapPopup';
+import { getRoute } from '@/lib/mapbox/client';
+import { ONESIGN_HQ } from '@/lib/mapbox/utils';
+import { RouteLayer, getRouteColour, type ActiveRoute } from './RouteLayer';
+import { RouteInfoBar } from './RouteInfoBar';
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
 
@@ -46,6 +50,7 @@ export function MapClient({ pins }: Props) {
         maintenance: true,
     });
     const [selectedPin, setSelectedPin] = useState<SitePin | null>(null);
+    const [routes, setRoutes] = useState<ActiveRoute[]>([]);
 
     const toggle = (key: FilterKey) => {
         setFilters((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -60,6 +65,28 @@ export function MapClient({ pins }: Props) {
     const handleMarkerClick = useCallback((pin: SitePin) => {
         setSelectedPin(pin);
     }, []);
+
+    const handleShowRoute = useCallback(async (pin: SitePin) => {
+        if (routes.some((r) => r.id === pin.siteId)) return;
+        try {
+            const result = await getRoute(ONESIGN_HQ.lng, ONESIGN_HQ.lat, pin.lng, pin.lat);
+            setRoutes((prev) => [
+                ...prev,
+                {
+                    id: pin.siteId,
+                    siteName: pin.siteName,
+                    geometry: result.geometry,
+                    distance: result.distance,
+                    duration: result.duration,
+                    trafficStatus: result.trafficStatus,
+                    colour: getRouteColour(prev.length),
+                },
+            ]);
+            setSelectedPin(null);
+        } catch (err) {
+            console.warn('Failed to fetch route:', err);
+        }
+    }, [routes]);
 
     if (!MAPBOX_TOKEN) {
         return (
@@ -95,7 +122,22 @@ export function MapClient({ pins }: Props) {
                 <span className="text-xs text-neutral-400 self-center ml-2">
                     {visiblePins.length} site{visiblePins.length !== 1 ? 's' : ''}
                 </span>
+                {routes.length > 0 && (
+                    <button
+                        type="button"
+                        onClick={() => setRoutes([])}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-full border border-red-300 text-red-600 hover:bg-red-50"
+                    >
+                        clear routes
+                    </button>
+                )}
             </div>
+
+            <RouteInfoBar
+                routes={routes}
+                onRemove={(id) => setRoutes((prev) => prev.filter((r) => r.id !== id))}
+                onClearAll={() => setRoutes([])}
+            />
 
             {/* Map */}
             <div className="rounded-lg overflow-hidden border border-neutral-200" style={{ height: 600 }}>
@@ -139,6 +181,8 @@ export function MapClient({ pins }: Props) {
                         );
                     })}
 
+                    <RouteLayer routes={routes} />
+
                     {selectedPin && (
                         <Popup
                             latitude={selectedPin.lat}
@@ -148,7 +192,7 @@ export function MapClient({ pins }: Props) {
                             closeOnClick={false}
                             offset={12}
                         >
-                            <MapPopup pin={selectedPin} />
+                            <MapPopup pin={selectedPin} onShowRoute={handleShowRoute} />
                         </Popup>
                     )}
                 </Map>
