@@ -4,6 +4,7 @@ import { createServerClient } from '@/lib/supabase-server';
 import { createAdminClient } from '@/lib/supabase-admin';
 import { getUser, requireSuperAdminOrError } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
+import { geocodeSite } from '@/lib/geo/actions';
 import {
     getClients,
     getClientWithDetails,
@@ -360,6 +361,10 @@ export async function createSiteAction(
 
     revalidatePath(`/admin/clients/${parsed.org_id}`);
     revalidatePath('/admin/clients');
+
+    // Fire-and-forget geocoding — never blocks the site save.
+    geocodeSite(data.id).catch(() => {});
+
     return { id: data.id };
 }
 
@@ -411,6 +416,13 @@ export async function updateSiteAction(
 
     revalidatePath(`/admin/clients/${existing.org_id}`);
     revalidatePath('/admin/clients');
+
+    // Re-geocode if postcode might have changed.
+    if (updates.postcode !== undefined) {
+        await supabase.from('org_sites').update({ latitude: null, longitude: null }).eq('id', id);
+        geocodeSite(id).catch(() => {});
+    }
+
     return { success: true };
 }
 
