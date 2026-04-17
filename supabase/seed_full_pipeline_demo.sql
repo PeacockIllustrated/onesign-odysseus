@@ -32,7 +32,7 @@
 
 BEGIN;
 
-DO $$
+DO $body$
 DECLARE
     v_org_id          UUID;
     v_contact_main    UUID;
@@ -407,6 +407,6 @@ BEGIN
     );
 
     RAISE NOTICE '[PIPELINE] Seed complete — Northside Barbers: 1 client, 2 sites (geocoded), 2 contacts, 1 quote, 1 production job, 1 visual approval (approved w/ 2 variants), 1 production artwork, 2 drivers, 1 delivery (assigned to Dave), 1 maintenance survey, 1 approval with comments.';
-END $$;
+END $body$;
 
 COMMIT;
