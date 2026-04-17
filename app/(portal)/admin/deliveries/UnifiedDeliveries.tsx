@@ -8,6 +8,7 @@ import type { PlanningDelivery } from '@/lib/planning/utils';
 import { DeliveryList } from './DeliveryList';
 import { PlanningPanel } from './PlanningPanel';
 import { BottomTabBar, type TabId } from './BottomTabBar';
+import { GeocodeBackfillButton } from './components/GeocodeBackfillButton';
 import type { SitePin } from './MapPanel';
 
 const MapPanel = dynamic(() => import('./MapPanel'), {
@@ -29,11 +30,12 @@ interface Props {
     monday: string;
     includeWeekends: boolean;
     pins: SitePin[];
+    hasUngeocoded?: boolean;
 }
 
 export function UnifiedDeliveries({
     deliveries, planningDeliveries, activeDrivers, allDrivers,
-    monday, includeWeekends, pins,
+    monday, includeWeekends, pins, hasUngeocoded,
 }: Props) {
     const [desktopPanel, setDesktopPanel] = useState<DesktopPanel>('list');
     const [mobileTab, setMobileTab] = useState<TabId>('list');
@@ -63,7 +65,16 @@ export function UnifiedDeliveries({
                     </div>
                 </div>
                 <div className="w-[55%] relative">
-                    <MapPanel pins={pins} />
+                    {pins.length === 0 && hasUngeocoded ? (
+                        <div className="h-full flex items-center justify-center bg-neutral-50">
+                            <div className="text-center space-y-3 p-8">
+                                <p className="text-sm text-neutral-600">Sites have postcodes but aren't geocoded yet.</p>
+                                <GeocodeBackfillButton />
+                            </div>
+                        </div>
+                    ) : (
+                        <MapPanel pins={pins} />
+                    )}
                 </div>
             </div>
 
@@ -82,7 +93,16 @@ export function UnifiedDeliveries({
                 )}
                 {mobileTab === 'map' && (
                     <div className="h-full">
-                        <MapPanel pins={pins} />
+                        {pins.length === 0 && hasUngeocoded ? (
+                            <div className="h-full flex items-center justify-center bg-neutral-50">
+                                <div className="text-center space-y-3 p-8">
+                                    <p className="text-sm text-neutral-600">Sites have postcodes but aren't geocoded yet.</p>
+                                    <GeocodeBackfillButton />
+                                </div>
+                            </div>
+                        ) : (
+                            <MapPanel pins={pins} />
+                        )}
                     </div>
                 )}
                 <BottomTabBar activeTab={mobileTab} onChangeTab={setMobileTab} />

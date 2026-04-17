@@ -60,28 +60,38 @@ export default async function DeliveriesPage({ searchParams }: PageProps) {
     const qc = countMap(qcRaw); const ac = countMap(acRaw); const pc = countMap(pcRaw);
     const dc = countMap(dcRaw); const mc = countMap(mcRaw);
 
+    // Show ALL geocoded sites on the map — not just ones with active records.
+    // Sites with active work get colour-coded pins; sites with nothing active
+    // get grey pins so you can still see the full site landscape.
     const pins = sitesRaw.map((site: any) => {
         const counts: RecordCounts = {
             quotes: qc.get(site.id) ?? 0, artwork: ac.get(site.id) ?? 0,
             production: pc.get(site.id) ?? 0, deliveries: dc.get(site.id) ?? 0,
             maintenance: mc.get(site.id) ?? 0,
         };
-        const total = counts.quotes + counts.artwork + counts.production + counts.deliveries + counts.maintenance;
-        if (total === 0) return null;
         return {
             siteId: site.id, siteName: site.name, orgId: site.org_id,
             orgName: site.orgs?.name ?? '—', address: formatSiteAddress(site),
             lat: site.latitude as number, lng: site.longitude as number,
             ...counts, colour: pinColour(counts),
         };
-    }).filter(Boolean);
+    });
+
+    // Also count total sites with postcodes but no lat/lng (ungeooded).
+    const { count: ungeocodedCount } = await supabase
+        .from('org_sites')
+        .select('*', { count: 'exact', head: true })
+        .is('latitude', null)
+        .not('postcode', 'is', null);
+    const hasUngeocoded = (ungeocodedCount ?? 0) > 0;
 
     return (
         <div className="p-4 md:p-6 max-w-full mx-auto">
             <PageHeader title="Deliveries" description="manage deliveries, plan routes, view the map" />
             <UnifiedDeliveries deliveries={deliveries} planningDeliveries={planningDeliveries}
                 activeDrivers={activeDrivers} allDrivers={allDrivers}
-                monday={monday} includeWeekends={includeWeekends} pins={pins as any} />
+                monday={monday} includeWeekends={includeWeekends} pins={pins as any}
+                hasUngeocoded={hasUngeocoded} />
         </div>
     );
 }
