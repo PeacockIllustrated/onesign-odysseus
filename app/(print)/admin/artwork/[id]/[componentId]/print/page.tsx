@@ -1,3 +1,4 @@
+import React from 'react';
 import { requireAdmin } from '@/lib/auth';
 import { getComponentDetail, getArtworkJob } from '@/lib/artwork/actions';
 import { notFound } from 'next/navigation';
@@ -25,17 +26,26 @@ export default async function ArtworkComponentVisualPrintPage({
         .slice()
         .sort((a: any, b: any) => a.sort_order - b.sort_order);
 
-    // Generate a signed URL for the thumbnail
-    let thumbnailUrl: string | null = null;
-    if (component.artwork_thumbnail_url) {
-        const supabase = await createServerClient();
-        const urlParts = component.artwork_thumbnail_url.split('/artwork-assets/');
-        if (urlParts.length > 1) {
-            const storagePath = urlParts[1];
-            const { data } = await supabase.storage
-                .from('artwork-assets')
-                .createSignedUrl(storagePath, 3600);
-            thumbnailUrl = data?.signedUrl || null;
+    const supabase = await createServerClient();
+
+    const signUrl = async (url: string | null): Promise<string | null> => {
+        if (!url) return null;
+        const parts = url.split('/artwork-assets/');
+        if (parts.length <= 1) return null;
+        const { data } = await supabase.storage
+            .from('artwork-assets')
+            .createSignedUrl(parts[1], 3600);
+        return data?.signedUrl ?? null;
+    };
+
+    // Sign component-level thumbnail
+    const thumbnailUrl = await signUrl(component.artwork_thumbnail_url);
+
+    // Sign each sub-item's thumbnail for the compliance sheet
+    const subItemThumbnails: Record<string, string | null> = {};
+    for (const si of subItems) {
+        if ((si as any).thumbnail_url) {
+            subItemThumbnails[si.id] = await signUrl((si as any).thumbnail_url);
         }
     }
 
@@ -378,17 +388,34 @@ export default async function ArtworkComponentVisualPrintPage({
                                 </thead>
                                 <tbody>
                                     {subItems.map((si: any) => (
-                                        <tr key={si.id}>
-                                            <td style={{ fontWeight: 700 }}>{si.label}</td>
-                                            <td>{si.name ?? '—'}</td>
-                                            <td>{si.material ?? '—'}</td>
-                                            <td>{si.application_method ?? '—'}</td>
-                                            <td>{si.finish ?? '—'}</td>
-                                            <td>{si.width_mm ? `${si.width_mm}` : '—'}</td>
-                                            <td>{si.height_mm ? `${si.height_mm}` : '—'}</td>
-                                            <td>{si.returns_mm ? `${si.returns_mm}` : 'n/a'}</td>
-                                            <td>{si.quantity ?? 1}</td>
-                                        </tr>
+                                        <React.Fragment key={si.id}>
+                                            <tr>
+                                                <td style={{ fontWeight: 700 }}>{si.label}</td>
+                                                <td>{si.name ?? '—'}</td>
+                                                <td>{si.material ?? '—'}</td>
+                                                <td>{si.application_method ?? '—'}</td>
+                                                <td>{si.finish ?? '—'}</td>
+                                                <td>{si.width_mm ? `${si.width_mm}` : '—'}</td>
+                                                <td>{si.height_mm ? `${si.height_mm}` : '—'}</td>
+                                                <td>{si.returns_mm ? `${si.returns_mm}` : 'n/a'}</td>
+                                                <td>{si.quantity ?? 1}</td>
+                                            </tr>
+                                            {subItemThumbnails[si.id] && (
+                                                <tr>
+                                                    <td colSpan={9} style={{ padding: '3mm 0', borderBottom: '0.3mm solid #eee' }}>
+                                                        <div style={{ fontSize: '7pt', color: '#999', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '1.5mm' }}>
+                                                            {si.label} — technical artwork
+                                                        </div>
+                                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                        <img
+                                                            src={subItemThumbnails[si.id]!}
+                                                            alt={`${si.name ?? si.label} technical artwork`}
+                                                            style={{ maxWidth: '100%', maxHeight: '80mm', objectFit: 'contain', borderRadius: '1mm' }}
+                                                        />
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </React.Fragment>
                                     ))}
                                 </tbody>
                             </table>
