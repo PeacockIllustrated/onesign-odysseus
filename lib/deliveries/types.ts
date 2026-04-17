@@ -45,7 +45,7 @@ export interface DeliveryWithItems extends Delivery {
         id: string; name: string;
         address_line_1: string | null; address_line_2: string | null;
         city: string | null; county: string | null; postcode: string | null; country: string;
-        phone: string | null;
+        phone: string | null; latitude: number | null; longitude: number | null;
     } | null;
     delivery_contact: { id: string; first_name: string; last_name: string; email: string | null; phone: string | null } | null;
 }

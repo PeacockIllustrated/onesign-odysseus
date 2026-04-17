@@ -63,7 +63,7 @@ export async function getDeliveryWithItems(
             ? supabase
                   .from('org_sites')
                   .select(
-                      'id, name, address_line_1, address_line_2, city, county, postcode, country, phone'
+                      'id, name, address_line_1, address_line_2, city, county, postcode, country, phone, latitude, longitude'
                   )
                   .eq('id', delivery.site_id)
                   .single()
