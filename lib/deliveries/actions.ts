@@ -604,3 +604,59 @@ export async function refusePod(
     revalidatePath('/admin/deliveries');
     return { success: true };
 }
+
+// ---------------------------------------------------------------------------
+// Planning quick-update actions
+// ---------------------------------------------------------------------------
+
+export async function assignDriverToDelivery(
+    deliveryId: string,
+    driverId: string | null
+): Promise<{ ok: true } | { error: string }> {
+    const user = await getUser();
+    if (!user) return { error: 'not authenticated' };
+
+    const supabase = createAdminClient();
+
+    let driverName: string | null = null;
+    if (driverId) {
+        const { data: driver } = await supabase
+            .from('drivers')
+            .select('name')
+            .eq('id', driverId)
+            .single();
+        driverName = driver?.name ?? null;
+    }
+
+    const { error } = await supabase
+        .from('deliveries')
+        .update({
+            driver_id: driverId,
+            driver_name: driverName,
+        })
+        .eq('id', deliveryId);
+    if (error) return { error: error.message };
+
+    revalidatePath('/admin/planning');
+    revalidatePath('/admin/deliveries');
+    return { ok: true };
+}
+
+export async function rescheduleDelivery(
+    deliveryId: string,
+    newDate: string
+): Promise<{ ok: true } | { error: string }> {
+    const user = await getUser();
+    if (!user) return { error: 'not authenticated' };
+
+    const supabase = createAdminClient();
+    const { error } = await supabase
+        .from('deliveries')
+        .update({ scheduled_date: newDate })
+        .eq('id', deliveryId);
+    if (error) return { error: error.message };
+
+    revalidatePath('/admin/planning');
+    revalidatePath('/admin/deliveries');
+    return { ok: true };
+}

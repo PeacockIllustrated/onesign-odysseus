@@ -13,6 +13,7 @@ export interface Delivery {
     status: DeliveryStatus;
     driver_name: string | null;
     driver_phone: string | null;
+    driver_id: string | null;
     scheduled_date: string;
     delivered_at: string | null;
     notes_internal: string | null;
