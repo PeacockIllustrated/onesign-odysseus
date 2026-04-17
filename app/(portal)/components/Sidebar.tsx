@@ -16,6 +16,8 @@ import {
     ClipboardCheck,
     Truck,
     BadgeCheck,
+    MapPin,
+    Wrench,
     X,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -56,6 +58,7 @@ const adminNavGroups: NavGroup[] = [
             { label: 'Job Board', href: '/admin/jobs', icon: LayoutGrid },
             { label: 'Shop Floor', href: '/shop-floor', icon: Zap },
             { label: 'Deliveries', href: '/admin/deliveries', icon: Truck },
+            { label: 'Map', href: '/admin/map', icon: MapPin },
         ],
     },
     {
@@ -71,6 +74,7 @@ const adminNavGroups: NavGroup[] = [
         items: [
             { label: 'Clients', href: '/admin/clients', icon: Building2 },
             { label: 'Approvals', href: '/admin/approvals', icon: BadgeCheck },
+            { label: 'Maintenance', href: '/admin/maintenance', icon: Wrench },
             { label: 'Reports', href: '/admin/reports', icon: FileText },
         ],
     },
