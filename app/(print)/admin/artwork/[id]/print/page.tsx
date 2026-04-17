@@ -1,3 +1,4 @@
+import React from 'react';
 import { requireAdmin } from '@/lib/auth';
 import { getArtworkJob } from '@/lib/artwork/actions';
 import { notFound } from 'next/navigation';
@@ -759,17 +760,34 @@ export default async function ArtworkVisualPackPrintPage({
                                             </thead>
                                             <tbody>
                                                 {componentItems.map((item: any) => (
-                                                    <tr key={item.id}>
-                                                        <td style={{ fontWeight: 700 }}>{item.label}</td>
-                                                        <td>{item.name ?? '—'}</td>
-                                                        <td>{item.material ?? '—'}</td>
-                                                        <td>{item.application_method ?? '—'}</td>
-                                                        <td>{item.finish ?? '—'}</td>
-                                                        <td>{item.width_mm ?? '—'}</td>
-                                                        <td>{item.height_mm ?? '—'}</td>
-                                                        <td>{item.returns_mm ?? 'n/a'}</td>
-                                                        <td>{item.quantity ?? 1}</td>
-                                                    </tr>
+                                                    <React.Fragment key={item.id}>
+                                                        <tr>
+                                                            <td style={{ fontWeight: 700 }}>{item.label}</td>
+                                                            <td>{item.name ?? '—'}</td>
+                                                            <td>{item.material ?? '—'}</td>
+                                                            <td>{item.application_method ?? '—'}</td>
+                                                            <td>{item.finish ?? '—'}</td>
+                                                            <td>{item.width_mm ?? '—'}</td>
+                                                            <td>{item.height_mm ?? '—'}</td>
+                                                            <td>{item.returns_mm ?? 'n/a'}</td>
+                                                            <td>{item.quantity ?? 1}</td>
+                                                        </tr>
+                                                        {subItemThumbnailUrls[item.id] && (
+                                                            <tr>
+                                                                <td colSpan={9} style={{ padding: '2mm 0', borderBottom: '0.3mm solid #eee' }}>
+                                                                    <div style={{ fontSize: '7pt', color: '#999', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '1mm' }}>
+                                                                        {item.label} — technical artwork
+                                                                    </div>
+                                                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                                    <img
+                                                                        src={subItemThumbnailUrls[item.id]!}
+                                                                        alt={`${item.name ?? item.label} technical artwork`}
+                                                                        style={{ maxWidth: '100%', maxHeight: '70mm', objectFit: 'contain', borderRadius: '1mm' }}
+                                                                    />
+                                                                </td>
+                                                            </tr>
+                                                        )}
+                                                    </React.Fragment>
                                                 ))}
                                             </tbody>
                                         </table>
