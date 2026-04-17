@@ -1,5 +1,6 @@
 import { requireAdmin } from '@/lib/auth';
 import { createServerClient } from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase-admin';
 import { getDeliveries } from '@/lib/deliveries/queries';
 import { getActiveDrivers, getAllDrivers } from '@/lib/drivers/actions';
 import { getMonday } from '@/lib/planning/utils';
@@ -26,23 +27,26 @@ export default async function DeliveriesPage({ searchParams }: PageProps) {
     const endDate = endDay.toISOString().slice(0, 10);
 
     const supabase = await createServerClient();
+    // Admin client for map + planning queries — bypasses RLS so all sites
+    // and record counts are visible regardless of org membership.
+    const adminDb = createAdminClient();
 
     const [
         deliveries, planningRaw, sitesRaw, activeDrivers, allDrivers,
         qcRaw, acRaw, pcRaw, dcRaw, mcRaw,
     ] = await Promise.all([
         getDeliveries(),
-        supabase.from('deliveries').select(`id, delivery_number, scheduled_date, status, driver_id, driver_name, site_id, org_sites(id, name, latitude, longitude), orgs!inner(name)`)
+        adminDb.from('deliveries').select(`id, delivery_number, scheduled_date, status, driver_id, driver_name, site_id, org_sites(id, name, latitude, longitude), orgs(name)`)
             .gte('scheduled_date', monday).lte('scheduled_date', endDate).in('status', ['scheduled', 'in_transit']).order('scheduled_date').then((r) => r.data ?? []),
-        supabase.from('org_sites').select('id, name, org_id, address_line_1, address_line_2, city, county, postcode, latitude, longitude, orgs!inner(name)')
+        adminDb.from('org_sites').select('id, name, org_id, address_line_1, address_line_2, city, county, postcode, latitude, longitude, orgs(name)')
             .not('latitude', 'is', null).not('longitude', 'is', null).then((r) => r.data ?? []),
         getActiveDrivers(),
         getAllDrivers(),
-        supabase.from('quotes').select('site_id').not('site_id', 'is', null).in('status', ['draft', 'sent', 'accepted']).then((r) => r.data ?? []),
-        supabase.from('artwork_jobs').select('site_id').not('site_id', 'is', null).in('status', ['draft', 'in_progress']).then((r) => r.data ?? []),
-        supabase.from('production_jobs').select('site_id').not('site_id', 'is', null).in('status', ['active', 'paused']).then((r) => r.data ?? []),
-        supabase.from('deliveries').select('site_id').not('site_id', 'is', null).in('status', ['scheduled', 'in_transit']).then((r) => r.data ?? []),
-        supabase.from('maintenance_visits').select('site_id').not('site_id', 'is', null).in('status', ['scheduled', 'in_progress']).then((r) => r.data ?? []),
+        adminDb.from('quotes').select('site_id').not('site_id', 'is', null).in('status', ['draft', 'sent', 'accepted']).then((r) => r.data ?? []),
+        adminDb.from('artwork_jobs').select('site_id').not('site_id', 'is', null).in('status', ['draft', 'in_progress']).then((r) => r.data ?? []),
+        adminDb.from('production_jobs').select('site_id').not('site_id', 'is', null).in('status', ['active', 'paused']).then((r) => r.data ?? []),
+        adminDb.from('deliveries').select('site_id').not('site_id', 'is', null).in('status', ['scheduled', 'in_transit']).then((r) => r.data ?? []),
+        adminDb.from('maintenance_visits').select('site_id').not('site_id', 'is', null).in('status', ['scheduled', 'in_progress']).then((r) => r.data ?? []),
     ]);
 
     const planningDeliveries = planningRaw.map((d: any) => ({
@@ -78,7 +82,7 @@ export default async function DeliveriesPage({ searchParams }: PageProps) {
     });
 
     // Also count total sites with postcodes but no lat/lng (ungeooded).
-    const { count: ungeocodedCount } = await supabase
+    const { count: ungeocodedCount } = await adminDb
         .from('org_sites')
         .select('*', { count: 'exact', head: true })
         .is('latitude', null)
