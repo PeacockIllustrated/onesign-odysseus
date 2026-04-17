@@ -1,9 +1,87 @@
 import { requireAdmin } from '@/lib/auth';
+import { createServerClient } from '@/lib/supabase-server';
 import { getDeliveries } from '@/lib/deliveries/queries';
-import { DeliveriesClient } from './DeliveriesClient';
+import { getActiveDrivers, getAllDrivers } from '@/lib/drivers/actions';
+import { getMonday } from '@/lib/planning/utils';
+import { formatSiteAddress, pinColour, type RecordCounts } from '@/lib/geo/utils';
+import { PageHeader } from '@/app/(portal)/components/ui';
+import { UnifiedDeliveries } from './UnifiedDeliveries';
 
-export default async function DeliveriesPage() {
+export const dynamic = 'force-dynamic';
+
+interface PageProps {
+    searchParams: Promise<{ week?: string; weekends?: string }>;
+}
+
+export default async function DeliveriesPage({ searchParams }: PageProps) {
     await requireAdmin();
-    const deliveries = await getDeliveries();
-    return <DeliveriesClient initialDeliveries={deliveries} />;
+
+    const params = await searchParams;
+    const today = new Date().toISOString().slice(0, 10);
+    const monday = params.week ?? getMonday(today);
+    const includeWeekends = params.weekends === '1';
+
+    const endDay = new Date(monday + 'T00:00:00');
+    endDay.setDate(endDay.getDate() + (includeWeekends ? 6 : 4));
+    const endDate = endDay.toISOString().slice(0, 10);
+
+    const supabase = await createServerClient();
+
+    const [
+        deliveries, planningRaw, sitesRaw, activeDrivers, allDrivers,
+        qcRaw, acRaw, pcRaw, dcRaw, mcRaw,
+    ] = await Promise.all([
+        getDeliveries(),
+        supabase.from('deliveries').select(`id, delivery_number, scheduled_date, status, driver_id, driver_name, site_id, org_sites(id, name, latitude, longitude), orgs!inner(name)`)
+            .gte('scheduled_date', monday).lte('scheduled_date', endDate).in('status', ['scheduled', 'in_transit']).order('scheduled_date').then((r) => r.data ?? []),
+        supabase.from('org_sites').select('id, name, org_id, address_line_1, address_line_2, city, county, postcode, latitude, longitude, orgs!inner(name)')
+            .not('latitude', 'is', null).not('longitude', 'is', null).then((r) => r.data ?? []),
+        getActiveDrivers(),
+        getAllDrivers(),
+        supabase.from('quotes').select('site_id').not('site_id', 'is', null).in('status', ['draft', 'sent', 'accepted']).then((r) => r.data ?? []),
+        supabase.from('artwork_jobs').select('site_id').not('site_id', 'is', null).in('status', ['draft', 'in_progress']).then((r) => r.data ?? []),
+        supabase.from('production_jobs').select('site_id').not('site_id', 'is', null).in('status', ['active', 'paused']).then((r) => r.data ?? []),
+        supabase.from('deliveries').select('site_id').not('site_id', 'is', null).in('status', ['scheduled', 'in_transit']).then((r) => r.data ?? []),
+        supabase.from('maintenance_visits').select('site_id').not('site_id', 'is', null).in('status', ['scheduled', 'in_progress']).then((r) => r.data ?? []),
+    ]);
+
+    const planningDeliveries = planningRaw.map((d: any) => ({
+        id: d.id, delivery_number: d.delivery_number, scheduled_date: d.scheduled_date,
+        status: d.status, driver_id: d.driver_id, driver_name: d.driver_name,
+        site_name: d.org_sites?.name ?? null, site_lat: d.org_sites?.latitude ?? null,
+        site_lng: d.org_sites?.longitude ?? null, org_name: d.orgs?.name ?? null,
+    }));
+
+    const countMap = (rows: any[]) => {
+        const m = new Map<string, number>();
+        for (const r of rows) m.set(r.site_id, (m.get(r.site_id) ?? 0) + 1);
+        return m;
+    };
+    const qc = countMap(qcRaw); const ac = countMap(acRaw); const pc = countMap(pcRaw);
+    const dc = countMap(dcRaw); const mc = countMap(mcRaw);
+
+    const pins = sitesRaw.map((site: any) => {
+        const counts: RecordCounts = {
+            quotes: qc.get(site.id) ?? 0, artwork: ac.get(site.id) ?? 0,
+            production: pc.get(site.id) ?? 0, deliveries: dc.get(site.id) ?? 0,
+            maintenance: mc.get(site.id) ?? 0,
+        };
+        const total = counts.quotes + counts.artwork + counts.production + counts.deliveries + counts.maintenance;
+        if (total === 0) return null;
+        return {
+            siteId: site.id, siteName: site.name, orgId: site.org_id,
+            orgName: site.orgs?.name ?? '—', address: formatSiteAddress(site),
+            lat: site.latitude as number, lng: site.longitude as number,
+            ...counts, colour: pinColour(counts),
+        };
+    }).filter(Boolean);
+
+    return (
+        <div className="p-4 md:p-6 max-w-full mx-auto">
+            <PageHeader title="Deliveries" description="manage deliveries, plan routes, view the map" />
+            <UnifiedDeliveries deliveries={deliveries} planningDeliveries={planningDeliveries}
+                activeDrivers={activeDrivers} allDrivers={allDrivers}
+                monday={monday} includeWeekends={includeWeekends} pins={pins as any} />
+        </div>
+    );
 }
