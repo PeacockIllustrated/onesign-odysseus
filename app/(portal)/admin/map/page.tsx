@@ -1,19 +1,10 @@
 import { requireAdmin } from '@/lib/auth';
 import { createServerClient } from '@/lib/supabase-server';
-import dynamicImport from 'next/dynamic';
 import { PageHeader } from '@/app/(portal)/components/ui';
 import { formatSiteAddress, pinColour, type RecordCounts } from '@/lib/geo/utils';
+import { MapLoader } from './MapLoader';
 
 export const dynamic = 'force-dynamic';
-
-const MapClient = dynamicImport(() => import('./MapClient').then((m) => m.MapClient), {
-    ssr: false,
-    loading: () => (
-        <div className="h-[600px] bg-neutral-100 animate-pulse rounded-lg flex items-center justify-center text-neutral-400 text-sm">
-            Loading map…
-        </div>
-    ),
-});
 
 export interface SitePin {
     siteId: string;
@@ -110,7 +101,7 @@ export default async function MapPage() {
                 description={`${pins.length} site${pins.length !== 1 ? 's' : ''} with active work`}
             />
             <div className="mt-4">
-                <MapClient pins={pins} />
+                <MapLoader pins={pins} />
             </div>
         </div>
     );
