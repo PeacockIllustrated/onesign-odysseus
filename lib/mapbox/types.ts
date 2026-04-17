@@ -32,3 +32,17 @@ export interface GeocodedPlace {
     lat: number;
     lng: number;
 }
+
+export interface OptimisedWaypoint {
+    waypointIndex: number;
+    lat: number;
+    lng: number;
+}
+
+export interface OptimisedRouteResult {
+    geometry: GeoJSON.LineString;
+    duration: number;
+    distance: number;
+    waypoints: OptimisedWaypoint[];
+    steps: RouteStep[];
+}
