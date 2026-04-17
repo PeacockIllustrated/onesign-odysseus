@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import Map, { Marker, Popup, NavigationControl } from 'react-map-gl/mapbox';
+import type { MapRef } from 'react-map-gl/mapbox';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import type { SitePin } from './page';
 import { MapPopup } from './MapPopup';
@@ -51,6 +52,8 @@ export function MapClient({ pins }: Props) {
     });
     const [selectedPin, setSelectedPin] = useState<SitePin | null>(null);
     const [routes, setRoutes] = useState<ActiveRoute[]>([]);
+    const [isTilted, setIsTilted] = useState(false);
+    const mapRef = useRef<MapRef>(null);
 
     const toggle = (key: FilterKey) => {
         setFilters((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -87,6 +90,63 @@ export function MapClient({ pins }: Props) {
             console.warn('Failed to fetch route:', err);
         }
     }, [routes]);
+
+    // 3D buildings: add extrusion layer on map load
+    const handleMapLoad = useCallback((evt: any) => {
+        const map = evt.target;
+        const layers = map.getStyle()?.layers ?? [];
+        // Insert buildings beneath the first symbol (label) layer.
+        let labelLayerId: string | undefined;
+        for (const layer of layers) {
+            if (layer.type === 'symbol' && (layer as any).layout?.['text-field']) {
+                labelLayerId = layer.id;
+                break;
+            }
+        }
+        if (!map.getLayer('3d-buildings')) {
+            map.addLayer(
+                {
+                    id: '3d-buildings',
+                    source: 'composite',
+                    'source-layer': 'building',
+                    type: 'fill-extrusion',
+                    minzoom: 15,
+                    paint: {
+                        'fill-extrusion-color': '#ddd',
+                        'fill-extrusion-height': ['get', 'height'],
+                        'fill-extrusion-base': ['get', 'min_height'],
+                        'fill-extrusion-opacity': 0.7,
+                    },
+                },
+                labelLayerId
+            );
+        }
+    }, []);
+
+    // Fly to a site at street level with 3D tilt
+    const flyToSite = useCallback((lat: number, lng: number) => {
+        mapRef.current?.flyTo({
+            center: [lng, lat],
+            zoom: 17,
+            pitch: 60,
+            bearing: -20,
+            duration: 2000,
+        });
+        setIsTilted(true);
+        setSelectedPin(null);
+    }, []);
+
+    // Reset to flat overview
+    const resetView = useCallback(() => {
+        mapRef.current?.flyTo({
+            center: [-2.5, 54.5],
+            zoom: 5.5,
+            pitch: 0,
+            bearing: 0,
+            duration: 1500,
+        });
+        setIsTilted(false);
+    }, []);
 
     if (!MAPBOX_TOKEN) {
         return (
@@ -140,8 +200,17 @@ export function MapClient({ pins }: Props) {
             />
 
             {/* Map */}
-            <div className="rounded-lg overflow-hidden border border-neutral-200" style={{ height: 600 }}>
+            <div className="rounded-lg overflow-hidden border border-neutral-200 relative" style={{ height: 600 }}>
+                {isTilted && (
+                    <button
+                        onClick={resetView}
+                        className="absolute top-3 left-3 z-10 px-3 py-2 bg-white border border-neutral-200 rounded-lg shadow text-xs font-semibold text-neutral-700 hover:bg-neutral-50"
+                    >
+                        ↩ reset view
+                    </button>
+                )}
                 <Map
+                    ref={mapRef}
                     mapboxAccessToken={MAPBOX_TOKEN}
                     mapStyle={MAP_STYLE}
                     initialViewState={{
@@ -150,6 +219,7 @@ export function MapClient({ pins }: Props) {
                         zoom: 5.5,
                     }}
                     style={{ width: '100%', height: '100%' }}
+                    onLoad={handleMapLoad}
                 >
                     <NavigationControl position="top-right" />
 
@@ -192,7 +262,7 @@ export function MapClient({ pins }: Props) {
                             closeOnClick={false}
                             offset={12}
                         >
-                            <MapPopup pin={selectedPin} onShowRoute={handleShowRoute} />
+                            <MapPopup pin={selectedPin} onShowRoute={handleShowRoute} onViewSite={flyToSite} />
                         </Popup>
                     )}
                 </Map>
