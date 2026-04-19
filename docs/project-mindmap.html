@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Onesign Odysseus — Mindmap</title>
+<style>
+  :root {
+    --bg: #0a0e12;
+    --bg-2: #0f151b;
+    --panel: #141b22;
+    --panel-hi: #1c242c;
+    --border: #2a343d;
+    --accent: #4e7e8c;
+    --accent-hi: #7dabb8;
+    --accent-soft: rgba(78, 126, 140, 0.18);
+    --text: #e8edf0;
+    --text-dim: #9aa8b1;
+    --text-mute: #5a6770;
+    --ok: #4ade80;
+    --warn: #f59e0b;
+    --todo: #ef4444;
+    --legacy: #6b7680;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; min-height: 100vh;
+    background:
+      radial-gradient(ellipse at 50% 40%, #121a22 0%, #08090c 80%),
+      var(--bg);
+    color: var(--text);
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+    overflow-x: hidden;
+  }
+  .frame {
+    max-width: 1700px;
+    margin: 0 auto;
+    padding: 40px 32px 80px;
+  }
+  header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 24px; flex-wrap: wrap;
+    margin-bottom: 8px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  h1 {
+    margin: 0; font-size: 32px; font-weight: 200; letter-spacing: -0.02em;
+  }
+  h1 b {
+    color: var(--accent-hi); font-weight: 500;
+  }
+  .subtitle {
+    color: var(--text-dim); font-size: 13px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+  }
+  .legend {
+    display: flex; gap: 22px; flex-wrap: wrap; font-size: 12px; color: var(--text-dim);
+    margin-top: 16px;
+  }
+  .legend .key { display: inline-flex; align-items: center; gap: 8px; }
+  .legend svg { flex: none; }
+  .canvas-wrap {
+    margin-top: 24px;
+    background: linear-gradient(180deg, #0c1217 0%, #090d11 100%);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 30px 80px -20px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.02);
+  }
+  svg.mindmap {
+    display: block; width: 100%; height: auto;
+    font-family: inherit;
+  }
+
+  /* Notes grid below */
+  .notes {
+    margin-top: 32px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+  }
+  .note {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .note h3 {
+    margin: 0 0 10px; font-size: 11px; font-weight: 600;
+    color: var(--accent-hi); text-transform: uppercase; letter-spacing: 0.12em;
+  }
+  .note p { margin: 0; color: var(--text-dim); font-size: 12.5px; line-height: 1.55; }
+  .note code {
+    background: var(--panel-hi); padding: 2px 6px; border-radius: 3px;
+    font-family: ui-monospace, "SF Mono", monospace; font-size: 11.5px;
+    color: var(--accent-hi);
+  }
+
+  footer {
+    margin-top: 40px;
+    color: var(--text-mute); font-size: 11px; text-align: center;
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+<div class="frame">
+
+<header>
+  <div>
+    <h1>Onesign <b>Odysseus</b> · Mindmap</h1>
+    <div class="subtitle">Data model · routes · work flow · v0 — 2026-04</div>
+  </div>
+  <div class="subtitle">internal production OS</div>
+</header>
+
+<div class="legend">
+  <span class="key"><svg width="28" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="#4e7e8c" stroke-width="2.2"/></svg> primary pipeline (wired)</span>
+  <span class="key"><svg width="28" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="#4e7e8c" stroke-width="1.5" stroke-dasharray="2 4" opacity="0.6"/></svg> data inheritance (org · contact · site)</span>
+  <span class="key"><svg width="28" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="#f59e0b" stroke-width="2" stroke-dasharray="4 3"/></svg> manual / partial handoff</span>
+  <span class="key"><svg width="28" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="#ef4444" stroke-width="2" stroke-dasharray="4 3"/></svg> missing link (email etc.)</span>
+</div>
+
+<div class="canvas-wrap">
+<svg class="mindmap" viewBox="0 0 1600 1100" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- gradients -->
+    <radialGradient id="hubGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#7dabb8" stop-opacity="0.35"/>
+      <stop offset="55%" stop-color="#4e7e8c" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#4e7e8c" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="nodeGrad" cx="50%" cy="40%" r="70%">
+      <stop offset="0%" stop-color="#1c242c"/>
+      <stop offset="100%" stop-color="#10151a"/>
+    </radialGradient>
+    <radialGradient id="nodeGradHot" cx="50%" cy="30%" r="80%">
+      <stop offset="0%" stop-color="#26373f"/>
+      <stop offset="100%" stop-color="#10151a"/>
+    </radialGradient>
+    <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4e7e8c" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#4e7e8c" stop-opacity="0.15"/>
+    </linearGradient>
+
+    <!-- glow filter -->
+    <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- arrow markers -->
+    <marker id="arrowTeal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4e7e8c"/>
+    </marker>
+    <marker id="arrowWarn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrowTodo" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#ef4444"/>
+    </marker>
+  </defs>
+
+  <!-- subtle grid backdrop -->
+  <g opacity="0.07">
+    <pattern id="grid" x="0" y="0" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0 H0 V48" fill="none" stroke="#4e7e8c" stroke-width="0.5"/>
+    </pattern>
+    <rect x="0" y="0" width="1600" height="1100" fill="url(#grid)"/>
+  </g>
+
+  <!-- orbital rings -->
+  <g opacity="0.10" stroke="url(#ringGrad)" fill="none" stroke-width="1">
+    <circle cx="800" cy="560" r="180"/>
+    <circle cx="800" cy="560" r="330"/>
+    <circle cx="800" cy="560" r="480"/>
+  </g>
+
+  <!-- ======================================================================
+       WIRES — drawn before nodes so nodes sit on top
+       ====================================================================== -->
+  <g id="wires">
+
+    <!-- PRIMARY PIPELINE: Quote → Artwork → Production → Delivery -->
+    <g stroke="#4e7e8c" stroke-width="2.4" fill="none" opacity="0.9">
+      <path d="M 1080 330 Q 1180 420, 1180 560" marker-end="url(#arrowTeal)"/>
+      <path d="M 1180 560 Q 1180 700, 1080 790" marker-end="url(#arrowTeal)"/>
+      <path d="M 1080 790 Q 800 910, 520 790" marker-end="url(#arrowTeal)"/>
+    </g>
+
+    <!-- INVOICE branch from quote (manual) -->
+    <g stroke="#f59e0b" stroke-width="1.8" fill="none" stroke-dasharray="5 4" opacity="0.8">
+      <path d="M 1020 300 Q 780 240, 520 330" marker-end="url(#arrowWarn)"/>
+    </g>
+
+    <!-- PO branch from quote/job (manual) -->
+    <g stroke="#f59e0b" stroke-width="1.5" fill="none" stroke-dasharray="4 5" opacity="0.55">
+      <path d="M 1080 340 Q 1250 460, 1380 580"/>
+      <path d="M 1160 790 Q 1300 700, 1380 580" marker-end="url(#arrowWarn)"/>
+    </g>
+
+    <!-- EXTERNAL TOKEN LINKS -->
+    <!-- artwork → /approve -->
+    <path d="M 1200 560 Q 1400 540, 1440 440"
+          stroke="#ef4444" stroke-width="1.8" fill="none" stroke-dasharray="4 4" opacity="0.8"
+          marker-end="url(#arrowTodo)"/>
+    <!-- delivery → /delivery token -->
+    <path d="M 500 800 Q 260 770, 180 620"
+          stroke="#ef4444" stroke-width="1.8" fill="none" stroke-dasharray="4 4" opacity="0.8"
+          marker-end="url(#arrowTodo)"/>
+
+    <!-- INHERITANCE: Clients → everything -->
+    <g stroke="#4e7e8c" stroke-width="1" fill="none" stroke-dasharray="2 5" opacity="0.45">
+      <path d="M 260 330 Q 500 420, 760 540"/>
+      <path d="M 300 360 Q 600 500, 1020 320"/>
+      <path d="M 300 380 Q 550 600, 1100 770"/>
+      <path d="M 300 400 Q 400 600, 500 780"/>
+    </g>
+
+    <!-- SHOP FLOOR tap into production -->
+    <path d="M 1360 880 Q 1220 860, 1140 830"
+          stroke="#4e7e8c" stroke-width="1.5" fill="none" opacity="0.65" marker-end="url(#arrowTeal)"/>
+
+    <!-- Pricing feeds Quote -->
+    <path d="M 1360 160 Q 1220 200, 1080 280"
+          stroke="#4e7e8c" stroke-width="1.2" fill="none" opacity="0.45" marker-end="url(#arrowTeal)"/>
+
+    <!-- Staff/auth provides created_by to everything -->
+    <path d="M 240 160 Q 400 320, 740 540"
+          stroke="#4e7e8c" stroke-width="1" fill="none" stroke-dasharray="1 4" opacity="0.35"/>
+  </g>
+
+  <!-- ======================================================================
+       HUB — center
+       ====================================================================== -->
+  <g id="hub" transform="translate(800 560)">
+    <circle r="140" fill="url(#hubGrad)"/>
+    <circle r="82" fill="#10161b" stroke="#4e7e8c" stroke-width="1.5" filter="url(#softGlow)"/>
+    <circle r="82" fill="none" stroke="#7dabb8" stroke-width="0.5" opacity="0.4"/>
+    <text y="-6" text-anchor="middle" font-size="20" font-weight="300" fill="#e8edf0" letter-spacing="4">ODYSSEUS</text>
+    <text y="16" text-anchor="middle" font-size="10" fill="#7dabb8" letter-spacing="3" text-transform="uppercase">production · os</text>
+    <text y="36" text-anchor="middle" font-size="9" fill="#5a6770" letter-spacing="2">50 migrations · 57 routes</text>
+  </g>
+
+  <!-- ======================================================================
+       DOMAIN CLUSTERS
+       ====================================================================== -->
+
+  <!-- CLIENTS (top-left) -->
+  <g id="cluster-clients">
+    <g transform="translate(240 380)">
+      <circle r="64" fill="url(#nodeGrad)" stroke="#4e7e8c" stroke-width="1.2" filter="url(#softGlow)"/>
+      <circle r="64" fill="none" stroke="#7dabb8" stroke-width="0.4" opacity="0.5"/>
+      <text y="-4" text-anchor="middle" font-size="13" fill="#e8edf0" letter-spacing="2">CLIENTS</text>
+      <text y="14" text-anchor="middle" font-size="9" fill="#7dabb8" letter-spacing="1.5">15 · 11 · 11</text>
+    </g>
+    <!-- satellites -->
+    <g font-size="10.5" fill="#9aa8b1">
+      <g transform="translate(100 280)">
+        <rect x="-55" y="-14" width="110" height="28" rx="4" fill="#141b22" stroke="#2a343d"/>
+        <text text-anchor="middle" y="4">orgs</text>
+      </g>
+      <g transform="translate(100 380)">
+        <rect x="-55" y="-14" width="110" height="28" rx="4" fill="#141b22" stroke="#2a343d"/>
+        <text text-anchor="middle" y="4">contacts</text>
+      </g>
+      <g transform="translate(100 480)">
+        <rect x="-55" y="-14" width="110" height="28" rx="4" fill="#141b22" stroke="#2a343d"/>
+        <text text-anchor="middle" y="4">org_sites</text>
+      </g>
+      <g transform="translate(80 200)">
+        <rect x="-78" y="-14" width="156" height="28" rx="4" fill="#0f151b" stroke="#2a343d"/>
+        <text text-anchor="middle" y="4" fill="#7dabb8" font-family="ui-monospace, monospace" font-size="10">/admin/clients</text>
+      </g>
+    </g>
+    <!-- sat wires -->
+    <g stroke="#4e7e8c" stroke-width="0.8" fill="none" opacity="0.45">
+      <line x1="155" y1="280" x2="186" y2="340"/>
+      <line x1="155" y1="380" x2="186" y2="380"/>
+      <line x1="155" y1="480" x2="186" y2="420"/>
+      <line x1="160" y1="200" x2="195" y2="325"/>
+    </g>
+  </g>
+
+  <!-- QUOTE (top-right) -->
+  <g id="cluster-quote">
+    <g transform="translate(1080 290)">
+      <circle r="64" fill="url(#nodeGradHot)" stroke="#4e7e8c" stroke-width="1.5" filter="url(#softGlow)"/>
+      <circle r="64" fill="none" stroke="#7dabb8" stroke-width="0.4" opacity="0.5"/>
+      <text y="-4" text-anchor="middle" font-size="13" fill="#e8edf0" letter-spacing="2">QUOTE</text>
+      <text y="14" text-anchor="middle" font-size="9" fill="#7dabb8" letter-spacing="1">OSD-YYYY-NNNNNN</text>
+    </g>
+    <g font-size="10.5" fill="#9aa8b1">
+      <g transform="translate(1230 200)">
+        <rect x="-78" y="-14" width="156" height="28" rx="4" fill="#0f151b" stroke="#2a343d"/>
+        <text text-anchor="middle" y="4" fill="#7dabb8" font-family="ui-monospace, monospace" font-size="10">/admin/quotes</text>
+      </g>
+      <g transform="translate(1260 270)">
+        <rect x="-60" y="-14" width="120" height="28" rx="4" fill="#141b22" stroke="#2a343d"/>
+        <text text-anchor="middle" y="4">quote_items</text>
+      </g>
+      <g transform="translate(1300 340)">
+        <rect x="-70" y="-14" width="140" height="28" rx="4" fill="#141b22" stroke="#2a343d"/>
+        <text text-anchor="middle" y="4">is_production_work</text>
+      </g>
+      <g transform="translate(1360 180)">
+        <rect x="-68" y="-14" width="136" height="28" rx="4" fill="#0f151b" stroke="#2a343d"/>
+        <text text-anchor="middle" y="4" fill="#7dabb8" font-family="ui-monospace, monospace" font-size="10">/admin/pricing</text>
+      </g>
+    </g>
+    <g stroke="#4e7e8c" stroke-width="0.8" fill="none" opacity="0.45">
+      <line x1="1152" y1="200" x2="1118" y2="245"/>
+      <line x1="1200" y1="270" x2="1144" y2="280"/>
+      <line x1="1230" y1="340" x2="1144" y2="310"/>
+    </g>
+  </g>
+
+  <!-- ARTWORK (right) -->
+  <g id="cluster-artwork">
+    <g transform="translate(1180 560)">
+      <circle r="64" fill="url(#nodeGradHot)" stroke="#4e7e8c" stroke-width="1.5" filter="url(#softGlow)"/>
+      <circle r="64" fill="none" stroke="#7dabb8" stroke-width="0.4" opacity="0.5"/>
+      <text y="-4" text-anchor="middle" font-size="13" fill="#e8edf0" letter-spacing="2">ARTWORK</text>
+      <text y="14" text-anchor="middle" font-size="9" fill="#7dabb8" letter-spacing="1">AWC-YYYY-NNNNNN</text>
+    </g>
+    <g font-size="10.5" fill="#9aa8b1">
+      <g transform="translate(1370 500)">
+        <rect x="-68" y="-14" width="136" height="28" rx="4" fill="#0f151b" stroke="#2a343d"/>
+        <text text-anchor="middle" y="4" fill="#7dabb8" font-family="ui-monospace, monospace" font-size="10">/admin/artwork</text>
+      </g>
+      <g transform="translate(1370 560)">
+        <rect x="-82" y="-14" width="164" height="28" rx="4" fill="#141b22" stroke="#2a343d"/>
+        <text text-anchor="middle" y="4">component_items <tspan fill="#7dabb8">(spec-bearing)</tspan></text>
+      </g>
+      <g transform="translate(1370 620)">
+        <rect x="-72" y="-14" width="144" height="28" rx="4" fill="#141b22" stroke="#2a343d"/>
+        <text text-anchor="middle" y="4">target_stage_id</text>
+      </g>
+      <!-- external approval token -->
+      <g transform="translate(1480 430)">
+        <rect x="-104" y="-18" width="208" height="36" rx="6" fill="#1a1510" stroke="#5a3a10" stroke-dasharray="0"/>
+        <text text-anchor="middle" y="-2" fill="#f59e0b" font-family="ui-monospace, monospace" font-size="10">/approve/artwork/[token]</text>
+        <text text-anchor="middle" y="11" fill="#f59e0b" opacity="0.7" font-size="9">email send: TODO</text>
+      </g>
+    </g>
+    <g stroke="#4e7e8c" stroke-width="0.8" fill="none" opacity="0.45">
+      <line x1="1302" y1="500" x2="1242" y2="525"/>
+      <line x1="1288" y1="560" x2="1244" y2="560"/>
+      <line x1="1298" y1="620" x2="1244" y2="600"/>
+    </g>
+  </g>
+
+  <!-- PRODUCTION (bottom-right) -->
+  <g id="cluster-production">
+    <g transform="translate(1080 820)">
+      <circle r="64" fill="url(#nodeGradHot)" stroke="#4e7e8c" stroke-width="1.5" filter="url(#softGlow)"/>
+      <circle r="64" fill="none" stroke="#7dabb8" stroke-width="0.4" opacity="0.5"/>
+      <text y="-4" text-anchor="middle" font-size="13" fill="#e8edf0" letter-spacing="2">PRODUCTION</text>
+      <text y="14" text-anchor="middle" font-size="9" fill="#7dabb8" letter-spacing="1">JOB-YYYY-NNNNNN</text>
+    </g>
+    <g font-size="10.5" fill="#9aa8b1">
+      <g transform="translate(1260 770)">
+        <rect x="-68" y="-14" width="136" height="28" rx="4" fill="#0f151b" stroke="#2a343d"/>
+        <text text-anchor="middle" y="4" fill="#7dabb8" font-family="ui-monospace, monospace" font-size="10">/admin/jobs</text>
+      </g>
+      <g transform="translate(1260 830)">
+        <rect x="-74" y="-14" width="148" height="28" rx="4" fill="#141b22" stroke="#2a343d"/>
+        <text text-anchor="middle" y="4">job_items · routing</text>
+      </g>
+      <g transform="translate(1260 890)">
+        <rect x="-74" y="-14" width="148" height="28" rx="4" fill="#141b22" stroke="#2a343d"/>
+        <text text-anchor="middle" y="4">13 stages · Kanban</text>
+      </g>
+      <!-- shop floor satellite -->
+      <g transform="translate(1440 920)">
+        <rect x="-74" y="-18" width="148" height="36" rx="6" fill="#0f151b" stroke="#4e7e8c"/>
+        <text text-anchor="middle" y="-2" fill="#7dabb8" font-family="ui-monospace, monospace" font-size="10">/shop-floor</text>
+        <text text-anchor="middle" y="11" fill="#f59e0b" opacity="0.75" font-size="9">no dept filter</text>
+      </g>
+    </g>
+    <g stroke="#4e7e8c" stroke-width="0.8" fill="none" opacity="0.45">
+      <line x1="1192" y1="770" x2="1142" y2="790"/>
+      <line x1="1186" y1="830" x2="1144" y2="825"/>
+      <line x1="1186" y1="890" x2="1142" y2="855"/>
+    </g>
+  </g>
+
+  <!-- DELIVERY (bottom-left) -->
+  <g id="cluster-delivery">
+    <g transform="translate(520 820)">
+      <circle r="64" fill="url(#nodeGradHot)" stroke="#4e7e8c" stroke-width="1.5" filter="url(#softGlow)"/>
+      <circle r="64" fill="none" stroke="#7dabb8" stroke-width="0.4" opacity="0.5"/>
+      <text y="-4" text-anchor="middle" font-size="13" fill="#e8edf0" letter-spacing="2">DELIVERY</text>
+      <text y="14" text-anchor="middle" font-size="9" fill="#7dabb8" letter-spacing="1">DEL-YYYY-NNNNNN</text>
+    </g>
+    <g font-size="10.5" fill="#9aa8b1">
+      <g transform="translate(340 770)">
+        <rect x="-78" y="-14" width="156" height="28" rx="4" fill="#0f151b" stroke="#2a343d"/>
+        <text text-anchor="middle" y="4" fill="#7dabb8" font-family="ui-monospace, monospace" font-size="10">/admin/deliveries</text>
+      </g>
+      <g transform="translate(340 830)">
+        <rect x="-68" y="-14" width="136" height="28" rx="4" fill="#141b22" stroke="#2a343d"/>
+        <text text-anchor="middle" y="4">delivery_items</text>
+      </g>
+      <g transform="translate(340 890)">
+        <rect x="-68" y="-14" width="136" height="28" rx="4" fill="#141b22" stroke="#2a343d"/>
+        <text text-anchor="middle" y="4">drivers · routes</text>
+      </g>
+      <!-- external PoD token -->
+      <g transform="translate(160 620)">
+        <rect x="-96" y="-18" width="192" height="36" rx="6" fill="#1a1510" stroke="#5a3a10"/>
+        <text text-anchor="middle" y="-2" fill="#f59e0b" font-family="ui-monospace, monospace" font-size="10">/delivery/[token]</text>
+        <text text-anchor="middle" y="11" fill="#f59e0b" opacity="0.7" font-size="9">token send: TODO</text>
+      </g>
+    </g>
+    <g stroke="#4e7e8c" stroke-width="0.8" fill="none" opacity="0.45">
+      <line x1="418" y1="770" x2="458" y2="790"/>
+      <line x1="408" y1="830" x2="456" y2="825"/>
+      <line x1="408" y1="890" x2="456" y2="855"/>
+    </g>
+  </g>
+
+  <!-- INVOICE + PO (left) -->
+  <g id="cluster-invoice">
+    <g transform="translate(480 330)">
+      <circle r="60" fill="url(#nodeGrad)" stroke="#f59e0b" stroke-width="1.2" filter="url(#softGlow)" opacity="0.95"/>
+      <circle r="60" fill="none" stroke="#f59e0b" stroke-width="0.4" opacity="0.4"/>
+      <text y="-4" text-anchor="middle" font-size="12" fill="#e8edf0" letter-spacing="2">INVOICE</text>
+      <text y="14" text-anchor="middle" font-size="9" fill="#f59e0b" letter-spacing="1">INV-YYYY-NNNNNN</text>
+    </g>
+    <g font-size="10.5" fill="#9aa8b1">
+      <g transform="translate(340 250)">
+        <rect x="-72" y="-14" width="144" height="28" rx="4" fill="#0f151b" stroke="#2a343d"/>
+        <text text-anchor="middle" y="4" fill="#7dabb8" font-family="ui-monospace, monospace" font-size="10">/admin/invoices</text>
+      </g>
+      <g transform="translate(340 410)">
+        <rect x="-60" y="-14" width="120" height="28" rx="4" fill="#141b22" stroke="#2a343d"/>
+        <text text-anchor="middle" y="4">invoice_items</text>
+      </g>
+      <!-- PO -->
+      <g transform="translate(1380 580)">
+        <rect x="-70" y="-18" width="140" height="36" rx="6" fill="#0f151b" stroke="#f59e0b"/>
+        <text text-anchor="middle" y="-2" fill="#e8edf0" font-size="12" letter-spacing="2">PO</text>
+        <text text-anchor="middle" y="11" fill="#f59e0b" opacity="0.7" font-size="9">manual · 0 rows</text>
+      </g>
+    </g>
+    <g stroke="#f59e0b" stroke-width="0.8" fill="none" opacity="0.4">
+      <line x1="412" y1="250" x2="438" y2="286"/>
+      <line x1="400" y1="410" x2="442" y2="376"/>
+    </g>
+  </g>
+
+  <!-- AUX: staff/auth -->
+  <g id="cluster-staff" transform="translate(200 140)">
+    <rect x="-98" y="-26" width="196" height="52" rx="10" fill="#0f151b" stroke="#2a343d"/>
+    <text text-anchor="middle" y="-6" font-size="11" fill="#9aa8b1" letter-spacing="2">STAFF · AUTH</text>
+    <text text-anchor="middle" y="10" font-size="9" fill="#5a6770" font-family="ui-monospace, monospace">profiles · super_admin</text>
+    <text text-anchor="middle" y="22" font-size="9" fill="#5a6770" font-family="ui-monospace, monospace">/login · /signup</text>
+  </g>
+
+  <!-- AUX: maintenance -->
+  <g id="cluster-maint" transform="translate(1400 110)">
+    <rect x="-98" y="-26" width="196" height="52" rx="10" fill="#0f151b" stroke="#2a343d"/>
+    <text text-anchor="middle" y="-6" font-size="11" fill="#9aa8b1" letter-spacing="2">MAINTENANCE</text>
+    <text text-anchor="middle" y="10" font-size="9" fill="#7dabb8" font-family="ui-monospace, monospace">/admin/maintenance</text>
+    <text text-anchor="middle" y="22" font-size="9" fill="#5a6770">migration 048 · wired</text>
+  </g>
+
+  <!-- AUX: external legacy -->
+  <g id="cluster-legacy" transform="translate(140 990)">
+    <rect x="-130" y="-36" width="260" height="72" rx="10" fill="#0f151b" stroke="#2a343d" stroke-dasharray="4 4"/>
+    <text text-anchor="middle" y="-18" font-size="11" fill="#9aa8b1" letter-spacing="2">LEGACY · ORPHANED</text>
+    <text text-anchor="middle" y="-2" font-size="9" fill="#5a6770" font-family="ui-monospace, monospace">/dashboard · /assets · /billing</text>
+    <text text-anchor="middle" y="10" font-size="9" fill="#5a6770" font-family="ui-monospace, monospace">/admin/orgs · /admin/leads</text>
+    <text text-anchor="middle" y="22" font-size="9" fill="#5a6770" font-family="ui-monospace, monospace">/admin/subscriptions · /components</text>
+  </g>
+
+  <!-- AUX: artwork branches -->
+  <g id="cluster-artwork-extras" transform="translate(1430 760)">
+    <rect x="-118" y="-30" width="236" height="60" rx="10" fill="#0f151b" stroke="#2a343d"/>
+    <text text-anchor="middle" y="-12" font-size="11" fill="#9aa8b1" letter-spacing="2">ARTWORK QA</text>
+    <text text-anchor="middle" y="3" font-size="9" fill="#7dabb8" font-family="ui-monospace, monospace">/admin/artwork/reconcile</text>
+    <text text-anchor="middle" y="16" font-size="9" fill="#7dabb8" font-family="ui-monospace, monospace">/admin/approvals</text>
+  </g>
+
+  <!-- stage pipeline label (center-curve) -->
+  <g transform="translate(800 230)">
+    <text text-anchor="middle" font-size="10" fill="#5a6770" letter-spacing="4">— CANONICAL PIPELINE —</text>
+  </g>
+
+  <!-- Pipeline stage labels along the curve -->
+  <g font-size="10" fill="#7dabb8" letter-spacing="1">
+    <text x="1130" y="450" opacity="0.85">generate</text>
+    <text x="1180" y="700" opacity="0.85">release</text>
+    <text x="800" y="880" opacity="0.85" text-anchor="middle">auto-create delivery</text>
+  </g>
+
+  <!-- attribution -->
+  <g transform="translate(800 1060)">
+    <text text-anchor="middle" font-size="9" fill="#3a4249" letter-spacing="4">onesign · odysseus · v0 · 2026-04</text>
+  </g>
+
+</svg>
+</div>
+
+<!-- Explanatory notes -->
+<div class="notes">
+  <div class="note">
+    <h3>Central hub</h3>
+    <p>Everything in this app orbits the canonical pipeline <code>quote → artwork → production → delivery</code>. Invoice branches off quote; purchase orders hang loose. Clients are a data substrate — never log in.</p>
+  </div>
+  <div class="note">
+    <h3>The inheritance chain</h3>
+    <p>Every downstream record carries <code>org_id</code>, <code>contact_id</code>, <code>site_id</code> from the quote. Dashed teal lines show this — clients aren't <em>visited</em>, they're <em>inherited</em>.</p>
+  </div>
+  <div class="note">
+    <h3>Red edges = missing email</h3>
+    <p>Token generation works end-to-end for <code>/approve/artwork/[token]</code> and <code>/delivery/[token]</code>, but nobody sends the URL. Resend integration is the highest-value P0.</p>
+  </div>
+  <div class="note">
+    <h3>Amber edges = manual</h3>
+    <p>Invoice creation and PO linkage are wired but not auto-triggered. Quote→invoice is a button; quote→PO is entirely manual navigation.</p>
+  </div>
+  <div class="note">
+    <h3>Spec-bearing row</h3>
+    <p><code>artwork_component_items</code> (satellite near ARTWORK) holds material, method, finish, dimensions, and <code>target_stage_id</code>. Release rebuilds <code>job_items.stage_routing</code> from these.</p>
+  </div>
+  <div class="note">
+    <h3>Legacy constellation</h3>
+    <p>Bottom-left cluster shows orphan routes from the old multi-tenant SaaS life (<code>/dashboard</code>, <code>/assets</code>, <code>/billing</code>, <code>/admin/orgs</code>). Candidates for deletion.</p>
+  </div>
+</div>
+
+<footer>
+  paired with <a href="project-map.html" style="color:#7dabb8">project-map.html</a> · live at http://localhost:3100 when dev is running
+</footer>
+
+</div>
+</body>
+</html>
