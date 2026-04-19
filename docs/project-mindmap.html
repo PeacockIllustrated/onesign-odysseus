@@ -3,541 +3,1358 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Onesign Odysseus — Mindmap</title>
+<title>Onesign Odysseus — The Scope of the Voyage</title>
 <style>
+  /* Gilroy — Light · Regular · Medium · Bold only. Nothing heavier. */
+  @font-face { font-family: 'Gilroy'; src: url('../public/fonts/Gilroy-Light.ttf')   format('truetype'); font-weight: 300; font-display: swap; }
+  @font-face { font-family: 'Gilroy'; src: url('../public/fonts/Gilroy-Regular.ttf') format('truetype'); font-weight: 400; font-display: swap; }
+  @font-face { font-family: 'Gilroy'; src: url('../public/fonts/Gilroy-Medium.ttf')  format('truetype'); font-weight: 500; font-display: swap; }
+  @font-face { font-family: 'Gilroy'; src: url('../public/fonts/Gilroy-Bold.ttf')    format('truetype'); font-weight: 700; font-display: swap; }
+
   :root {
-    --bg: #0a0e12;
-    --bg-2: #0f151b;
-    --panel: #141b22;
-    --panel-hi: #1c242c;
-    --border: #2a343d;
-    --accent: #4e7e8c;
-    --accent-hi: #7dabb8;
-    --accent-soft: rgba(78, 126, 140, 0.18);
-    --text: #e8edf0;
-    --text-dim: #9aa8b1;
-    --text-mute: #5a6770;
-    --ok: #4ade80;
-    --warn: #f59e0b;
-    --todo: #ef4444;
-    --legacy: #6b7680;
+    /* Light paper palette — warm cream whites, crisp */
+    --abyss:    #f4f1e8;     /* deepest (now: subtle shadow tone) */
+    --deep:     #f8f5ed;
+    --panel:    #ffffff;     /* white for cards */
+    --panel-hi: #faf7ef;     /* slightly warm off-white */
+    --rule:     #e5dfd0;     /* subtle rule line */
+    --border:   #cac3b3;     /* stronger border */
+
+    /* Onesign brand teal — unchanged, contrast calibrated for light */
+    --accent:     #4e7e8c;
+    --accent-hi:  #3a5f6a;   /* darker variant — for hover/highlight */
+    --accent-lo:  #7dabb8;   /* lighter variant — subtle rings */
+    --accent-light: #e8f0f3;
+
+    /* Odysseus gold — deep muted so it reads on paper */
+    --gold:     #8a7430;
+    --gold-dim: #6e5a24;
+
+    /* Ink — near-black, slightly warm, matches Onesign dark-UI when inverted */
+    --cream:     #1a1f23;    /* primary text (repurposed name) */
+    --cream-dim: #5a6770;    /* secondary */
+    --cream-mute:#8a929a;    /* tertiary */
+
+    /* Status — deeper, saturated for legibility on paper */
+    --warn: #a06820;
+    --todo: #a03838;
+    --ok:   #2e7a42;
   }
   * { box-sizing: border-box; }
   html, body {
-    margin: 0; padding: 0; min-height: 100vh;
+    margin: 0; padding: 0;
     background:
-      radial-gradient(ellipse at 50% 40%, #121a22 0%, #08090c 80%),
-      var(--bg);
-    color: var(--text);
-    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+      radial-gradient(ellipse 1400px 900px at 50% 30%, #fbfaf3 0%, var(--abyss) 78%),
+      var(--abyss);
+    color: var(--cream);
+    font-family: 'Gilroy', -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+    font-weight: 400; font-size: 14px; line-height: 1.6;
     overflow-x: hidden;
   }
-  .frame {
-    max-width: 1700px;
-    margin: 0 auto;
-    padding: 40px 32px 80px;
+  .frame { max-width: 1780px; margin: 0 auto; padding: 40px 36px 80px; }
+
+  .serif { font-family: "Times New Roman", "Didot", "Bodoni Moda", serif; }
+
+  /* Greek meander — deep muted gold, reads as inked architectural trim on paper */
+  .meander {
+    height: 14px; width: 100%;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='56' height='14' viewBox='0 0 56 14'><path d='M0 13 L0 3 L10 3 L10 10 L4 10 L4 6 L14 6 L14 13 L18 13 L18 0 L32 0 L32 13 L36 13 L36 6 L46 6 L46 10 L40 10 L40 3 L50 3 L50 13 Z' fill='none' stroke='%238a7430' stroke-width='1.2' opacity='0.7'/></svg>");
+    background-repeat: repeat-x; background-position: center;
   }
-  header {
-    display: flex; align-items: baseline; justify-content: space-between;
-    gap: 24px; flex-wrap: wrap;
-    margin-bottom: 8px;
-    padding-bottom: 20px;
-    border-bottom: 1px solid var(--border);
+  .meander.narrow { opacity: 0.45; }
+
+  /* Masthead */
+  header.masthead { padding: 26px 0 30px; text-align: center; position: relative; }
+
+  .parent-brand {
+    display: block; margin: 30px auto 0;
+    height: 22px; width: auto;
+    /* black SVG source, no filter needed on light bg */
+    opacity: 0.9;
   }
-  h1 {
-    margin: 0; font-size: 32px; font-weight: 200; letter-spacing: -0.02em;
+  .parent-caption {
+    margin-top: 10px; color: var(--accent-hi);
+    font-family: "Times New Roman", "Didot", serif;
+    font-weight: 400; font-size: 13px;
+    letter-spacing: 0.04em; font-style: italic;
+    opacity: 0.9;
   }
-  h1 b {
-    color: var(--accent-hi); font-weight: 500;
+  .divider-dot {
+    display: block; width: 7px; height: 7px; margin: 22px auto 0;
+    background: var(--accent); transform: rotate(45deg); opacity: 0.9;
   }
-  .subtitle {
-    color: var(--text-dim); font-size: 13px;
-    letter-spacing: 0.12em; text-transform: uppercase;
+  .odysseus-lockup {
+    display: block; margin: 22px auto 0;
+    height: 140px; width: auto; max-width: 92%;
+    filter: drop-shadow(0 8px 20px rgba(78, 126, 140, 0.14));
   }
-  .legend {
-    display: flex; gap: 22px; flex-wrap: wrap; font-size: 12px; color: var(--text-dim);
-    margin-top: 16px;
+  .masthead .subtitle {
+    color: var(--cream-dim);
+    font-family: "Times New Roman", "Didot", serif;
+    font-weight: 400; font-size: 16px;
+    letter-spacing: 0.02em; font-style: italic;
   }
-  .legend .key { display: inline-flex; align-items: center; gap: 8px; }
-  .legend svg { flex: none; }
-  .canvas-wrap {
-    margin-top: 24px;
-    background: linear-gradient(180deg, #0c1217 0%, #090d11 100%);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    overflow: hidden;
-    box-shadow: 0 30px 80px -20px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.02);
+  .masthead .tagline {
+    margin-top: 16px; color: var(--accent-hi);
+    font-style: italic; font-weight: 400; font-size: 15px;
+    letter-spacing: 0.02em;
   }
-  svg.mindmap {
-    display: block; width: 100%; height: auto;
-    font-family: inherit;
+  .masthead .tagline .dash { color: var(--gold); margin: 0 12px; }
+
+  /* Section heads */
+  .section { margin-top: 64px; }
+  .section-head { display: flex; align-items: center; gap: 18px; margin-bottom: 12px; flex-wrap: wrap; }
+  .section-head .num { color: var(--gold); font-family: "Times New Roman", serif; font-style: italic; font-size: 14px; letter-spacing: 0.2em; }
+  .section-head h2 {
+    margin: 0; font-family: "Times New Roman", "Didot", serif;
+    font-weight: 300; font-size: 22px;
+    letter-spacing: 0.28em; text-transform: uppercase;
+    color: var(--cream);
+  }
+  .section-head .rule { flex: 1; height: 1px; background: linear-gradient(90deg, var(--gold), transparent); opacity: 0.55; min-width: 40px; }
+  .section-head .meta {
+    color: var(--cream-dim);
+    font-family: "Times New Roman", serif;
+    font-weight: 400; font-size: 13px; letter-spacing: 0.02em;
+    font-style: italic;
   }
 
-  /* Notes grid below */
-  .notes {
-    margin-top: 32px;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 16px;
+  .prose {
+    color: var(--cream-dim);
+    font-weight: 400; font-size: 14px; line-height: 1.72;
+    max-width: 820px; margin: 8px 0 20px;
   }
-  .note {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 16px 18px;
-  }
-  .note h3 {
-    margin: 0 0 10px; font-size: 11px; font-weight: 600;
-    color: var(--accent-hi); text-transform: uppercase; letter-spacing: 0.12em;
-  }
-  .note p { margin: 0; color: var(--text-dim); font-size: 12.5px; line-height: 1.55; }
-  .note code {
-    background: var(--panel-hi); padding: 2px 6px; border-radius: 3px;
-    font-family: ui-monospace, "SF Mono", monospace; font-size: 11.5px;
-    color: var(--accent-hi);
-  }
-
-  footer {
-    margin-top: 40px;
-    color: var(--text-mute); font-size: 11px; text-align: center;
+  .prose b { color: var(--cream); font-weight: 500; }
+  .prose kbd {
+    display: inline-block; padding: 1px 8px; margin: 0 2px;
+    background: var(--panel-hi); color: var(--gold);
+    border: 1px solid var(--rule); border-radius: 2px;
+    font-family: 'Gilroy', sans-serif; font-weight: 500; font-size: 11.5px;
     letter-spacing: 0.08em; text-transform: uppercase;
   }
+
+  /* Legend */
+  .legend {
+    display: flex; gap: 28px; flex-wrap: wrap;
+    color: var(--cream-dim); font-size: 12px; font-weight: 400;
+    margin: 18px 0 0; padding: 14px 18px;
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid var(--rule); border-radius: 2px;
+  }
+  .legend .key { display: inline-flex; align-items: center; gap: 10px; }
+
+  /* Canvas */
+  .canvas-wrap {
+    margin-top: 24px; position: relative;
+    background: linear-gradient(180deg, #ffffff 0%, #faf7ef 100%);
+    border: 1px solid var(--border); border-radius: 2px;
+    box-shadow: 0 20px 60px -20px rgba(30,25,10,0.12), inset 0 1px 0 rgba(255,255,255,0.9);
+  }
+  .canvas-wrap::before, .canvas-wrap::after {
+    content: ""; position: absolute; left: 0; right: 0; height: 14px;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='56' height='14' viewBox='0 0 56 14'><path d='M0 13 L0 3 L10 3 L10 10 L4 10 L4 6 L14 6 L14 13 L18 13 L18 0 L32 0 L32 13 L36 13 L36 6 L46 6 L46 10 L40 10 L40 3 L50 3 L50 13 Z' fill='none' stroke='%234e7e8c' stroke-width='1' opacity='0.4'/></svg>");
+    background-repeat: repeat-x; background-position: center;
+    pointer-events: none;
+  }
+  .canvas-wrap::before { top: 6px; } .canvas-wrap::after { bottom: 6px; transform: scaleY(-1); }
+  svg.chart { display: block; width: 100%; height: auto; font-family: 'Gilroy', inherit; padding: 22px 0; }
+
+  /* Hover hint */
+  .hover-hint {
+    position: absolute; top: 22px; right: 22px; z-index: 2;
+    padding: 7px 14px; background: rgba(255, 255, 255, 0.92);
+    border: 1px solid var(--gold-dim); border-radius: 999px;
+    color: var(--gold);
+    font-family: "Times New Roman", serif;
+    font-weight: 400; font-size: 13px;
+    font-style: italic; letter-spacing: 0.02em;
+    pointer-events: none;
+    box-shadow: 0 2px 10px rgba(30,25,10,0.08);
+  }
+
+  /* Insight cards */
+  .insights { margin-top: 36px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .insight {
+    background: var(--panel); border: 1px solid var(--rule);
+    border-left: 2px solid var(--accent); padding: 18px 22px; border-radius: 1px;
+    box-shadow: 0 1px 2px rgba(30,25,10,0.03), 0 8px 20px -10px rgba(30,25,10,0.06);
+  }
+  .insight.future { border-left-color: var(--accent-hi); background: linear-gradient(180deg, rgba(78, 126, 140, 0.08), transparent), var(--panel); }
+  .insight h3 {
+    margin: 0 0 8px;
+    font-family: "Times New Roman", "Didot", serif;
+    font-weight: 400; font-size: 17px;
+    letter-spacing: 0.01em;
+    color: var(--gold);
+  }
+  .insight.future h3 { color: var(--accent-hi); }
+  .insight.future h3::before {
+    content: "↝ future · "; color: var(--cream-mute);
+    font-weight: 300; font-style: italic;
+  }
+  .insight p { margin: 0; color: var(--cream-dim); font-weight: 400; font-size: 13.5px; line-height: 1.65; }
+  .insight em { color: var(--cream); font-style: italic; font-family: "Times New Roman", serif; }
+
+  footer.signoff {
+    margin-top: 60px; text-align: center;
+    color: var(--cream-dim);
+    font-family: "Times New Roman", serif;
+    font-weight: 400; font-size: 12.5px;
+    font-style: italic; letter-spacing: 0.02em;
+  }
+  footer.signoff .mark { color: var(--gold); margin: 0 14px; }
+
+  /* Summary bar */
+  .summary {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1px; margin-top: 20px;
+    background: var(--rule);
+    border: 1px solid var(--border); border-radius: 2px; overflow: hidden;
+    box-shadow: 0 1px 2px rgba(30,25,10,0.03), 0 10px 24px -12px rgba(30,25,10,0.08);
+  }
+  .summary .cell { background: var(--panel); padding: 18px 20px; display: flex; flex-direction: column; gap: 4px; }
+  .summary .num { font-family: "Times New Roman", serif; font-weight: 300; font-size: 34px; letter-spacing: 0.04em; color: var(--cream); line-height: 1; }
+  .summary .lbl {
+    font-family: "Times New Roman", serif;
+    font-weight: 400; font-size: 13px;
+    font-style: italic; letter-spacing: 0.02em;
+    color: var(--cream-dim);
+  }
+
+  /* ===========================================================
+     INTERACTIVE CONSTELLATION
+     Key technique: nested groups.
+       - <g class="domain"> is the hover target
+         - <g class="core"> — always visible, positioned via SVG attribute transform
+         - <g class="sats-wrapper" style="transform-origin: Cx Cy"> — CSS-transformed
+           - <g transform="translate(Sx Sy)"> — SVG attribute, unaffected by CSS
+             - <g class="sat"> — each satellite's panel
+     CSS modifies the wrapper's transform only; SVG attribute transforms on
+     positioning groups stay intact. The wrapper scales from the domain's
+     core so satellites bloom outward to their true positions.
+     =========================================================== */
+
+  svg.chart .domain { cursor: pointer; transition: opacity 0.3s ease; }
+
+  svg.chart .domain .sats-wrapper {
+    opacity: 0;
+    transform: scale(0.15);
+    transform-box: view-box;
+    transition:
+      transform 0.6s cubic-bezier(0.2, 0.85, 0.3, 1),
+      opacity 0.35s ease;
+    pointer-events: none;
+  }
+  svg.chart .domain:hover .sats-wrapper,
+  svg.chart .domain:focus-within .sats-wrapper {
+    opacity: 1;
+    transform: scale(1);
+    pointer-events: all;
+  }
+
+  /* Dim non-focused domains */
+  svg.chart:has(.domain:hover) .domain { opacity: 0.3; }
+  svg.chart:has(.domain:hover) .domain:hover { opacity: 1; }
+  svg.chart:has(.domain:hover) .primary-pipeline,
+  svg.chart:has(.domain:hover) .secondary-wires,
+  svg.chart:has(.domain:hover) .inheritance {
+    opacity: 0.25;
+    transition: opacity 0.3s ease;
+  }
+
+  /* Core circle gets a gold edge on hover */
+  svg.chart .domain .core circle:nth-of-type(1) {
+    transition: stroke 0.3s ease, stroke-width 0.3s ease;
+  }
+  svg.chart .domain:hover .core circle:nth-of-type(1) {
+    stroke: #7dabb8;
+    stroke-width: 2;
+  }
+
+  /* Text classes — serif mixed-case throughout for headers */
+  svg .t-domain    { fill: var(--cream);     font-family: "Times New Roman", "Didot", serif; font-weight: 400; font-size: 19px; letter-spacing: 0.02em; }
+  svg .t-domain-sub{ fill: var(--cream-dim); font-family: "Times New Roman", serif; font-weight: 400; font-size: 13px;  letter-spacing: 0.01em; font-style: italic; }
+  svg .t-sat       { fill: var(--cream);     font-family: "Times New Roman", "Didot", serif; font-weight: 400; font-size: 16px; letter-spacing: 0.02em; }
+  svg .t-sat-mark  { fill: var(--gold);      font-weight: 400; font-size: 13px; }
+  svg .t-flow      { fill: var(--accent-hi); font-family: "Times New Roman", serif; font-weight: 400; font-size: 13px; letter-spacing: 0.02em; font-style: italic; }
+  svg .t-flow-warn { fill: var(--warn);      font-family: "Times New Roman", serif; font-weight: 400; font-size: 13px; letter-spacing: 0.02em; font-style: italic; }
+  svg .t-flow-todo { fill: var(--todo);      font-family: "Times New Roman", serif; font-weight: 400; font-size: 13px; letter-spacing: 0.02em; font-style: italic; }
+  svg .t-whisper   { fill: var(--cream-mute); font-family: "Times New Roman", serif; font-weight: 400; font-size: 13px; font-style: italic; letter-spacing: 0.02em; }
+  svg .t-stage     { fill: var(--cream);     font-family: "Times New Roman", "Didot", serif; font-weight: 400; font-size: 15px; letter-spacing: 0.02em; }
+  svg .t-stage-sub { fill: var(--cream-dim); font-family: "Times New Roman", serif; font-weight: 400; font-size: 12.5px; letter-spacing: 0.01em; font-style: italic; }
+  svg .t-num       { fill: var(--gold); font-family: "Times New Roman", serif; font-size: 13px; letter-spacing: 0.04em; }
+  svg .t-greek     { fill: #8a929a; font-family: "Times New Roman", serif; font-size: 12px; letter-spacing: 0.1em; font-style: italic; }
+  svg .t-bearing   { fill: var(--cream-mute); font-family: "Times New Roman", serif; font-size: 11px; letter-spacing: 0.08em; font-style: italic; }
+  svg .t-actor     { fill: var(--cream-mute); font-family: "Times New Roman", serif; font-weight: 400; font-size: 12px; font-style: italic; letter-spacing: 0.02em; }
 </style>
 </head>
 <body>
+
 <div class="frame">
 
-<header>
-  <div>
-    <h1>Onesign <b>Odysseus</b> · Mindmap</h1>
-    <div class="subtitle">Data model · routes · work flow · v0 — 2026-04</div>
+  <!-- ============================= MASTHEAD ============================= -->
+  <header class="masthead">
+    <div class="meander"></div>
+
+    <img class="parent-brand" src="../public/Onesign-Logo-Black.svg" alt="Onesign"/>
+    <div class="parent-caption">digital</div>
+
+    <span class="divider-dot" aria-hidden="true"></span>
+
+    <img class="odysseus-lockup" src="../public/Odysseus-Logo-Black.svg" alt="Odysseus"/>
+
+    <div class="subtitle" style="margin-top: 22px;">The scope of the platform · at a glance</div>
+    <div class="tagline serif">
+      from enquiry <span class="dash">◆</span> to signed, made, delivered, installed
+    </div>
+
+    <div class="meander narrow" style="margin-top: 32px;"></div>
+  </header>
+
+  <div class="summary">
+    <div class="cell"><div class="num">15</div><div class="lbl">clients on file</div></div>
+    <div class="cell"><div class="num">11</div><div class="lbl">sites tracked</div></div>
+    <div class="cell"><div class="num">13</div><div class="lbl">production stages</div></div>
+    <div class="cell"><div class="num">4</div><div class="lbl">drivers on the road</div></div>
+    <div class="cell"><div class="num">2</div><div class="lbl">jobs in-flight</div></div>
+    <div class="cell"><div class="num">1</div><div class="lbl">platform, end-to-end</div></div>
   </div>
-  <div class="subtitle">internal production OS</div>
-</header>
 
-<div class="legend">
-  <span class="key"><svg width="28" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="#4e7e8c" stroke-width="2.2"/></svg> primary pipeline (wired)</span>
-  <span class="key"><svg width="28" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="#4e7e8c" stroke-width="1.5" stroke-dasharray="2 4" opacity="0.6"/></svg> data inheritance (org · contact · site)</span>
-  <span class="key"><svg width="28" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="#f59e0b" stroke-width="2" stroke-dasharray="4 3"/></svg> manual / partial handoff</span>
-  <span class="key"><svg width="28" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="#ef4444" stroke-width="2" stroke-dasharray="4 3"/></svg> missing link (email etc.)</span>
-</div>
+  <!-- ============================= I · CONSTELLATION ============================= -->
+  <section class="section">
+    <div class="section-head">
+      <span class="num">I.</span>
+      <h2>The Constellation · what the platform covers</h2>
+      <span class="rule"></span>
+      <span class="meta">one map · six domains</span>
+    </div>
 
-<div class="canvas-wrap">
-<svg class="mindmap" viewBox="0 0 1600 1100" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <!-- gradients -->
-    <radialGradient id="hubGrad" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#7dabb8" stop-opacity="0.35"/>
-      <stop offset="55%" stop-color="#4e7e8c" stop-opacity="0.18"/>
-      <stop offset="100%" stop-color="#4e7e8c" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="nodeGrad" cx="50%" cy="40%" r="70%">
-      <stop offset="0%" stop-color="#1c242c"/>
-      <stop offset="100%" stop-color="#10151a"/>
-    </radialGradient>
-    <radialGradient id="nodeGradHot" cx="50%" cy="30%" r="80%">
-      <stop offset="0%" stop-color="#26373f"/>
-      <stop offset="100%" stop-color="#10151a"/>
-    </radialGradient>
-    <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#4e7e8c" stop-opacity="0.55"/>
-      <stop offset="100%" stop-color="#4e7e8c" stop-opacity="0.15"/>
-    </linearGradient>
+    <p class="prose">
+      Six domains orbit the heart of Odysseus. The teal path traces the main journey a job takes; the fine dashed lines show how a client's details are carried along from step to step. <b>Hover any domain</b> <kbd>hover</kbd> and its detail blooms outward from that point — everything else quiets down so you can read clearly.
+    </p>
 
-    <!-- glow filter -->
-    <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="6" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
+    <div class="legend">
+      <span class="key"><svg width="36" height="10"><line x1="0" y1="5" x2="36" y2="5" stroke="#4e7e8c" stroke-width="2.2"/></svg> the main journey</span>
+      <span class="key"><svg width="36" height="10"><line x1="0" y1="5" x2="36" y2="5" stroke="#4e7e8c" stroke-width="1.2" stroke-dasharray="1 4" opacity="0.7"/></svg> client details travel along</span>
+      <span class="key"><svg width="36" height="10"><line x1="0" y1="5" x2="36" y2="5" stroke="#a06820" stroke-width="1.8" stroke-dasharray="5 3"/></svg> today a manual step</span>
+      <span class="key"><svg width="36" height="10"><line x1="0" y1="5" x2="36" y2="5" stroke="#a03838" stroke-width="1.8" stroke-dasharray="3 3"/></svg> small gap to close</span>
+      <span class="key"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 0 L9 7 L16 8 L9 9 L8 16 L7 9 L0 8 L7 7 Z" fill="#8a7430" opacity="0.85"/></svg> handover point</span>
+    </div>
 
-    <!-- arrow markers -->
-    <marker id="arrowTeal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-      <path d="M0,0 L10,5 L0,10 z" fill="#4e7e8c"/>
-    </marker>
-    <marker id="arrowWarn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/>
-    </marker>
-    <marker id="arrowTodo" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M0,0 L10,5 L0,10 z" fill="#ef4444"/>
-    </marker>
-  </defs>
+    <div class="canvas-wrap">
+      <div class="hover-hint">◆ hover a domain</div>
 
-  <!-- subtle grid backdrop -->
-  <g opacity="0.07">
-    <pattern id="grid" x="0" y="0" width="48" height="48" patternUnits="userSpaceOnUse">
-      <path d="M48 0 H0 V48" fill="none" stroke="#4e7e8c" stroke-width="0.5"/>
-    </pattern>
-    <rect x="0" y="0" width="1600" height="1100" fill="url(#grid)"/>
-  </g>
+      <svg class="chart constellation" viewBox="0 0 1720 1180" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="hubGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%"  stop-color="#7dabb8" stop-opacity="0.18"/>
+            <stop offset="45%" stop-color="#4e7e8c" stop-opacity="0.14"/>
+            <stop offset="100%" stop-color="#4e7e8c" stop-opacity="0"/>
+          </radialGradient>
+          <radialGradient id="nodeGrad" cx="50%" cy="35%" r="75%">
+            <stop offset="0%" stop-color="#ffffff"/>
+            <stop offset="100%" stop-color="#f2efe7"/>
+          </radialGradient>
+          <radialGradient id="nodeGradPrimary" cx="50%" cy="30%" r="80%">
+            <stop offset="0%" stop-color="#ffffff"/>
+            <stop offset="100%" stop-color="#e4e9ec"/>
+          </radialGradient>
+          <filter id="softGlow" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="4" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <marker id="mkTeal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="#4e7e8c"/>
+          </marker>
+          <marker id="mkWarn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="#a06820"/>
+          </marker>
+          <marker id="mkTodo" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="#a03838"/>
+          </marker>
+          <symbol id="star" viewBox="-8 -8 16 16">
+            <path d="M0 -7 L1.2 -1.2 L7 0 L1.2 1.2 L0 7 L-1.2 1.2 L-7 0 L-1.2 -1.2 Z" fill="#8a7430" opacity="0.9"/>
+            <circle r="0.6" fill="#fff2c4"/>
+          </symbol>
+          <symbol id="star-sm" viewBox="-5 -5 10 10">
+            <path d="M0 -4 L0.8 -0.8 L4 0 L0.8 0.8 L0 4 L-0.8 0.8 L-4 0 L-0.8 -0.8 Z" fill="#8a7430" opacity="0.85"/>
+          </symbol>
 
-  <!-- orbital rings -->
-  <g opacity="0.10" stroke="url(#ringGrad)" fill="none" stroke-width="1">
-    <circle cx="800" cy="560" r="180"/>
-    <circle cx="800" cy="560" r="330"/>
-    <circle cx="800" cy="560" r="480"/>
-  </g>
+          <!-- Reusable satellite panel -->
+          <symbol id="sat-panel" viewBox="-120 -22 240 44">
+            <rect x="-120" y="-22" width="240" height="44" rx="3" fill="#ffffff" stroke="#cac3b3"/>
+          </symbol>
+        </defs>
 
-  <!-- ======================================================================
-       WIRES — drawn before nodes so nodes sit on top
-       ====================================================================== -->
-  <g id="wires">
+        <!-- celestial grid — bumped to read on paper -->
+        <g opacity="0.14" stroke="#4e7e8c" fill="none" stroke-width="0.5">
+          <circle cx="860" cy="590" r="240"/>
+          <circle cx="860" cy="590" r="400"/>
+          <circle cx="860" cy="590" r="540"/>
+          <line x1="860" y1="60"  x2="860"  y2="1120"/>
+          <line x1="320" y1="590" x2="1400" y2="590"/>
+          <line x1="478" y1="208" x2="1242" y2="972"/>
+          <line x1="1242" y1="208" x2="478" y2="972"/>
+        </g>
 
-    <!-- PRIMARY PIPELINE: Quote → Artwork → Production → Delivery -->
-    <g stroke="#4e7e8c" stroke-width="2.4" fill="none" opacity="0.9">
-      <path d="M 1080 330 Q 1180 420, 1180 560" marker-end="url(#arrowTeal)"/>
-      <path d="M 1180 560 Q 1180 700, 1080 790" marker-end="url(#arrowTeal)"/>
-      <path d="M 1080 790 Q 800 910, 520 790" marker-end="url(#arrowTeal)"/>
-    </g>
+        <g class="t-bearing" text-anchor="middle" opacity="0.55">
+          <text x="860" y="40">N</text>
+          <text x="1410" y="595">E</text>
+          <text x="860" y="1150">S</text>
+          <text x="310" y="595">W</text>
+        </g>
 
-    <!-- INVOICE branch from quote (manual) -->
-    <g stroke="#f59e0b" stroke-width="1.8" fill="none" stroke-dasharray="5 4" opacity="0.8">
-      <path d="M 1020 300 Q 780 240, 520 330" marker-end="url(#arrowWarn)"/>
-    </g>
+        <!-- ========== PRIMARY PIPELINE ========== -->
+        <g class="primary-pipeline">
+          <g stroke="#4e7e8c" stroke-width="2.6" fill="none">
+            <path d="M 1140 310 Q 1270 420 1270 590" marker-end="url(#mkTeal)"/>
+            <path d="M 1270 590 Q 1270 730 1140 830" marker-end="url(#mkTeal)"/>
+            <path d="M 1140 830 Q 860 960 580 830" marker-end="url(#mkTeal)"/>
+          </g>
+          <text x="1226" y="400" class="t-flow">design &amp; approve</text>
+          <text x="1226" y="758" class="t-flow">release to make</text>
+          <text x="860"  y="940" class="t-flow" text-anchor="middle">dispatch &amp; install</text>
+          <use href="#star" x="1140" y="310" width="18" height="18"/>
+          <use href="#star" x="1270" y="590" width="18" height="18"/>
+          <use href="#star" x="1140" y="830" width="18" height="18"/>
+          <use href="#star" x="580"  y="830" width="18" height="18"/>
+        </g>
 
-    <!-- PO branch from quote/job (manual) -->
-    <g stroke="#f59e0b" stroke-width="1.5" fill="none" stroke-dasharray="4 5" opacity="0.55">
-      <path d="M 1080 340 Q 1250 460, 1380 580"/>
-      <path d="M 1160 790 Q 1300 700, 1380 580" marker-end="url(#arrowWarn)"/>
-    </g>
+        <!-- ========== SECONDARY WIRES ========== -->
+        <g class="secondary-wires">
+          <path d="M 1080 275 Q 820 210 560 305" stroke="#a06820" stroke-width="1.8" fill="none" stroke-dasharray="5 4" marker-end="url(#mkWarn)"/>
+          <text x="820" y="218" class="t-flow-warn" text-anchor="middle">invoiced</text>
 
-    <!-- EXTERNAL TOKEN LINKS -->
-    <!-- artwork → /approve -->
-    <path d="M 1200 560 Q 1400 540, 1440 440"
-          stroke="#ef4444" stroke-width="1.8" fill="none" stroke-dasharray="4 4" opacity="0.8"
-          marker-end="url(#arrowTodo)"/>
-    <!-- delivery → /delivery token -->
-    <path d="M 500 800 Q 260 770, 180 620"
-          stroke="#ef4444" stroke-width="1.8" fill="none" stroke-dasharray="4 4" opacity="0.8"
-          marker-end="url(#arrowTodo)"/>
+          <path d="M 1295 570 Q 1500 545 1560 430" stroke="#a03838" stroke-width="1.8" fill="none" stroke-dasharray="3 3" marker-end="url(#mkTodo)"/>
+          <text x="1470" y="450" class="t-flow-todo" text-anchor="middle">send link to client</text>
 
-    <!-- INHERITANCE: Clients → everything -->
-    <g stroke="#4e7e8c" stroke-width="1" fill="none" stroke-dasharray="2 5" opacity="0.45">
-      <path d="M 260 330 Q 500 420, 760 540"/>
-      <path d="M 300 360 Q 600 500, 1020 320"/>
-      <path d="M 300 380 Q 550 600, 1100 770"/>
-      <path d="M 300 400 Q 400 600, 500 780"/>
-    </g>
+          <path d="M 560 835 Q 280 800 190 640" stroke="#a03838" stroke-width="1.8" fill="none" stroke-dasharray="3 3" marker-end="url(#mkTodo)"/>
+          <text x="260" y="772" class="t-flow-todo" text-anchor="middle">send proof link</text>
+        </g>
 
-    <!-- SHOP FLOOR tap into production -->
-    <path d="M 1360 880 Q 1220 860, 1140 830"
-          stroke="#4e7e8c" stroke-width="1.5" fill="none" opacity="0.65" marker-end="url(#arrowTeal)"/>
+        <!-- ========== INHERITANCE ========== -->
+        <g class="inheritance">
+          <g stroke="#4e7e8c" stroke-width="1.1" fill="none" stroke-dasharray="1 4" opacity="0.65">
+            <path d="M 300 330 Q 600 420 1080 275"/>
+            <path d="M 305 360 Q 560 490 1210 565"/>
+            <path d="M 305 385 Q 540 600 1080 830"/>
+            <path d="M 300 410 Q 390 580 540 830"/>
+          </g>
+          <text x="700" y="420" class="t-whisper" transform="rotate(-7 700 420)">client &amp; site travel with every job</text>
+        </g>
 
-    <!-- Pricing feeds Quote -->
-    <path d="M 1360 160 Q 1220 200, 1080 280"
-          stroke="#4e7e8c" stroke-width="1.2" fill="none" opacity="0.45" marker-end="url(#arrowTeal)"/>
+        <!-- =====================================================
+             HUB — compass rose + Odysseus icon
+             ===================================================== -->
+        <g transform="translate(860 590)">
+          <circle r="210" fill="url(#hubGlow)"/>
+          <circle r="148" fill="none" stroke="#3a5f6a" stroke-width="0.8" opacity="0.7"/>
+          <circle r="138" fill="none" stroke="#3a5f6a" stroke-width="0.4" opacity="0.45"/>
 
-    <!-- Staff/auth provides created_by to everything -->
-    <path d="M 240 160 Q 400 320, 740 540"
-          stroke="#4e7e8c" stroke-width="1" fill="none" stroke-dasharray="1 4" opacity="0.35"/>
-  </g>
+          <g stroke="#3a5f6a" stroke-width="0.6" opacity="0.7" fill="none">
+            <line x1="0" y1="-148" x2="0" y2="-112"/>
+            <line x1="148" y1="0"  x2="112"  y2="0"/>
+            <line x1="0" y1="148"  x2="0"  y2="112"/>
+            <line x1="-148" y1="0" x2="-112" y2="0"/>
+            <line x1="104.7"  y1="-104.7" x2="79.2"  y2="-79.2"/>
+            <line x1="-104.7" y1="-104.7" x2="-79.2" y2="-79.2"/>
+            <line x1="104.7"  y1="104.7"  x2="79.2"  y2="79.2"/>
+            <line x1="-104.7" y1="104.7"  x2="-79.2" y2="79.2"/>
+            <g opacity="0.55">
+              <line x1="56.7"   y1="-136.8" x2="49.4"  y2="-119"/>
+              <line x1="136.8"  y1="-56.7"  x2="119"   y2="-49.4"/>
+              <line x1="136.8"  y1="56.7"   x2="119"   y2="49.4"/>
+              <line x1="56.7"   y1="136.8"  x2="49.4"  y2="119"/>
+              <line x1="-56.7"  y1="136.8"  x2="-49.4" y2="119"/>
+              <line x1="-136.8" y1="56.7"   x2="-119"  y2="49.4"/>
+              <line x1="-136.8" y1="-56.7"  x2="-119"  y2="-49.4"/>
+              <line x1="-56.7"  y1="-136.8" x2="-49.4" y2="-119"/>
+            </g>
+          </g>
 
-  <!-- ======================================================================
-       HUB — center
-       ====================================================================== -->
-  <g id="hub" transform="translate(800 560)">
-    <circle r="140" fill="url(#hubGrad)"/>
-    <circle r="82" fill="#10161b" stroke="#4e7e8c" stroke-width="1.5" filter="url(#softGlow)"/>
-    <circle r="82" fill="none" stroke="#7dabb8" stroke-width="0.5" opacity="0.4"/>
-    <text y="-6" text-anchor="middle" font-size="20" font-weight="300" fill="#e8edf0" letter-spacing="4">ODYSSEUS</text>
-    <text y="16" text-anchor="middle" font-size="10" fill="#7dabb8" letter-spacing="3" text-transform="uppercase">production · os</text>
-    <text y="36" text-anchor="middle" font-size="9" fill="#5a6770" letter-spacing="2">50 migrations · 57 routes</text>
-  </g>
+          <g fill="#4e7e8c" opacity="0.7">
+            <polygon points="0,-112 6,-12 0,0 -6,-12"/>
+            <polygon points="112,0 12,-6 0,0 12,6"/>
+            <polygon points="0,112 -6,12 0,0 6,12"/>
+            <polygon points="-112,0 -12,6 0,0 -12,-6"/>
+          </g>
+          <g fill="#7dabb8" opacity="0.5">
+            <polygon points="79.2,-79.2 10,-4 0,0 -4,-10" transform="rotate(45)"/>
+            <polygon points="79.2,-79.2 10,-4 0,0 -4,-10" transform="rotate(135)"/>
+            <polygon points="79.2,-79.2 10,-4 0,0 -4,-10" transform="rotate(225)"/>
+            <polygon points="79.2,-79.2 10,-4 0,0 -4,-10" transform="rotate(315)"/>
+          </g>
 
-  <!-- ======================================================================
-       DOMAIN CLUSTERS
-       ====================================================================== -->
+          <g class="t-bearing" fill="#5a6770" text-anchor="middle" opacity="0.85">
+            <text y="-160">N</text>
+            <text x="160" y="3">E</text>
+            <text y="170">S</text>
+            <text x="-160" y="3">W</text>
+          </g>
 
-  <!-- CLIENTS (top-left) -->
-  <g id="cluster-clients">
-    <g transform="translate(240 380)">
-      <circle r="64" fill="url(#nodeGrad)" stroke="#4e7e8c" stroke-width="1.2" filter="url(#softGlow)"/>
-      <circle r="64" fill="none" stroke="#7dabb8" stroke-width="0.4" opacity="0.5"/>
-      <text y="-4" text-anchor="middle" font-size="13" fill="#e8edf0" letter-spacing="2">CLIENTS</text>
-      <text y="14" text-anchor="middle" font-size="9" fill="#7dabb8" letter-spacing="1.5">15 · 11 · 11</text>
-    </g>
-    <!-- satellites -->
-    <g font-size="10.5" fill="#9aa8b1">
-      <g transform="translate(100 280)">
-        <rect x="-55" y="-14" width="110" height="28" rx="4" fill="#141b22" stroke="#2a343d"/>
-        <text text-anchor="middle" y="4">orgs</text>
+          <circle r="80" fill="#ffffff" stroke="#4e7e8c" stroke-width="1.4" filter="url(#softGlow)"/>
+          <circle r="80" fill="none" stroke="#3a5f6a" stroke-width="0.5" opacity="0.5"/>
+          <image href="../public/Odysseus-Icon_Black.svg"
+                 x="-62" y="-62" width="124" height="124"
+                 preserveAspectRatio="xMidYMid meet"/>
+        </g>
+
+        <!-- =====================================================
+             DOMAINS — interactive bloom from domain center
+             Pattern per domain:
+               <g class="domain">
+                 <circle class="hit" cx="Cx" cy="Cy" r="220" fill="transparent" pointer-events="all"/>
+                 <g class="core"><g transform="translate(Cx Cy)">…</g></g>
+                 <g class="sats-wrapper" style="transform-origin: Cx Cy">
+                   <g transform="translate(Sx Sy)"><g class="sat">…</g></g>
+                   …
+                 </g>
+               </g>
+             The wrapper carries the CSS scale; the inner positioning groups keep
+             their SVG attribute transforms intact (CSS only affects .sats-wrapper).
+             ===================================================== -->
+
+        <!-- =========== QUOTING (NE) =========== -->
+        <g class="domain" tabindex="0">
+          <circle cx="1140" cy="270" r="240" fill="transparent" pointer-events="all"/>
+
+          <g class="core">
+            <g transform="translate(1140 270)">
+              <circle r="82" fill="url(#nodeGradPrimary)" stroke="#4e7e8c" stroke-width="1.4" filter="url(#softGlow)"/>
+              <circle r="82" fill="none" stroke="#3a5f6a" stroke-width="0.3" opacity="0.55"/>
+              <circle r="70" fill="none" stroke="#7dabb8" stroke-width="0.3" opacity="0.4"/>
+              <text y="-4" text-anchor="middle" class="t-domain">Quoting</text>
+              <text y="16" text-anchor="middle" class="t-domain-sub">price the work</text>
+            </g>
+          </g>
+
+          <g class="sats-wrapper" style="transform-origin: 1140px 270px;">
+            <g stroke="#7dabb8" stroke-width="0.7" fill="none" opacity="0.4">
+              <line x1="1140" y1="270" x2="1460" y2="190"/>
+              <line x1="1140" y1="270" x2="1460" y2="270"/>
+              <line x1="1140" y1="270" x2="1460" y2="350"/>
+            </g>
+            <g transform="translate(1460 190)"><g class="sat">
+              <use href="#sat-panel" x="0" y="0" width="240" height="44" transform="translate(-120 -22) scale(1)"/>
+              <rect x="-120" y="-22" width="240" height="44" rx="3" fill="#ffffff" stroke="#cac3b3"/>
+              <text y="5" text-anchor="middle" class="t-sat"><tspan class="t-sat-mark">◆ </tspan>rate cards &amp; prices</text>
+            </g></g>
+            <g transform="translate(1460 270)"><g class="sat">
+              <rect x="-120" y="-22" width="240" height="44" rx="3" fill="#ffffff" stroke="#cac3b3"/>
+              <text y="5" text-anchor="middle" class="t-sat"><tspan class="t-sat-mark">◆ </tspan>line items &amp; services</text>
+            </g></g>
+            <g transform="translate(1460 350)"><g class="sat">
+              <rect x="-120" y="-22" width="240" height="44" rx="3" fill="#ffffff" stroke="#cac3b3"/>
+              <text y="5" text-anchor="middle" class="t-sat"><tspan class="t-sat-mark">◆ </tspan>print &amp; send to client</text>
+            </g></g>
+          </g>
+        </g>
+
+        <!-- =========== ARTWORK (E) =========== -->
+        <g class="domain" tabindex="0">
+          <circle cx="1270" cy="590" r="240" fill="transparent" pointer-events="all"/>
+
+          <g class="core">
+            <g transform="translate(1270 590)">
+              <circle r="82" fill="url(#nodeGradPrimary)" stroke="#4e7e8c" stroke-width="1.4" filter="url(#softGlow)"/>
+              <circle r="82" fill="none" stroke="#3a5f6a" stroke-width="0.3" opacity="0.55"/>
+              <circle r="70" fill="none" stroke="#7dabb8" stroke-width="0.3" opacity="0.4"/>
+              <text y="-4" text-anchor="middle" class="t-domain">Artwork</text>
+              <text y="16" text-anchor="middle" class="t-domain-sub">design &amp; sign-off</text>
+            </g>
+          </g>
+
+          <g class="sats-wrapper" style="transform-origin: 1270px 590px;">
+            <g stroke="#7dabb8" stroke-width="0.7" fill="none" opacity="0.4">
+              <line x1="1270" y1="590" x2="1480" y2="510"/>
+              <line x1="1270" y1="590" x2="1480" y2="590"/>
+              <line x1="1270" y1="590" x2="1480" y2="670"/>
+            </g>
+            <g transform="translate(1480 510)"><g class="sat">
+              <rect x="-120" y="-22" width="240" height="44" rx="3" fill="#ffffff" stroke="#cac3b3"/>
+              <text y="5" text-anchor="middle" class="t-sat"><tspan class="t-sat-mark">◆ </tspan>spec sheets &amp; files</text>
+            </g></g>
+            <g transform="translate(1480 590)"><g class="sat">
+              <rect x="-120" y="-22" width="240" height="44" rx="3" fill="#ffffff" stroke="#cac3b3"/>
+              <text y="5" text-anchor="middle" class="t-sat"><tspan class="t-sat-mark">◆ </tspan>designs &amp; proofs</text>
+            </g></g>
+            <g transform="translate(1480 670)"><g class="sat">
+              <rect x="-120" y="-22" width="240" height="44" rx="3" fill="#ffffff" stroke="#cac3b3"/>
+              <text y="5" text-anchor="middle" class="t-sat"><tspan class="t-sat-mark">◆ </tspan>client approval link</text>
+            </g></g>
+          </g>
+        </g>
+
+        <!-- =========== PRODUCTION (SE) =========== -->
+        <g class="domain" tabindex="0">
+          <circle cx="1140" cy="830" r="240" fill="transparent" pointer-events="all"/>
+
+          <g class="core">
+            <g transform="translate(1140 830)">
+              <circle r="82" fill="url(#nodeGradPrimary)" stroke="#4e7e8c" stroke-width="1.4" filter="url(#softGlow)"/>
+              <circle r="82" fill="none" stroke="#3a5f6a" stroke-width="0.3" opacity="0.55"/>
+              <circle r="70" fill="none" stroke="#7dabb8" stroke-width="0.3" opacity="0.4"/>
+              <text y="-4" text-anchor="middle" class="t-domain">Production</text>
+              <text y="16" text-anchor="middle" class="t-domain-sub">make the thing</text>
+            </g>
+          </g>
+
+          <g class="sats-wrapper" style="transform-origin: 1140px 830px;">
+            <g stroke="#7dabb8" stroke-width="0.7" fill="none" opacity="0.4">
+              <line x1="1140" y1="830" x2="1460" y2="770"/>
+              <line x1="1140" y1="830" x2="1460" y2="850"/>
+              <line x1="1140" y1="830" x2="1460" y2="930"/>
+            </g>
+            <g transform="translate(1460 770)"><g class="sat">
+              <rect x="-120" y="-22" width="240" height="44" rx="3" fill="#ffffff" stroke="#cac3b3"/>
+              <text y="5" text-anchor="middle" class="t-sat"><tspan class="t-sat-mark">◆ </tspan>13 departments</text>
+            </g></g>
+            <g transform="translate(1460 850)"><g class="sat">
+              <rect x="-120" y="-22" width="240" height="44" rx="3" fill="#ffffff" stroke="#cac3b3"/>
+              <text y="5" text-anchor="middle" class="t-sat"><tspan class="t-sat-mark">◆ </tspan>job board &amp; kanban</text>
+            </g></g>
+            <g transform="translate(1460 930)"><g class="sat">
+              <rect x="-120" y="-22" width="240" height="44" rx="3" fill="#ffffff" stroke="#cac3b3"/>
+              <text y="5" text-anchor="middle" class="t-sat"><tspan class="t-sat-mark">◆ </tspan>shop-floor screens</text>
+            </g></g>
+          </g>
+        </g>
+
+        <!-- =========== DELIVERY (SW) =========== -->
+        <g class="domain" tabindex="0">
+          <circle cx="580" cy="830" r="240" fill="transparent" pointer-events="all"/>
+
+          <g class="core">
+            <g transform="translate(580 830)">
+              <circle r="82" fill="url(#nodeGradPrimary)" stroke="#4e7e8c" stroke-width="1.4" filter="url(#softGlow)"/>
+              <circle r="82" fill="none" stroke="#3a5f6a" stroke-width="0.3" opacity="0.55"/>
+              <circle r="70" fill="none" stroke="#7dabb8" stroke-width="0.3" opacity="0.4"/>
+              <text y="-4" text-anchor="middle" class="t-domain">Delivery</text>
+              <text y="16" text-anchor="middle" class="t-domain-sub">dispatch &amp; install</text>
+            </g>
+          </g>
+
+          <g class="sats-wrapper" style="transform-origin: 580px 830px;">
+            <g stroke="#7dabb8" stroke-width="0.7" fill="none" opacity="0.4">
+              <line x1="580" y1="830" x2="260" y2="770"/>
+              <line x1="580" y1="830" x2="260" y2="850"/>
+              <line x1="580" y1="830" x2="260" y2="930"/>
+            </g>
+            <g transform="translate(260 770)"><g class="sat">
+              <rect x="-120" y="-22" width="240" height="44" rx="3" fill="#ffffff" stroke="#cac3b3"/>
+              <text y="5" text-anchor="middle" class="t-sat"><tspan class="t-sat-mark">◆ </tspan>drivers &amp; routes</text>
+            </g></g>
+            <g transform="translate(260 850)"><g class="sat">
+              <rect x="-120" y="-22" width="240" height="44" rx="3" fill="#ffffff" stroke="#cac3b3"/>
+              <text y="5" text-anchor="middle" class="t-sat"><tspan class="t-sat-mark">◆ </tspan>map planning</text>
+            </g></g>
+            <g transform="translate(260 930)"><g class="sat">
+              <rect x="-120" y="-22" width="240" height="44" rx="3" fill="#ffffff" stroke="#cac3b3"/>
+              <text y="5" text-anchor="middle" class="t-sat"><tspan class="t-sat-mark">◆ </tspan>on-site sign-off</text>
+            </g></g>
+          </g>
+        </g>
+
+        <!-- =========== INVOICING (NW) =========== -->
+        <g class="domain" tabindex="0">
+          <circle cx="500" cy="305" r="220" fill="transparent" pointer-events="all"/>
+
+          <g class="core">
+            <g transform="translate(500 305)">
+              <circle r="72" fill="url(#nodeGrad)" stroke="#a06820" stroke-width="1.3" filter="url(#softGlow)"/>
+              <circle r="72" fill="none" stroke="#3a5f6a" stroke-width="0.3" opacity="0.5"/>
+              <text y="-4" text-anchor="middle" class="t-domain">Invoicing</text>
+              <text y="16" text-anchor="middle" class="t-domain-sub">get paid</text>
+            </g>
+          </g>
+
+          <g class="sats-wrapper" style="transform-origin: 500px 305px;">
+            <g stroke="#7dabb8" stroke-width="0.7" fill="none" opacity="0.4">
+              <line x1="500" y1="305" x2="260" y2="235"/>
+              <line x1="500" y1="305" x2="260" y2="375"/>
+            </g>
+            <g transform="translate(260 235)"><g class="sat">
+              <rect x="-120" y="-22" width="240" height="44" rx="3" fill="#ffffff" stroke="#cac3b3"/>
+              <text y="5" text-anchor="middle" class="t-sat"><tspan class="t-sat-mark">◆ </tspan>draft &amp; sent invoices</text>
+            </g></g>
+            <g transform="translate(260 375)"><g class="sat">
+              <rect x="-120" y="-22" width="240" height="44" rx="3" fill="#ffffff" stroke="#cac3b3"/>
+              <text y="5" text-anchor="middle" class="t-sat"><tspan class="t-sat-mark">◆ </tspan>purchase orders</text>
+            </g></g>
+          </g>
+        </g>
+
+        <!-- =========== CLIENTS (W) =========== -->
+        <g class="domain" tabindex="0">
+          <circle cx="280" cy="500" r="220" fill="transparent" pointer-events="all"/>
+
+          <g class="core">
+            <g transform="translate(280 500)">
+              <circle r="78" fill="url(#nodeGrad)" stroke="#4e7e8c" stroke-width="1.3" filter="url(#softGlow)"/>
+              <circle r="78" fill="none" stroke="#3a5f6a" stroke-width="0.3" opacity="0.5"/>
+              <text y="-4" text-anchor="middle" class="t-domain">Clients</text>
+              <text y="16" text-anchor="middle" class="t-domain-sub">companies &amp; sites</text>
+            </g>
+          </g>
+
+          <g class="sats-wrapper" style="transform-origin: 280px 500px;">
+            <g stroke="#7dabb8" stroke-width="0.7" fill="none" opacity="0.4">
+              <line x1="280" y1="500" x2="280" y2="640"/>
+              <line x1="280" y1="500" x2="280" y2="710"/>
+              <line x1="280" y1="500" x2="280" y2="780"/>
+            </g>
+            <g transform="translate(280 640)"><g class="sat">
+              <rect x="-120" y="-22" width="240" height="44" rx="3" fill="#ffffff" stroke="#cac3b3"/>
+              <text y="5" text-anchor="middle" class="t-sat"><tspan class="t-sat-mark">◆ </tspan>companies</text>
+            </g></g>
+            <g transform="translate(280 710)"><g class="sat">
+              <rect x="-120" y="-22" width="240" height="44" rx="3" fill="#ffffff" stroke="#cac3b3"/>
+              <text y="5" text-anchor="middle" class="t-sat"><tspan class="t-sat-mark">◆ </tspan>contacts</text>
+            </g></g>
+            <g transform="translate(280 780)"><g class="sat">
+              <rect x="-120" y="-22" width="240" height="44" rx="3" fill="#ffffff" stroke="#cac3b3"/>
+              <text y="5" text-anchor="middle" class="t-sat"><tspan class="t-sat-mark">◆ </tspan>sites &amp; addresses</text>
+            </g></g>
+          </g>
+        </g>
+
+        <!-- Aux (non-interactive) cards -->
+        <g transform="translate(1520 110)">
+          <rect x="-134" y="-30" width="268" height="60" rx="2" fill="#faf7ef" stroke="#d5d0c2"/>
+          <text text-anchor="middle" y="-6" class="t-domain" font-size="15">Maintenance</text>
+          <text text-anchor="middle" y="14" class="t-domain-sub">visits, repairs, callouts</text>
+        </g>
+
+        <g transform="translate(240 110)">
+          <rect x="-124" y="-30" width="248" height="60" rx="2" fill="#faf7ef" stroke="#d5d0c2"/>
+          <text text-anchor="middle" y="-6" class="t-domain" font-size="15">The team</text>
+          <text text-anchor="middle" y="14" class="t-domain-sub">Onesign staff · signed in</text>
+        </g>
+
+        <use href="#star-sm" x="140"  y="170"  width="10" height="10"/>
+        <use href="#star-sm" x="1660" y="260"  width="10" height="10"/>
+        <use href="#star-sm" x="1680" y="900"  width="10" height="10"/>
+        <use href="#star-sm" x="80"   y="920"  width="10" height="10"/>
+        <use href="#star-sm" x="870"  y="110"  width="10" height="10"/>
+        <use href="#star-sm" x="870"  y="1050" width="10" height="10"/>
+        <use href="#star-sm" x="60"   y="300"  width="10" height="10"/>
+        <use href="#star-sm" x="1660" y="660"  width="10" height="10"/>
+
+        <text x="860" y="1130" text-anchor="middle" class="t-greek">— χάρτης τοῦ δρόμου · a chart of the way —</text>
+      </svg>
+    </div>
+  </section>
+
+  <!-- ============================= II · VOYAGE ============================= -->
+  <section class="section">
+    <div class="section-head">
+      <span class="num">II.</span>
+      <h2>The Voyage · a job from enquiry to installed</h2>
+      <span class="rule"></span>
+      <span class="meta">eleven ports · one homecoming</span>
+    </div>
+
+    <p class="prose">
+      A typical job sails through eleven ports. <b>Enquiry</b> lands with Onesign by phone or email; <b>Ithaca</b> is the sign, lit and signed off at the client's building. Each port shows who does the work and what the next step is. Gold markers are client-facing moments; amber markers are where Onesign staff still lift a pen.
+    </p>
+
+    <div class="canvas-wrap">
+    <svg class="chart" viewBox="0 0 1720 720" xmlns="http://www.w3.org/2000/svg" style="padding: 32px 0 20px;">
+      <defs>
+        <linearGradient id="voyagePath" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%"  stop-color="#8a7430" stop-opacity="0.35"/>
+          <stop offset="40%" stop-color="#4e7e8c" stop-opacity="0.8"/>
+          <stop offset="70%" stop-color="#4e7e8c" stop-opacity="0.8"/>
+          <stop offset="100%" stop-color="#8a7430" stop-opacity="0.35"/>
+        </linearGradient>
+        <radialGradient id="portDisc" cx="50%" cy="35%" r="70%">
+          <stop offset="0%" stop-color="#ffffff"/>
+          <stop offset="100%" stop-color="#e4e9ec"/>
+        </radialGradient>
+      </defs>
+
+      <g stroke="#d5d0c2" stroke-width="0.5" opacity="0.5">
+        <line x1="60" y1="180" x2="1660" y2="180"/>
+        <line x1="60" y1="340" x2="1660" y2="340"/>
+        <line x1="60" y1="500" x2="1660" y2="500"/>
       </g>
-      <g transform="translate(100 380)">
-        <rect x="-55" y="-14" width="110" height="28" rx="4" fill="#141b22" stroke="#2a343d"/>
-        <text text-anchor="middle" y="4">contacts</text>
-      </g>
-      <g transform="translate(100 480)">
-        <rect x="-55" y="-14" width="110" height="28" rx="4" fill="#141b22" stroke="#2a343d"/>
-        <text text-anchor="middle" y="4">org_sites</text>
-      </g>
-      <g transform="translate(80 200)">
-        <rect x="-78" y="-14" width="156" height="28" rx="4" fill="#0f151b" stroke="#2a343d"/>
-        <text text-anchor="middle" y="4" fill="#7dabb8" font-family="ui-monospace, monospace" font-size="10">/admin/clients</text>
-      </g>
-    </g>
-    <!-- sat wires -->
-    <g stroke="#4e7e8c" stroke-width="0.8" fill="none" opacity="0.45">
-      <line x1="155" y1="280" x2="186" y2="340"/>
-      <line x1="155" y1="380" x2="186" y2="380"/>
-      <line x1="155" y1="480" x2="186" y2="420"/>
-      <line x1="160" y1="200" x2="195" y2="325"/>
-    </g>
-  </g>
 
-  <!-- QUOTE (top-right) -->
-  <g id="cluster-quote">
-    <g transform="translate(1080 290)">
-      <circle r="64" fill="url(#nodeGradHot)" stroke="#4e7e8c" stroke-width="1.5" filter="url(#softGlow)"/>
-      <circle r="64" fill="none" stroke="#7dabb8" stroke-width="0.4" opacity="0.5"/>
-      <text y="-4" text-anchor="middle" font-size="13" fill="#e8edf0" letter-spacing="2">QUOTE</text>
-      <text y="14" text-anchor="middle" font-size="9" fill="#7dabb8" letter-spacing="1">OSD-YYYY-NNNNNN</text>
-    </g>
-    <g font-size="10.5" fill="#9aa8b1">
-      <g transform="translate(1230 200)">
-        <rect x="-78" y="-14" width="156" height="28" rx="4" fill="#0f151b" stroke="#2a343d"/>
-        <text text-anchor="middle" y="4" fill="#7dabb8" font-family="ui-monospace, monospace" font-size="10">/admin/quotes</text>
-      </g>
-      <g transform="translate(1260 270)">
-        <rect x="-60" y="-14" width="120" height="28" rx="4" fill="#141b22" stroke="#2a343d"/>
-        <text text-anchor="middle" y="4">quote_items</text>
-      </g>
-      <g transform="translate(1300 340)">
-        <rect x="-70" y="-14" width="140" height="28" rx="4" fill="#141b22" stroke="#2a343d"/>
-        <text text-anchor="middle" y="4">is_production_work</text>
-      </g>
-      <g transform="translate(1360 180)">
-        <rect x="-68" y="-14" width="136" height="28" rx="4" fill="#0f151b" stroke="#2a343d"/>
-        <text text-anchor="middle" y="4" fill="#7dabb8" font-family="ui-monospace, monospace" font-size="10">/admin/pricing</text>
-      </g>
-    </g>
-    <g stroke="#4e7e8c" stroke-width="0.8" fill="none" opacity="0.45">
-      <line x1="1152" y1="200" x2="1118" y2="245"/>
-      <line x1="1200" y1="270" x2="1144" y2="280"/>
-      <line x1="1230" y1="340" x2="1144" y2="310"/>
-    </g>
-  </g>
+      <path d="M 80 340
+               Q 245 200 400 340
+               Q 555 200 710 340
+               Q 865 200 1020 340
+               Q 1175 200 1330 340
+               Q 1485 200 1640 280"
+            fill="none" stroke="url(#voyagePath)" stroke-width="3" stroke-linecap="round"/>
+      <path d="M 80 348
+               Q 245 208 400 348
+               Q 555 208 710 348
+               Q 865 208 1020 348
+               Q 1175 208 1330 348
+               Q 1485 208 1640 288"
+            fill="none" stroke="#cac3b3" stroke-width="5" opacity="0.4"/>
 
-  <!-- ARTWORK (right) -->
-  <g id="cluster-artwork">
-    <g transform="translate(1180 560)">
-      <circle r="64" fill="url(#nodeGradHot)" stroke="#4e7e8c" stroke-width="1.5" filter="url(#softGlow)"/>
-      <circle r="64" fill="none" stroke="#7dabb8" stroke-width="0.4" opacity="0.5"/>
-      <text y="-4" text-anchor="middle" font-size="13" fill="#e8edf0" letter-spacing="2">ARTWORK</text>
-      <text y="14" text-anchor="middle" font-size="9" fill="#7dabb8" letter-spacing="1">AWC-YYYY-NNNNNN</text>
-    </g>
-    <g font-size="10.5" fill="#9aa8b1">
-      <g transform="translate(1370 500)">
-        <rect x="-68" y="-14" width="136" height="28" rx="4" fill="#0f151b" stroke="#2a343d"/>
-        <text text-anchor="middle" y="4" fill="#7dabb8" font-family="ui-monospace, monospace" font-size="10">/admin/artwork</text>
+      <g transform="translate(90 340)">
+        <circle r="22" fill="url(#portDisc)" stroke="#8a7430" stroke-width="1.2"/>
+        <text y="5" text-anchor="middle" class="t-num">I</text>
       </g>
-      <g transform="translate(1370 560)">
-        <rect x="-82" y="-14" width="164" height="28" rx="4" fill="#141b22" stroke="#2a343d"/>
-        <text text-anchor="middle" y="4">component_items <tspan fill="#7dabb8">(spec-bearing)</tspan></text>
+      <g transform="translate(90 395)">
+        <text text-anchor="middle" class="t-stage">Enquiry</text>
+        <text y="20" text-anchor="middle" class="t-stage-sub">by phone · email · referral</text>
       </g>
-      <g transform="translate(1370 620)">
-        <rect x="-72" y="-14" width="144" height="28" rx="4" fill="#141b22" stroke="#2a343d"/>
-        <text text-anchor="middle" y="4">target_stage_id</text>
-      </g>
-      <!-- external approval token -->
-      <g transform="translate(1480 430)">
-        <rect x="-104" y="-18" width="208" height="36" rx="6" fill="#1a1510" stroke="#5a3a10" stroke-dasharray="0"/>
-        <text text-anchor="middle" y="-2" fill="#f59e0b" font-family="ui-monospace, monospace" font-size="10">/approve/artwork/[token]</text>
-        <text text-anchor="middle" y="11" fill="#f59e0b" opacity="0.7" font-size="9">email send: TODO</text>
-      </g>
-    </g>
-    <g stroke="#4e7e8c" stroke-width="0.8" fill="none" opacity="0.45">
-      <line x1="1302" y1="500" x2="1242" y2="525"/>
-      <line x1="1288" y1="560" x2="1244" y2="560"/>
-      <line x1="1298" y1="620" x2="1244" y2="600"/>
-    </g>
-  </g>
 
-  <!-- PRODUCTION (bottom-right) -->
-  <g id="cluster-production">
-    <g transform="translate(1080 820)">
-      <circle r="64" fill="url(#nodeGradHot)" stroke="#4e7e8c" stroke-width="1.5" filter="url(#softGlow)"/>
-      <circle r="64" fill="none" stroke="#7dabb8" stroke-width="0.4" opacity="0.5"/>
-      <text y="-4" text-anchor="middle" font-size="13" fill="#e8edf0" letter-spacing="2">PRODUCTION</text>
-      <text y="14" text-anchor="middle" font-size="9" fill="#7dabb8" letter-spacing="1">JOB-YYYY-NNNNNN</text>
-    </g>
-    <g font-size="10.5" fill="#9aa8b1">
-      <g transform="translate(1260 770)">
-        <rect x="-68" y="-14" width="136" height="28" rx="4" fill="#0f151b" stroke="#2a343d"/>
-        <text text-anchor="middle" y="4" fill="#7dabb8" font-family="ui-monospace, monospace" font-size="10">/admin/jobs</text>
+      <g transform="translate(245 240)">
+        <circle r="22" fill="url(#portDisc)" stroke="#4e7e8c" stroke-width="1.2"/>
+        <text y="5" text-anchor="middle" class="t-num">II</text>
       </g>
-      <g transform="translate(1260 830)">
-        <rect x="-74" y="-14" width="148" height="28" rx="4" fill="#141b22" stroke="#2a343d"/>
-        <text text-anchor="middle" y="4">job_items · routing</text>
+      <g transform="translate(245 195)">
+        <text y="-18" text-anchor="middle" class="t-stage-sub">add their company &amp; site</text>
+        <text text-anchor="middle" class="t-stage">Client on file</text>
       </g>
-      <g transform="translate(1260 890)">
-        <rect x="-74" y="-14" width="148" height="28" rx="4" fill="#141b22" stroke="#2a343d"/>
-        <text text-anchor="middle" y="4">13 stages · Kanban</text>
+
+      <g transform="translate(400 340)">
+        <circle r="22" fill="url(#portDisc)" stroke="#a06820" stroke-width="1.2"/>
+        <text y="5" text-anchor="middle" class="t-num">III</text>
       </g>
-      <!-- shop floor satellite -->
-      <g transform="translate(1440 920)">
-        <rect x="-74" y="-18" width="148" height="36" rx="6" fill="#0f151b" stroke="#4e7e8c"/>
-        <text text-anchor="middle" y="-2" fill="#7dabb8" font-family="ui-monospace, monospace" font-size="10">/shop-floor</text>
-        <text text-anchor="middle" y="11" fill="#f59e0b" opacity="0.75" font-size="9">no dept filter</text>
+      <g transform="translate(400 395)">
+        <text text-anchor="middle" class="t-stage">Quote sent</text>
+        <text y="20" text-anchor="middle" class="t-stage-sub">prepared, priced &amp; sent</text>
       </g>
-    </g>
-    <g stroke="#4e7e8c" stroke-width="0.8" fill="none" opacity="0.45">
-      <line x1="1192" y1="770" x2="1142" y2="790"/>
-      <line x1="1186" y1="830" x2="1144" y2="825"/>
-      <line x1="1186" y1="890" x2="1142" y2="855"/>
-    </g>
-  </g>
 
-  <!-- DELIVERY (bottom-left) -->
-  <g id="cluster-delivery">
-    <g transform="translate(520 820)">
-      <circle r="64" fill="url(#nodeGradHot)" stroke="#4e7e8c" stroke-width="1.5" filter="url(#softGlow)"/>
-      <circle r="64" fill="none" stroke="#7dabb8" stroke-width="0.4" opacity="0.5"/>
-      <text y="-4" text-anchor="middle" font-size="13" fill="#e8edf0" letter-spacing="2">DELIVERY</text>
-      <text y="14" text-anchor="middle" font-size="9" fill="#7dabb8" letter-spacing="1">DEL-YYYY-NNNNNN</text>
-    </g>
-    <g font-size="10.5" fill="#9aa8b1">
-      <g transform="translate(340 770)">
-        <rect x="-78" y="-14" width="156" height="28" rx="4" fill="#0f151b" stroke="#2a343d"/>
-        <text text-anchor="middle" y="4" fill="#7dabb8" font-family="ui-monospace, monospace" font-size="10">/admin/deliveries</text>
+      <g transform="translate(555 240)">
+        <circle r="22" fill="url(#portDisc)" stroke="#8a7430" stroke-width="1.2"/>
+        <text y="5" text-anchor="middle" class="t-num">IV</text>
       </g>
-      <g transform="translate(340 830)">
-        <rect x="-68" y="-14" width="136" height="28" rx="4" fill="#141b22" stroke="#2a343d"/>
-        <text text-anchor="middle" y="4">delivery_items</text>
+      <g transform="translate(555 195)">
+        <text y="-18" text-anchor="middle" class="t-stage-sub">the job is born</text>
+        <text text-anchor="middle" class="t-stage">Accepted</text>
       </g>
-      <g transform="translate(340 890)">
-        <rect x="-68" y="-14" width="136" height="28" rx="4" fill="#141b22" stroke="#2a343d"/>
-        <text text-anchor="middle" y="4">drivers · routes</text>
+
+      <g transform="translate(710 340)">
+        <circle r="22" fill="url(#portDisc)" stroke="#4e7e8c" stroke-width="1.2"/>
+        <text y="5" text-anchor="middle" class="t-num">V</text>
       </g>
-      <!-- external PoD token -->
-      <g transform="translate(160 620)">
-        <rect x="-96" y="-18" width="192" height="36" rx="6" fill="#1a1510" stroke="#5a3a10"/>
-        <text text-anchor="middle" y="-2" fill="#f59e0b" font-family="ui-monospace, monospace" font-size="10">/delivery/[token]</text>
-        <text text-anchor="middle" y="11" fill="#f59e0b" opacity="0.7" font-size="9">token send: TODO</text>
+      <g transform="translate(710 395)">
+        <text text-anchor="middle" class="t-stage">Design begins</text>
+        <text y="20" text-anchor="middle" class="t-stage-sub">spec inherited from quote</text>
       </g>
-    </g>
-    <g stroke="#4e7e8c" stroke-width="0.8" fill="none" opacity="0.45">
-      <line x1="418" y1="770" x2="458" y2="790"/>
-      <line x1="408" y1="830" x2="456" y2="825"/>
-      <line x1="408" y1="890" x2="456" y2="855"/>
-    </g>
-  </g>
 
-  <!-- INVOICE + PO (left) -->
-  <g id="cluster-invoice">
-    <g transform="translate(480 330)">
-      <circle r="60" fill="url(#nodeGrad)" stroke="#f59e0b" stroke-width="1.2" filter="url(#softGlow)" opacity="0.95"/>
-      <circle r="60" fill="none" stroke="#f59e0b" stroke-width="0.4" opacity="0.4"/>
-      <text y="-4" text-anchor="middle" font-size="12" fill="#e8edf0" letter-spacing="2">INVOICE</text>
-      <text y="14" text-anchor="middle" font-size="9" fill="#f59e0b" letter-spacing="1">INV-YYYY-NNNNNN</text>
-    </g>
-    <g font-size="10.5" fill="#9aa8b1">
-      <g transform="translate(340 250)">
-        <rect x="-72" y="-14" width="144" height="28" rx="4" fill="#0f151b" stroke="#2a343d"/>
-        <text text-anchor="middle" y="4" fill="#7dabb8" font-family="ui-monospace, monospace" font-size="10">/admin/invoices</text>
+      <g transform="translate(865 240)">
+        <circle r="22" fill="url(#portDisc)" stroke="#a03838" stroke-width="1.2"/>
+        <text y="5" text-anchor="middle" class="t-num">VI</text>
       </g>
-      <g transform="translate(340 410)">
-        <rect x="-60" y="-14" width="120" height="28" rx="4" fill="#141b22" stroke="#2a343d"/>
-        <text text-anchor="middle" y="4">invoice_items</text>
+      <g transform="translate(865 195)">
+        <text y="-18" text-anchor="middle" class="t-stage-sub">approval link (sent by hand today)</text>
+        <text text-anchor="middle" class="t-stage">Proof to client</text>
       </g>
-      <!-- PO -->
-      <g transform="translate(1380 580)">
-        <rect x="-70" y="-18" width="140" height="36" rx="6" fill="#0f151b" stroke="#f59e0b"/>
-        <text text-anchor="middle" y="-2" fill="#e8edf0" font-size="12" letter-spacing="2">PO</text>
-        <text text-anchor="middle" y="11" fill="#f59e0b" opacity="0.7" font-size="9">manual · 0 rows</text>
+
+      <g transform="translate(1020 340)">
+        <circle r="22" fill="url(#portDisc)" stroke="#8a7430" stroke-width="1.2"/>
+        <text y="5" text-anchor="middle" class="t-num">VII</text>
       </g>
-    </g>
-    <g stroke="#f59e0b" stroke-width="0.8" fill="none" opacity="0.4">
-      <line x1="412" y1="250" x2="438" y2="286"/>
-      <line x1="400" y1="410" x2="442" y2="376"/>
-    </g>
-  </g>
+      <g transform="translate(1020 395)">
+        <text text-anchor="middle" class="t-stage">Client signs off</text>
+        <text y="20" text-anchor="middle" class="t-stage-sub">approved on the client's phone</text>
+      </g>
 
-  <!-- AUX: staff/auth -->
-  <g id="cluster-staff" transform="translate(200 140)">
-    <rect x="-98" y="-26" width="196" height="52" rx="10" fill="#0f151b" stroke="#2a343d"/>
-    <text text-anchor="middle" y="-6" font-size="11" fill="#9aa8b1" letter-spacing="2">STAFF · AUTH</text>
-    <text text-anchor="middle" y="10" font-size="9" fill="#5a6770" font-family="ui-monospace, monospace">profiles · super_admin</text>
-    <text text-anchor="middle" y="22" font-size="9" fill="#5a6770" font-family="ui-monospace, monospace">/login · /signup</text>
-  </g>
+      <g transform="translate(1175 240)">
+        <circle r="22" fill="url(#portDisc)" stroke="#4e7e8c" stroke-width="1.2"/>
+        <text y="5" text-anchor="middle" class="t-num">VIII</text>
+      </g>
+      <g transform="translate(1175 195)">
+        <text y="-18" text-anchor="middle" class="t-stage-sub">queued for the right departments</text>
+        <text text-anchor="middle" class="t-stage">Released to make</text>
+      </g>
 
-  <!-- AUX: maintenance -->
-  <g id="cluster-maint" transform="translate(1400 110)">
-    <rect x="-98" y="-26" width="196" height="52" rx="10" fill="#0f151b" stroke="#2a343d"/>
-    <text text-anchor="middle" y="-6" font-size="11" fill="#9aa8b1" letter-spacing="2">MAINTENANCE</text>
-    <text text-anchor="middle" y="10" font-size="9" fill="#7dabb8" font-family="ui-monospace, monospace">/admin/maintenance</text>
-    <text text-anchor="middle" y="22" font-size="9" fill="#5a6770">migration 048 · wired</text>
-  </g>
+      <g transform="translate(1330 340)">
+        <circle r="22" fill="url(#portDisc)" stroke="#4e7e8c" stroke-width="1.2"/>
+        <text y="5" text-anchor="middle" class="t-num">IX</text>
+      </g>
+      <g transform="translate(1330 395)">
+        <text text-anchor="middle" class="t-stage">Made in-house</text>
+        <text y="20" text-anchor="middle" class="t-stage-sub">CNC · vinyl · paint · assembly</text>
+      </g>
 
-  <!-- AUX: external legacy -->
-  <g id="cluster-legacy" transform="translate(140 990)">
-    <rect x="-130" y="-36" width="260" height="72" rx="10" fill="#0f151b" stroke="#2a343d" stroke-dasharray="4 4"/>
-    <text text-anchor="middle" y="-18" font-size="11" fill="#9aa8b1" letter-spacing="2">LEGACY · ORPHANED</text>
-    <text text-anchor="middle" y="-2" font-size="9" fill="#5a6770" font-family="ui-monospace, monospace">/dashboard · /assets · /billing</text>
-    <text text-anchor="middle" y="10" font-size="9" fill="#5a6770" font-family="ui-monospace, monospace">/admin/orgs · /admin/leads</text>
-    <text text-anchor="middle" y="22" font-size="9" fill="#5a6770" font-family="ui-monospace, monospace">/admin/subscriptions · /components</text>
-  </g>
+      <g transform="translate(1485 240)">
+        <circle r="22" fill="url(#portDisc)" stroke="#4e7e8c" stroke-width="1.2"/>
+        <text y="5" text-anchor="middle" class="t-num">X</text>
+      </g>
+      <g transform="translate(1485 195)">
+        <text y="-18" text-anchor="middle" class="t-stage-sub">loaded, routed, driven</text>
+        <text text-anchor="middle" class="t-stage">Dispatched</text>
+      </g>
 
-  <!-- AUX: artwork branches -->
-  <g id="cluster-artwork-extras" transform="translate(1430 760)">
-    <rect x="-118" y="-30" width="236" height="60" rx="10" fill="#0f151b" stroke="#2a343d"/>
-    <text text-anchor="middle" y="-12" font-size="11" fill="#9aa8b1" letter-spacing="2">ARTWORK QA</text>
-    <text text-anchor="middle" y="3" font-size="9" fill="#7dabb8" font-family="ui-monospace, monospace">/admin/artwork/reconcile</text>
-    <text text-anchor="middle" y="16" font-size="9" fill="#7dabb8" font-family="ui-monospace, monospace">/admin/approvals</text>
-  </g>
+      <g transform="translate(1640 280)">
+        <circle r="28" fill="url(#portDisc)" stroke="#8a7430" stroke-width="1.5"/>
+        <text y="5" text-anchor="middle" class="t-num">XI</text>
+      </g>
+      <g transform="translate(1640 235)">
+        <text y="-60" text-anchor="middle" fill="#8a7430" font-family="Times New Roman, serif" font-size="11" letter-spacing="0.35em" font-style="italic">— ITHACA —</text>
+        <text y="-20" text-anchor="middle" class="t-stage-sub">sign up · photographed · signed</text>
+        <text text-anchor="middle" class="t-stage">Installed</text>
+      </g>
 
-  <!-- stage pipeline label (center-curve) -->
-  <g transform="translate(800 230)">
-    <text text-anchor="middle" font-size="10" fill="#5a6770" letter-spacing="4">— CANONICAL PIPELINE —</text>
-  </g>
+      <path d="M 555 262 Q 600 440 780 555" stroke="#a06820" stroke-width="1.6" fill="none" stroke-dasharray="5 4" marker-end="url(#mkWarn)"/>
+      <text x="610" y="488" class="t-flow-warn" text-anchor="middle">invoice raised</text>
+      <g transform="translate(820 565)">
+        <rect x="-94" y="-22" width="188" height="44" rx="2" fill="#faf0e6" stroke="#c08a5a"/>
+        <text y="-3" text-anchor="middle" class="t-domain" font-size="15">Invoice</text>
+        <text y="15" text-anchor="middle" class="t-domain-sub">branches when the quote is accepted</text>
+      </g>
 
-  <!-- Pipeline stage labels along the curve -->
-  <g font-size="10" fill="#7dabb8" letter-spacing="1">
-    <text x="1130" y="450" opacity="0.85">generate</text>
-    <text x="1180" y="700" opacity="0.85">release</text>
-    <text x="800" y="880" opacity="0.85" text-anchor="middle">auto-create delivery</text>
-  </g>
+      <path d="M 710 362 Q 900 460 1090 545" stroke="#a06820" stroke-width="1.4" fill="none" stroke-dasharray="5 4" opacity="0.7"/>
+      <g transform="translate(1130 565)">
+        <rect x="-104" y="-22" width="208" height="44" rx="2" fill="#faf0e6" stroke="#c08a5a"/>
+        <text y="-3" text-anchor="middle" class="t-domain" font-size="15">Purchase orders</text>
+        <text y="15" text-anchor="middle" class="t-domain-sub">raised when buying from suppliers</text>
+      </g>
 
-  <!-- attribution -->
-  <g transform="translate(800 1060)">
-    <text text-anchor="middle" font-size="9" fill="#3a4249" letter-spacing="4">onesign · odysseus · v0 · 2026-04</text>
-  </g>
+      <g class="t-actor" text-anchor="middle">
+        <text x="90"   y="472">Client</text>
+        <text x="245"  y="472">Onesign staff</text>
+        <text x="400"  y="472">Estimator</text>
+        <text x="555"  y="472">Client</text>
+        <text x="710"  y="472">Designer</text>
+        <text x="865"  y="472">Designer</text>
+        <text x="1020" y="472">Client</text>
+        <text x="1175" y="472">Designer</text>
+        <text x="1330" y="472">Shop floor</text>
+        <text x="1485" y="472">Dispatch · driver</text>
+        <text x="1640" y="472">Driver · client</text>
+      </g>
 
-</svg>
-</div>
+      <g transform="translate(60 640)">
+        <circle cx="0" cy="0" r="9" fill="url(#portDisc)" stroke="#4e7e8c" stroke-width="1"/>
+        <text x="18" y="4" class="t-stage-sub" font-style="normal">automatic</text>
 
-<!-- Explanatory notes -->
-<div class="notes">
-  <div class="note">
-    <h3>Central hub</h3>
-    <p>Everything in this app orbits the canonical pipeline <code>quote → artwork → production → delivery</code>. Invoice branches off quote; purchase orders hang loose. Clients are a data substrate — never log in.</p>
-  </div>
-  <div class="note">
-    <h3>The inheritance chain</h3>
-    <p>Every downstream record carries <code>org_id</code>, <code>contact_id</code>, <code>site_id</code> from the quote. Dashed teal lines show this — clients aren't <em>visited</em>, they're <em>inherited</em>.</p>
-  </div>
-  <div class="note">
-    <h3>Red edges = missing email</h3>
-    <p>Token generation works end-to-end for <code>/approve/artwork/[token]</code> and <code>/delivery/[token]</code>, but nobody sends the URL. Resend integration is the highest-value P0.</p>
-  </div>
-  <div class="note">
-    <h3>Amber edges = manual</h3>
-    <p>Invoice creation and PO linkage are wired but not auto-triggered. Quote→invoice is a button; quote→PO is entirely manual navigation.</p>
-  </div>
-  <div class="note">
-    <h3>Spec-bearing row</h3>
-    <p><code>artwork_component_items</code> (satellite near ARTWORK) holds material, method, finish, dimensions, and <code>target_stage_id</code>. Release rebuilds <code>job_items.stage_routing</code> from these.</p>
-  </div>
-  <div class="note">
-    <h3>Legacy constellation</h3>
-    <p>Bottom-left cluster shows orphan routes from the old multi-tenant SaaS life (<code>/dashboard</code>, <code>/assets</code>, <code>/billing</code>, <code>/admin/orgs</code>). Candidates for deletion.</p>
-  </div>
-</div>
+        <circle cx="140" cy="0" r="9" fill="url(#portDisc)" stroke="#a06820" stroke-width="1"/>
+        <text x="158" y="4" class="t-stage-sub" font-style="normal">manual step today</text>
 
-<footer>
-  paired with <a href="project-map.html" style="color:#7dabb8">project-map.html</a> · live at http://localhost:3100 when dev is running
-</footer>
+        <circle cx="330" cy="0" r="9" fill="url(#portDisc)" stroke="#a03838" stroke-width="1"/>
+        <text x="348" y="4" class="t-stage-sub" font-style="normal">small gap to close</text>
+
+        <circle cx="520" cy="0" r="9" fill="url(#portDisc)" stroke="#8a7430" stroke-width="1"/>
+        <text x="538" y="4" class="t-stage-sub" font-style="normal">client-facing moment</text>
+      </g>
+
+      <text x="860" y="695" text-anchor="middle" class="t-greek">— νόστος · homecoming —</text>
+    </svg>
+    </div>
+  </section>
+
+  <!-- ============================= III · INSIDE PRODUCTION ============================= -->
+  <section class="section">
+    <div class="section-head">
+      <span class="num">III.</span>
+      <h2>Inside Production · where the making happens</h2>
+      <span class="rule"></span>
+      <span class="meta">thirteen stages · one job board</span>
+    </div>
+
+    <p class="prose">
+      Production is the heart of the business — and the widest part of Odysseus. Every accepted job flows through a pipeline of <b>thirteen stages</b>, grouped into three phases: <b>queue &amp; approve</b>, <b>make</b>, and <b>ship</b>. A single job only visits the craft stages it actually needs; a painted fabricated sign will tour Metal Fab → Painters → Lighting → Assembly, while a cut vinyl graphic might only pass through Vinyl. One job board shows them all at once.
+    </p>
+
+    <div class="canvas-wrap">
+    <svg class="chart production" viewBox="0 0 1720 960" xmlns="http://www.w3.org/2000/svg" style="padding: 28px 0 20px;">
+      <defs>
+        <radialGradient id="phaseGlow" cx="50%" cy="40%" r="75%">
+          <stop offset="0%" stop-color="#ffffff"/>
+          <stop offset="100%" stop-color="#f2efe7"/>
+        </radialGradient>
+        <radialGradient id="phaseGlowEntry" cx="50%" cy="40%" r="75%">
+          <stop offset="0%" stop-color="#fbf6ea"/>
+          <stop offset="100%" stop-color="#f4ecd6"/>
+        </radialGradient>
+        <marker id="mkMake" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="#4e7e8c"/>
+        </marker>
+        <marker id="mkGold" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="#8a7430"/>
+        </marker>
+      </defs>
+
+      <!-- faint grid -->
+      <g stroke="#d5d0c2" stroke-width="0.5" opacity="0.4">
+        <line x1="60" y1="180" x2="1660" y2="180"/>
+        <line x1="60" y1="760" x2="1660" y2="760"/>
+      </g>
+
+      <!-- ================ PHASE HEADERS ================ -->
+      <g fill="#7dabb8" text-anchor="middle" font-family="Times New Roman, serif" font-style="italic" font-size="14" letter-spacing="0.02em">
+        <text x="140"  y="80">i. queue</text>
+        <text x="340"  y="80">ii. gate</text>
+        <text x="560"  y="80">iii. plan</text>
+        <text x="1080" y="80">iv. make</text>
+        <text x="1610" y="80">v. ship</text>
+      </g>
+      <g stroke="#3a5f6a" stroke-width="0.6" opacity="0.55">
+        <line x1="80"  y1="95" x2="200" y2="95"/>
+        <line x1="280" y1="95" x2="400" y2="95"/>
+        <line x1="500" y1="95" x2="620" y2="95"/>
+        <line x1="900" y1="95" x2="1260" y2="95"/>
+        <line x1="1550" y1="95" x2="1670" y2="95"/>
+      </g>
+
+      <!-- ================ ORDER BOOK (I. Queue) ================ -->
+      <g transform="translate(140 450)">
+        <rect x="-90" y="-70" width="180" height="140" rx="3" fill="url(#phaseGlowEntry)" stroke="#8a7430" stroke-width="1.3"/>
+        <text y="-34" text-anchor="middle" fill="#8a7430" font-family="Times New Roman, serif" font-size="13" letter-spacing="0.25em" font-style="italic">01</text>
+        <text y="0"   text-anchor="middle" class="t-domain" font-size="13">ORDER BOOK</text>
+      </g>
+
+      <!-- ================ ARTWORK APPROVAL (II. Gate) ================ -->
+      <g transform="translate(340 450)">
+        <rect x="-90" y="-70" width="180" height="140" rx="3" fill="url(#phaseGlowEntry)" stroke="#a06820" stroke-width="1.3"/>
+        <text y="-34" text-anchor="middle" fill="#a06820" font-family="Times New Roman, serif" font-size="13" letter-spacing="0.25em" font-style="italic">02</text>
+        <text y="-8"  text-anchor="middle" class="t-domain" font-size="13">ARTWORK</text>
+        <text y="10"  text-anchor="middle" class="t-domain" font-size="13">APPROVAL</text>
+        <text y="38"  text-anchor="middle" class="t-domain-sub" font-size="10">client signs off first</text>
+      </g>
+
+      <!-- ================ CUT LIST (III. Plan) ================ -->
+      <g transform="translate(560 450)">
+        <rect x="-90" y="-70" width="180" height="140" rx="3" fill="url(#phaseGlow)" stroke="#8B5CF6" stroke-width="1.2"/>
+        <rect x="-90" y="-70" width="6" height="140" fill="#8B5CF6" opacity="0.9"/>
+        <text y="-34" text-anchor="middle" fill="#8B5CF6" font-family="Times New Roman, serif" font-size="13" letter-spacing="0.25em" font-style="italic">03</text>
+        <text y="0"   text-anchor="middle" class="t-domain" font-size="13">CUT LIST</text>
+      </g>
+
+      <!-- ================ FLOW ARROWS: I → II → III ================ -->
+      <g stroke="#8a7430" stroke-width="2.2" fill="none" opacity="0.75">
+        <line x1="234"  y1="450" x2="246"  y2="450" marker-end="url(#mkGold)"/>
+        <line x1="434"  y1="450" x2="466"  y2="450" marker-end="url(#mkGold)"/>
+        <line x1="654"  y1="450" x2="686"  y2="450" marker-end="url(#mkGold)"/>
+      </g>
+
+      <!-- Splaying fan: Cut List → 9 craft stations -->
+      <g stroke="#4e7e8c" stroke-width="1.3" fill="none" opacity="0.6">
+        <path d="M 690 450 Q 800 260 920 260" marker-end="url(#mkMake)"/>
+        <path d="M 690 450 Q 800 260 920 420"/>
+        <path d="M 690 450 Q 800 450 920 450" marker-end="url(#mkMake)"/>
+        <path d="M 690 450 Q 800 640 920 620"/>
+        <path d="M 690 450 Q 800 640 920 780" marker-end="url(#mkMake)"/>
+      </g>
+      <text x="735" y="435" class="t-flow" text-anchor="start" fill="#4e7e8c">routes to the stations a job needs</text>
+
+      <!-- ================ MAKE — 9 craft stations ================ -->
+      <!-- Minimal: stage number, name, and coloured stripe. No invented detail. -->
+
+      <!-- Row 1 -->
+      <g transform="translate(1000 260)"><g>
+        <rect x="-125" y="-46" width="250" height="92" rx="3" fill="url(#phaseGlow)" stroke="#d5d0c2"/>
+        <rect x="-125" y="-46" width="5"  height="92" fill="#EC4899" opacity="0.9"/>
+        <text x="-110" y="-18" fill="#EC4899" font-family="Times New Roman, serif" font-size="11" letter-spacing="0.2em" font-style="italic">04</text>
+        <text y="18" text-anchor="middle" class="t-sat">LASER</text>
+      </g></g>
+
+      <g transform="translate(1300 260)"><g>
+        <rect x="-125" y="-46" width="250" height="92" rx="3" fill="url(#phaseGlow)" stroke="#d5d0c2"/>
+        <rect x="-125" y="-46" width="5"  height="92" fill="#EF4444" opacity="0.9"/>
+        <text x="-110" y="-18" fill="#EF4444" font-family="Times New Roman, serif" font-size="11" letter-spacing="0.2em" font-style="italic">05</text>
+        <text y="18" text-anchor="middle" class="t-sat">CNC ROUTING</text>
+      </g></g>
+
+      <g transform="translate(1600 260)"><g>
+        <rect x="-105" y="-46" width="210" height="92" rx="3" fill="url(#phaseGlow)" stroke="#d5d0c2"/>
+        <rect x="-105" y="-46" width="5"  height="92" fill="#F97316" opacity="0.9"/>
+        <text x="-90" y="-18" fill="#F97316" font-family="Times New Roman, serif" font-size="11" letter-spacing="0.2em" font-style="italic">06</text>
+        <text y="18" text-anchor="middle" class="t-sat" font-size="11">PLASTIC FABRICATION</text>
+      </g></g>
+
+      <!-- Row 2 -->
+      <g transform="translate(1000 450)"><g>
+        <rect x="-125" y="-46" width="250" height="92" rx="3" fill="url(#phaseGlow)" stroke="#d5d0c2"/>
+        <rect x="-125" y="-46" width="5"  height="92" fill="#F59E0B" opacity="0.9"/>
+        <text x="-110" y="-18" fill="#F59E0B" font-family="Times New Roman, serif" font-size="11" letter-spacing="0.2em" font-style="italic">07</text>
+        <text y="18" text-anchor="middle" class="t-sat" font-size="11">METAL FABRICATION</text>
+      </g></g>
+
+      <g transform="translate(1300 450)"><g>
+        <rect x="-125" y="-46" width="250" height="92" rx="3" fill="url(#phaseGlow)" stroke="#d5d0c2"/>
+        <rect x="-125" y="-46" width="5"  height="92" fill="#22C55E" opacity="0.9"/>
+        <text x="-110" y="-18" fill="#22C55E" font-family="Times New Roman, serif" font-size="11" letter-spacing="0.2em" font-style="italic">08</text>
+        <text y="18" text-anchor="middle" class="t-sat">PAINTERS</text>
+      </g></g>
+
+      <g transform="translate(1600 450)"><g>
+        <rect x="-105" y="-46" width="210" height="92" rx="3" fill="url(#phaseGlow)" stroke="#d5d0c2"/>
+        <rect x="-105" y="-46" width="5"  height="92" fill="#06B6D4" opacity="0.9"/>
+        <text x="-90" y="-18" fill="#06B6D4" font-family="Times New Roman, serif" font-size="11" letter-spacing="0.2em" font-style="italic">09</text>
+        <text y="18" text-anchor="middle" class="t-sat">LIGHTING</text>
+      </g></g>
+
+      <!-- Row 3 -->
+      <g transform="translate(1000 640)"><g>
+        <rect x="-125" y="-46" width="250" height="92" rx="3" fill="url(#phaseGlow)" stroke="#d5d0c2"/>
+        <rect x="-125" y="-46" width="5"  height="92" fill="#3B82F6" opacity="0.9"/>
+        <text x="-110" y="-18" fill="#3B82F6" font-family="Times New Roman, serif" font-size="11" letter-spacing="0.2em" font-style="italic">10</text>
+        <text y="18" text-anchor="middle" class="t-sat">VINYL</text>
+      </g></g>
+
+      <g transform="translate(1300 640)"><g>
+        <rect x="-125" y="-46" width="250" height="92" rx="3" fill="url(#phaseGlow)" stroke="#d5d0c2"/>
+        <rect x="-125" y="-46" width="5"  height="92" fill="#7C3AED" opacity="0.9"/>
+        <text x="-110" y="-18" fill="#7C3AED" font-family="Times New Roman, serif" font-size="11" letter-spacing="0.2em" font-style="italic">11</text>
+        <text y="18" text-anchor="middle" class="t-sat">DIGITAL PRINT</text>
+      </g></g>
+
+      <g transform="translate(1600 640)"><g>
+        <rect x="-105" y="-46" width="210" height="92" rx="3" fill="url(#phaseGlow)" stroke="#d5d0c2"/>
+        <rect x="-105" y="-46" width="5"  height="92" fill="#14B8A6" opacity="0.9"/>
+        <text x="-90" y="-18" fill="#14B8A6" font-family="Times New Roman, serif" font-size="11" letter-spacing="0.2em" font-style="italic">12</text>
+        <text y="18" text-anchor="middle" class="t-sat">ASSEMBLY</text>
+      </g></g>
+
+      <!-- ================ OUT: Assembly → Goods Out ================ -->
+      <!-- Assembly is at (1600, 640), Goods Out at bottom right-ish.
+           Move Goods Out beneath the whole Make grid as a capstone card. -->
+
+      <!-- ================ GOODS OUT (V. Ship) ================ -->
+      <g transform="translate(860 880)">
+        <rect x="-320" y="-44" width="640" height="88" rx="3" fill="url(#phaseGlowEntry)" stroke="#4e7e8c" stroke-width="1.4"/>
+        <rect x="-320" y="-44" width="6"  height="88" fill="#4e7e8c" opacity="0.9"/>
+        <text x="-296" y="-14" fill="#4e7e8c" font-family="Times New Roman, serif" font-size="13" letter-spacing="0.25em" font-style="italic">13</text>
+        <text y="-6" text-anchor="middle" class="t-sat" font-size="14" letter-spacing="0.24em">GOODS OUT</text>
+        <text y="18" text-anchor="middle" class="t-domain-sub" font-size="11" opacity="0.85" fill="#8a7430" font-style="italic">delivery auto-created when all items reach this stage</text>
+      </g>
+
+      <!-- merging arrows from the 9 stations down to Goods Out -->
+      <g stroke="#4e7e8c" stroke-width="1" fill="none" opacity="0.45">
+        <path d="M 1000 306 Q 1000 760 880 836"/>
+        <path d="M 1300 306 Q 1300 760 880 836"/>
+        <path d="M 1600 306 Q 1600 760 880 836"/>
+        <path d="M 1000 496 Q 1000 760 880 836"/>
+        <path d="M 1300 496 Q 1300 760 880 836"/>
+        <path d="M 1600 496 Q 1600 760 880 836"/>
+        <path d="M 1000 686 Q 1000 760 880 836"/>
+        <path d="M 1300 686 Q 1300 760 880 836"/>
+        <path d="M 1600 686 Q 1600 760 880 836" marker-end="url(#mkMake)"/>
+      </g>
+
+      <!-- small side-note: kanban + shop-floor -->
+      <g transform="translate(140 700)">
+        <rect x="-110" y="-52" width="220" height="104" rx="3" fill="#faf7ef" stroke="#d5d0c2" stroke-dasharray="2 4"/>
+        <text y="-30" text-anchor="middle" class="t-whisper" fill="#8a7430">ONE BOARD · MANY SCREENS</text>
+        <text y="-4"  text-anchor="middle" class="t-domain-sub" font-size="10.5">office sees the whole kanban</text>
+        <text y="14"  text-anchor="middle" class="t-domain-sub" font-size="10.5">shop-floor tablets show</text>
+        <text y="32"  text-anchor="middle" class="t-domain-sub" font-size="10.5">only that station's queue</text>
+      </g>
+
+      <!-- bottom attribution -->
+      <text x="860" y="945" text-anchor="middle" class="t-greek">— ἔργον · the making —</text>
+    </svg>
+    </div>
+
+    <div class="insights" style="margin-top: 24px;">
+      <div class="insight">
+        <h3>Routing is per-item, not per-job</h3>
+        <p>Each sub-item on an artwork job carries a target stage. When the artwork is released, the job's route through the workshop is built from those choices — a job only queues at the stations its items actually need.</p>
+      </div>
+      <div class="insight">
+        <h3>Artwork approval gates production</h3>
+        <p>Nothing enters the make phase until the client has signed off on the artwork. Stage 02 is the gate — before it, cards sit in the order book; after it, the routing is live on the shop floor.</p>
+      </div>
+      <div class="insight">
+        <h3>Office and workshop, same data</h3>
+        <p>The admin <em>job board</em> shows every stage at once. Each shop-floor station has its own tablet view showing only that station's queue. They're two views of the same live data, not two systems.</p>
+      </div>
+      <div class="insight">
+        <h3>Goods Out triggers the next voyage</h3>
+        <p>When the last item of a job reaches <em>Goods Out</em>, a delivery record is auto-created with the client's site address already on it. Production closes; the next chapter begins.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================= IV · INSIDE DELIVERY ============================= -->
+  <section class="section">
+    <div class="section-head">
+      <span class="num">IV.</span>
+      <h2>Inside Delivery · the last mile</h2>
+      <span class="rule"></span>
+      <span class="meta">four phases · one signature at the end</span>
+    </div>
+
+    <p class="prose">
+      When a job reaches Goods Out, Odysseus creates the delivery record automatically — the site address and the item list are already on it. From there a driver and date are assigned, the van goes out, and the client signs on site. Four phases, one proof-of-delivery link, no clipboards.
+    </p>
+
+    <div class="canvas-wrap">
+    <svg class="chart" viewBox="0 0 1720 760" xmlns="http://www.w3.org/2000/svg" style="padding: 28px 0 20px;">
+      <defs>
+        <radialGradient id="phaseGlowDel" cx="50%" cy="40%" r="75%">
+          <stop offset="0%" stop-color="#ffffff"/>
+          <stop offset="100%" stop-color="#f2efe7"/>
+        </radialGradient>
+        <marker id="mkDelTeal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="#4e7e8c"/>
+        </marker>
+      </defs>
+
+      <!-- faint grid -->
+      <g stroke="#d5d0c2" stroke-width="0.5" opacity="0.5">
+        <line x1="60" y1="180" x2="1660" y2="180"/>
+        <line x1="60" y1="580" x2="1660" y2="580"/>
+      </g>
+
+      <!-- phase headers -->
+      <g fill="#7dabb8" text-anchor="middle" font-family="Times New Roman, serif" font-style="italic" font-size="14" letter-spacing="0.02em">
+        <text x="280"  y="80">i. created</text>
+        <text x="640"  y="80">ii. scheduled</text>
+        <text x="1000" y="80">iii. proof of delivery</text>
+        <text x="1400" y="80">iv. delivered</text>
+      </g>
+      <g stroke="#3a5f6a" stroke-width="0.6" opacity="0.55">
+        <line x1="210"  y1="95" x2="350"  y2="95"/>
+        <line x1="555"  y1="95" x2="725"  y2="95"/>
+        <line x1="900"  y1="95" x2="1100" y2="95"/>
+        <line x1="1330" y1="95" x2="1470" y2="95"/>
+      </g>
+
+      <!-- "from Production" context on far left -->
+      <g transform="translate(90 380)">
+        <text text-anchor="middle" class="t-whisper" font-size="11.5">from Production</text>
+        <text y="22" text-anchor="middle" class="t-whisper" font-size="11" fill="#6a7079">(when Goods Out is reached)</text>
+      </g>
+      <path d="M 175 380 L 185 380" stroke="#4e7e8c" stroke-width="1.4" fill="none" opacity="0.6" marker-end="url(#mkDelTeal)"/>
+
+      <!-- Phase I: CREATED -->
+      <g transform="translate(280 380)">
+        <rect x="-90" y="-80" width="180" height="160" rx="3" fill="url(#phaseGlowDel)" stroke="#4e7e8c" stroke-width="1.3"/>
+        <text y="-44" text-anchor="middle" fill="#8a7430" font-family="Times New Roman, serif" font-size="13" letter-spacing="0.25em" font-style="italic">01</text>
+        <text y="-14" text-anchor="middle" class="t-domain" font-size="15">Created</text>
+        <text y="14"  text-anchor="middle" class="t-domain-sub">auto-generated with</text>
+        <text y="32"  text-anchor="middle" class="t-domain-sub">site and items already on it</text>
+      </g>
+
+      <!-- Phase II: SCHEDULED -->
+      <g transform="translate(640 380)">
+        <rect x="-90" y="-80" width="180" height="160" rx="3" fill="url(#phaseGlowDel)" stroke="#4e7e8c" stroke-width="1.3"/>
+        <text y="-44" text-anchor="middle" fill="#8a7430" font-family="Times New Roman, serif" font-size="13" letter-spacing="0.25em" font-style="italic">02</text>
+        <text y="-14" text-anchor="middle" class="t-domain" font-size="15">Scheduled</text>
+        <text y="14"  text-anchor="middle" class="t-domain-sub">driver and date</text>
+        <text y="32"  text-anchor="middle" class="t-domain-sub">assigned</text>
+      </g>
+
+      <!-- Phase III: PROOF OF DELIVERY (red-accent, link-send gap) -->
+      <g transform="translate(1000 380)">
+        <rect x="-100" y="-80" width="200" height="160" rx="3" fill="url(#phaseGlowDel)" stroke="#a03838" stroke-width="1.3"/>
+        <text y="-44" text-anchor="middle" fill="#8a7430" font-family="Times New Roman, serif" font-size="13" letter-spacing="0.25em" font-style="italic">03</text>
+        <text y="-14" text-anchor="middle" class="t-domain" font-size="15">Proof of delivery</text>
+        <text y="14"  text-anchor="middle" class="t-domain-sub">signed at the site</text>
+        <text y="32"  text-anchor="middle" class="t-domain-sub">via a one-time link</text>
+        <text y="56"  text-anchor="middle" fill="#a03838" font-family="Times New Roman, serif" font-style="italic" font-size="11.5">link sent by hand today</text>
+      </g>
+
+      <!-- Phase IV: DELIVERED -->
+      <g transform="translate(1400 380)">
+        <rect x="-90" y="-80" width="180" height="160" rx="3" fill="url(#phaseGlowDel)" stroke="#4e7e8c" stroke-width="1.3"/>
+        <text y="-44" text-anchor="middle" fill="#8a7430" font-family="Times New Roman, serif" font-size="13" letter-spacing="0.25em" font-style="italic">04</text>
+        <text y="-14" text-anchor="middle" class="t-domain" font-size="15">Delivered</text>
+        <text y="14"  text-anchor="middle" class="t-domain-sub">signatures stored,</text>
+        <text y="32"  text-anchor="middle" class="t-domain-sub">job closed</text>
+      </g>
+
+      <!-- arrows between phases -->
+      <g stroke="#4e7e8c" stroke-width="2.2" fill="none" opacity="0.75">
+        <path d="M 374 380 L 546 380" marker-end="url(#mkDelTeal)"/>
+        <path d="M 734 380 L 896 380" marker-end="url(#mkDelTeal)"/>
+        <path d="M 1104 380 L 1306 380" marker-end="url(#mkDelTeal)"/>
+      </g>
+
+      <!-- Supporting facts row -->
+      <g transform="translate(280 620)">
+        <rect x="-140" y="-34" width="280" height="68" rx="3" fill="#faf7ef" stroke="#d5d0c2"/>
+        <text y="-8" text-anchor="middle" fill="#7dabb8" font-family="Times New Roman, serif" font-style="italic" font-size="13">The team on the road</text>
+        <text y="18" text-anchor="middle" class="t-domain-sub">four drivers on file</text>
+      </g>
+
+      <g transform="translate(640 620)">
+        <rect x="-140" y="-34" width="280" height="68" rx="3" fill="#faf7ef" stroke="#d5d0c2"/>
+        <text y="-8" text-anchor="middle" fill="#7dabb8" font-family="Times New Roman, serif" font-style="italic" font-size="13">Route planning</text>
+        <text y="18" text-anchor="middle" class="t-domain-sub">deliveries plotted on a map</text>
+      </g>
+
+      <g transform="translate(1000 620)">
+        <rect x="-140" y="-34" width="280" height="68" rx="3" fill="#faf7ef" stroke="#d5d0c2"/>
+        <text y="-8" text-anchor="middle" fill="#7dabb8" font-family="Times New Roman, serif" font-style="italic" font-size="13">What's on the van</text>
+        <text y="18" text-anchor="middle" class="t-domain-sub">the job's items travel with it</text>
+      </g>
+
+      <g transform="translate(1400 620)">
+        <rect x="-140" y="-34" width="280" height="68" rx="3" fill="#faf7ef" stroke="#a03838"/>
+        <text y="-8" text-anchor="middle" fill="#a03838" font-family="Times New Roman, serif" font-style="italic" font-size="13">One-time link</text>
+        <text y="18" text-anchor="middle" class="t-domain-sub" fill="#a03838" opacity="0.85">external page · no login needed</text>
+      </g>
+
+      <text x="860" y="725" text-anchor="middle" class="t-greek">— ἐπάνοδος · the return voyage —</text>
+    </svg>
+    </div>
+
+    <div class="insights" style="margin-top: 24px;">
+      <div class="insight">
+        <h3>Deliveries create themselves</h3>
+        <p>When the last item of a job reaches Goods Out, Odysseus creates a delivery record with the client, site address, contact, and items already attached. The admin never starts from a blank form.</p>
+      </div>
+      <div class="insight">
+        <h3>The driver and the client both sign</h3>
+        <p>The proof-of-delivery page captures two signatures at the site: the driver's and the client's. They're stored against the delivery record as evidence that the sign has been handed over.</p>
+      </div>
+      <div class="insight">
+        <h3>The link is there — the send isn't</h3>
+        <p>The one-time link to the PoD page is generated, but today it has to be sent to the driver or site contact by hand. Wiring email closes the only remaining manual step in the voyage.</p>
+      </div>
+      <div class="insight">
+        <h3>Every driver has a home postcode</h3>
+        <p>Drivers are geocoded from their home postcode so route planning can factor in where each day begins and ends. Four drivers on file today.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================= V · NOTES ============================= -->
+  <section class="section">
+    <div class="section-head">
+      <span class="num">V.</span>
+      <h2>Notes on the chart</h2>
+      <span class="rule"></span>
+    </div>
+
+    <div class="insights">
+      <div class="insight">
+        <h3>One platform, one flow</h3>
+        <p>Odysseus replaces what used to be spread across spreadsheets, Clarity Go, and shoulder-tapping. A job enters as a quote and exits as a signed-off installation — without ever leaving the system.</p>
+      </div>
+      <div class="insight">
+        <h3>The client's details follow the job</h3>
+        <p>Every step knows which client it belongs to, which contact to call, and which site to deliver to. When a delivery goes out, the address travelled with it from the quote — no re-keying, no mistakes.</p>
+      </div>
+      <div class="insight">
+        <h3>Artwork is where the spec lives</h3>
+        <p>The artwork module isn't just files — it's the <em>spec sheet</em>. Material, dimensions, finish, and which department will make it are all captured there, so once a client signs off, the shop floor already knows what's coming.</p>
+      </div>
+      <div class="insight">
+        <h3>Two gaps to close</h3>
+        <p>Today the approval link and the proof-of-delivery link both get sent by hand. Wiring email onto those two moments removes the most friction in the whole voyage — one small job, big daily payoff.</p>
+      </div>
+      <div class="insight">
+        <h3>Departments on the same screen</h3>
+        <p>All thirteen departments share one job board. A job waiting at <em>Paint</em> is visible to everyone; when it moves to <em>Assembly</em>, it shows up there automatically. Nothing hides.</p>
+      </div>
+      <div class="insight">
+        <h3>The client never logs in</h3>
+        <p>Clients get secure one-time links for artwork approval and delivery sign-off — no accounts, no passwords. Odysseus is a tool for Onesign staff; the client experience is invisible and friction-free.</p>
+      </div>
+      <div class="insight future">
+        <h3>Quote or artwork — either can come first</h3>
+        <p>Some jobs start with a price conversation; others start with a design someone already has in their head. The plan is to make <em>Quoting</em> and <em>Artwork</em> interchangeable as starting points — a button on each to spin up the other. Whichever order the work arrives in, Odysseus meets it there.</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="meander" style="margin-top: 60px; opacity: 0.4;"></div>
+  <footer class="signoff">
+    ONESIGN · DIGITAL <span class="mark">◆</span> ODYSSEUS PRODUCTION PLATFORM <span class="mark">◆</span> CHART REVISION 2026·04
+  </footer>
 
 </div>
 </body>
