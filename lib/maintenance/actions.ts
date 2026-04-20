@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase-admin';
 import { getUser, requireSuperAdminOrError } from '@/lib/auth';
+import { ok, okVoid, err, type Result } from '@/lib/result';
 import {
     CreateMaintenanceVisitSchema,
     UpdateMaintenanceVisitSchema,
@@ -10,6 +11,12 @@ import {
     type UpdateMaintenanceVisitInput,
     type MaintenanceVisit,
 } from './types';
+
+type MaintenanceVisitRow = MaintenanceVisit & {
+    orgs?: { name: string | null } | null;
+    org_sites?: { name: string | null } | null;
+    contacts?: { first_name: string | null; last_name: string | null } | null;
+};
 
 export async function getMaintenanceVisits(filters?: {
     status?: string;
@@ -33,26 +40,26 @@ export async function getMaintenanceVisits(filters?: {
 
     const { data } = await query;
 
-    return (data ?? []).map((row: any) => ({
+    return ((data ?? []) as MaintenanceVisitRow[]).map((row) => ({
         ...row,
         org_name: row.orgs?.name ?? null,
         site_name: row.org_sites?.name ?? null,
         contact_name: row.contacts
-            ? `${row.contacts.first_name} ${row.contacts.last_name}`
+            ? `${row.contacts.first_name ?? ''} ${row.contacts.last_name ?? ''}`.trim() || null
             : null,
     }));
 }
 
 export async function createMaintenanceVisit(
     input: CreateMaintenanceVisitInput
-): Promise<{ id: string } | { error: string }> {
+): Promise<Result<{ id: string }>> {
     const user = await getUser();
-    if (!user) return { error: 'not authenticated' };
+    if (!user) return err('not authenticated');
     const gate = await requireSuperAdminOrError();
-    if (!gate.ok) return { error: gate.error };
+    if (!gate.ok) return err(gate.error);
 
     const validation = CreateMaintenanceVisitSchema.safeParse(input);
-    if (!validation.success) return { error: validation.error.issues[0].message };
+    if (!validation.success) return err(validation.error.issues[0].message);
     const parsed = validation.data;
 
     const supabase = createAdminClient();
@@ -71,24 +78,24 @@ export async function createMaintenanceVisit(
         .select('id')
         .single();
 
-    if (error || !data) return { error: error?.message ?? 'failed to create visit' };
+    if (error || !data) return err(error?.message ?? 'failed to create visit');
 
     revalidatePath('/admin/maintenance');
     revalidatePath('/admin/map');
-    return { id: data.id };
+    return ok({ id: data.id });
 }
 
 export async function updateMaintenanceVisit(
     visitId: string,
     patch: UpdateMaintenanceVisitInput
-): Promise<{ ok: true } | { error: string }> {
+): Promise<Result<null>> {
     const user = await getUser();
-    if (!user) return { error: 'not authenticated' };
+    if (!user) return err('not authenticated');
     const gate = await requireSuperAdminOrError();
-    if (!gate.ok) return { error: gate.error };
+    if (!gate.ok) return err(gate.error);
 
     const validation = UpdateMaintenanceVisitSchema.safeParse(patch);
-    if (!validation.success) return { error: validation.error.issues[0].message };
+    if (!validation.success) return err(validation.error.issues[0].message);
     const parsed = validation.data;
 
     const supabase = createAdminClient();
@@ -103,16 +110,16 @@ export async function updateMaintenanceVisit(
         .update(updates)
         .eq('id', visitId);
 
-    if (error) return { error: error.message };
+    if (error) return err(error.message);
 
     revalidatePath('/admin/maintenance');
     revalidatePath('/admin/map');
-    return { ok: true };
+    return okVoid();
 }
 
 export async function completeMaintenanceVisit(
     visitId: string
-): Promise<{ ok: true } | { error: string }> {
+): Promise<Result<null>> {
     return updateMaintenanceVisit(visitId, {
         status: 'completed',
         completed_date: new Date().toISOString().slice(0, 10),
@@ -121,6 +128,6 @@ export async function completeMaintenanceVisit(
 
 export async function cancelMaintenanceVisit(
     visitId: string
-): Promise<{ ok: true } | { error: string }> {
+): Promise<Result<null>> {
     return updateMaintenanceVisit(visitId, { status: 'cancelled' });
 }

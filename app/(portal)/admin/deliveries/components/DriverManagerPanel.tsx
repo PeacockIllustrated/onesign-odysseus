@@ -32,7 +32,7 @@ export function DriverManagerPanel({ drivers, open, onClose }: Props) {
                 home_postcode: postcode.trim() || undefined,
                 vehicle_type: vehicleType as any,
             });
-            if ('error' in res) { setError(res.error); return; }
+            if (!res.ok) { setError(res.error); return; }
             setName(''); setPhone(''); setPostcode(''); setShowAdd(false);
             router.refresh();
         });
