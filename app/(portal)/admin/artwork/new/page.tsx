@@ -1,5 +1,5 @@
 import { requireAdmin } from '@/lib/auth';
-import { createServerClient } from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase-admin';
 import { PageHeader, Card } from '@/app/(portal)/components/ui';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
@@ -8,7 +8,7 @@ import { NewArtworkJobForm } from './NewArtworkJobForm';
 export default async function NewArtworkJobPage() {
     await requireAdmin();
 
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
     const [orgsRes, itemsRes, existingRes, contactsRes, sitesRes] = await Promise.all([
         supabase.from('orgs').select('id, name').order('name'),
         supabase

@@ -1,4 +1,4 @@
-import { createServerClient } from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase-admin';
 import { requireAdmin } from '@/lib/auth';
 import { PageHeader } from '@/app/(portal)/components/ui';
 import { ReportsClient } from './ReportsClient';
@@ -6,7 +6,7 @@ import { ReportsClient } from './ReportsClient';
 export default async function AdminReportsPage() {
     await requireAdmin();
 
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
 
     // Fetch all orgs for the filter
     const { data: orgs } = await supabase

@@ -1,4 +1,4 @@
-import { createServerClient } from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase-admin';
 import { requireAdmin } from '@/lib/auth';
 import { PageHeader } from '@/app/(portal)/components/ui';
 import { LeadsClient } from './LeadsClient';
@@ -6,7 +6,7 @@ import { LeadsClient } from './LeadsClient';
 export default async function AdminLeadsPage() {
     await requireAdmin();
 
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
 
     // Fetch marketing leads (from growth section)
     const { data: marketingLeads, error: marketingError } = await supabase

@@ -1,4 +1,4 @@
-import { createServerClient } from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase-admin';
 import { requireAdmin } from '@/lib/auth';
 import { PageHeader } from '@/app/(portal)/components/ui';
 import { AlertCircle, LayoutGrid, FileText, ShoppingCart, Zap, Receipt, Truck } from 'lucide-react';
@@ -9,7 +9,7 @@ import type { InvoiceStatus } from '@/lib/invoices/types';
 
 export default async function AdminPage() {
     await requireAdmin();
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
 
     // Production pipeline stats
     let productionStats: {

@@ -1,6 +1,6 @@
 import { requireAdmin } from '@/lib/auth';
 import { listUnmatchedJobs } from '@/lib/artwork/reconcile-actions';
-import { createServerClient } from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase-admin';
 import { PageHeader, Card } from '@/app/(portal)/components/ui';
 import Link from 'next/link';
 import { ReconcileRow } from './ReconcileRow';
@@ -11,7 +11,7 @@ export default async function ReconcilePage() {
     await requireAdmin();
 
     const unmatched = await listUnmatchedJobs();
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
     const { data: orgs } = await supabase
         .from('orgs')
         .select('id, name')

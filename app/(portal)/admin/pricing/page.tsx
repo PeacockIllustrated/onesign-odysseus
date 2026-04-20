@@ -1,5 +1,5 @@
 import { requireAdmin, isSuperAdmin } from '@/lib/auth';
-import { createServerClient } from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase-admin';
 import { PageHeader, Card, Chip } from '@/app/(portal)/components/ui';
 import Link from 'next/link';
 import { Plus, Settings } from 'lucide-react';
@@ -32,7 +32,7 @@ export default async function AdminPricingPage() {
         redirect('/admin');
     }
 
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
 
     const { data: pricingSets, error } = await supabase
         .from('pricing_sets')

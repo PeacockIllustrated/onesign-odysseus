@@ -1,5 +1,5 @@
 import { requireAdmin, isSuperAdmin } from '@/lib/auth';
-import { createServerClient } from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase-admin';
 import { PageHeader, Card } from '@/app/(portal)/components/ui';
 import { redirect } from 'next/navigation';
 import { NewQuoteForm } from './NewQuoteForm';
@@ -7,7 +7,7 @@ import { NewQuoteForm } from './NewQuoteForm';
 export default async function NewQuotePage() {
     await requireAdmin();
 
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
     const superAdmin = await isSuperAdmin();
 
     // Get active pricing set

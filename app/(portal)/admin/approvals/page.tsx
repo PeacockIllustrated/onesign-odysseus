@@ -1,5 +1,5 @@
 import { requireAdmin } from '@/lib/auth';
-import { createServerClient } from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase-admin';
 import { PageHeader, Card, Chip } from '@/app/(portal)/components/ui';
 import Link from 'next/link';
 import { formatDate } from '@/lib/artwork/utils';
@@ -30,7 +30,7 @@ function statusLabel(status: ApprovalStatus): string {
 export default async function ApprovalsPage() {
     await requireAdmin();
 
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
 
     const { data: approvals } = await supabase
         .from('artwork_approvals')

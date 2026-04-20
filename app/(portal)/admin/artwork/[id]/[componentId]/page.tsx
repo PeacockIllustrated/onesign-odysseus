@@ -18,7 +18,7 @@ import { SubItemList } from './components/SubItemList';
 import { ComponentThumbnail } from './components/ComponentThumbnail';
 import { StatusOverride } from './components/StatusOverride';
 import { VariantsPanel } from './components/VariantsPanel';
-import { createServerClient } from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase-admin';
 
 export default async function ComponentDetailPage({
     params,
@@ -41,7 +41,7 @@ export default async function ComponentDetailPage({
     // The artwork-assets bucket is private — public URLs 403 at the browser.
     // Sign every thumbnail_url we're about to render (component-level + every
     // sub-item's). One server client for both, bounded to one hour.
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
 
     const signAssetUrl = async (url: string | null): Promise<string | null> => {
         if (!url) return null;

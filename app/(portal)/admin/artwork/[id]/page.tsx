@@ -1,7 +1,7 @@
 import { requireAdmin } from '@/lib/auth';
 import { getArtworkJob, getArtworkJobLineage } from '@/lib/artwork/actions';
 import { getProductionStages } from '@/lib/production/queries';
-import { createServerClient } from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase-admin';
 import { notFound } from 'next/navigation';
 import { PageHeader, Card, Chip } from '@/app/(portal)/components/ui';
 import Link from 'next/link';
@@ -48,7 +48,7 @@ export default async function ArtworkJobDetailPage({
         notFound();
     }
 
-    const supabaseClient = await createServerClient();
+    const supabaseClient = createAdminClient();
 
     // Generate signed URL for cover image if present
     let coverImageUrl: string | null = null;
