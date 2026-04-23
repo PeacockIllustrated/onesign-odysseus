@@ -52,6 +52,16 @@ export default function ApprovalClientView({ data, token }: Props) {
     const [comments, setComments] = useState<Record<string, string>>({});
     const [selections, setSelections] = useState<Record<string, string>>({}); // variant-picker path only
 
+    // Collapsed-by-default: forces the client to open each component before
+    // they can review it, which makes it obvious that the images inside one
+    // card belong to that component only — not the one above or below.
+    const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+    const toggleExpanded = (id: string) => setExpanded((p) => ({ ...p, [id]: !p[id] }));
+    const expandAll = () => setExpanded(
+        Object.fromEntries(components.map((c) => [c.id, true]))
+    );
+    const collapseAll = () => setExpanded({});
+
     const [clientName, setClientName] = useState('');
     const [clientEmail, setClientEmail] = useState('');
     const [clientCompany, setClientCompany] = useState('');
@@ -264,42 +274,114 @@ export default function ApprovalClientView({ data, token }: Props) {
 
             {/* Components */}
             {components.length > 0 && (
-                <div style={{ border: '1px solid #e5e5e5', borderRadius: '8px', overflow: 'hidden', background: '#fff', marginBottom: '24px' }}>
-                    <div style={{ padding: '16px 20px', borderBottom: '1px solid #eee' }}>
-                        <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#111', margin: 0 }}>
-                            {isVisual ? 'design options' : 'components'}
-                        </h2>
-                        <p style={{ fontSize: '12px', color: '#999', marginTop: '2px' }}>
-                            {hasVariants
-                                ? 'choose one option per component'
-                                : 'approve each item, or request changes with a note'}
-                        </p>
+                <div style={{ marginBottom: '24px' }}>
+                    {/* Section heading + expand/collapse helpers */}
+                    <div style={{
+                        background: '#fff', border: '1px solid #e5e5e5', borderRadius: '8px',
+                        padding: '14px 18px', marginBottom: '12px',
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                            <div>
+                                <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#111', margin: 0 }}>
+                                    {isVisual ? 'design options' : 'components'}
+                                </h2>
+                                <p style={{ fontSize: '12px', color: '#555', marginTop: '4px', lineHeight: 1.5 }}>
+                                    {hasVariants
+                                        ? 'choose one option per component'
+                                        : 'tap each card below to open it. Everything inside that card belongs to that one item — approve each image, or request changes with a note.'}
+                                </p>
+                            </div>
+                            {!hasVariants && (
+                                <div style={{ display: 'flex', gap: '6px' }}>
+                                    <button type="button" onClick={expandAll}
+                                        style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, color: '#4e7e8c', background: '#fff', border: '1px solid #c9d9df', borderRadius: '6px', cursor: 'pointer' }}>
+                                        open all
+                                    </button>
+                                    <button type="button" onClick={collapseAll}
+                                        style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, color: '#666', background: '#fff', border: '1px solid #e0e0e0', borderRadius: '6px', cursor: 'pointer' }}>
+                                        close all
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '14px' }}>
-                        {components.map((component, componentIndex) => {
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {components.map((component) => {
                             const subs = component.sub_items ?? [];
                             const hasSubs = subs.length > 0;
-                            // Zebra-stripe the COMPONENT sections (not the sub-items
-                            // inside them) so the client can see at a glance which
-                            // sub-items belong to one decision block vs the next.
-                            const isEven = componentIndex % 2 === 0;
-                            const sectionBg = isEven ? '#f3f4f6' : '#ffffff';
-                            const sectionBorder = isEven ? '3px solid #4e7e8c' : '3px solid #d4d4d4';
+                            const decideKeys = hasSubs ? subs.map((si) => si.id) : [component.id];
+                            const decidedCount = decideKeys.filter((k) => decisions[k]).length;
+                            const totalCount = decideKeys.length;
+                            const isExpanded = expanded[component.id] ?? false;
+                            const hasChanges = decideKeys.some((k) => decisions[k] === 'changes_requested');
+                            const allApproved = totalCount > 0 && decidedCount === totalCount && !hasChanges;
+                            const headerBg = allApproved ? '#16a34a' : hasChanges ? '#d97706' : '#fff';
+                            const headerColor = (allApproved || hasChanges) ? '#fff' : '#111';
+                            const cardBorder = allApproved ? '#16a34a' : hasChanges ? '#d97706' : '#d4d4d4';
 
                             return (
                                 <div key={component.id} style={{
-                                    padding: '18px 20px',
-                                    background: sectionBg,
-                                    border: sectionBorder,
-                                    borderRadius: '10px',
+                                    background: '#fff', border: `2px solid ${cardBorder}`, borderRadius: '10px', overflow: 'hidden',
                                 }}>
-                                    <div style={{ fontSize: '15px', fontWeight: 700, color: '#111', marginBottom: '10px' }}>
-                                        {component.name}
-                                    </div>
+                                    {/* Clickable header — collapsed state */}
+                                    <button
+                                        type="button"
+                                        onClick={() => toggleExpanded(component.id)}
+                                        aria-expanded={isExpanded}
+                                        style={{
+                                            width: '100%', display: 'flex', alignItems: 'center', gap: '12px',
+                                            padding: '14px 18px', background: headerBg, color: headerColor,
+                                            border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                                        }}
+                                    >
+                                        <span style={{
+                                            fontSize: '18px', fontWeight: 700, width: '22px', textAlign: 'center',
+                                            transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                                            transition: 'transform 0.15s ease',
+                                            opacity: 0.7,
+                                        }}>›</span>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontSize: '15px', fontWeight: 700 }}>{component.name}</div>
+                                            {hasSubs && (
+                                                <div style={{ fontSize: '11px', opacity: 0.85, marginTop: '2px' }}>
+                                                    {totalCount} design{totalCount !== 1 ? 's' : ''} to review
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div style={{
+                                            fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em',
+                                            padding: '4px 9px', borderRadius: '999px',
+                                            background: (allApproved || hasChanges) ? 'rgba(255,255,255,0.25)' : '#f3f4f6',
+                                            color: (allApproved || hasChanges) ? '#fff' : '#4b5563',
+                                        }}>
+                                            {allApproved ? '✓ all approved'
+                                                : hasChanges ? `${decidedCount} / ${totalCount} · changes`
+                                                : `${decidedCount} / ${totalCount} decided`}
+                                        </div>
+                                        {!isExpanded && (
+                                            <span style={{
+                                                fontSize: '11px', fontWeight: 600, opacity: 0.7,
+                                                textTransform: 'uppercase', letterSpacing: '0.08em',
+                                            }}>tap to open</span>
+                                        )}
+                                    </button>
 
-                                    {/* Variant-picker path: single-choice visual approval */}
-                                    {hasVariants ? (
+                                    {/* Expanded body */}
+                                    {isExpanded && (
+                                        <div style={{ padding: '18px 20px', borderTop: `1px solid ${(allApproved || hasChanges) ? 'rgba(255,255,255,0.2)' : '#e5e5e5'}`, background: '#fbfbfb' }}>
+                                            {/* Scope banner: reinforces "everything below belongs to THIS component" */}
+                                            <div style={{
+                                                fontSize: '11px', color: '#555', background: '#eef4f6',
+                                                border: '1px solid #d2e1e6', borderRadius: '6px',
+                                                padding: '8px 12px', marginBottom: '14px', lineHeight: 1.5,
+                                            }}>
+                                                Everything below — image{hasSubs && totalCount !== 1 ? 's' : ''}, specification{hasSubs && totalCount !== 1 ? 's' : ''}, decision buttons —
+                                                belongs to <strong>{component.name}</strong>.
+                                            </div>
+
+                                            {/* Variant-picker path: single-choice visual approval */}
+                                            {hasVariants ? (
                                         <VariantPicker
                                             componentName={component.name}
                                             variants={component.variants ?? []}
@@ -388,12 +470,14 @@ export default function ApprovalClientView({ data, token }: Props) {
                                             <DecisionButtons k={component.id} />
                                         </div>
                                     )}
+                                        </div>
+                                    )}
                                 </div>
                             );
                         })}
                     </div>
 
-                    <div style={{ padding: '12px 20px', fontSize: '12px', color: '#555', borderTop: '1px solid #eee', background: '#fafafa', lineHeight: 1.5 }}>
+                    <div style={{ marginTop: '12px', padding: '12px 16px', fontSize: '12px', color: '#555', borderRadius: '8px', border: '1px solid #eee', background: '#fafafa', lineHeight: 1.5 }}>
                         <strong style={{ color: '#111' }}>What you&rsquo;re approving:</strong>{' '}
                         {isVisual
                             ? 'the design options shown above. Approve the ones you want to move forward with, request changes on the rest.'
