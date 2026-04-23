@@ -15,7 +15,6 @@ import { ComponentStatus } from '@/lib/artwork/types';
 import { VersionHistory } from './components/VersionHistory';
 import { ComponentActions } from './components/ComponentActions';
 import { SubItemList } from './components/SubItemList';
-import { ComponentThumbnail } from './components/ComponentThumbnail';
 import { StatusOverride } from './components/StatusOverride';
 import { VariantsPanel } from './components/VariantsPanel';
 import { createAdminClient } from '@/lib/supabase-admin';
@@ -39,8 +38,8 @@ export default async function ComponentDetailPage({
     }
 
     // The artwork-assets bucket is private — public URLs 403 at the browser.
-    // Sign every thumbnail_url we're about to render (component-level + every
-    // sub-item's). One server client for both, bounded to one hour.
+    // Sign every sub-item thumbnail_url we're about to render. Component-
+    // level thumbnail is no longer surfaced on this page so we skip it.
     const supabase = createAdminClient();
 
     const signAssetUrl = async (url: string | null): Promise<string | null> => {
@@ -52,8 +51,6 @@ export default async function ComponentDetailPage({
             .createSignedUrl(parts[1], 3600);
         return data?.signedUrl ?? null;
     };
-
-    const thumbnailSignedUrl = await signAssetUrl(component.artwork_thumbnail_url);
 
     // Rewrite each sub-item's thumbnail_url to a signed URL so SubItemCard
     // (a client component) can drop it into <img> without extra round-trips.
@@ -116,22 +113,12 @@ export default async function ComponentDetailPage({
                 </div>
             </div>
 
-            {/* Artwork preview — component-level thumbnail with upload controls */}
-            <Card className="mb-6">
-                <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-sm font-semibold text-neutral-900 uppercase tracking-wider">
-                        artwork preview
-                    </h2>
-                    <p className="text-xs text-neutral-500">
-                        component-level · sub-items can have their own below
-                    </p>
-                </div>
-                <ComponentThumbnail
-                    componentId={component.id}
-                    currentUrl={thumbnailSignedUrl ?? component.artwork_thumbnail_url ?? null}
-                    readOnly={jobCompleted}
-                />
-            </Card>
+            {/* Component-level artwork preview removed — the sub-item
+                thumbnails below carry the visual and the component page
+                is already busy enough. If we ever need the component
+                cover image back, ComponentThumbnail is still in the
+                codebase and artwork_components.artwork_thumbnail_url
+                column is untouched. */}
 
             {/* Sub-items — the spec-bearing cards (production jobs) or variants (visual approval jobs) */}
             {job.job_type === 'visual_approval' ? (
