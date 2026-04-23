@@ -5,6 +5,7 @@ import { submitApproval, requestApprovalChanges } from '@/lib/artwork/approval-a
 import type { ApprovalPackData } from '@/lib/artwork/approval-actions';
 import { VariantPicker } from './components/VariantPicker';
 import { ResilientImage } from './components/ResilientImage';
+import MarketingModal from './components/MarketingModal';
 import { formatDateTime } from '@/lib/artwork/utils';
 import SignatureCanvas, { type SignatureCanvasRef } from '@/components/SignatureCanvas';
 
@@ -130,6 +131,7 @@ export default function ApprovalClientView({ data, token }: Props) {
     const [clientComments, setClientComments] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(isApproved);
+    const [showMarketingModal, setShowMarketingModal] = useState(false);
     const [isPending, startTransition] = useTransition();
     const signatureRef = useRef<SignatureCanvasRef>(null);
 
@@ -244,7 +246,13 @@ export default function ApprovalClientView({ data, token }: Props) {
             });
 
             if ('error' in result) setError(result.error);
-            else setSuccess(true);
+            else {
+                setSuccess(true);
+                // Marketing modal fires on pure approvals only — if anything
+                // was marked "changes requested" the client isn't in the
+                // right mood for a pitch.
+                if (!anyChangesRequested) setShowMarketingModal(true);
+            }
         });
     };
 
@@ -267,6 +275,10 @@ export default function ApprovalClientView({ data, token }: Props) {
 
     return (
         <div style={{ maxWidth: '720px', margin: '0 auto', padding: '20px' }}>
+            {showMarketingModal && (
+                <MarketingModal onClose={() => setShowMarketingModal(false)} />
+            )}
+
             {lightboxSrc && (
                 <div onClick={closeLightbox} style={{
                     position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.85)',
