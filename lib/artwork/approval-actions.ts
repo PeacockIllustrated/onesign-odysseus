@@ -280,8 +280,23 @@ export async function revokeApproval(
 }
 
 // =============================================================================
-// PUBLIC ACTIONS (token-gated, no auth required)
+// PUBLIC ACTIONS (token-gated, NO AUTH)
 // =============================================================================
+//
+// Do NOT add getUser() / requireAuth() to any action below this line.
+// Clients reach these actions via /sign-off/[token] — they don't have a
+// Supabase session, they're external businesses clicking a link from an
+// email. The 64-char hex token from artwork_approvals is the only
+// authorisation needed.
+//
+// Every action here must use createAdminClient() (service role) so the
+// writes aren't blocked by the super-admin-only RLS policies on
+// artwork_approvals, artwork_component_decisions, artwork_variants, and
+// artwork_jobs. The token check is the gate; RLS bypass is intentional.
+//
+// When adding new writes (e.g. a future per-line feedback endpoint),
+// keep both properties: token-lookup first, admin client for every
+// subsequent query in the same call.
 
 /**
  * Fetch approval pack data by token (public access via admin client)

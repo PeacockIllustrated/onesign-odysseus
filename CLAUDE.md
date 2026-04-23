@@ -219,6 +219,8 @@ Under the hood, production_jobs are still created at quote acceptance time (the 
 
 Onesign Odysseus is used **only by Onesign & Digital staff** to run the internal production pipeline. It is not a customer-facing portal. The businesses Onesign does work for never log in here — they interact with Onesign via email, the tokenised artwork sign-off links at `/sign-off/[token]` (legacy `/approve/artwork/[token]` redirects), and proof-of-delivery links at `/delivery/[token]`.
 
+**Invariant: `/sign-off/[token]` and `/delivery/[token]` must stay fully unauth.** External recipients clicking those links don't have a Supabase session — the 64-char hex token on `artwork_approvals` / `deliveries.pod_token` is the only authorisation. Every server action called from those pages (`getApprovalByToken`, `submitApproval`, `requestApprovalChanges`, `getPodByToken`, `submitPod`, `refusePod`) uses `createAdminClient()` (service-role key) so RLS on the super-admin-managed tables doesn't block client writes. Do NOT add `getUser()` / `requireAuth()` to these actions, and do NOT introduce a middleware that protects those route prefixes.
+
 Terminology:
 - **Client** — the external business Onesign does signage work for (Persimmon, Balfour, SKS Construction, Slick Construction, etc.). A client is a data record, not a portal user.
 - **Org** — the database-level term for a client. The `orgs` table, `org_id` foreign keys, and `org_members` linkage all exist because this codebase was forked from a multi-tenant SaaS. In Odysseus, "org" and "client" refer to the same entity. **User-facing UI says "client"; code and schema say "org".** Do not introduce new "Organisation" wording in the UI — if you see it, rename it to "client".
