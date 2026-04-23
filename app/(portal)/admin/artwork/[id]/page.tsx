@@ -255,7 +255,7 @@ export default async function ArtworkJobDetailPage({
                         ) : (
                             <div className="space-y-3">
                                 {job.components.map((component, index) => {
-                                    const subs = (component.sub_items ?? []) as Array<{ id: string; label?: string; name?: string | null }>;
+                                    const subs = ((component as any).sub_items ?? []) as Array<{ id: string; label?: string; name?: string | null }>;
                                     // Aggregate per-sub-item decisions into a component-level verdict:
                                     //   * any changes_requested → amber
                                     //   * all approved          → green
