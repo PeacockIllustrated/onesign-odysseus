@@ -21,7 +21,6 @@ import { getApprovalForJob, getComponentDecisionsForJob } from '@/lib/artwork/ap
 import { AddComponentForm } from './components/AddComponentForm';
 import { ApprovalLinkSection } from './components/ApprovalLinkSection';
 import { ClientDeliveryCard } from './components/ClientDeliveryCard';
-import { CoverImageUpload } from './components/CoverImageUpload';
 import { JobFieldsForm } from './components/JobFieldsForm';
 import { ReleaseToProductionButton } from './components/ReleaseToProductionButton';
 import { DeleteArtworkJobButton } from './components/DeleteArtworkJobButton';
@@ -50,15 +49,6 @@ export default async function ArtworkJobDetailPage({
     }
 
     const supabaseClient = createAdminClient();
-
-    // Generate signed URL for cover image if present
-    let coverImageUrl: string | null = null;
-    if (job.cover_image_path) {
-        const { data } = await supabaseClient.storage
-            .from('artwork-assets')
-            .createSignedUrl(job.cover_image_path, 3600);
-        coverImageUrl = data?.signedUrl || null;
-    }
 
     // Visual-approval extra data
     let spawnedProduction: { id: string } | null = null;
@@ -526,11 +516,9 @@ export default async function ArtworkJobDetailPage({
                         paintColour={job.paint_colour}
                     />
 
-                    {/* Cover Image */}
-                    <CoverImageUpload
-                        jobId={id}
-                        coverImageUrl={coverImageUrl}
-                    />
+                    {/* Cover image intentionally removed — sub-item thumbnails
+                        carry the visual on the sign-off page, so the job-level
+                        cover upload is one more step staff don't need. */}
 
                     {/* Client Approval */}
                     <ApprovalLinkSection
