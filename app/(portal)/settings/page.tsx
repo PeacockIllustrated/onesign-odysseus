@@ -3,9 +3,12 @@
 import { useState } from 'react';
 import { createBrowserClient } from '@/lib/supabase';
 import { PageHeader, Card } from '@/app/(portal)/components/ui';
-import { Loader2, Lock } from 'lucide-react';
+import { Loader2, Lock, Eye } from 'lucide-react';
+import MarketingModal from '@/app/components/MarketingModal';
 
 export default function SettingsPage() {
+    const [previewOpen, setPreviewOpen] = useState(false);
+
     return (
         <div>
             <PageHeader
@@ -13,10 +16,32 @@ export default function SettingsPage() {
                 description="Manage your profile and security preferences."
             />
 
-            <div className="max-w-2xl">
+            <div className="max-w-2xl space-y-4">
                 <ChangePasswordCard />
+                <MarketingPreviewCard onPreview={() => setPreviewOpen(true)} />
             </div>
+
+            {previewOpen && <MarketingModal onClose={() => setPreviewOpen(false)} />}
         </div>
+    );
+}
+
+function MarketingPreviewCard({ onPreview }: { onPreview: () => void }) {
+    return (
+        <Card>
+            <div className="flex items-center gap-2 mb-2 text-neutral-900 font-semibold">
+                <Eye size={18} />
+                <h3>Onesign &amp; Digital Services modal</h3>
+            </div>
+            <p className="text-sm text-neutral-600 mb-4">
+                Post-approval pitch staged for the client sign-off flow. Not yet
+                live &mdash; preview it here to review copy, timing, and feel
+                before it ships on <code>/sign-off/[token]</code>.
+            </p>
+            <button type="button" onClick={onPreview} className="btn-primary">
+                Preview modal
+            </button>
+        </Card>
     );
 }
 
