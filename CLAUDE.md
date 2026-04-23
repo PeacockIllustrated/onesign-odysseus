@@ -45,7 +45,9 @@ ARTWORK JOB  ── auto-generated skeleton. One artwork component per
   │            the line item's structured spec (material, method, finish,
   │            dimensions, qty). Service lines skip artwork entirely.
   │            Designer uploads artwork files, verifies spec, gets client
-  │            sign-off via /approve/artwork/[token].
+  │            sign-off via /sign-off/[token] (per-component approve or
+  │            request-changes + comment; legacy /approve/artwork/[token]
+  │            redirects to the new slug).
   │
   │ admin clicks "Release to production"
   ▼
@@ -183,6 +185,7 @@ Migration 031 is intentionally absent (numbering gap from an early draft that wa
 | 044 | one-production-per-visual | DB-level unique constraint closes race in `createProductionFromVisual` |
 | 045 | approval comments | Free-text client feedback alongside signature |
 | 046 | changes_requested status | Lets client request revisions without approving |
+| 051 | per-component decisions | `artwork_component_decisions` table — client approves each component individually or requests changes with a per-line comment; overall approval status derived |
 
 ### Production pipeline (024–025, 028, 042)
 | 024 | `production_stages`, `production_jobs`, `job_items`, `job_stage_log`, `department_instructions`, `work_centres` | Kanban + shop-floor infrastructure |
@@ -214,7 +217,7 @@ Under the hood, production_jobs are still created at quote acceptance time (the 
 
 ### 3. Single-tenant internal platform — clients are records, not users
 
-Onesign Odysseus is used **only by Onesign & Digital staff** to run the internal production pipeline. It is not a customer-facing portal. The businesses Onesign does work for never log in here — they interact with Onesign via email, the tokenised artwork-approval links at `/approve/artwork/[token]`, and proof-of-delivery links at `/delivery/[token]`.
+Onesign Odysseus is used **only by Onesign & Digital staff** to run the internal production pipeline. It is not a customer-facing portal. The businesses Onesign does work for never log in here — they interact with Onesign via email, the tokenised artwork sign-off links at `/sign-off/[token]` (legacy `/approve/artwork/[token]` redirects), and proof-of-delivery links at `/delivery/[token]`.
 
 Terminology:
 - **Client** — the external business Onesign does signage work for (Persimmon, Balfour, SKS Construction, Slick Construction, etc.). A client is a data record, not a portal user.

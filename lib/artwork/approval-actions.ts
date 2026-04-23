@@ -14,6 +14,7 @@ import { getUser } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 import {
     ArtworkApproval,
+    ArtworkComponentDecision,
     SubmitApprovalInput,
     SubmitApprovalInputSchema,
 } from './approval-types';
@@ -186,6 +187,34 @@ export async function generateApprovalLink(
 
     revalidatePath(`/admin/artwork/${jobId}`);
     return { token };
+}
+
+/**
+ * Latest per-component decisions for a job, keyed by component_id. Pulled
+ * from the most recent non-pending approval on the job.
+ */
+export async function getComponentDecisionsForJob(
+    jobId: string
+): Promise<Record<string, ArtworkComponentDecision>> {
+    const supabase = await createServerClient();
+    const { data: latest } = await supabase
+        .from('artwork_approvals')
+        .select('id')
+        .eq('job_id', jobId)
+        .in('status', ['approved', 'changes_requested'])
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (!latest) return {};
+    const { data: rows } = await supabase
+        .from('artwork_component_decisions')
+        .select('*')
+        .eq('approval_id', latest.id);
+    const out: Record<string, ArtworkComponentDecision> = {};
+    for (const r of (rows ?? []) as ArtworkComponentDecision[]) {
+        out[r.component_id] = r;
+    }
+    return out;
 }
 
 /**
@@ -450,23 +479,63 @@ export async function submitApproval(
         }
     }
 
+    // Per-component decisions (production jobs). If any component is marked
+    // changes_requested, the whole job lands in 'changes_requested' and
+    // skipping to production is blocked until the client re-approves.
+    const decisions = validation.data.component_decisions ?? [];
+    let overallStatus: 'approved' | 'changes_requested' = 'approved';
+    if (job?.job_type !== 'visual_approval') {
+        // Validate: every component on the job must have a decision.
+        const { data: jobComponents } = await supabase
+            .from('artwork_components')
+            .select('id')
+            .eq('job_id', approval.job_id);
+        const componentIds = new Set((jobComponents ?? []).map((c: any) => c.id));
+        const decided = new Set(decisions.map((d) => d.componentId));
+        for (const cid of componentIds) {
+            if (!decided.has(cid)) {
+                return { error: 'every component must be approved or have changes requested' };
+            }
+        }
+        if (decisions.some((d) => d.decision === 'changes_requested')) {
+            overallStatus = 'changes_requested';
+        }
+    }
+
     // Submit approval
     const { error: updateError } = await supabase
         .from('artwork_approvals')
         .update({
-            status: 'approved',
+            status: overallStatus,
             client_name: validation.data.client_name,
             client_email: validation.data.client_email,
             client_company: validation.data.client_company || null,
             signature_data: validation.data.signature_data,
             client_comments: validation.data.client_comments?.trim() || null,
-            approved_at: new Date().toISOString(),
+            approved_at: overallStatus === 'approved' ? new Date().toISOString() : null,
         })
         .eq('id', approval.id);
 
     if (updateError) {
         console.error('error submitting approval:', updateError);
         return { error: 'failed to submit approval' };
+    }
+
+    // Write per-component decisions (idempotent upsert on the unique key).
+    if (decisions.length > 0) {
+        const rows = decisions.map((d) => ({
+            approval_id: approval.id,
+            component_id: d.componentId,
+            decision: d.decision,
+            comment: d.comment?.trim() || null,
+        }));
+        const { error: decErr } = await supabase
+            .from('artwork_component_decisions')
+            .upsert(rows, { onConflict: 'approval_id,component_id' });
+        if (decErr) {
+            console.error('error writing component decisions:', decErr);
+            return { error: 'failed to record component decisions' };
+        }
     }
 
     // If this was a visual_approval job, write variant choices and flip job status.

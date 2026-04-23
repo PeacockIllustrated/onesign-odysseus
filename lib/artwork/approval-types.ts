@@ -44,15 +44,38 @@ export type ArtworkApproval = z.infer<typeof ArtworkApprovalSchema>;
 // INPUT SCHEMAS
 // =============================================================================
 
+export const ComponentDecisionEnum = z.enum(['approved', 'changes_requested']);
+export type ComponentDecision = z.infer<typeof ComponentDecisionEnum>;
+
+export const ComponentDecisionInputSchema = z.object({
+    componentId: z.string().uuid(),
+    decision: ComponentDecisionEnum,
+    comment: z.string().max(2000).optional().nullable(),
+});
+export type ComponentDecisionInput = z.infer<typeof ComponentDecisionInputSchema>;
+
 export const SubmitApprovalInputSchema = z.object({
     client_name: z.string().min(1, 'your name is required'),
     client_email: z.string().email('valid email is required'),
     client_company: z.string().optional(),
     signature_data: z.string().min(1, 'signature is required'),
     client_comments: z.string().max(2000).optional(),
+    // Per-line decisions. Required for production jobs; optional for visual
+    // approval jobs (where variant selection is the decision).
+    component_decisions: z.array(ComponentDecisionInputSchema).optional(),
     variant_selections: z.array(z.object({
         componentId: z.string().uuid(),
         variantId: z.string().uuid(),
     })).optional(),
 });
 export type SubmitApprovalInput = z.infer<typeof SubmitApprovalInputSchema>;
+
+// Row type for artwork_component_decisions (migration 051).
+export interface ArtworkComponentDecision {
+    id: string;
+    approval_id: string;
+    component_id: string;
+    decision: ComponentDecision;
+    comment: string | null;
+    decided_at: string;
+}

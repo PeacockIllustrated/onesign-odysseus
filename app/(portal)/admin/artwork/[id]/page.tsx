@@ -17,7 +17,7 @@ import {
     formatDate,
 } from '@/lib/artwork/utils';
 import { ArtworkJobStatus, ComponentStatus } from '@/lib/artwork/types';
-import { getApprovalForJob } from '@/lib/artwork/approval-actions';
+import { getApprovalForJob, getComponentDecisionsForJob } from '@/lib/artwork/approval-actions';
 import { AddComponentForm } from './components/AddComponentForm';
 import { ApprovalLinkSection } from './components/ApprovalLinkSection';
 import { ClientDeliveryCard } from './components/ClientDeliveryCard';
@@ -37,11 +37,12 @@ export default async function ArtworkJobDetailPage({
     await requireAdmin();
 
     const { id } = await params;
-    const [job, approval, stages, lineage] = await Promise.all([
+    const [job, approval, stages, lineage, componentDecisions] = await Promise.all([
         getArtworkJob(id),
         getApprovalForJob(id),
         getProductionStages(),
         getArtworkJobLineage(id),
+        getComponentDecisionsForJob(id),
     ]);
 
     if (!job) {
@@ -253,78 +254,105 @@ export default async function ArtworkJobDetailPage({
                             </Card>
                         ) : (
                             <div className="space-y-3">
-                                {job.components.map((component, index) => (
-                                    <Link
-                                        key={component.id}
-                                        href={`/admin/artwork/${id}/${component.id}`}
-                                        className="block"
-                                    >
-                                        <Card className="hover:border-neutral-300 transition-colors cursor-pointer">
-                                            <div className="flex items-start justify-between gap-3">
-                                                <ReorderControls
-                                                    componentId={component.id}
-                                                    isFirst={index === 0}
-                                                    isLast={index === job.components.length - 1}
-                                                />
-                                                <div className="flex-1">
-                                                    <div className="flex items-center gap-2 mb-1">
-                                                        <span className="text-xs font-mono text-neutral-400">
-                                                            {String(index + 1).padStart(2, '0')}
-                                                        </span>
-                                                        <h3 className="text-sm font-semibold text-neutral-900">
-                                                            {component.name}
-                                                        </h3>
-                                                        <Chip variant="default">
-                                                            {getComponentTypeLabel(component.component_type)}
+                                {job.components.map((component, index) => {
+                                    const decision = componentDecisions[component.id];
+                                    const cardBorder =
+                                        decision?.decision === 'approved'
+                                            ? 'border-green-400 bg-green-50 hover:border-green-500'
+                                            : decision?.decision === 'changes_requested'
+                                            ? 'border-amber-400 bg-amber-50 hover:border-amber-500'
+                                            : 'hover:border-neutral-300';
+                                    return (
+                                        <Link
+                                            key={component.id}
+                                            href={`/admin/artwork/${id}/${component.id}`}
+                                            className="block"
+                                        >
+                                            <Card className={`${cardBorder} transition-colors cursor-pointer`}>
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <ReorderControls
+                                                        componentId={component.id}
+                                                        isFirst={index === 0}
+                                                        isLast={index === job.components.length - 1}
+                                                    />
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <span className="text-xs font-mono text-neutral-400">
+                                                                {String(index + 1).padStart(2, '0')}
+                                                            </span>
+                                                            <h3 className="text-sm font-semibold text-neutral-900">
+                                                                {component.name}
+                                                            </h3>
+                                                            <Chip variant="default">
+                                                                {getComponentTypeLabel(component.component_type)}
+                                                            </Chip>
+                                                            {decision?.decision === 'approved' && (
+                                                                <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-green-600 text-white">
+                                                                    client approved
+                                                                </span>
+                                                            )}
+                                                            {decision?.decision === 'changes_requested' && (
+                                                                <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500 text-white">
+                                                                    changes requested
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {component.width_mm && component.height_mm ? (
+                                                            <p className="text-xs text-neutral-500 mt-1">
+                                                                {formatDimensionWithReturns(
+                                                                    Number(component.width_mm),
+                                                                    Number(component.height_mm),
+                                                                    component.returns_mm ? Number(component.returns_mm) : null
+                                                                )}
+                                                                {component.material && ` — ${component.material}`}
+                                                            </p>
+                                                        ) : (
+                                                            <p className="text-xs text-neutral-400 mt-1">
+                                                                dimensions not yet specified
+                                                            </p>
+                                                        )}
+                                                        {decision?.comment && (
+                                                            <div className="mt-2 p-2 rounded border border-amber-300 bg-amber-100 text-xs text-amber-900">
+                                                                <span className="font-semibold uppercase tracking-wider text-[10px] text-amber-800 mr-1">
+                                                                    client:
+                                                                </span>
+                                                                <span className="whitespace-pre-wrap">{decision.comment}</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        {component.target_stage_id && (() => {
+                                                            const stage = stages.find(s => s.id === component.target_stage_id);
+                                                            return stage ? (
+                                                                <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: `${stage.color}20`, color: stage.color }}>
+                                                                    {stage.name}
+                                                                </span>
+                                                            ) : null;
+                                                        })()}
+                                                        {component.design_signed_off_at && (
+                                                            <span className="text-xs text-green-600" title="design signed off">
+                                                                design ok
+                                                            </span>
+                                                        )}
+                                                        {component.production_signed_off_at && (
+                                                            <span className="text-xs text-emerald-600" title="production signed off">
+                                                                prod ok
+                                                            </span>
+                                                        )}
+                                                        {component.dimension_flag === 'out_of_tolerance' && (
+                                                            <span className="text-xs text-red-600 font-medium" title="out of tolerance">
+                                                                OOT
+                                                            </span>
+                                                        )}
+                                                        <Chip variant={getComponentStatusVariant(component.status as ComponentStatus)}>
+                                                            {getComponentStatusLabel(component.status as ComponentStatus)}
                                                         </Chip>
                                                     </div>
-                                                    {component.width_mm && component.height_mm ? (
-                                                        <p className="text-xs text-neutral-500 mt-1">
-                                                            {formatDimensionWithReturns(
-                                                                Number(component.width_mm),
-                                                                Number(component.height_mm),
-                                                                component.returns_mm ? Number(component.returns_mm) : null
-                                                            )}
-                                                            {component.material && ` — ${component.material}`}
-                                                        </p>
-                                                    ) : (
-                                                        <p className="text-xs text-neutral-400 mt-1">
-                                                            dimensions not yet specified
-                                                        </p>
-                                                    )}
                                                 </div>
-                                                <div className="flex items-center gap-2">
-                                                    {component.target_stage_id && (() => {
-                                                        const stage = stages.find(s => s.id === component.target_stage_id);
-                                                        return stage ? (
-                                                            <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: `${stage.color}20`, color: stage.color }}>
-                                                                {stage.name}
-                                                            </span>
-                                                        ) : null;
-                                                    })()}
-                                                    {component.design_signed_off_at && (
-                                                        <span className="text-xs text-green-600" title="design signed off">
-                                                            design ok
-                                                        </span>
-                                                    )}
-                                                    {component.production_signed_off_at && (
-                                                        <span className="text-xs text-emerald-600" title="production signed off">
-                                                            prod ok
-                                                        </span>
-                                                    )}
-                                                    {component.dimension_flag === 'out_of_tolerance' && (
-                                                        <span className="text-xs text-red-600 font-medium" title="out of tolerance">
-                                                            OOT
-                                                        </span>
-                                                    )}
-                                                    <Chip variant={getComponentStatusVariant(component.status as ComponentStatus)}>
-                                                        {getComponentStatusLabel(component.status as ComponentStatus)}
-                                                    </Chip>
-                                                </div>
-                                            </div>
-                                        </Card>
-                                    </Link>
-                                ))}
+                                            </Card>
+                                        </Link>
+                                    );
+                                })}
                             </div>
                         )}
                     </div>

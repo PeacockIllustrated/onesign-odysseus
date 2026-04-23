@@ -31,7 +31,7 @@ export function ApprovalLinkSection({ jobId, approval, hasSignedOffComponents, n
         (currentApproval && currentApproval.status === 'pending' && new Date(currentApproval.expires_at) < new Date());
 
     const activeToken = generatedToken || (isPending_ && !isExpired ? currentApproval?.token : null);
-    const approvalUrl = activeToken ? `${typeof window !== 'undefined' ? window.location.origin : ''}/approve/artwork/${activeToken}` : null;
+    const approvalUrl = activeToken ? `${typeof window !== 'undefined' ? window.location.origin : ''}/sign-off/${activeToken}` : null;
 
     const handleGenerate = () => {
         setError(null);
