@@ -79,11 +79,14 @@ export function ExternalOrdersClient({ orders }: Props) {
     const supabase = useMemo(() => createBrowserClient(), []);
     const [isPending, startTransition] = useTransition();
 
-    // Live updates — re-fetch the list whenever external_orders changes.
+    // Live updates — re-fetch the list whenever external_orders OR any
+    // upstream source table changes (psp_orders for Persimmon today).
     useEffect(() => {
         const channel = supabase
             .channel('external-orders-live')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'external_orders' },
+                () => router.refresh())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'psp_orders' },
                 () => router.refresh())
             .subscribe();
         return () => { supabase.removeChannel(channel); };
