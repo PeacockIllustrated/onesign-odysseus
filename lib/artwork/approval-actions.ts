@@ -494,48 +494,14 @@ export async function submitApproval(
         }
     }
 
-    // Per-sub-item decisions. Two validation modes:
-    //   * Production jobs: every sub-item (or every component that has no
-    //     sub-items) must carry a decision.
-    //   * Visual approval jobs: sub-items represent variants, so a
-    //     component is valid with exactly ONE approved sub-item or with
-    //     at least one changes_requested decision (client rejected this
-    //     component entirely). A payload that approves two variants in
-    //     the same component is rejected defensively — the client UI
-    //     prevents it, but we guard server-side too.
+    // Per-sub-item decisions. Sub-items are treated as variants — only one
+    // per component can be approved. A component is valid with exactly ONE
+    // approved sub-item OR at least one changes_requested decision
+    // (lets the client reject every option and leave notes). Components
+    // that have no sub-items still need a single component-level decision.
     const decisions = validation.data.component_decisions ?? [];
     let overallStatus: 'approved' | 'changes_requested' = 'approved';
-    if (job?.job_type !== 'visual_approval') {
-        const { data: jobComponents } = await supabase
-            .from('artwork_components')
-            .select('id, sub_items:artwork_component_items(id)')
-            .eq('job_id', approval.job_id);
-
-        const decidedSubItems = new Set(
-            decisions.filter((d) => d.subItemId).map((d) => d.subItemId as string)
-        );
-        const decidedComponentsOnly = new Set(
-            decisions.filter((d) => !d.subItemId).map((d) => d.componentId)
-        );
-
-        for (const c of (jobComponents ?? []) as any[]) {
-            const subs = (c.sub_items ?? []) as Array<{ id: string }>;
-            if (subs.length > 0) {
-                for (const si of subs) {
-                    if (!decidedSubItems.has(si.id)) {
-                        return { error: 'every sub-item must be approved or have changes requested' };
-                    }
-                }
-            } else if (!decidedComponentsOnly.has(c.id)) {
-                return { error: 'every component must be approved or have changes requested' };
-            }
-        }
-
-        if (decisions.some((d) => d.decision === 'changes_requested')) {
-            overallStatus = 'changes_requested';
-        }
-    } else {
-        // Visual approval: radio-style variants within each component.
+    {
         const { data: jobComponents } = await supabase
             .from('artwork_components')
             .select('id, sub_items:artwork_component_items(id)')
@@ -547,10 +513,18 @@ export async function submitApproval(
             arr.push(d);
             decisionsByComponent.set(d.componentId, arr);
         }
+        const decidedComponentsOnly = new Set(
+            decisions.filter((d) => !d.subItemId).map((d) => d.componentId)
+        );
 
         for (const c of (jobComponents ?? []) as any[]) {
             const subs = (c.sub_items ?? []) as Array<{ id: string }>;
-            if (subs.length === 0) continue;
+            if (subs.length === 0) {
+                if (!decidedComponentsOnly.has(c.id)) {
+                    return { error: 'every component must be approved or have changes requested' };
+                }
+                continue;
+            }
             const subIds = new Set(subs.map((s) => s.id));
             const decs = (decisionsByComponent.get(c.id) ?? []).filter(
                 (d) => d.subItemId && subIds.has(d.subItemId as string)
@@ -558,10 +532,10 @@ export async function submitApproval(
             const approvedCount = decs.filter((d) => d.decision === 'approved').length;
             const anyChanges = decs.some((d) => d.decision === 'changes_requested');
             if (approvedCount > 1) {
-                return { error: 'only one variant per component can be approved' };
+                return { error: 'only one sub-item per component can be approved' };
             }
             if (approvedCount === 0 && !anyChanges) {
-                return { error: 'each component needs one approved variant, or at least one request for changes' };
+                return { error: 'each component needs one approved option, or at least one request for changes' };
             }
         }
 

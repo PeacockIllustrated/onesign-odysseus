@@ -89,24 +89,24 @@ export default function ApprovalClientView({ data, token }: Props) {
      * Toggle-friendly setter.
      *   * Clicking the already-selected decision unsets it (lets the client
      *     change their mind without jumping through a "reset" button).
-     *   * On visual approval jobs a component's sub-items are mutually
-     *     exclusive for the "approved" state — they're variants of the
-     *     same artwork, so only one can be picked. Approving a new sibling
-     *     automatically unapproves any sibling that was previously approved.
+     *   * A component's sub-items are mutually exclusive for the "approved"
+     *     state — they're variants of the same artwork, so only one can
+     *     be picked. Approving a new sibling automatically unapproves any
+     *     sibling that was previously approved. Request-changes stays
+     *     independent so the client can reject every variant if needed.
      */
     const setDecision = (key: string, decision: LineDecision, componentId?: string) => {
         setDecisions((p) => {
             const next = { ...p };
             if (next[key] === decision) {
                 delete next[key];
-                // Also drop any comment that was tied to the cleared row.
                 setComments((pc) => {
                     const { [key]: _, ...rest } = pc;
                     return rest;
                 });
                 return next;
             }
-            if (decision === 'approved' && isVisual && componentId) {
+            if (decision === 'approved' && componentId) {
                 const component = components.find((c) => c.id === componentId);
                 const siblingKeys = (component?.sub_items ?? []).map((si) => si.id);
                 for (const sk of siblingKeys) {
@@ -120,19 +120,16 @@ export default function ApprovalClientView({ data, token }: Props) {
         });
     };
 
-    // Validation. Visual approval treats sub-items as variants — a component
-    // is "done" if one variant was picked OR at least one variant was marked
-    // changes_requested. Production artwork still requires every sub-item to
-    // be individually decided.
+    // Validation. A component's sub-items are variants — it's "done" when
+    // one variant is approved OR at least one is marked changes_requested
+    // (letting the client reject every option and leave notes). Components
+    // with no sub-items still need their single decision.
     const componentComplete = (c: (typeof components)[number]): boolean => {
         const subs = c.sub_items ?? [];
         if (subs.length === 0) return !!decisions[c.id];
-        if (isVisual) {
-            const approvedCount = subs.filter((si) => decisions[si.id] === 'approved').length;
-            const anyChanges = subs.some((si) => decisions[si.id] === 'changes_requested');
-            return approvedCount === 1 || anyChanges;
-        }
-        return subs.every((si) => !!decisions[si.id]);
+        const approvedCount = subs.filter((si) => decisions[si.id] === 'approved').length;
+        const anyChanges = subs.some((si) => decisions[si.id] === 'changes_requested');
+        return approvedCount === 1 || anyChanges;
     };
 
     const allLinesDecided = hasVariants
@@ -144,10 +141,8 @@ export default function ApprovalClientView({ data, token }: Props) {
         (r) => decisions[r.key] === 'changes_requested' && !(comments[r.key] ?? '').trim()
     );
 
-    // Visual jobs: block submit if someone approved two variants within the
-    // same component. The UI shouldn't let this happen (setDecision clears
-    // siblings) but guard anyway.
-    const multipleApprovedInComponent = isVisual && components.some((c) => {
+    // Guard: only one sub-item per component can be approved.
+    const multipleApprovedInComponent = components.some((c) => {
         const approvedCount = (c.sub_items ?? []).filter((si) => decisions[si.id] === 'approved').length;
         return approvedCount > 1;
     });
@@ -160,9 +155,7 @@ export default function ApprovalClientView({ data, token }: Props) {
         if (!allLinesDecided) return setError(
             hasVariants
                 ? 'please choose an option for every component'
-                : isVisual
-                ? 'please approve one option per component, or request changes'
-                : 'please mark every item approved or changes requested'
+                : 'please approve one option per component, or request changes'
         );
         if (missingChangeComments) return setError('please describe the changes you need for every item marked "changes requested"');
         if (signatureRef.current?.isEmpty()) return setError('please draw your signature');
