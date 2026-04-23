@@ -20,6 +20,9 @@ export interface AttentionItem {
     detail?: string;
     href: string;
     timestamp?: string;
+    /** Persisted notification id (from public.notifications). When present,
+     *  the UI renders a dismiss button that writes via dismissNotification. */
+    id?: string;
 }
 
 export interface AttentionSummary {
@@ -55,54 +58,30 @@ export async function getAttentionItems(): Promise<AttentionSummary> {
     const today = todayISO();
     const in7 = daysFromNowISO(7);
 
-    // 1. Artwork approvals returned (approved or changes_requested) where the
-    //    job hasn't yet been released to production or completed.
+    // 1 + 2. Persisted notifications (artwork approvals, shop-floor flags).
+    //        Inserted by DB triggers in migration 052 so they update live
+    //        via Supabase Realtime. Dismissed rows are filtered out.
     try {
         const { data } = await supabase
-            .from('artwork_approvals')
-            .select('id, job_id, status, approved_at, client_name, updated_at, artwork_jobs!inner(id, title, status)')
-            .in('status', ['approved', 'changes_requested'])
-            .order('updated_at', { ascending: false })
-            .limit(25);
-        for (const row of (data || []) as any[]) {
-            const job = row.artwork_jobs;
-            if (!job) continue;
-            if (job.status === 'in_production' || job.status === 'completed') continue;
-            const kind: AttentionKind = row.status === 'approved' ? 'artwork_approved' : 'artwork_changes_requested';
-            counts[kind]++;
-            items.push({
-                kind,
-                severity: kind === 'artwork_changes_requested' ? 'urgent' : 'action',
-                title: kind === 'artwork_approved'
-                    ? `Artwork approved: ${job.title}`
-                    : `Changes requested: ${job.title}`,
-                detail: row.client_name ? `by ${row.client_name}` : undefined,
-                href: `/admin/artwork/${job.id}`,
-                timestamp: row.approved_at || row.updated_at,
-            });
-        }
-    } catch { /* table missing */ }
-
-    // 2. Open shop-floor problem reports
-    try {
-        const { data } = await supabase
-            .from('shop_floor_flags')
-            .select('id, notes, reported_by_name, created_at, job_item_id')
-            .eq('status', 'open')
+            .from('notifications')
+            .select('id, kind, severity, title, detail, href, created_at')
+            .is('dismissed_at', null)
             .order('created_at', { ascending: false })
-            .limit(10);
+            .limit(50);
         for (const row of (data || []) as any[]) {
-            counts.shop_floor_flag++;
+            if (!(row.kind in counts)) continue;
+            counts[row.kind as AttentionKind]++;
             items.push({
-                kind: 'shop_floor_flag',
-                severity: 'urgent',
-                title: `Shop-floor problem: ${row.notes.slice(0, 60)}${row.notes.length > 60 ? '…' : ''}`,
-                detail: row.reported_by_name ? `from ${row.reported_by_name}` : undefined,
-                href: '/admin/jobs',
+                id: row.id,
+                kind: row.kind as AttentionKind,
+                severity: row.severity as AttentionSeverity,
+                title: row.title,
+                detail: row.detail ?? undefined,
+                href: row.href,
                 timestamp: row.created_at,
             });
         }
-    } catch { /* table missing */ }
+    } catch { /* notifications table missing (migration 052 not applied) */ }
 
     // 3. Quotes expiring within 7 days (sent but not accepted)
     try {

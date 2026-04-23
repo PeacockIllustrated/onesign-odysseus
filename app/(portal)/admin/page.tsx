@@ -1,10 +1,11 @@
 import { createAdminClient } from '@/lib/supabase-admin';
 import { requireAdmin } from '@/lib/auth';
 import { PageHeader } from '@/app/(portal)/components/ui';
-import { AlertCircle, Bell, LayoutGrid, FileText, ShoppingCart, Zap, Receipt, Truck } from 'lucide-react';
+import { AlertCircle, LayoutGrid, FileText, ShoppingCart, Zap, Receipt, Truck } from 'lucide-react';
 import Link from 'next/link';
 import { getProductionStats } from '@/lib/production/queries';
 import { getAttentionItems } from '@/lib/notifications/queries';
+import { NeedsAttentionLive } from './NeedsAttentionLive';
 import { formatPence, INVOICE_STATUS_COLORS, INVOICE_STATUS_LABELS } from '@/lib/invoices/utils';
 import type { InvoiceStatus } from '@/lib/invoices/types';
 
@@ -149,63 +150,12 @@ export default async function AdminPage() {
                 description="Production pipeline and operations overview"
             />
 
-            {/* Needs Attention */}
-            <div className="mb-6">
-                <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                        <Bell size={16} className="text-[#4e7e8c]" />
-                        <h2 className="text-sm font-semibold text-neutral-900">Needs Attention</h2>
-                        {urgentCount > 0 && (
-                            <span className="text-[10px] font-semibold uppercase tracking-wider bg-red-50 text-red-700 px-1.5 py-0.5 rounded">
-                                {urgentCount} urgent
-                            </span>
-                        )}
-                        {actionCount > 0 && (
-                            <span className="text-[10px] font-semibold uppercase tracking-wider bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded">
-                                {actionCount} action
-                            </span>
-                        )}
-                    </div>
-                </div>
+            <NeedsAttentionLive
+                items={attention.items}
+                urgentCount={urgentCount}
+                actionCount={actionCount}
+            />
 
-                <div className="bg-white rounded-[var(--radius-md)] border border-neutral-200 divide-y divide-neutral-100">
-                    {attention.items.length === 0 ? (
-                        <p className="text-sm text-neutral-400 text-center py-6">Nothing needs attention right now ✓</p>
-                    ) : (
-                        attention.items.slice(0, 8).map((item, idx) => {
-                            const dot =
-                                item.severity === 'urgent' ? 'bg-red-500'
-                                : item.severity === 'action' ? 'bg-amber-500'
-                                : 'bg-neutral-300';
-                            return (
-                                <Link
-                                    key={`${item.kind}-${idx}`}
-                                    href={item.href}
-                                    className="flex items-center gap-3 px-4 py-2.5 hover:bg-neutral-50 transition-colors"
-                                >
-                                    <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} aria-hidden />
-                                    <div className="min-w-0 flex-1">
-                                        <p className="text-sm text-neutral-900 truncate">{item.title}</p>
-                                        {item.detail && (
-                                            <p className="text-xs text-neutral-500 truncate">{item.detail}</p>
-                                        )}
-                                    </div>
-                                    {item.timestamp && (
-                                        <span className="text-[11px] text-neutral-400 shrink-0">
-                                            {new Date(item.timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
-                                        </span>
-                                    )}
-                                </Link>
-                            );
-                        })
-                    )}
-                    {attention.items.length > 8 && (
-                        <div className="px-4 py-2 text-xs text-neutral-500 text-center">
-                            +{attention.items.length - 8} more
-                        </div>
-                    )}
-                </div>
-            </div>
 
             {/* Production Pipeline — hero section */}
             <div className="mb-6">
