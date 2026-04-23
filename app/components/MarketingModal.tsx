@@ -34,6 +34,18 @@ const KEYFRAMES = `
     60%  { opacity: 1; transform: scale(1.05) }
     100% { opacity: 1; transform: scale(1) }
 }
+@keyframes osdPulseRing {
+    0%   { opacity: 0.65; transform: scale(0.85) }
+    100% { opacity: 0;    transform: scale(2.1)  }
+}
+@keyframes osdSheen {
+    0%   { transform: translateX(-120%) skewX(-20deg) }
+    100% { transform: translateX(220%)  skewX(-20deg) }
+}
+@keyframes osdLogoFadeIn {
+    from { opacity: 0; transform: translateY(-4px) }
+    to   { opacity: 1; transform: translateY(0)    }
+}
 `;
 
 const backdropStyle: React.CSSProperties = {
@@ -103,48 +115,146 @@ export default function MarketingModal({ onClose }: Props) {
 
 function AckCard() {
     return (
-        <div style={{ ...cardStyle, padding: '40px 32px', textAlign: 'center' }}>
-            <div style={{
-                width: '68px',
-                height: '68px',
-                margin: '0 auto',
-                background: TEAL_LIGHT,
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                animation: 'osdMarkPop 420ms cubic-bezier(0.2, 0.8, 0.2, 1)',
-            }}>
-                <svg width="36" height="36" viewBox="0 0 36 36" fill="none" aria-hidden="true">
-                    <path
-                        d="M8 18.5 L15 25 L28 11"
-                        stroke={TEAL_DARK}
-                        strokeWidth="3.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        style={{
-                            strokeDasharray: 40,
-                            strokeDashoffset: 40,
-                            animation: 'osdTickDraw 420ms 180ms cubic-bezier(0.65, 0, 0.35, 1) forwards',
-                        }}
-                    />
-                </svg>
+        <div
+            style={{
+                ...cardStyle,
+                background: INK,
+                backgroundImage:
+                    `radial-gradient(circle at 50% 120%, ${TEAL} 0%, transparent 55%),` +
+                    `radial-gradient(circle at 100% 0%, ${TEAL_DARK} 0%, transparent 60%)`,
+                padding: '52px 32px 44px',
+                textAlign: 'center',
+                color: '#fff',
+                overflow: 'hidden',
+            }}
+        >
+            {/* Diagonal sheen — one pass */}
+            <div
+                aria-hidden="true"
+                style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '45%',
+                    height: '100%',
+                    background:
+                        'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.06) 50%, transparent 100%)',
+                    pointerEvents: 'none',
+                    animation: 'osdSheen 1400ms 200ms ease-out both',
+                }}
+            />
+
+            {/* Tiny brand eyebrow */}
+            <div
+                style={{
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    color: TEAL_LIGHT,
+                    opacity: 0.7,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.22em',
+                    marginBottom: '22px',
+                }}
+            >
+                Onesign &amp; Digital
             </div>
-            <h2 style={{
-                fontSize: '22px',
-                fontWeight: 700,
-                color: INK,
-                margin: '20px 0 6px 0',
-                letterSpacing: '-0.015em',
-            }}>Approval received</h2>
-            <p style={{ fontSize: '14px', color: '#666', margin: 0 }}>
+
+            {/* Tick + pulse rings */}
+            <div
+                style={{
+                    position: 'relative',
+                    width: '92px',
+                    height: '92px',
+                    margin: '0 auto 24px',
+                }}
+            >
+                {/* Pulse ring — leading */}
+                <div
+                    aria-hidden="true"
+                    style={{
+                        position: 'absolute',
+                        inset: 0,
+                        borderRadius: '50%',
+                        border: `2px solid ${TEAL}`,
+                        opacity: 0,
+                        animation: 'osdPulseRing 1400ms 200ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards',
+                    }}
+                />
+                {/* Pulse ring — trailing */}
+                <div
+                    aria-hidden="true"
+                    style={{
+                        position: 'absolute',
+                        inset: 0,
+                        borderRadius: '50%',
+                        border: `2px solid ${TEAL}`,
+                        opacity: 0,
+                        animation: 'osdPulseRing 1400ms 550ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards',
+                    }}
+                />
+
+                {/* Main disc */}
+                <div
+                    style={{
+                        position: 'absolute',
+                        inset: 0,
+                        background: TEAL,
+                        borderRadius: '50%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 0 48px rgba(78, 126, 140, 0.55), inset 0 0 0 1px rgba(255,255,255,0.08)',
+                        animation: 'osdMarkPop 460ms cubic-bezier(0.2, 0.8, 0.2, 1)',
+                    }}
+                >
+                    <svg width="46" height="46" viewBox="0 0 36 36" fill="none" aria-hidden="true">
+                        <path
+                            d="M8 18.5 L15 25 L28 11"
+                            stroke="#ffffff"
+                            strokeWidth="3.6"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            style={{
+                                strokeDasharray: 40,
+                                strokeDashoffset: 40,
+                                animation:
+                                    'osdTickDraw 460ms 220ms cubic-bezier(0.65, 0, 0.35, 1) forwards',
+                            }}
+                        />
+                    </svg>
+                </div>
+            </div>
+
+            <h2
+                style={{
+                    fontSize: '26px',
+                    fontWeight: 700,
+                    color: '#fff',
+                    margin: '0 0 8px 0',
+                    letterSpacing: '-0.02em',
+                }}
+            >
+                Approval received
+            </h2>
+            <p
+                style={{
+                    fontSize: '14px',
+                    color: TEAL_LIGHT,
+                    margin: 0,
+                    opacity: 0.85,
+                    letterSpacing: '0.01em',
+                }}
+            >
                 Thanks &mdash; we&rsquo;re on it.
             </p>
         </div>
     );
 }
 
-function CloseX({ onClose }: { onClose: () => void }) {
+function CloseX({ onClose, onDark = false }: { onClose: () => void; onDark?: boolean }) {
+    const idle = onDark ? 'rgba(255,255,255,0.65)' : '#999';
+    const hover = onDark ? '#fff' : '#333';
+    const hoverBg = onDark ? 'rgba(255,255,255,0.12)' : '#f3f4f6';
     return (
         <button
             type="button"
@@ -159,7 +269,7 @@ function CloseX({ onClose }: { onClose: () => void }) {
                 background: 'transparent',
                 border: 'none',
                 borderRadius: '50%',
-                color: '#999',
+                color: idle,
                 fontSize: '22px',
                 lineHeight: 1,
                 cursor: 'pointer',
@@ -167,14 +277,15 @@ function CloseX({ onClose }: { onClose: () => void }) {
                 alignItems: 'center',
                 justifyContent: 'center',
                 transition: 'background 120ms, color 120ms',
+                zIndex: 1,
             }}
             onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#f3f4f6';
-                e.currentTarget.style.color = '#333';
+                e.currentTarget.style.background = hoverBg;
+                e.currentTarget.style.color = hover;
             }}
             onMouseLeave={(e) => {
                 e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = '#999';
+                e.currentTarget.style.color = idle;
             }}
         >
             &times;
@@ -190,66 +301,106 @@ function MarketingCard({
     onClose: () => void;
 }) {
     return (
-        <div style={{ ...cardStyle, padding: '40px 32px 32px 32px' }}>
-            <CloseX onClose={onClose} />
+        <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
+            <CloseX onClose={onClose} onDark />
 
-            <div style={{
-                fontSize: '10px',
-                fontWeight: 700,
-                color: TEAL,
-                textTransform: 'uppercase',
-                letterSpacing: '0.14em',
-                marginBottom: '14px',
-            }}>
-                Onesign &amp; Digital Services
-            </div>
-
-            <h2 style={{
-                fontSize: '26px',
-                fontWeight: 700,
-                color: INK,
-                margin: '0 0 18px 0',
-                letterSpacing: '-0.02em',
-                lineHeight: 1.2,
-            }}>
-                Still paying monthly for software that nearly fits?
-            </h2>
-
-            <div style={{
-                display: 'inline-block',
-                fontSize: '13px',
-                fontWeight: 600,
-                color: TEAL_DARK,
-                background: TEAL_LIGHT,
-                padding: '6px 12px',
-                borderRadius: '999px',
-                marginBottom: '26px',
-                letterSpacing: '0.01em',
-            }}>
-                Built for you. Owned by you.
-            </div>
-
-            <button
-                type="button"
-                onClick={onRegister}
+            {/* Dark logo header band */}
+            <div
                 style={{
-                    width: '100%',
-                    padding: '14px 20px',
-                    fontSize: '15px',
-                    fontWeight: 600,
-                    color: '#fff',
-                    background: TEAL,
-                    border: 'none',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    transition: 'background 150ms',
-                    letterSpacing: '0.01em',
+                    background: INK,
+                    backgroundImage:
+                        `radial-gradient(circle at 100% 0%, ${TEAL_DARK} 0%, transparent 55%),` +
+                        `radial-gradient(circle at 0% 100%, ${TEAL} 0%, transparent 60%)`,
+                    padding: '34px 32px 26px',
+                    textAlign: 'center',
+                    position: 'relative',
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = TEAL_DARK; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = TEAL; }}
             >
-                Register Interest
-            </button>
+                <div
+                    aria-hidden="true"
+                    style={{
+                        width: '56px',
+                        height: '56px',
+                        margin: '0 auto 14px',
+                        background: '#fff',
+                        WebkitMaskImage: 'url(/Onesign-Logo-Black.svg)',
+                        maskImage: 'url(/Onesign-Logo-Black.svg)',
+                        WebkitMaskRepeat: 'no-repeat',
+                        maskRepeat: 'no-repeat',
+                        WebkitMaskPosition: 'center',
+                        maskPosition: 'center',
+                        WebkitMaskSize: 'contain',
+                        maskSize: 'contain',
+                        animation: 'osdLogoFadeIn 360ms 80ms cubic-bezier(0.2, 0.8, 0.2, 1) both',
+                    }}
+                />
+                <div
+                    style={{
+                        fontSize: '10px',
+                        fontWeight: 700,
+                        color: TEAL_LIGHT,
+                        opacity: 0.8,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.2em',
+                    }}
+                >
+                    Onesign &amp; Digital Services
+                </div>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '28px 32px 32px' }}>
+                <h2
+                    style={{
+                        fontSize: '26px',
+                        fontWeight: 700,
+                        color: INK,
+                        margin: '0 0 18px 0',
+                        letterSpacing: '-0.02em',
+                        lineHeight: 1.2,
+                    }}
+                >
+                    Still paying monthly for software that nearly fits?
+                </h2>
+
+                <div
+                    style={{
+                        display: 'inline-block',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        color: TEAL_DARK,
+                        background: TEAL_LIGHT,
+                        padding: '6px 12px',
+                        borderRadius: '999px',
+                        marginBottom: '26px',
+                        letterSpacing: '0.01em',
+                    }}
+                >
+                    Built for you. Owned by you.
+                </div>
+
+                <button
+                    type="button"
+                    onClick={onRegister}
+                    style={{
+                        width: '100%',
+                        padding: '14px 20px',
+                        fontSize: '15px',
+                        fontWeight: 600,
+                        color: '#fff',
+                        background: TEAL,
+                        border: 'none',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        transition: 'background 150ms',
+                        letterSpacing: '0.01em',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = TEAL_DARK; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = TEAL; }}
+                >
+                    Register Interest
+                </button>
+            </div>
         </div>
     );
 }
