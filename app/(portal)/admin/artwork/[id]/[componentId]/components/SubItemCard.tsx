@@ -8,7 +8,6 @@ import {
     updateSubItem,
     deleteSubItem,
     signOffSubItemDesign,
-    submitSubItemProduction,
     reverseSubItemSignOff,
     uploadSubItemThumbnail,
     removeSubItemThumbnail,
@@ -43,10 +42,10 @@ export function SubItemCard({ subItem, stages, jobCompleted }: Props) {
     const [notes, setNotes] = useState(subItem.notes ?? '');
     const [stageId, setStageId] = useState(subItem.target_stage_id ?? '');
 
-    const [measuredW, setMeasuredW] = useState(subItem.measured_width_mm?.toString() ?? '');
-    const [measuredH, setMeasuredH] = useState(subItem.measured_height_mm?.toString() ?? '');
-    const [materialConfirmed, setMaterialConfirmed] = useState(subItem.material_confirmed);
-    const [ripConfirmed, setRipConfirmed] = useState(subItem.rip_no_scaling_confirmed);
+    // Production fields (measured dimensions, material_confirmed,
+    // rip_no_scaling_confirmed) are no longer edited here — those belong
+    // to the shop-floor / QA check that the production lads handle.
+    // The underlying columns still exist on artwork_component_items.
 
     const designLocked = !!subItem.design_signed_off_at;
     const productionLocked = !!subItem.production_signed_off_at;
@@ -90,28 +89,6 @@ export function SubItemCard({ subItem, stages, jobCompleted }: Props) {
                 return;
             }
             const res = await signOffSubItemDesign(subItem.id);
-            if ('error' in res) setError(res.error);
-            else router.refresh();
-        });
-    };
-
-    const submitProduction = (alsoSignOff: boolean) => {
-        setError(null);
-        if (!measuredW || !measuredH) {
-            setError('measured width and height are required');
-            return;
-        }
-        startTransition(async () => {
-            const res = await submitSubItemProduction(
-                subItem.id,
-                {
-                    measured_width_mm: Number(measuredW),
-                    measured_height_mm: Number(measuredH),
-                    material_confirmed: materialConfirmed,
-                    rip_no_scaling_confirmed: ripConfirmed,
-                },
-                alsoSignOff
-            );
             if ('error' in res) setError(res.error);
             else router.refresh();
         });
@@ -332,96 +309,11 @@ export function SubItemCard({ subItem, stages, jobCompleted }: Props) {
                         )}
                     </section>
 
-                    {/* PRODUCTION */}
-                    {designLocked && (
-                        <section className="pt-3 border-t border-neutral-100">
-                            <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-2">
-                                production{' '}
-                                {productionLocked && (
-                                    <span className="text-green-700 normal-case">· signed off</span>
-                                )}
-                            </h3>
-                            <div className="grid grid-cols-2 gap-3">
-                                <Field label="measured width (mm)">
-                                    <input
-                                        type="number"
-                                        step="0.1"
-                                        disabled={productionLocked || readOnly}
-                                        value={measuredW}
-                                        onChange={(e) => setMeasuredW(e.target.value)}
-                                        className={INPUT_CLS}
-                                    />
-                                </Field>
-                                <Field label="measured height (mm)">
-                                    <input
-                                        type="number"
-                                        step="0.1"
-                                        disabled={productionLocked || readOnly}
-                                        value={measuredH}
-                                        onChange={(e) => setMeasuredH(e.target.value)}
-                                        className={INPUT_CLS}
-                                    />
-                                </Field>
-                            </div>
-                            {subItem.dimension_flag === 'out_of_tolerance' && (
-                                <p className="mt-2 text-xs text-red-700">
-                                    ⚠ Out of tolerance — Δw {subItem.width_deviation_mm ?? '?'} mm,
-                                    Δh {subItem.height_deviation_mm ?? '?'} mm
-                                </p>
-                            )}
-                            <div className="flex flex-wrap gap-4 mt-3">
-                                <label className="text-xs flex items-center gap-1.5">
-                                    <input
-                                        type="checkbox"
-                                        disabled={productionLocked || readOnly}
-                                        checked={materialConfirmed}
-                                        onChange={(e) => setMaterialConfirmed(e.target.checked)}
-                                    />
-                                    material confirmed
-                                </label>
-                                <label className="text-xs flex items-center gap-1.5">
-                                    <input
-                                        type="checkbox"
-                                        disabled={productionLocked || readOnly}
-                                        checked={ripConfirmed}
-                                        onChange={(e) => setRipConfirmed(e.target.checked)}
-                                    />
-                                    RIP no-scaling confirmed
-                                </label>
-                            </div>
-                            {!readOnly && (
-                                <div className="flex gap-2 mt-3">
-                                    {!productionLocked && (
-                                        <>
-                                            <button
-                                                disabled={pending}
-                                                onClick={() => submitProduction(false)}
-                                                className="btn-secondary text-xs"
-                                            >
-                                                save measurements
-                                            </button>
-                                            <button
-                                                disabled={pending}
-                                                onClick={() => submitProduction(true)}
-                                                className="btn-primary text-xs inline-flex items-center gap-1"
-                                            >
-                                                <Check size={12} /> sign off production
-                                            </button>
-                                        </>
-                                    )}
-                                    {productionLocked && (
-                                        <button
-                                            disabled={pending}
-                                            onClick={() => reverse('production')}
-                                            className="btn-secondary text-xs inline-flex items-center gap-1"
-                                        >
-                                            <RotateCcw size={12} /> reverse production sign-off
-                                        </button>
-                                    )}
-                                </div>
-                            )}
-                        </section>
-                    )}
+                    {/* PRODUCTION section moved to the shop-floor / QA step —
+                        intentionally hidden here. Measured dimensions,
+                        material_confirmed, and rip_no_scaling_confirmed are
+                        filled in by the production lads during fabrication,
+                        not by designers on the artwork page. */}
 
                     {/* DELETE */}
                     {!readOnly && !designLocked && !productionLocked && (
