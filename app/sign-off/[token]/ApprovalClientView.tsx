@@ -23,6 +23,68 @@ function keyFor(componentId: string, subItemId?: string | null): string {
     return subItemId ?? componentId;
 }
 
+/**
+ * Approve / request-changes buttons + the per-row comment textarea.
+ *
+ * MUST live at module scope — when this was defined inside
+ * ApprovalClientView, every parent re-render created a new component
+ * reference, React remounted the subtree, and the textarea lost focus
+ * after every keystroke (so the on-screen keyboard dismissed on mobile).
+ */
+function DecisionButtons({
+    k,
+    componentId,
+    decision,
+    comment,
+    onDecide,
+    onComment,
+    hidden,
+}: {
+    k: string;
+    componentId?: string;
+    decision: LineDecision | undefined;
+    comment: string;
+    onDecide: (k: string, d: LineDecision, componentId?: string) => void;
+    onComment: (k: string, v: string) => void;
+    hidden: boolean;
+}) {
+    if (hidden) return null;
+    return (
+        <div style={{ marginTop: '12px' }}>
+            <div style={{ display: 'flex', gap: '8px' }}>
+                <button type="button" onClick={() => onDecide(k, 'approved', componentId)}
+                    title={decision === 'approved' ? 'click again to unselect' : undefined}
+                    style={{
+                        flex: 1, padding: '9px 12px', fontSize: '13px', fontWeight: 600,
+                        borderRadius: '6px', cursor: 'pointer',
+                        border: decision === 'approved' ? '2px solid #16a34a' : '1px solid #d4d4d4',
+                        background: decision === 'approved' ? '#16a34a' : '#fff',
+                        color: decision === 'approved' ? '#fff' : '#333',
+                }}>{decision === 'approved' ? '✓ approved (click to unselect)' : '✓ approve this'}</button>
+                <button type="button" onClick={() => onDecide(k, 'changes_requested', componentId)}
+                    title={decision === 'changes_requested' ? 'click again to unselect' : undefined}
+                    style={{
+                        flex: 1, padding: '9px 12px', fontSize: '13px', fontWeight: 600,
+                        borderRadius: '6px', cursor: 'pointer',
+                        border: decision === 'changes_requested' ? '2px solid #d97706' : '1px solid #d4d4d4',
+                        background: decision === 'changes_requested' ? '#d97706' : '#fff',
+                        color: decision === 'changes_requested' ? '#fff' : '#333',
+                }}>{decision === 'changes_requested' ? 'changes requested (click to unselect)' : 'request changes'}</button>
+            </div>
+            {decision === 'changes_requested' && (
+                <textarea
+                    value={comment}
+                    onChange={(e) => onComment(k, e.target.value)}
+                    rows={3}
+                    maxLength={2000}
+                    placeholder="What needs to change here?"
+                    style={{ width: '100%', padding: '10px 12px', border: '1px solid #e0d5a0', background: '#fffdf5', borderRadius: '6px', fontSize: '13px', outline: 'none', fontFamily: 'inherit', resize: 'vertical', minHeight: '64px', marginTop: '8px' }}
+                />
+            )}
+        </div>
+    );
+}
+
 export default function ApprovalClientView({ data, token }: Props) {
     const { approval, job, components, coverImageUrl } = data;
     const isApproved = approval.status === 'approved';
@@ -201,45 +263,6 @@ export default function ApprovalClientView({ data, token }: Props) {
             if ('error' in result) setError(result.error);
             else setSuccess(true);
         });
-    };
-
-    const DecisionButtons = ({ k, componentId }: { k: string; componentId?: string }) => {
-        if (success) return null;
-        const dec = decisions[k];
-        return (
-            <div style={{ marginTop: '12px' }}>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                    <button type="button" onClick={() => setDecision(k, 'approved', componentId)}
-                        title={dec === 'approved' ? 'click again to unselect' : undefined}
-                        style={{
-                            flex: 1, padding: '9px 12px', fontSize: '13px', fontWeight: 600,
-                            borderRadius: '6px', cursor: 'pointer',
-                            border: dec === 'approved' ? '2px solid #16a34a' : '1px solid #d4d4d4',
-                            background: dec === 'approved' ? '#16a34a' : '#fff',
-                            color: dec === 'approved' ? '#fff' : '#333',
-                    }}>{dec === 'approved' ? '✓ approved (click to unselect)' : '✓ approve this'}</button>
-                    <button type="button" onClick={() => setDecision(k, 'changes_requested', componentId)}
-                        title={dec === 'changes_requested' ? 'click again to unselect' : undefined}
-                        style={{
-                            flex: 1, padding: '9px 12px', fontSize: '13px', fontWeight: 600,
-                            borderRadius: '6px', cursor: 'pointer',
-                            border: dec === 'changes_requested' ? '2px solid #d97706' : '1px solid #d4d4d4',
-                            background: dec === 'changes_requested' ? '#d97706' : '#fff',
-                            color: dec === 'changes_requested' ? '#fff' : '#333',
-                    }}>{dec === 'changes_requested' ? 'changes requested (click to unselect)' : 'request changes'}</button>
-                </div>
-                {dec === 'changes_requested' && (
-                    <textarea
-                        value={comments[k] ?? ''}
-                        onChange={(e) => setComments((p) => ({ ...p, [k]: e.target.value }))}
-                        rows={3}
-                        maxLength={2000}
-                        placeholder="What needs to change here?"
-                        style={{ width: '100%', padding: '10px 12px', border: '1px solid #e0d5a0', background: '#fffdf5', borderRadius: '6px', fontSize: '13px', outline: 'none', fontFamily: 'inherit', resize: 'vertical', minHeight: '64px', marginTop: '8px' }}
-                    />
-                )}
-            </div>
-        );
     };
 
     return (
@@ -503,7 +526,15 @@ export default function ApprovalClientView({ data, token }: Props) {
                                                                 </dl>
                                                             )}
 
-                                                            <DecisionButtons k={k} componentId={component.id} />
+                                                            <DecisionButtons
+                                                                k={k}
+                                                                componentId={component.id}
+                                                                decision={decisions[k]}
+                                                                comment={comments[k] ?? ''}
+                                                                onDecide={setDecision}
+                                                                onComment={(kk, v) => setComments((p) => ({ ...p, [kk]: v }))}
+                                                                hidden={success}
+                                                            />
                                                         </div>
                                                     </div>
                                                 );
@@ -523,7 +554,14 @@ export default function ApprovalClientView({ data, token }: Props) {
                                                         style={{ maxWidth: '100%', maxHeight: '260px', objectFit: 'contain' }} />
                                                 </div>
                                             )}
-                                            <DecisionButtons k={component.id} />
+                                            <DecisionButtons
+                                                k={component.id}
+                                                decision={decisions[component.id]}
+                                                comment={comments[component.id] ?? ''}
+                                                onDecide={setDecision}
+                                                onComment={(kk, v) => setComments((p) => ({ ...p, [kk]: v }))}
+                                                hidden={success}
+                                            />
                                         </div>
                                     )}
                                         </div>
