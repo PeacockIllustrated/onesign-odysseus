@@ -472,30 +472,37 @@ export async function submitApproval(
         .eq('id', approval.job_id)
         .maybeSingle();
 
-    if (job?.job_type === 'visual_approval') {
+    // Visual approval with the artwork_variants table (legacy VariantPicker
+    // path). Only enforce variant selection when the payload actually
+    // carries variant_selections — if the client used the sub-item path
+    // below (component_decisions), we validate that instead.
+    if (job?.job_type === 'visual_approval' && (validation.data.variant_selections?.length ?? 0) > 0) {
         const selections = validation.data.variant_selections ?? [];
-        if (selections.length === 0) {
-            return { error: 'visual approval requires variant selections' };
-        }
-
-        // Validate every component on the job has a selection.
         const { data: components } = await supabase
             .from('artwork_components')
-            .select('id')
+            .select('id, variants:artwork_variants(id)')
             .eq('job_id', approval.job_id);
-        const componentIds = new Set((components ?? []).map((c: any) => c.id));
+        // Only require a selection for components that actually have variants.
+        const componentsWithVariants = (components ?? []).filter(
+            (c: any) => (c.variants ?? []).length > 0
+        );
         const selectedComponents = new Set(selections.map((s) => s.componentId));
-        for (const cid of componentIds) {
-            if (!selectedComponents.has(cid)) {
-                return { error: `component ${cid} has no chosen variant` };
+        for (const c of componentsWithVariants) {
+            if (!selectedComponents.has(c.id)) {
+                return { error: `component ${c.id} has no chosen variant` };
             }
         }
     }
 
-    // Per-sub-item decisions. A component with sub-items requires one decision
-    // per sub-item; a component with no sub-items takes a single component-level
-    // decision. If any decision is changes_requested, the whole approval lands
-    // in 'changes_requested' and release-to-production stays blocked.
+    // Per-sub-item decisions. Two validation modes:
+    //   * Production jobs: every sub-item (or every component that has no
+    //     sub-items) must carry a decision.
+    //   * Visual approval jobs: sub-items represent variants, so a
+    //     component is valid with exactly ONE approved sub-item or with
+    //     at least one changes_requested decision (client rejected this
+    //     component entirely). A payload that approves two variants in
+    //     the same component is rejected defensively — the client UI
+    //     prevents it, but we guard server-side too.
     const decisions = validation.data.component_decisions ?? [];
     let overallStatus: 'approved' | 'changes_requested' = 'approved';
     if (job?.job_type !== 'visual_approval') {
@@ -521,6 +528,40 @@ export async function submitApproval(
                 }
             } else if (!decidedComponentsOnly.has(c.id)) {
                 return { error: 'every component must be approved or have changes requested' };
+            }
+        }
+
+        if (decisions.some((d) => d.decision === 'changes_requested')) {
+            overallStatus = 'changes_requested';
+        }
+    } else {
+        // Visual approval: radio-style variants within each component.
+        const { data: jobComponents } = await supabase
+            .from('artwork_components')
+            .select('id, sub_items:artwork_component_items(id)')
+            .eq('job_id', approval.job_id);
+
+        const decisionsByComponent = new Map<string, typeof decisions>();
+        for (const d of decisions) {
+            const arr = decisionsByComponent.get(d.componentId) ?? [];
+            arr.push(d);
+            decisionsByComponent.set(d.componentId, arr);
+        }
+
+        for (const c of (jobComponents ?? []) as any[]) {
+            const subs = (c.sub_items ?? []) as Array<{ id: string }>;
+            if (subs.length === 0) continue;
+            const subIds = new Set(subs.map((s) => s.id));
+            const decs = (decisionsByComponent.get(c.id) ?? []).filter(
+                (d) => d.subItemId && subIds.has(d.subItemId as string)
+            );
+            const approvedCount = decs.filter((d) => d.decision === 'approved').length;
+            const anyChanges = decs.some((d) => d.decision === 'changes_requested');
+            if (approvedCount > 1) {
+                return { error: 'only one variant per component can be approved' };
+            }
+            if (approvedCount === 0 && !anyChanges) {
+                return { error: 'each component needs one approved variant, or at least one request for changes' };
             }
         }
 
@@ -575,11 +616,12 @@ export async function submitApproval(
         }
     }
 
-    // If this was a visual_approval job, write variant choices and flip job status.
+    // Visual approval post-processing: write variant choices (legacy path)
+    // and flip the job to completed only on a clean approval. If the client
+    // rejected any variant (overallStatus === 'changes_requested'), we leave
+    // the job status alone so "create production" stays greyed out.
     if (job?.job_type === 'visual_approval') {
         const selections = validation.data.variant_selections ?? [];
-
-        // Write the is_chosen flags.
         for (const sel of selections) {
             await supabase
                 .from('artwork_variants')
@@ -591,11 +633,12 @@ export async function submitApproval(
                 .eq('component_id', sel.componentId);
         }
 
-        // Flip the job status to completed so the "create production" button lights up.
-        await supabase
-            .from('artwork_jobs')
-            .update({ status: 'completed' })
-            .eq('id', approval.job_id);
+        if (overallStatus === 'approved') {
+            await supabase
+                .from('artwork_jobs')
+                .update({ status: 'completed' })
+                .eq('id', approval.job_id);
+        }
     }
 
     revalidatePath(`/admin/artwork/${approval.job_id}`);

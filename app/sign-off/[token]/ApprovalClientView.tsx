@@ -85,25 +85,84 @@ export default function ApprovalClientView({ data, token }: Props) {
         return () => window.removeEventListener('keydown', handleKey);
     }, [lightboxSrc, closeLightbox]);
 
-    const setDecision = (key: string, decision: LineDecision) => {
-        setDecisions((p) => ({ ...p, [key]: decision }));
+    /**
+     * Toggle-friendly setter.
+     *   * Clicking the already-selected decision unsets it (lets the client
+     *     change their mind without jumping through a "reset" button).
+     *   * On visual approval jobs a component's sub-items are mutually
+     *     exclusive for the "approved" state — they're variants of the
+     *     same artwork, so only one can be picked. Approving a new sibling
+     *     automatically unapproves any sibling that was previously approved.
+     */
+    const setDecision = (key: string, decision: LineDecision, componentId?: string) => {
+        setDecisions((p) => {
+            const next = { ...p };
+            if (next[key] === decision) {
+                delete next[key];
+                // Also drop any comment that was tied to the cleared row.
+                setComments((pc) => {
+                    const { [key]: _, ...rest } = pc;
+                    return rest;
+                });
+                return next;
+            }
+            if (decision === 'approved' && isVisual && componentId) {
+                const component = components.find((c) => c.id === componentId);
+                const siblingKeys = (component?.sub_items ?? []).map((si) => si.id);
+                for (const sk of siblingKeys) {
+                    if (sk !== key && next[sk] === 'approved') {
+                        delete next[sk];
+                    }
+                }
+            }
+            next[key] = decision;
+            return next;
+        });
+    };
+
+    // Validation. Visual approval treats sub-items as variants — a component
+    // is "done" if one variant was picked OR at least one variant was marked
+    // changes_requested. Production artwork still requires every sub-item to
+    // be individually decided.
+    const componentComplete = (c: (typeof components)[number]): boolean => {
+        const subs = c.sub_items ?? [];
+        if (subs.length === 0) return !!decisions[c.id];
+        if (isVisual) {
+            const approvedCount = subs.filter((si) => decisions[si.id] === 'approved').length;
+            const anyChanges = subs.some((si) => decisions[si.id] === 'changes_requested');
+            return approvedCount === 1 || anyChanges;
+        }
+        return subs.every((si) => !!decisions[si.id]);
     };
 
     const allLinesDecided = hasVariants
         ? components.every((c) => selections[c.id])
-        : decisionRows.every((r) => decisions[r.key]);
+        : components.every(componentComplete);
 
     const anyChangesRequested = !hasVariants && decisionRows.some((r) => decisions[r.key] === 'changes_requested');
     const missingChangeComments = !hasVariants && decisionRows.some(
         (r) => decisions[r.key] === 'changes_requested' && !(comments[r.key] ?? '').trim()
     );
 
+    // Visual jobs: block submit if someone approved two variants within the
+    // same component. The UI shouldn't let this happen (setDecision clears
+    // siblings) but guard anyway.
+    const multipleApprovedInComponent = isVisual && components.some((c) => {
+        const approvedCount = (c.sub_items ?? []).filter((si) => decisions[si.id] === 'approved').length;
+        return approvedCount > 1;
+    });
+
     const handleSubmit = () => {
         setError(null);
         if (!clientName.trim()) return setError('please enter your name');
         if (!clientEmail.trim()) return setError('please enter your email');
+        if (multipleApprovedInComponent) return setError('only one option per component can be approved — unselect the others first');
         if (!allLinesDecided) return setError(
-            hasVariants ? 'please choose an option for every component' : 'please mark every item approved or changes requested'
+            hasVariants
+                ? 'please choose an option for every component'
+                : isVisual
+                ? 'please approve one option per component, or request changes'
+                : 'please mark every item approved or changes requested'
         );
         if (missingChangeComments) return setError('please describe the changes you need for every item marked "changes requested"');
         if (signatureRef.current?.isEmpty()) return setError('please draw your signature');
@@ -151,26 +210,30 @@ export default function ApprovalClientView({ data, token }: Props) {
         });
     };
 
-    const DecisionButtons = ({ k }: { k: string }) => {
+    const DecisionButtons = ({ k, componentId }: { k: string; componentId?: string }) => {
         if (success) return null;
         const dec = decisions[k];
         return (
             <div style={{ marginTop: '12px' }}>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                    <button type="button" onClick={() => setDecision(k, 'approved')} style={{
-                        flex: 1, padding: '9px 12px', fontSize: '13px', fontWeight: 600,
-                        borderRadius: '6px', cursor: 'pointer',
-                        border: dec === 'approved' ? '2px solid #16a34a' : '1px solid #d4d4d4',
-                        background: dec === 'approved' ? '#16a34a' : '#fff',
-                        color: dec === 'approved' ? '#fff' : '#333',
-                    }}>✓ approve this</button>
-                    <button type="button" onClick={() => setDecision(k, 'changes_requested')} style={{
-                        flex: 1, padding: '9px 12px', fontSize: '13px', fontWeight: 600,
-                        borderRadius: '6px', cursor: 'pointer',
-                        border: dec === 'changes_requested' ? '2px solid #d97706' : '1px solid #d4d4d4',
-                        background: dec === 'changes_requested' ? '#d97706' : '#fff',
-                        color: dec === 'changes_requested' ? '#fff' : '#333',
-                    }}>request changes</button>
+                    <button type="button" onClick={() => setDecision(k, 'approved', componentId)}
+                        title={dec === 'approved' ? 'click again to unselect' : undefined}
+                        style={{
+                            flex: 1, padding: '9px 12px', fontSize: '13px', fontWeight: 600,
+                            borderRadius: '6px', cursor: 'pointer',
+                            border: dec === 'approved' ? '2px solid #16a34a' : '1px solid #d4d4d4',
+                            background: dec === 'approved' ? '#16a34a' : '#fff',
+                            color: dec === 'approved' ? '#fff' : '#333',
+                    }}>{dec === 'approved' ? '✓ approved (click to unselect)' : '✓ approve this'}</button>
+                    <button type="button" onClick={() => setDecision(k, 'changes_requested', componentId)}
+                        title={dec === 'changes_requested' ? 'click again to unselect' : undefined}
+                        style={{
+                            flex: 1, padding: '9px 12px', fontSize: '13px', fontWeight: 600,
+                            borderRadius: '6px', cursor: 'pointer',
+                            border: dec === 'changes_requested' ? '2px solid #d97706' : '1px solid #d4d4d4',
+                            background: dec === 'changes_requested' ? '#d97706' : '#fff',
+                            color: dec === 'changes_requested' ? '#fff' : '#333',
+                    }}>{dec === 'changes_requested' ? 'changes requested (click to unselect)' : 'request changes'}</button>
                 </div>
                 {dec === 'changes_requested' && (
                     <textarea
@@ -447,7 +510,7 @@ export default function ApprovalClientView({ data, token }: Props) {
                                                                 </dl>
                                                             )}
 
-                                                            <DecisionButtons k={k} />
+                                                            <DecisionButtons k={k} componentId={component.id} />
                                                         </div>
                                                     </div>
                                                 );
