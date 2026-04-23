@@ -17,6 +17,7 @@ import {
     Truck,
     BadgeCheck,
     Wrench,
+    Inbox,
     X,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -74,6 +75,12 @@ const adminNavGroups: NavGroup[] = [
             { label: 'Approvals', href: '/admin/approvals', icon: BadgeCheck },
             { label: 'Maintenance', href: '/admin/maintenance', icon: Wrench },
             { label: 'Reports', href: '/admin/reports', icon: FileText },
+        ],
+    },
+    {
+        label: 'Inbound',
+        items: [
+            { label: 'External Orders', href: '/admin/external-orders', icon: Inbox },
         ],
     },
 ];
