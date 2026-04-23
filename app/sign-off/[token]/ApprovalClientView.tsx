@@ -5,6 +5,7 @@ import { submitApproval, requestApprovalChanges } from '@/lib/artwork/approval-a
 import type { ApprovalPackData } from '@/lib/artwork/approval-actions';
 import { VariantPicker } from './components/VariantPicker';
 import { ResilientImage } from './components/ResilientImage';
+import MarketingModal from '@/app/components/MarketingModal';
 import { formatDateTime } from '@/lib/artwork/utils';
 import SignatureCanvas, { type SignatureCanvasRef } from '@/components/SignatureCanvas';
 
@@ -12,6 +13,11 @@ interface Props {
     data: ApprovalPackData;
     token: string;
 }
+
+// Marketing modal is staged but not yet live on the client approval flow.
+// Preview it from the admin /settings page. Flip to `true` to go live once
+// copy, backend and PDF are ready.
+const SHOW_MARKETING_MODAL_ON_APPROVAL = false;
 
 type LineDecision = 'approved' | 'changes_requested';
 
@@ -130,6 +136,7 @@ export default function ApprovalClientView({ data, token }: Props) {
     const [clientComments, setClientComments] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(isApproved);
+    const [showMarketingModal, setShowMarketingModal] = useState(false);
     const [isPending, startTransition] = useTransition();
     const signatureRef = useRef<SignatureCanvasRef>(null);
 
@@ -244,7 +251,16 @@ export default function ApprovalClientView({ data, token }: Props) {
             });
 
             if ('error' in result) setError(result.error);
-            else setSuccess(true);
+            else {
+                setSuccess(true);
+                // Marketing modal fires on pure approvals only — if anything
+                // was marked "changes requested" the client isn't in the
+                // right mood for a pitch. Gated off until the pitch is ready
+                // to go live; see SHOW_MARKETING_MODAL_ON_APPROVAL above.
+                if (!anyChangesRequested && SHOW_MARKETING_MODAL_ON_APPROVAL) {
+                    setShowMarketingModal(true);
+                }
+            }
         });
     };
 
@@ -267,6 +283,10 @@ export default function ApprovalClientView({ data, token }: Props) {
 
     return (
         <div style={{ maxWidth: '720px', margin: '0 auto', padding: '20px' }}>
+            {showMarketingModal && (
+                <MarketingModal onClose={() => setShowMarketingModal(false)} />
+            )}
+
             {lightboxSrc && (
                 <div onClick={closeLightbox} style={{
                     position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.85)',
