@@ -276,17 +276,24 @@ export default function ApprovalClientView({ data, token }: Props) {
                         </p>
                     </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '14px' }}>
                         {components.map((component, componentIndex) => {
                             const subs = component.sub_items ?? [];
                             const hasSubs = subs.length > 0;
                             // Zebra-stripe the COMPONENT sections (not the sub-items
-                                // inside them) so the client can see at a glance which
-                                // sub-items belong to one decision block vs the next.
-                            const sectionBg = componentIndex % 2 === 0 ? '#f3f4f6' : '#ffffff';
+                            // inside them) so the client can see at a glance which
+                            // sub-items belong to one decision block vs the next.
+                            const isEven = componentIndex % 2 === 0;
+                            const sectionBg = isEven ? '#f3f4f6' : '#ffffff';
+                            const sectionBorder = isEven ? '3px solid #4e7e8c' : '3px solid #d4d4d4';
 
                             return (
-                                <div key={component.id} style={{ padding: '18px 20px', borderBottom: '1px solid #eee', background: sectionBg }}>
+                                <div key={component.id} style={{
+                                    padding: '18px 20px',
+                                    background: sectionBg,
+                                    border: sectionBorder,
+                                    borderRadius: '10px',
+                                }}>
                                     <div style={{ fontSize: '15px', fontWeight: 700, color: '#111', marginBottom: '10px' }}>
                                         {component.name}
                                     </div>
