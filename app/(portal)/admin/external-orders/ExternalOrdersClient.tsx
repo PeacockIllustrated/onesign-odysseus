@@ -6,7 +6,10 @@ import { Card } from '@/app/(portal)/components/ui';
 import { createBrowserClient } from '@/lib/supabase';
 import { formatDate, formatDateTime } from '@/lib/artwork/utils';
 import { formatPence } from '@/lib/invoices/utils';
-import { List, LayoutGrid, Search, X, Check, Play, Ban, Trash2 } from 'lucide-react';
+import {
+    List, LayoutGrid, Search, X, Check, Play, Ban, Trash2,
+    ChevronDown, ChevronRight, FileText, Truck, Inbox, Bell, Calendar, PoundSterling,
+} from 'lucide-react';
 import type { ExternalOrder, ExternalOrderSource, ExternalOrderStatus } from '@/lib/external-orders/types';
 import {
     acknowledgeExternalOrder,
@@ -66,6 +69,65 @@ const STATUS_CHIP: Record<ExternalOrderStatus, { chip: string; card: string; dot
     cancelled: { chip: 'bg-neutral-200 text-neutral-500', card: 'opacity-60', dot: 'bg-neutral-300' },
 };
 
+// ---------------------------------------------------------------------------
+// Line-item extraction
+// Different source adapters stash their native line items under raw_payload
+// (Persimmon does: items[] with name/code/size/material/quantity/line_total).
+// Mapleleaf manual entries don't have structured items, only item_summary.
+// ---------------------------------------------------------------------------
+
+interface LineItem {
+    name: string;
+    code?: string | null;
+    size?: string | null;
+    material?: string | null;
+    quantity: number;
+    lineTotalPence: number | null;
+}
+
+function parseLineItems(o: ExternalOrder): LineItem[] {
+    const payload = o.raw_payload as any;
+    const rawItems = payload?.items;
+    if (!Array.isArray(rawItems) || rawItems.length === 0) return [];
+    return rawItems.map((raw: any) => ({
+        name: raw?.name ?? raw?.code ?? 'item',
+        code: raw?.code ?? null,
+        size: raw?.size ?? null,
+        material: raw?.material ?? null,
+        quantity: Number(raw?.quantity ?? 1),
+        lineTotalPence: raw?.line_total != null ? Math.round(Number(raw.line_total) * 100) : null,
+    }));
+}
+
+function parseMoneyBreakdown(o: ExternalOrder): {
+    subtotalPence: number | null;
+    vatPence: number | null;
+    deliveryPence: number | null;
+} {
+    const payload = o.raw_payload as any;
+    const toPence = (v: unknown) => (v == null || v === '' ? null : Math.round(Number(v) * 100));
+    return {
+        subtotalPence: toPence(payload?.subtotal),
+        vatPence: toPence(payload?.vat),
+        deliveryPence: toPence(payload?.delivery_fee),
+    };
+}
+
+function parsePersimmonExtras(o: ExternalOrder) {
+    if (o.source_app !== 'persimmon') return null;
+    const p = o.raw_payload as any;
+    if (!p) return null;
+    return {
+        poNumber: p.po_number ?? null,
+        purchaserName: p.purchaser_name ?? null,
+        purchaserEmail: p.purchaser_email ?? null,
+        hasPoDocument: !!p.po_document_data,
+        poDocumentName: p.po_document_name ?? null,
+        hasDnDocument: !!p.dn_document_data,
+        dnDocumentName: p.dn_document_name ?? null,
+    };
+}
+
 export function ExternalOrdersClient({ orders }: Props) {
     const router = useRouter();
     const sp = useSearchParams();
@@ -75,12 +137,11 @@ export function ExternalOrdersClient({ orders }: Props) {
     const [dateRange, setDateRange] = useState<DateFilter>((sp.get('date') as DateFilter) || 'all');
     const [search, setSearch] = useState(sp.get('q') || '');
     const [compact, setCompact] = useState(sp.get('view') === 'compact');
+    const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
     const supabase = useMemo(() => createBrowserClient(), []);
     const [isPending, startTransition] = useTransition();
 
-    // Live updates — re-fetch the list whenever external_orders OR any
-    // upstream source table changes (psp_orders for Persimmon today).
     useEffect(() => {
         const channel = supabase
             .channel('external-orders-live')
@@ -92,7 +153,6 @@ export function ExternalOrdersClient({ orders }: Props) {
         return () => { supabase.removeChannel(channel); };
     }, [router, supabase]);
 
-    // URL persistence
     useEffect(() => {
         const p = new URLSearchParams();
         if (status !== 'open') p.set('status', status);
@@ -103,6 +163,21 @@ export function ExternalOrdersClient({ orders }: Props) {
         const qs = p.toString();
         router.replace(qs ? `/admin/external-orders?${qs}` : '/admin/external-orders', { scroll: false });
     }, [router, status, source, dateRange, search, compact]);
+
+    const statCounts = useMemo(() => {
+        const weekCut = daysAgo(7);
+        let needsAction = 0;
+        let thisWeek = 0;
+        let outstandingPence = 0;
+        for (const o of orders) {
+            if (['new', 'acknowledged', 'in_progress'].includes(o.status)) {
+                needsAction++;
+                if (o.total_pence != null) outstandingPence += o.total_pence;
+            }
+            if (new Date(o.placed_at) >= weekCut) thisWeek++;
+        }
+        return { total: orders.length, needsAction, thisWeek, outstandingPence };
+    }, [orders]);
 
     const counts = useMemo(() => {
         const c: Record<string, number> = { all: orders.length, open: 0 };
@@ -155,8 +230,46 @@ export function ExternalOrdersClient({ orders }: Props) {
         router.refresh();
     });
 
+    const toggleOne = (id: string) => setExpanded((p) => ({ ...p, [id]: !p[id] }));
+    const expandAll = () => setExpanded(Object.fromEntries(filtered.map((o) => [o.id, true])));
+    const collapseAll = () => setExpanded({});
+
     return (
         <>
+            {/* Top KPI stats. Each card doubles as a filter shortcut. */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                <StatCard
+                    icon={<Inbox size={16} />}
+                    label="Total inbound"
+                    value={String(statCounts.total)}
+                    tone="neutral"
+                    active={status === 'all' && source === 'all' && dateRange === 'all' && !search}
+                    onClick={clearFilters}
+                />
+                <StatCard
+                    icon={<Bell size={16} />}
+                    label="Needs action"
+                    value={String(statCounts.needsAction)}
+                    tone={statCounts.needsAction > 0 ? 'urgent' : 'muted'}
+                    active={status === 'open'}
+                    onClick={() => setStatus('open')}
+                />
+                <StatCard
+                    icon={<Calendar size={16} />}
+                    label="This week"
+                    value={String(statCounts.thisWeek)}
+                    tone="info"
+                    active={dateRange === '7d'}
+                    onClick={() => setDateRange(dateRange === '7d' ? 'all' : '7d')}
+                />
+                <StatCard
+                    icon={<PoundSterling size={16} />}
+                    label="Outstanding value"
+                    value={formatPence(statCounts.outstandingPence)}
+                    tone="money"
+                />
+            </div>
+
             {/* Filter chips */}
             <div className="mb-4 space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
@@ -236,13 +349,26 @@ export function ExternalOrdersClient({ orders }: Props) {
                     </div>
                 </div>
 
-                <div className="text-xs text-neutral-500">
-                    showing <span className="font-semibold text-neutral-800">{filtered.length}</span> of {counts.all}
-                    <span className="ml-3 text-[10px] text-neutral-400" title="Live via Supabase Realtime">● live</span>
-                    {(status !== 'open' || source !== 'all' || dateRange !== 'all' || search) && (
-                        <button type="button" onClick={clearFilters} className="ml-3 text-[#4e7e8c] hover:underline">
-                            reset to needs-action
-                        </button>
+                <div className="flex items-center justify-between text-xs text-neutral-500">
+                    <div>
+                        showing <span className="font-semibold text-neutral-800">{filtered.length}</span> of {counts.all}
+                        <span className="ml-3 text-[10px] text-neutral-400" title="Live via Supabase Realtime">● live</span>
+                        {(status !== 'open' || source !== 'all' || dateRange !== 'all' || search) && (
+                            <button type="button" onClick={clearFilters} className="ml-3 text-[#4e7e8c] hover:underline">
+                                reset to needs-action
+                            </button>
+                        )}
+                    </div>
+                    {!compact && filtered.length > 0 && (
+                        <div className="flex items-center gap-2">
+                            <button type="button" onClick={expandAll} className="text-[#4e7e8c] hover:underline">
+                                expand all
+                            </button>
+                            <span className="text-neutral-300">·</span>
+                            <button type="button" onClick={collapseAll} className="text-neutral-500 hover:underline">
+                                collapse all
+                            </button>
+                        </div>
                     )}
                 </div>
             </div>
@@ -256,9 +382,51 @@ export function ExternalOrdersClient({ orders }: Props) {
             ) : compact ? (
                 <CompactList rows={filtered} onAct={act} isPending={isPending} />
             ) : (
-                <DetailedList rows={filtered} onAct={act} isPending={isPending} />
+                <DashboardList
+                    rows={filtered}
+                    onAct={act}
+                    isPending={isPending}
+                    expanded={expanded}
+                    onToggle={toggleOne}
+                />
             )}
         </>
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+
+function StatCard({
+    icon, label, value, tone, active, onClick,
+}: {
+    icon: React.ReactNode;
+    label: string;
+    value: string;
+    tone: 'neutral' | 'urgent' | 'info' | 'money' | 'muted';
+    active?: boolean;
+    onClick?: () => void;
+}) {
+    const toneCls =
+        tone === 'urgent' ? 'text-red-700 bg-red-50 border-red-200'
+        : tone === 'info' ? 'text-blue-700 bg-blue-50 border-blue-200'
+        : tone === 'money' ? 'text-green-700 bg-green-50 border-green-200'
+        : tone === 'muted' ? 'text-neutral-500 bg-neutral-50 border-neutral-200'
+        : 'text-neutral-900 bg-white border-neutral-200';
+    const ring = active ? 'ring-2 ring-offset-1 ring-neutral-400' : '';
+    const Wrapper = onClick ? 'button' : 'div';
+    return (
+        <Wrapper
+            {...(onClick ? { type: 'button' as const, onClick } : {})}
+            className={`text-left rounded-lg border px-3 py-3 transition-all ${toneCls} ${ring} ${onClick ? 'hover:shadow-sm cursor-pointer' : ''}`}
+        >
+            <div className="flex items-center gap-2 opacity-75 mb-1">
+                {icon}
+                <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
+            </div>
+            <div className="text-2xl font-bold leading-tight">{value}</div>
+        </Wrapper>
     );
 }
 
@@ -359,71 +527,242 @@ function CompactList({ rows, onAct, isPending }: { rows: ExternalOrder[]; onAct:
     );
 }
 
-function DetailedList({ rows, onAct, isPending }: { rows: ExternalOrder[]; onAct: ActRunner; isPending: boolean }) {
+function DashboardList({
+    rows, onAct, isPending, expanded, onToggle,
+}: {
+    rows: ExternalOrder[];
+    onAct: ActRunner;
+    isPending: boolean;
+    expanded: Record<string, boolean>;
+    onToggle: (id: string) => void;
+}) {
     return (
-        <div className="space-y-3">
-            {rows.map((o) => {
-                const st = STATUS_CHIP[o.status];
-                return (
-                    <Card key={o.id} className={st.card}>
-                        <div className="flex flex-wrap items-start gap-3 mb-3">
-                            <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                    <h3 className="font-semibold text-base text-neutral-900">
-                                        {o.client_name ?? <span className="text-neutral-400 italic">no client name</span>}
-                                    </h3>
-                                    {o.external_ref && (
-                                        <span className="text-[11px] font-mono text-neutral-400">{o.external_ref}</span>
+        <div className="space-y-2">
+            {rows.map((o) => (
+                <OrderCard
+                    key={o.id}
+                    o={o}
+                    onAct={onAct}
+                    isPending={isPending}
+                    isOpen={!!expanded[o.id]}
+                    onToggle={() => onToggle(o.id)}
+                />
+            ))}
+        </div>
+    );
+}
+
+function OrderCard({
+    o, onAct, isPending, isOpen, onToggle,
+}: {
+    o: ExternalOrder;
+    onAct: ActRunner;
+    isPending: boolean;
+    isOpen: boolean;
+    onToggle: () => void;
+}) {
+    const st = STATUS_CHIP[o.status];
+    const lineItems = useMemo(() => parseLineItems(o), [o]);
+    const money = useMemo(() => parseMoneyBreakdown(o), [o]);
+    const persimmon = useMemo(() => parsePersimmonExtras(o), [o]);
+
+    return (
+        <div className={`border rounded-lg bg-white overflow-hidden transition-colors ${st.card || 'border-neutral-200'}`}>
+            {/* Clickable header — always visible */}
+            <button
+                type="button"
+                onClick={onToggle}
+                aria-expanded={isOpen}
+                className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-neutral-50"
+            >
+                <span className="shrink-0 text-neutral-400">
+                    {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                </span>
+                <span className={`w-2 h-2 rounded-full shrink-0 ${st.dot}`} aria-hidden />
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-neutral-900 truncate">
+                            {o.client_name ?? <span className="text-neutral-400 italic">no client name</span>}
+                        </span>
+                        {o.external_ref && (
+                            <span className="text-[11px] font-mono text-neutral-400">{o.external_ref}</span>
+                        )}
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${SOURCE_CHIP[o.source_app]}`}>
+                            {SOURCE_LABEL[o.source_app]}
+                        </span>
+                    </div>
+                    <div className="text-[11px] text-neutral-500 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                        <span>placed {formatDate(o.placed_at)}</span>
+                        {o.item_count != null && <span>{o.item_count} item{o.item_count !== 1 ? 's' : ''}</span>}
+                        {o.site_postcode && <span>📍 {o.site_postcode}</span>}
+                    </div>
+                </div>
+                <div className="text-right shrink-0 hidden sm:block">
+                    <div className="text-sm font-semibold font-mono">
+                        {o.total_pence != null ? formatPence(o.total_pence) : '—'}
+                    </div>
+                </div>
+                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded shrink-0 ${st.chip}`}>
+                    {STATUS_LABEL[o.status]}
+                </span>
+            </button>
+
+            {isOpen && (
+                <div className="border-t border-neutral-100 px-4 py-4 space-y-4 bg-neutral-50/40">
+                    {/* Top row — contact / site / purchaser */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                        <InfoBlock label="Contact">
+                            <div className="font-medium text-neutral-900">{o.client_name ?? '—'}</div>
+                            {o.client_email && <div className="text-neutral-600">{o.client_email}</div>}
+                            {o.client_phone && <div className="text-neutral-600">{o.client_phone}</div>}
+                        </InfoBlock>
+                        <InfoBlock label="Delivery site">
+                            {o.site_name && <div className="font-medium text-neutral-900">{o.site_name}</div>}
+                            {o.site_address ? (
+                                <div className="text-neutral-600 whitespace-pre-wrap">{o.site_address}</div>
+                            ) : (
+                                <div className="text-neutral-400 italic">not specified</div>
+                            )}
+                            {o.site_postcode && <div className="text-neutral-600 font-mono">{o.site_postcode}</div>}
+                        </InfoBlock>
+                        {persimmon ? (
+                            <InfoBlock label="Purchaser / PO">
+                                {persimmon.purchaserName && <div className="font-medium text-neutral-900">{persimmon.purchaserName}</div>}
+                                {persimmon.purchaserEmail && <div className="text-neutral-600">{persimmon.purchaserEmail}</div>}
+                                {persimmon.poNumber && (
+                                    <div className="text-neutral-600">PO: <span className="font-mono">{persimmon.poNumber}</span></div>
+                                )}
+                                <div className="flex gap-2 mt-1 flex-wrap">
+                                    {persimmon.hasPoDocument && (
+                                        <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 inline-flex items-center gap-1">
+                                            <FileText size={10} /> PO doc
+                                        </span>
                                     )}
-                                    <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${SOURCE_CHIP[o.source_app]}`}>
-                                        {SOURCE_LABEL[o.source_app]}
-                                    </span>
+                                    {persimmon.hasDnDocument && (
+                                        <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-teal-100 text-teal-800 inline-flex items-center gap-1">
+                                            <Truck size={10} /> DN doc
+                                        </span>
+                                    )}
                                 </div>
-                                <div className="text-xs text-neutral-500 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
-                                    {o.client_email && <span>{o.client_email}</span>}
-                                    {o.client_phone && <span>{o.client_phone}</span>}
-                                    {o.site_postcode && <span>📍 {o.site_postcode}</span>}
+                                {!persimmon.purchaserName && !persimmon.poNumber && (
+                                    <div className="text-neutral-400 italic">—</div>
+                                )}
+                            </InfoBlock>
+                        ) : (
+                            <InfoBlock label="Placed">
+                                <div className="text-neutral-600">{formatDateTime(o.placed_at)}</div>
+                                {o.acknowledged_at && (
+                                    <div className="text-neutral-500">acknowledged {formatDate(o.acknowledged_at)}</div>
+                                )}
+                                {o.completed_at && (
+                                    <div className="text-neutral-500">completed {formatDate(o.completed_at)}</div>
+                                )}
+                            </InfoBlock>
+                        )}
+                    </div>
+
+                    {/* Order lines — structured if we have them, free-text fallback */}
+                    {lineItems.length > 0 ? (
+                        <div>
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 mb-1.5">
+                                Order lines ({lineItems.length})
+                            </div>
+                            <div className="border border-neutral-200 rounded overflow-hidden bg-white">
+                                <table className="w-full text-xs">
+                                    <thead>
+                                        <tr className="bg-neutral-50 border-b border-neutral-200 text-left">
+                                            <th className="px-3 py-1.5 font-bold uppercase tracking-wider text-neutral-500 text-[10px]">Item</th>
+                                            <th className="px-3 py-1.5 font-bold uppercase tracking-wider text-neutral-500 text-[10px]">Size</th>
+                                            <th className="px-3 py-1.5 font-bold uppercase tracking-wider text-neutral-500 text-[10px]">Material</th>
+                                            <th className="px-3 py-1.5 font-bold uppercase tracking-wider text-neutral-500 text-[10px] text-right">Qty</th>
+                                            <th className="px-3 py-1.5 font-bold uppercase tracking-wider text-neutral-500 text-[10px] text-right">Line total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-neutral-100">
+                                        {lineItems.map((li, idx) => (
+                                            <tr key={idx}>
+                                                <td className="px-3 py-1.5 text-neutral-900">
+                                                    <div className="font-medium">{li.name}</div>
+                                                    {li.code && <div className="text-[10px] font-mono text-neutral-400">{li.code}</div>}
+                                                </td>
+                                                <td className="px-3 py-1.5 text-neutral-600">{li.size ?? '—'}</td>
+                                                <td className="px-3 py-1.5 text-neutral-600">{li.material ?? '—'}</td>
+                                                <td className="px-3 py-1.5 text-right font-mono text-neutral-900">{li.quantity}</td>
+                                                <td className="px-3 py-1.5 text-right font-mono text-neutral-900">
+                                                    {li.lineTotalPence != null ? formatPence(li.lineTotalPence) : '—'}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+
+                                {/* Totals footer */}
+                                <div className="bg-neutral-50 border-t border-neutral-200 px-3 py-2 flex flex-col items-end gap-0.5 text-xs">
+                                    {money.subtotalPence != null && (
+                                        <MoneyLine label="Subtotal" pence={money.subtotalPence} />
+                                    )}
+                                    {money.deliveryPence != null && money.deliveryPence > 0 && (
+                                        <MoneyLine label="Delivery" pence={money.deliveryPence} />
+                                    )}
+                                    {money.vatPence != null && (
+                                        <MoneyLine label="VAT" pence={money.vatPence} />
+                                    )}
+                                    {o.total_pence != null && (
+                                        <MoneyLine label="Total" pence={o.total_pence} strong />
+                                    )}
                                 </div>
                             </div>
-                            <span className={`text-[11px] font-bold uppercase tracking-wider px-2 py-1 rounded ${st.chip}`}>
-                                {STATUS_LABEL[o.status]}
-                            </span>
                         </div>
-
-                        {o.item_summary && (
-                            <div className="mb-3 p-3 rounded border border-neutral-200 bg-neutral-50">
-                                <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 mb-1">Order</div>
+                    ) : o.item_summary ? (
+                        <div>
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 mb-1.5">Order</div>
+                            <div className="p-3 rounded border border-neutral-200 bg-white">
                                 <p className="text-sm text-neutral-800 whitespace-pre-wrap leading-relaxed">{o.item_summary}</p>
                                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-600">
                                     {o.item_count != null && <span>{o.item_count} item{o.item_count !== 1 ? 's' : ''}</span>}
                                     {o.total_pence != null && <span className="font-semibold">{formatPence(o.total_pence)}</span>}
                                 </div>
                             </div>
-                        )}
-
-                        {o.site_address && (
-                            <div className="mb-3 text-xs text-neutral-600">
-                                <span className="font-semibold text-neutral-700">Site: </span>
-                                <span className="whitespace-pre-wrap">{o.site_address}</span>
-                            </div>
-                        )}
-
-                        {o.notes && (
-                            <div className="mb-3 p-2.5 rounded border border-amber-200 bg-amber-50 text-xs text-amber-900 whitespace-pre-wrap">
-                                {o.notes}
-                            </div>
-                        )}
-
-                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-neutral-500 pt-2 border-t border-neutral-100">
-                            <span>
-                                placed {formatDateTime(o.placed_at)}
-                                {o.acknowledged_at && <> · acknowledged {formatDate(o.acknowledged_at)}</>}
-                            </span>
-                            <OrderActions o={o} onAct={onAct} isPending={isPending} />
                         </div>
-                    </Card>
-                );
-            })}
+                    ) : null}
+
+                    {/* Notes */}
+                    {o.notes && (
+                        <div className="p-2.5 rounded border border-amber-200 bg-amber-50 text-xs text-amber-900 whitespace-pre-wrap">
+                            <span className="font-bold uppercase tracking-wider text-[10px] text-amber-700 mr-1">Notes:</span>
+                            {o.notes}
+                        </div>
+                    )}
+
+                    {/* Actions */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-neutral-200 text-xs text-neutral-500">
+                        <span>
+                            placed {formatDateTime(o.placed_at)}
+                            {o.acknowledged_at && <> · ack {formatDate(o.acknowledged_at)}</>}
+                            {o.completed_at && <> · done {formatDate(o.completed_at)}</>}
+                        </span>
+                        <OrderActions o={o} onAct={onAct} isPending={isPending} />
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function InfoBlock({ label, children }: { label: string; children: React.ReactNode }) {
+    return (
+        <div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 mb-1">{label}</div>
+            <div className="space-y-0.5">{children}</div>
+        </div>
+    );
+}
+
+function MoneyLine({ label, pence, strong }: { label: string; pence: number; strong?: boolean }) {
+    return (
+        <div className={`flex items-center gap-3 ${strong ? 'font-semibold text-neutral-900 text-sm pt-0.5 border-t border-neutral-200 w-40 justify-end' : 'text-neutral-600'}`}>
+            <span className="uppercase tracking-wider text-[10px]">{label}</span>
+            <span className="font-mono min-w-[80px] text-right">{formatPence(pence)}</span>
         </div>
     );
 }
