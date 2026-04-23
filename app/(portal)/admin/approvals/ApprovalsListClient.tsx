@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Card } from '@/app/(portal)/components/ui';
 import { formatDate, formatDateTime } from '@/lib/artwork/utils';
 import { List, LayoutGrid, Search, X } from 'lucide-react';
@@ -58,6 +59,21 @@ interface Props {
 
 type StateFilter = 'all' | 'needs_action' | EffectiveState;
 type TypeFilter = 'all' | 'visual' | 'production';
+type DateFilter = 'all' | '7d' | '30d' | '90d';
+
+function daysAgo(days: number): Date {
+    const d = new Date();
+    d.setDate(d.getDate() - days);
+    d.setHours(0, 0, 0, 0);
+    return d;
+}
+
+const DATE_CUTOFFS: Record<DateFilter, Date | null> = {
+    all: null,
+    '7d': daysAgo(7),
+    '30d': daysAgo(30),
+    '90d': daysAgo(90),
+};
 
 const STATE_LABEL: Record<EffectiveState, string> = {
     changes_requested: 'changes requested',
@@ -86,15 +102,51 @@ function stateBadge(state: EffectiveState): { label: string; chip: string; card:
 }
 
 export function ApprovalsListClient({ approvals, counts }: Props) {
-    const [stateFilter, setStateFilter] = useState<StateFilter>('all');
-    const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
-    const [search, setSearch] = useState('');
-    const [compact, setCompact] = useState(false);
+    const router = useRouter();
+    const searchParams = useSearchParams();
+
+    // Initial filter state is hydrated from URL so a refresh or a linked
+    // bookmark preserves exactly what the viewer was looking at.
+    const initialState = (searchParams.get('state') as StateFilter) || 'all';
+    const initialType = (searchParams.get('type') as TypeFilter) || 'all';
+    const initialDate = (searchParams.get('date') as DateFilter) || 'all';
+    const initialClient = searchParams.get('client') || 'all';
+    const initialSearch = searchParams.get('q') || '';
+    const initialCompact = searchParams.get('view') === 'compact';
+
+    const [stateFilter, setStateFilter] = useState<StateFilter>(initialState);
+    const [typeFilter, setTypeFilter] = useState<TypeFilter>(initialType);
+    const [dateFilter, setDateFilter] = useState<DateFilter>(initialDate);
+    const [clientFilter, setClientFilter] = useState<string>(initialClient);
+    const [search, setSearch] = useState(initialSearch);
+    const [compact, setCompact] = useState(initialCompact);
+
+    // Write filter state back into the URL (shallow, no scroll).
+    useEffect(() => {
+        const p = new URLSearchParams();
+        if (stateFilter !== 'all') p.set('state', stateFilter);
+        if (typeFilter !== 'all') p.set('type', typeFilter);
+        if (dateFilter !== 'all') p.set('date', dateFilter);
+        if (clientFilter !== 'all') p.set('client', clientFilter);
+        if (search.trim()) p.set('q', search.trim());
+        if (compact) p.set('view', 'compact');
+        const qs = p.toString();
+        router.replace(qs ? `/admin/approvals?${qs}` : '/admin/approvals', { scroll: false });
+    }, [router, stateFilter, typeFilter, dateFilter, clientFilter, search, compact]);
 
     const needsActionStates: EffectiveState[] = ['changes_requested', 'approved_with_feedback', 'pending'];
 
+    // Client dropdown options derived from the approval set. De-duplicate
+    // by name; blank/null orgs surface as "— no client —".
+    const clientOptions = useMemo(() => {
+        const names = new Set<string>();
+        for (const a of approvals) names.add(a.orgName ?? '—');
+        return Array.from(names).sort((a, b) => a.localeCompare(b));
+    }, [approvals]);
+
     const filtered = useMemo(() => {
         const s = search.trim().toLowerCase();
+        const dateCutoff = DATE_CUTOFFS[dateFilter];
         return approvals.filter((a) => {
             if (stateFilter !== 'all') {
                 if (stateFilter === 'needs_action') {
@@ -104,6 +156,12 @@ export function ApprovalsListClient({ approvals, counts }: Props) {
             if (typeFilter !== 'all') {
                 if (typeFilter === 'visual' && !a.isVisual) return false;
                 if (typeFilter === 'production' && a.isVisual) return false;
+            }
+            if (clientFilter !== 'all') {
+                if ((a.orgName ?? '—') !== clientFilter) return false;
+            }
+            if (dateCutoff) {
+                if (new Date(a.createdAt) < dateCutoff) return false;
             }
             if (s) {
                 const hay = [
@@ -115,7 +173,7 @@ export function ApprovalsListClient({ approvals, counts }: Props) {
             }
             return true;
         });
-    }, [approvals, stateFilter, typeFilter, search]);
+    }, [approvals, stateFilter, typeFilter, dateFilter, clientFilter, search]);
 
     const stateChips: Array<{ key: StateFilter; label: string; count: number; className: string }> = [
         { key: 'all', label: 'all', count: counts.all, className: 'bg-neutral-900 text-white' },
@@ -166,6 +224,34 @@ export function ApprovalsListClient({ approvals, counts }: Props) {
                         ))}
                     </div>
 
+                    <div className="inline-flex rounded border border-neutral-200 bg-white overflow-hidden text-xs">
+                        {(['all', '7d', '30d', '90d'] as DateFilter[]).map((d) => (
+                            <button
+                                key={d}
+                                type="button"
+                                onClick={() => setDateFilter(d)}
+                                className={`px-3 py-1.5 font-semibold uppercase tracking-wider transition-colors ${
+                                    dateFilter === d ? 'bg-neutral-900 text-white' : 'text-neutral-600 hover:bg-neutral-50'
+                                }`}
+                                title={d === 'all' ? 'all time' : `last ${d.replace('d', '')} days`}
+                            >
+                                {d === 'all' ? 'all time' : `last ${d.replace('d', 'd')}`}
+                            </button>
+                        ))}
+                    </div>
+
+                    <select
+                        value={clientFilter}
+                        onChange={(e) => setClientFilter(e.target.value)}
+                        className="text-xs font-semibold uppercase tracking-wider px-2.5 py-1.5 border border-neutral-200 rounded bg-white text-neutral-700 focus:outline-none focus:border-neutral-400 max-w-[200px]"
+                        title="Filter by client"
+                    >
+                        <option value="all">All clients</option>
+                        {clientOptions.map((name) => (
+                            <option key={name} value={name}>{name}</option>
+                        ))}
+                    </select>
+
                     <div className="flex-1 min-w-[200px] relative">
                         <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400" />
                         <input
@@ -211,10 +297,16 @@ export function ApprovalsListClient({ approvals, counts }: Props) {
 
                 <div className="text-xs text-neutral-500">
                     showing <span className="font-semibold text-neutral-800">{filtered.length}</span> of {counts.all}
-                    {(stateFilter !== 'all' || typeFilter !== 'all' || search) && (
+                    {(stateFilter !== 'all' || typeFilter !== 'all' || dateFilter !== 'all' || clientFilter !== 'all' || search) && (
                         <button
                             type="button"
-                            onClick={() => { setStateFilter('all'); setTypeFilter('all'); setSearch(''); }}
+                            onClick={() => {
+                                setStateFilter('all');
+                                setTypeFilter('all');
+                                setDateFilter('all');
+                                setClientFilter('all');
+                                setSearch('');
+                            }}
                             className="ml-3 text-[#4e7e8c] hover:underline"
                         >
                             clear filters
