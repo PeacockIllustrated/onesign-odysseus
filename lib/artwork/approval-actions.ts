@@ -54,6 +54,7 @@ export interface ApprovalPackData {
                 label: string;
                 sort_order: number;
                 name: string | null;
+                notes: string | null;
                 material: string | null;
                 application_method: string | null;
                 finish: string | null;
@@ -190,12 +191,19 @@ export async function generateApprovalLink(
 }
 
 /**
- * Latest per-component decisions for a job, keyed by component_id. Pulled
- * from the most recent non-pending approval on the job.
+ * Latest per-sub-item (and per-component fallback) decisions for a job.
+ *
+ * Returns two maps from the most recent non-pending approval:
+ *   * bySubItem    — keyed by sub_item_id, the fine-grained decisions
+ *   * byComponent  — keyed by component_id, only populated for components
+ *                    that have no sub-items (fallback)
  */
 export async function getComponentDecisionsForJob(
     jobId: string
-): Promise<Record<string, ArtworkComponentDecision>> {
+): Promise<{
+    bySubItem: Record<string, ArtworkComponentDecision>;
+    byComponent: Record<string, ArtworkComponentDecision>;
+}> {
     const supabase = await createServerClient();
     const { data: latest } = await supabase
         .from('artwork_approvals')
@@ -205,16 +213,20 @@ export async function getComponentDecisionsForJob(
         .order('updated_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-    if (!latest) return {};
+    if (!latest) return { bySubItem: {}, byComponent: {} };
+
     const { data: rows } = await supabase
         .from('artwork_component_decisions')
         .select('*')
         .eq('approval_id', latest.id);
-    const out: Record<string, ArtworkComponentDecision> = {};
+
+    const bySubItem: Record<string, ArtworkComponentDecision> = {};
+    const byComponent: Record<string, ArtworkComponentDecision> = {};
     for (const r of (rows ?? []) as ArtworkComponentDecision[]) {
-        out[r.component_id] = r;
+        if (r.sub_item_id) bySubItem[r.sub_item_id] = r;
+        else byComponent[r.component_id] = r;
     }
-    return out;
+    return { bySubItem, byComponent };
 }
 
 /**
@@ -359,6 +371,7 @@ export async function getApprovalByToken(
                     label: si.label,
                     sort_order: si.sort_order,
                     name: si.name ?? null,
+                    notes: si.notes ?? null,
                     material: si.material ?? null,
                     application_method: si.application_method ?? null,
                     finish: si.finish ?? null,
@@ -479,24 +492,38 @@ export async function submitApproval(
         }
     }
 
-    // Per-component decisions (production jobs). If any component is marked
-    // changes_requested, the whole job lands in 'changes_requested' and
-    // skipping to production is blocked until the client re-approves.
+    // Per-sub-item decisions. A component with sub-items requires one decision
+    // per sub-item; a component with no sub-items takes a single component-level
+    // decision. If any decision is changes_requested, the whole approval lands
+    // in 'changes_requested' and release-to-production stays blocked.
     const decisions = validation.data.component_decisions ?? [];
     let overallStatus: 'approved' | 'changes_requested' = 'approved';
     if (job?.job_type !== 'visual_approval') {
-        // Validate: every component on the job must have a decision.
         const { data: jobComponents } = await supabase
             .from('artwork_components')
-            .select('id')
+            .select('id, sub_items:artwork_component_items(id)')
             .eq('job_id', approval.job_id);
-        const componentIds = new Set((jobComponents ?? []).map((c: any) => c.id));
-        const decided = new Set(decisions.map((d) => d.componentId));
-        for (const cid of componentIds) {
-            if (!decided.has(cid)) {
+
+        const decidedSubItems = new Set(
+            decisions.filter((d) => d.subItemId).map((d) => d.subItemId as string)
+        );
+        const decidedComponentsOnly = new Set(
+            decisions.filter((d) => !d.subItemId).map((d) => d.componentId)
+        );
+
+        for (const c of (jobComponents ?? []) as any[]) {
+            const subs = (c.sub_items ?? []) as Array<{ id: string }>;
+            if (subs.length > 0) {
+                for (const si of subs) {
+                    if (!decidedSubItems.has(si.id)) {
+                        return { error: 'every sub-item must be approved or have changes requested' };
+                    }
+                }
+            } else if (!decidedComponentsOnly.has(c.id)) {
                 return { error: 'every component must be approved or have changes requested' };
             }
         }
+
         if (decisions.some((d) => d.decision === 'changes_requested')) {
             overallStatus = 'changes_requested';
         }
@@ -521,17 +548,27 @@ export async function submitApproval(
         return { error: 'failed to submit approval' };
     }
 
-    // Write per-component decisions (idempotent upsert on the unique key).
+    // Write per-sub-item (or per-component) decisions. The uniqueness
+    // constraint on (approval_id, sub_item_id|component_id) is enforced
+    // by two partial indexes (migration 053), so we clear-then-insert
+    // within this approval rather than trying to express both in a
+    // single onConflict target.
     if (decisions.length > 0) {
+        await supabase
+            .from('artwork_component_decisions')
+            .delete()
+            .eq('approval_id', approval.id);
+
         const rows = decisions.map((d) => ({
             approval_id: approval.id,
             component_id: d.componentId,
+            sub_item_id: d.subItemId ?? null,
             decision: d.decision,
             comment: d.comment?.trim() || null,
         }));
         const { error: decErr } = await supabase
             .from('artwork_component_decisions')
-            .upsert(rows, { onConflict: 'approval_id,component_id' });
+            .insert(rows);
         if (decErr) {
             console.error('error writing component decisions:', decErr);
             return { error: 'failed to record component decisions' };

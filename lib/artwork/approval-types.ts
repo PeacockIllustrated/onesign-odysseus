@@ -49,6 +49,10 @@ export type ComponentDecision = z.infer<typeof ComponentDecisionEnum>;
 
 export const ComponentDecisionInputSchema = z.object({
     componentId: z.string().uuid(),
+    // When present, the decision is scoped to a specific sub-item (design
+    // variant). When absent, it covers the entire component — used for
+    // components that have no sub-items.
+    subItemId: z.string().uuid().optional().nullable(),
     decision: ComponentDecisionEnum,
     comment: z.string().max(2000).optional().nullable(),
 });
@@ -70,11 +74,13 @@ export const SubmitApprovalInputSchema = z.object({
 });
 export type SubmitApprovalInput = z.infer<typeof SubmitApprovalInputSchema>;
 
-// Row type for artwork_component_decisions (migration 051).
+// Row type for artwork_component_decisions (migrations 051 + 053).
 export interface ArtworkComponentDecision {
     id: string;
     approval_id: string;
     component_id: string;
+    /** Nullable — set when decision is scoped to a single sub-item. */
+    sub_item_id: string | null;
     decision: ComponentDecision;
     comment: string | null;
     decided_at: string;

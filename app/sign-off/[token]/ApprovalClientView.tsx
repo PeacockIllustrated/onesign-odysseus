@@ -15,17 +15,42 @@ interface Props {
 
 type LineDecision = 'approved' | 'changes_requested';
 
+/**
+ * Identify a decision row by sub-item id when present, else by component id.
+ * Both are UUIDs so they never collide.
+ */
+function keyFor(componentId: string, subItemId?: string | null): string {
+    return subItemId ?? componentId;
+}
+
 export default function ApprovalClientView({ data, token }: Props) {
     const { approval, job, components, coverImageUrl } = data;
     const isApproved = approval.status === 'approved';
     const isVisual = job.job_type === 'visual_approval';
 
-    // Per-line state for production jobs
+    // For visual approval jobs we hide spec detail and cover image and let
+    // the sub-item thumbnails carry the review. The per-sub-item decision
+    // buttons are identical on both paths.
+    const hideSpecDetail = isVisual;
+    const hideCover = isVisual;
+
+    // Variant-picker path (visual_approval jobs wired up with artwork_variants)
+    // stays intact — those are single-choice, not approve/request-changes.
+    const hasVariants = isVisual && components.some((c) => (c.variants ?? []).length > 0);
+
+    // Build the flat list of decide-able rows: one per sub-item, or one
+    // per component if the component has no sub-items.
+    const decisionRows = components.flatMap((c) => {
+        const subs = c.sub_items ?? [];
+        if (subs.length > 0) {
+            return subs.map((si) => ({ component: c, subItem: si, key: si.id }));
+        }
+        return [{ component: c, subItem: null as (typeof c.sub_items)[number] | null, key: c.id }];
+    });
+
     const [decisions, setDecisions] = useState<Record<string, LineDecision>>({});
     const [comments, setComments] = useState<Record<string, string>>({});
-
-    // Visual-approval variant selection (unchanged)
-    const [selections, setSelections] = useState<Record<string, string>>({});
+    const [selections, setSelections] = useState<Record<string, string>>({}); // variant-picker path only
 
     const [clientName, setClientName] = useState('');
     const [clientEmail, setClientEmail] = useState('');
@@ -50,17 +75,17 @@ export default function ApprovalClientView({ data, token }: Props) {
         return () => window.removeEventListener('keydown', handleKey);
     }, [lightboxSrc, closeLightbox]);
 
-    const setDecision = (componentId: string, decision: LineDecision) => {
-        setDecisions((p) => ({ ...p, [componentId]: decision }));
+    const setDecision = (key: string, decision: LineDecision) => {
+        setDecisions((p) => ({ ...p, [key]: decision }));
     };
 
-    const allLinesDecided = isVisual
+    const allLinesDecided = hasVariants
         ? components.every((c) => selections[c.id])
-        : components.every((c) => decisions[c.id]);
+        : decisionRows.every((r) => decisions[r.key]);
 
-    const anyChangesRequested = !isVisual && components.some((c) => decisions[c.id] === 'changes_requested');
-    const missingChangeComments = !isVisual && components.some(
-        (c) => decisions[c.id] === 'changes_requested' && !(comments[c.id] ?? '').trim()
+    const anyChangesRequested = !hasVariants && decisionRows.some((r) => decisions[r.key] === 'changes_requested');
+    const missingChangeComments = !hasVariants && decisionRows.some(
+        (r) => decisions[r.key] === 'changes_requested' && !(comments[r.key] ?? '').trim()
     );
 
     const handleSubmit = () => {
@@ -68,19 +93,20 @@ export default function ApprovalClientView({ data, token }: Props) {
         if (!clientName.trim()) return setError('please enter your name');
         if (!clientEmail.trim()) return setError('please enter your email');
         if (!allLinesDecided) return setError(
-            isVisual ? 'please choose an option for every component' : 'please mark every component approved or changes requested'
+            hasVariants ? 'please choose an option for every component' : 'please mark every item approved or changes requested'
         );
-        if (missingChangeComments) return setError('please describe the changes you need for every component marked "changes requested"');
+        if (missingChangeComments) return setError('please describe the changes you need for every item marked "changes requested"');
         if (signatureRef.current?.isEmpty()) return setError('please draw your signature');
 
         const signatureData = signatureRef.current?.toDataURL() || '';
 
         startTransition(async () => {
             const variant_selections = Object.entries(selections).map(([componentId, variantId]) => ({ componentId, variantId }));
-            const component_decisions = isVisual ? [] : components.map((c) => ({
-                componentId: c.id,
-                decision: decisions[c.id] as LineDecision,
-                comment: (comments[c.id] ?? '').trim() || null,
+            const component_decisions = hasVariants ? [] : decisionRows.map((r) => ({
+                componentId: r.component.id,
+                subItemId: r.subItem?.id ?? null,
+                decision: decisions[r.key] as LineDecision,
+                comment: (comments[r.key] ?? '').trim() || null,
             }));
 
             const result = await submitApproval(token, {
@@ -99,8 +125,6 @@ export default function ApprovalClientView({ data, token }: Props) {
     };
 
     const handleRequestChangesOverall = () => {
-        // Escape hatch: client can still leave overall free-text feedback
-        // without ticking lines, e.g. "nothing here works, start over".
         setError(null);
         const bulk = clientComments.trim();
         if (!bulk) return setError('please describe the changes you need');
@@ -115,6 +139,41 @@ export default function ApprovalClientView({ data, token }: Props) {
             if ('error' in result) setError(result.error);
             else setSuccess(true);
         });
+    };
+
+    const DecisionButtons = ({ k }: { k: string }) => {
+        if (success) return null;
+        const dec = decisions[k];
+        return (
+            <div style={{ marginTop: '12px' }}>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                    <button type="button" onClick={() => setDecision(k, 'approved')} style={{
+                        flex: 1, padding: '9px 12px', fontSize: '13px', fontWeight: 600,
+                        borderRadius: '6px', cursor: 'pointer',
+                        border: dec === 'approved' ? '2px solid #16a34a' : '1px solid #d4d4d4',
+                        background: dec === 'approved' ? '#16a34a' : '#fff',
+                        color: dec === 'approved' ? '#fff' : '#333',
+                    }}>✓ approve this</button>
+                    <button type="button" onClick={() => setDecision(k, 'changes_requested')} style={{
+                        flex: 1, padding: '9px 12px', fontSize: '13px', fontWeight: 600,
+                        borderRadius: '6px', cursor: 'pointer',
+                        border: dec === 'changes_requested' ? '2px solid #d97706' : '1px solid #d4d4d4',
+                        background: dec === 'changes_requested' ? '#d97706' : '#fff',
+                        color: dec === 'changes_requested' ? '#fff' : '#333',
+                    }}>request changes</button>
+                </div>
+                {dec === 'changes_requested' && (
+                    <textarea
+                        value={comments[k] ?? ''}
+                        onChange={(e) => setComments((p) => ({ ...p, [k]: e.target.value }))}
+                        rows={3}
+                        maxLength={2000}
+                        placeholder="What needs to change here?"
+                        style={{ width: '100%', padding: '10px 12px', border: '1px solid #e0d5a0', background: '#fffdf5', borderRadius: '6px', fontSize: '13px', outline: 'none', fontFamily: 'inherit', resize: 'vertical', minHeight: '64px', marginTop: '8px' }}
+                    />
+                )}
+            </div>
+        );
     };
 
     return (
@@ -139,46 +198,60 @@ export default function ApprovalClientView({ data, token }: Props) {
                     <img src="/Onesign-Logo-Black.svg" alt="Onesign & Digital" style={{ height: '56px', width: 'auto', maxWidth: '320px' }} />
                 </div>
                 <div style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 600 }}>
-                    artwork sign-off
+                    {isVisual ? 'artwork visual approval' : 'artwork sign-off'}
                 </div>
             </div>
 
-            {/* Cover Card */}
-            <div style={{ border: '1px solid #e5e5e5', borderRadius: '8px', overflow: 'hidden', background: '#fff', marginBottom: '24px' }}>
-                {coverImageUrl ? (
-                    <div onClick={() => openLightbox(coverImageUrl, `${job.job_name} overview`)}
-                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fafafa', padding: '24px', borderBottom: '1px solid #e5e5e5', cursor: 'zoom-in' }}>
-                        <img src={coverImageUrl} alt={`${job.job_name} overview`} style={{ maxWidth: '100%', maxHeight: '500px', objectFit: 'contain' }} />
-                    </div>
-                ) : (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fafafa', padding: '48px 24px', borderBottom: '1px solid #e5e5e5', color: '#bbb', fontSize: '14px', fontStyle: 'italic' }}>
-                        no cover image
-                    </div>
-                )}
-                <div style={{ padding: '20px 24px' }}>
-                    <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#111', letterSpacing: '-0.02em', lineHeight: 1.2, marginBottom: '2px' }}>
-                        {job.job_name}
-                    </h1>
-                    <p style={{ fontSize: '13px', color: '#999', fontWeight: 500 }}>
-                        {job.job_reference}{job.client_name ? ` — ${job.client_name}` : ''}
-                    </p>
-                    {(job.panel_size || job.paint_colour) && (
-                        <div style={{ display: 'flex', gap: '24px', marginTop: '12px' }}>
-                            {job.panel_size && (<div>
-                                <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#999', fontWeight: 600, marginBottom: '2px' }}>panel size</div>
-                                <div style={{ fontSize: '14px', fontWeight: 600, color: '#111' }}>{job.panel_size}</div>
-                            </div>)}
-                            {job.paint_colour && (<div>
-                                <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#999', fontWeight: 600, marginBottom: '2px' }}>paint colour</div>
-                                <div style={{ fontSize: '14px', fontWeight: 600, color: '#111' }}>{job.paint_colour}</div>
-                            </div>)}
+            {/* Cover Card — production only (visual approval relies on per-sub-item thumbnails) */}
+            {!hideCover && (
+                <div style={{ border: '1px solid #e5e5e5', borderRadius: '8px', overflow: 'hidden', background: '#fff', marginBottom: '24px' }}>
+                    {coverImageUrl ? (
+                        <div onClick={() => openLightbox(coverImageUrl, `${job.job_name} overview`)}
+                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fafafa', padding: '24px', borderBottom: '1px solid #e5e5e5', cursor: 'zoom-in' }}>
+                            <img src={coverImageUrl} alt={`${job.job_name} overview`} style={{ maxWidth: '100%', maxHeight: '500px', objectFit: 'contain' }} />
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fafafa', padding: '48px 24px', borderBottom: '1px solid #e5e5e5', color: '#bbb', fontSize: '14px', fontStyle: 'italic' }}>
+                            no cover image
                         </div>
                     )}
-                    {job.description && (
-                        <p style={{ fontSize: '13px', color: '#666', lineHeight: 1.6, marginTop: '12px' }}>{job.description}</p>
-                    )}
+                    <div style={{ padding: '20px 24px' }}>
+                        <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#111', letterSpacing: '-0.02em', lineHeight: 1.2, marginBottom: '2px' }}>
+                            {job.job_name}
+                        </h1>
+                        <p style={{ fontSize: '13px', color: '#999', fontWeight: 500 }}>
+                            {job.job_reference}{job.client_name ? ` — ${job.client_name}` : ''}
+                        </p>
+                        {(job.panel_size || job.paint_colour) && (
+                            <div style={{ display: 'flex', gap: '24px', marginTop: '12px' }}>
+                                {job.panel_size && (<div>
+                                    <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#999', fontWeight: 600, marginBottom: '2px' }}>panel size</div>
+                                    <div style={{ fontSize: '14px', fontWeight: 600, color: '#111' }}>{job.panel_size}</div>
+                                </div>)}
+                                {job.paint_colour && (<div>
+                                    <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#999', fontWeight: 600, marginBottom: '2px' }}>paint colour</div>
+                                    <div style={{ fontSize: '14px', fontWeight: 600, color: '#111' }}>{job.paint_colour}</div>
+                                </div>)}
+                            </div>
+                        )}
+                        {job.description && (
+                            <p style={{ fontSize: '13px', color: '#666', lineHeight: 1.6, marginTop: '12px' }}>{job.description}</p>
+                        )}
+                    </div>
                 </div>
-            </div>
+            )}
+
+            {/* Visual approval — compact job header shown instead of the cover card. */}
+            {hideCover && (
+                <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                    <h1 style={{ fontSize: '20px', fontWeight: 700, color: '#111', letterSpacing: '-0.02em', marginBottom: '2px' }}>
+                        {job.job_name}
+                    </h1>
+                    <p style={{ fontSize: '12px', color: '#999', fontWeight: 500 }}>
+                        {job.job_reference}{job.client_name ? ` — ${job.client_name}` : ''}
+                    </p>
+                </div>
+            )}
 
             {/* Site snapshot */}
             {(approval.snapshot_site_name || approval.snapshot_site_address) && (
@@ -189,36 +262,33 @@ export default function ApprovalClientView({ data, token }: Props) {
                 </div>
             )}
 
-            {/* Components — per-line decision */}
+            {/* Components */}
             {components.length > 0 && (
                 <div style={{ border: '1px solid #e5e5e5', borderRadius: '8px', overflow: 'hidden', background: '#fff', marginBottom: '24px' }}>
                     <div style={{ padding: '16px 20px', borderBottom: '1px solid #eee' }}>
-                        <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#111', margin: 0 }}>components</h2>
+                        <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#111', margin: 0 }}>
+                            {isVisual ? 'design options' : 'components'}
+                        </h2>
                         <p style={{ fontSize: '12px', color: '#999', marginTop: '2px' }}>
-                            {isVisual
-                                ? `${components.length} component${components.length !== 1 ? 's' : ''} — choose an option for each`
-                                : `${components.length} component${components.length !== 1 ? 's' : ''} — approve each, or request changes with a note`}
+                            {hasVariants
+                                ? 'choose one option per component'
+                                : 'approve each item, or request changes with a note'}
                         </p>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-px bg-neutral-200">
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
                         {components.map((component) => {
-                            const dec = decisions[component.id];
-                            const borderColor = dec === 'approved' ? '#16a34a' : dec === 'changes_requested' ? '#d97706' : 'transparent';
-                            const bgTint = dec === 'approved' ? '#f0fdf4' : dec === 'changes_requested' ? '#fffbeb' : '#fff';
-                            return (
-                                <div key={component.id} style={{ background: bgTint, padding: '20px', borderLeft: `4px solid ${borderColor}` }}>
-                                    {/* Thumbnail */}
-                                    <div onClick={() => component.thumbnailUrl && openLightbox(component.thumbnailUrl, component.name)}
-                                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fafafa', borderRadius: '6px', minHeight: '180px', marginBottom: '12px', overflow: 'hidden', cursor: component.thumbnailUrl ? 'zoom-in' : 'default' }}>
-                                        {component.thumbnailUrl
-                                            ? <ResilientImage src={component.thumbnailUrl} alt={component.name} style={{ maxWidth: '100%', maxHeight: '320px', objectFit: 'contain' }} />
-                                            : <span style={{ color: '#ccc', fontSize: '12px', fontStyle: 'italic' }}>no artwork</span>}
-                                    </div>
-                                    <div style={{ fontSize: '15px', fontWeight: 700, color: '#111', marginBottom: '10px' }}>{component.name}</div>
+                            const subs = component.sub_items ?? [];
+                            const hasSubs = subs.length > 0;
 
-                                    {/* Spec list / variant picker */}
-                                    {isVisual ? (
+                            return (
+                                <div key={component.id} style={{ padding: '18px 20px', borderBottom: '1px solid #eee', background: '#fff' }}>
+                                    <div style={{ fontSize: '15px', fontWeight: 700, color: '#111', marginBottom: '10px' }}>
+                                        {component.name}
+                                    </div>
+
+                                    {/* Variant-picker path: single-choice visual approval */}
+                                    {hasVariants ? (
                                         <VariantPicker
                                             componentName={component.name}
                                             variants={component.variants ?? []}
@@ -226,60 +296,85 @@ export default function ApprovalClientView({ data, token }: Props) {
                                             onChoose={(variantId) => setSelections((p) => ({ ...p, [component.id]: variantId }))}
                                             onZoom={openLightbox}
                                         />
-                                    ) : (
-                                        component.sub_items && component.sub_items.length > 0 && (
-                                            <div style={{ border: '1px solid #eaeaea', borderRadius: '6px', overflow: 'hidden', marginTop: '6px', background: '#fff' }}>
-                                                <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#666', padding: '8px 12px', background: '#fafafa', borderBottom: '1px solid #eaeaea' }}>
-                                                    specification
-                                                </div>
-                                                {component.sub_items.map((si, i) => (
-                                                    <div key={si.id} style={{ padding: '12px', borderTop: i === 0 ? 'none' : '1px solid #f0f0f0', fontSize: '13px' }}>
-                                                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '6px' }}>
-                                                            <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 700, fontSize: '11px', background: '#111', color: '#fff', padding: '1px 6px', borderRadius: '3px', flexShrink: 0 }}>{si.label}</span>
-                                                            <span style={{ fontWeight: 600, color: '#111' }}>{si.name || <span style={{ color: '#999', fontStyle: 'italic' }}>unnamed</span>}</span>
-                                                            {si.quantity > 1 && <span style={{ fontSize: '11px', color: '#666', marginLeft: 'auto' }}>× {si.quantity}</span>}
-                                                        </div>
-                                                        <dl style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', rowGap: '3px', columnGap: '10px', fontSize: '12px', margin: 0, paddingLeft: '32px' }}>
-                                                            {si.material && (<><dt style={{ color: '#888', fontWeight: 600 }}>Material</dt><dd style={{ margin: 0, color: '#111' }}>{si.material}</dd></>)}
-                                                            {si.application_method && (<><dt style={{ color: '#888', fontWeight: 600 }}>Method</dt><dd style={{ margin: 0, color: '#111' }}>{si.application_method}</dd></>)}
-                                                            {si.finish && (<><dt style={{ color: '#888', fontWeight: 600 }}>Finish</dt><dd style={{ margin: 0, color: '#111' }}>{si.finish}</dd></>)}
-                                                            {si.width_mm && si.height_mm && (<><dt style={{ color: '#888', fontWeight: 600 }}>Size</dt><dd style={{ margin: 0, color: '#111', fontFamily: 'ui-monospace, monospace' }}>{si.width_mm} × {si.height_mm} mm{si.returns_mm ? ` · ${si.returns_mm}mm returns` : ''}</dd></>)}
-                                                        </dl>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )
-                                    )}
+                                    ) : hasSubs ? (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                                            {subs.map((si) => {
+                                                const k = keyFor(component.id, si.id);
+                                                const dec = decisions[k];
+                                                const borderColor = dec === 'approved' ? '#16a34a' : dec === 'changes_requested' ? '#d97706' : '#e5e5e5';
+                                                const bg = dec === 'approved' ? '#f0fdf4' : dec === 'changes_requested' ? '#fffbeb' : '#fff';
+                                                const alt = si.name || `Option ${si.label}`;
+                                                return (
+                                                    <div key={si.id} style={{
+                                                        border: `1px solid ${borderColor}`, borderLeft: `4px solid ${borderColor}`,
+                                                        borderRadius: '8px', background: bg, overflow: 'hidden',
+                                                    }}>
+                                                        {/* Sub-item thumbnail */}
+                                                        {si.thumbnail_url ? (
+                                                            <div
+                                                                onClick={() => openLightbox(si.thumbnail_url!, alt)}
+                                                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fafafa', padding: '16px', cursor: 'zoom-in', minHeight: '180px' }}
+                                                            >
+                                                                <ResilientImage src={si.thumbnail_url} alt={alt}
+                                                                    style={{ maxWidth: '100%', maxHeight: '260px', objectFit: 'contain' }} />
+                                                            </div>
+                                                        ) : (
+                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fafafa', padding: '28px', color: '#ccc', fontSize: '12px', fontStyle: 'italic' }}>
+                                                                no image
+                                                            </div>
+                                                        )}
 
-                                    {/* Per-line decision buttons (production jobs only) */}
-                                    {!isVisual && !success && (
-                                        <div style={{ marginTop: '14px' }}>
-                                            <div style={{ display: 'flex', gap: '8px' }}>
-                                                <button type="button" onClick={() => setDecision(component.id, 'approved')} style={{
-                                                    flex: 1, padding: '10px 12px', fontSize: '13px', fontWeight: 600,
-                                                    borderRadius: '6px', cursor: 'pointer',
-                                                    border: dec === 'approved' ? '2px solid #16a34a' : '1px solid #d4d4d4',
-                                                    background: dec === 'approved' ? '#16a34a' : '#fff',
-                                                    color: dec === 'approved' ? '#fff' : '#333',
-                                                }}>✓ approve this</button>
-                                                <button type="button" onClick={() => setDecision(component.id, 'changes_requested')} style={{
-                                                    flex: 1, padding: '10px 12px', fontSize: '13px', fontWeight: 600,
-                                                    borderRadius: '6px', cursor: 'pointer',
-                                                    border: dec === 'changes_requested' ? '2px solid #d97706' : '1px solid #d4d4d4',
-                                                    background: dec === 'changes_requested' ? '#d97706' : '#fff',
-                                                    color: dec === 'changes_requested' ? '#fff' : '#333',
-                                                }}>request changes</button>
-                                            </div>
-                                            {dec === 'changes_requested' && (
-                                                <textarea
-                                                    value={comments[component.id] ?? ''}
-                                                    onChange={(e) => setComments((p) => ({ ...p, [component.id]: e.target.value }))}
-                                                    rows={3}
-                                                    maxLength={2000}
-                                                    placeholder="What needs to change on this component? e.g. make the gold more muted, swap to navy..."
-                                                    style={{ width: '100%', padding: '10px 12px', border: '1px solid #e0d5a0', background: '#fffdf5', borderRadius: '6px', fontSize: '13px', outline: 'none', fontFamily: 'inherit', resize: 'vertical', minHeight: '72px', marginTop: '8px' }}
-                                                />
+                                                        <div style={{ padding: '14px' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '6px' }}>
+                                                                <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 700, fontSize: '11px', background: '#111', color: '#fff', padding: '1px 6px', borderRadius: '3px' }}>
+                                                                    {si.label}
+                                                                </span>
+                                                                <span style={{ fontWeight: 600, color: '#111', fontSize: '14px' }}>
+                                                                    {si.name || <span style={{ color: '#999', fontStyle: 'italic' }}>unnamed</span>}
+                                                                </span>
+                                                                {si.quantity > 1 && (
+                                                                    <span style={{ fontSize: '11px', color: '#666', marginLeft: 'auto' }}>× {si.quantity}</span>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Description only */}
+                                                            {si.notes && (
+                                                                <p style={{ fontSize: '13px', color: '#555', lineHeight: 1.5, margin: '4px 0 0 0' }}>
+                                                                    {si.notes}
+                                                                </p>
+                                                            )}
+
+                                                            {/* Spec rows — hidden for visual approval */}
+                                                            {!hideSpecDetail && (si.material || si.application_method || si.finish || (si.width_mm && si.height_mm)) && (
+                                                                <dl style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', rowGap: '3px', columnGap: '10px', fontSize: '12px', margin: '10px 0 0 0' }}>
+                                                                    {si.material && (<><dt style={{ color: '#888', fontWeight: 600 }}>Material</dt><dd style={{ margin: 0, color: '#111' }}>{si.material}</dd></>)}
+                                                                    {si.application_method && (<><dt style={{ color: '#888', fontWeight: 600 }}>Method</dt><dd style={{ margin: 0, color: '#111' }}>{si.application_method}</dd></>)}
+                                                                    {si.finish && (<><dt style={{ color: '#888', fontWeight: 600 }}>Finish</dt><dd style={{ margin: 0, color: '#111' }}>{si.finish}</dd></>)}
+                                                                    {si.width_mm && si.height_mm && (<><dt style={{ color: '#888', fontWeight: 600 }}>Size</dt><dd style={{ margin: 0, color: '#111', fontFamily: 'ui-monospace, monospace' }}>{si.width_mm} × {si.height_mm} mm{si.returns_mm ? ` · ${si.returns_mm}mm returns` : ''}</dd></>)}
+                                                                </dl>
+                                                            )}
+
+                                                            <DecisionButtons k={k} />
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : (
+                                        // Component with no sub-items — fall back to a single decision row.
+                                        <div style={{
+                                            border: `1px solid ${decisions[component.id] === 'approved' ? '#16a34a' : decisions[component.id] === 'changes_requested' ? '#d97706' : '#e5e5e5'}`,
+                                            borderRadius: '8px', padding: '14px',
+                                            background: decisions[component.id] === 'approved' ? '#f0fdf4' : decisions[component.id] === 'changes_requested' ? '#fffbeb' : '#fff',
+                                        }}>
+                                            {component.thumbnailUrl && (
+                                                <div onClick={() => openLightbox(component.thumbnailUrl!, component.name)}
+                                                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fafafa', borderRadius: '6px', marginBottom: '10px', cursor: 'zoom-in', minHeight: '180px' }}>
+                                                    <ResilientImage src={component.thumbnailUrl} alt={component.name}
+                                                        style={{ maxWidth: '100%', maxHeight: '260px', objectFit: 'contain' }} />
+                                                </div>
                                             )}
+                                            <DecisionButtons k={component.id} />
                                         </div>
                                     )}
                                 </div>
@@ -289,9 +384,9 @@ export default function ApprovalClientView({ data, token }: Props) {
 
                     <div style={{ padding: '12px 20px', fontSize: '12px', color: '#555', borderTop: '1px solid #eee', background: '#fafafa', lineHeight: 1.5 }}>
                         <strong style={{ color: '#111' }}>What you&rsquo;re approving:</strong>{' '}
-                        the artwork and the specification shown above for each component — including material type,
-                        finish, dimensions, and quantity. Approve components individually, or request changes with a
-                        note. Once approved, production works to these specs.
+                        {isVisual
+                            ? 'the design options shown above. Approve the ones you want to move forward with, request changes on the rest.'
+                            : 'the artwork and specification shown for each item — material, finish, dimensions, and quantity. Approve each row, or request changes with a note.'}
                     </div>
                 </div>
             )}
@@ -316,12 +411,12 @@ export default function ApprovalClientView({ data, token }: Props) {
             ) : (
                 <div style={{ border: '1px solid #e5e5e5', borderRadius: '8px', padding: '24px', background: '#fff', marginBottom: '24px' }}>
                     <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#111', marginBottom: '4px' }}>
-                        {anyChangesRequested ? 'submit feedback' : 'sign off artwork'}
+                        {anyChangesRequested ? 'submit feedback' : 'sign off'}
                     </h3>
                     <p style={{ fontSize: '13px', color: '#888', marginBottom: '20px' }}>
                         {anyChangesRequested
                             ? 'your signature confirms the feedback above — we\u2019ll revise and send a new link'
-                            : 'by signing below you confirm every component marked \u201capprove\u201d is approved for production'}
+                            : 'by signing below you confirm every item marked \u201capprove\u201d is approved'}
                     </p>
 
                     {error && (
@@ -354,11 +449,8 @@ export default function ApprovalClientView({ data, token }: Props) {
                             overall comments
                             <span style={{ fontWeight: 400, color: '#999', marginLeft: '6px' }}>(optional)</span>
                         </label>
-                        <p style={{ fontSize: '11px', color: '#888', marginTop: 0, marginBottom: '8px', lineHeight: 1.4 }}>
-                            anything you want to flag that isn&rsquo;t tied to a specific component
-                        </p>
                         <textarea value={clientComments} onChange={(e) => setClientComments(e.target.value)} rows={3} maxLength={2000}
-                            placeholder="e.g. delivery timing note, an overall thought..."
+                            placeholder="anything that isn't tied to a specific item"
                             style={{ width: '100%', padding: '10px 12px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '13px', outline: 'none', fontFamily: 'inherit', resize: 'vertical', minHeight: '72px' }} />
                     </div>
 
@@ -371,7 +463,7 @@ export default function ApprovalClientView({ data, token }: Props) {
                         </button>
                     </div>
 
-                    {isVisual && (() => {
+                    {hasVariants && (() => {
                         const missing = components.filter((c) => !(c.variants?.length));
                         if (missing.length === 0) return null;
                         return (
@@ -392,11 +484,10 @@ export default function ApprovalClientView({ data, token }: Props) {
                             border: 'none', borderRadius: '6px',
                             cursor: (isPending || !allLinesDecided) ? 'not-allowed' : 'pointer',
                         }}>
-                        {isPending ? 'submitting...' : (anyChangesRequested ? 'submit feedback' : 'sign off artwork')}
+                        {isPending ? 'submitting...' : (anyChangesRequested ? 'submit feedback' : 'sign off')}
                     </button>
 
-                    {/* Escape hatch — bulk "nothing works, start over" */}
-                    {!isVisual && (
+                    {!hasVariants && (
                         <>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '16px 0' }}>
                                 <div style={{ flex: 1, height: 1, background: '#e0e0e0' }} />

@@ -255,13 +255,32 @@ export default async function ArtworkJobDetailPage({
                         ) : (
                             <div className="space-y-3">
                                 {job.components.map((component, index) => {
-                                    const decision = componentDecisions[component.id];
-                                    const cardBorder =
-                                        decision?.decision === 'approved'
-                                            ? 'border-green-400 bg-green-50 hover:border-green-500'
-                                            : decision?.decision === 'changes_requested'
-                                            ? 'border-amber-400 bg-amber-50 hover:border-amber-500'
-                                            : 'hover:border-neutral-300';
+                                    const subs = (component.sub_items ?? []) as Array<{ id: string; label?: string; name?: string | null }>;
+                                    // Aggregate per-sub-item decisions into a component-level verdict:
+                                    //   * any changes_requested → amber
+                                    //   * all approved          → green
+                                    //   * mixed / incomplete    → neutral
+                                    const subDecisions = subs
+                                        .map((si) => componentDecisions.bySubItem[si.id])
+                                        .filter(Boolean);
+                                    const componentOnly = componentDecisions.byComponent[component.id];
+                                    const anyChanges = subDecisions.some((d) => d.decision === 'changes_requested')
+                                        || componentOnly?.decision === 'changes_requested';
+                                    const allApproved = subs.length > 0
+                                        ? subDecisions.length === subs.length && subDecisions.every((d) => d.decision === 'approved')
+                                        : componentOnly?.decision === 'approved';
+                                    const cardBorder = anyChanges
+                                        ? 'border-amber-400 bg-amber-50 hover:border-amber-500'
+                                        : allApproved
+                                        ? 'border-green-400 bg-green-50 hover:border-green-500'
+                                        : 'hover:border-neutral-300';
+                                    const subComments = subs
+                                        .map((si) => {
+                                            const d = componentDecisions.bySubItem[si.id];
+                                            if (!d?.comment) return null;
+                                            return { label: si.label ?? '?', name: si.name ?? '', comment: d.comment };
+                                        })
+                                        .filter(Boolean) as Array<{ label: string; name: string; comment: string }>;
                                     return (
                                         <Link
                                             key={component.id}
@@ -286,12 +305,12 @@ export default async function ArtworkJobDetailPage({
                                                             <Chip variant="default">
                                                                 {getComponentTypeLabel(component.component_type)}
                                                             </Chip>
-                                                            {decision?.decision === 'approved' && (
+                                                            {allApproved && !anyChanges && (
                                                                 <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-green-600 text-white">
                                                                     client approved
                                                                 </span>
                                                             )}
-                                                            {decision?.decision === 'changes_requested' && (
+                                                            {anyChanges && (
                                                                 <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500 text-white">
                                                                     changes requested
                                                                 </span>
@@ -311,12 +330,25 @@ export default async function ArtworkJobDetailPage({
                                                                 dimensions not yet specified
                                                             </p>
                                                         )}
-                                                        {decision?.comment && (
+                                                        {subComments.length > 0 && (
+                                                            <div className="mt-2 space-y-1">
+                                                                {subComments.map((sc) => (
+                                                                    <div key={sc.label} className="p-2 rounded border border-amber-300 bg-amber-100 text-xs text-amber-900">
+                                                                        <span className="font-mono font-bold text-[10px] bg-neutral-900 text-white px-1 py-0.5 rounded mr-1.5">
+                                                                            {sc.label}
+                                                                        </span>
+                                                                        {sc.name && <span className="font-semibold mr-1">{sc.name}:</span>}
+                                                                        <span className="whitespace-pre-wrap">{sc.comment}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                        {componentOnly?.comment && subComments.length === 0 && (
                                                             <div className="mt-2 p-2 rounded border border-amber-300 bg-amber-100 text-xs text-amber-900">
                                                                 <span className="font-semibold uppercase tracking-wider text-[10px] text-amber-800 mr-1">
                                                                     client:
                                                                 </span>
-                                                                <span className="whitespace-pre-wrap">{decision.comment}</span>
+                                                                <span className="whitespace-pre-wrap">{componentOnly.comment}</span>
                                                             </div>
                                                         )}
                                                     </div>
