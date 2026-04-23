@@ -42,11 +42,11 @@ export async function getMaintenanceVisits(filters?: {
 
     return ((data ?? []) as MaintenanceVisitRow[]).map((row) => ({
         ...row,
-        org_name: row.orgs?.name ?? null,
-        site_name: row.org_sites?.name ?? null,
+        org_name: row.orgs?.name ?? undefined,
+        site_name: row.org_sites?.name ?? undefined,
         contact_name: row.contacts
-            ? `${row.contacts.first_name ?? ''} ${row.contacts.last_name ?? ''}`.trim() || null
-            : null,
+            ? `${row.contacts.first_name ?? ''} ${row.contacts.last_name ?? ''}`.trim() || undefined
+            : undefined,
     }));
 }
 
