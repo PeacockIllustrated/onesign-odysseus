@@ -365,19 +365,66 @@ function MarketingCard({
 
                 <div
                     style={{
-                        display: 'inline-block',
-                        fontSize: '13px',
-                        fontWeight: 600,
-                        color: TEAL_DARK,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        padding: '4px 14px 4px 4px',
                         background: TEAL_LIGHT,
-                        padding: '6px 12px',
+                        border: '1px solid rgba(78, 126, 140, 0.22)',
                         borderRadius: '999px',
-                        marginBottom: '26px',
-                        letterSpacing: '0.01em',
+                        marginBottom: '18px',
+                        maxWidth: '100%',
                     }}
                 >
-                    Built for you. Owned by you.
+                    <span
+                        aria-hidden="true"
+                        style={{
+                            width: '24px',
+                            height: '24px',
+                            flexShrink: 0,
+                            borderRadius: '50%',
+                            background: TEAL,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.15)',
+                        }}
+                    >
+                        <svg width="12" height="12" viewBox="0 0 36 36" fill="none">
+                            <path
+                                d="M8 18.5 L15 25 L28 11"
+                                stroke="#ffffff"
+                                strokeWidth="4"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            />
+                        </svg>
+                    </span>
+                    <span
+                        style={{
+                            fontSize: '12.5px',
+                            fontWeight: 600,
+                            color: TEAL_DARK,
+                            lineHeight: 1.35,
+                            letterSpacing: '0.005em',
+                        }}
+                    >
+                        Get something that fits perfectly, owned by you.
+                    </span>
                 </div>
+
+                <p
+                    style={{
+                        fontSize: '14px',
+                        color: '#555',
+                        margin: '0 0 24px 0',
+                        lineHeight: 1.55,
+                    }}
+                >
+                    We&rsquo;ll be in touch as new software rolls out &mdash; each
+                    tool designed to take a task that currently eats half a day and
+                    give you the afternoon back.
+                </p>
 
                 <button
                     type="button"
@@ -457,16 +504,6 @@ function WelcomeCard({ onClose }: { onClose: () => void }) {
                 Welcome aboard.
             </h2>
 
-            <p style={{
-                fontSize: '14px',
-                color: '#555',
-                margin: '0 0 12px 0',
-                lineHeight: 1.55,
-            }}>
-                We&rsquo;ll be in touch as new software rolls out &mdash; each tool
-                designed to take a task that currently eats half a day and give you
-                the afternoon back.
-            </p>
             <p style={{
                 fontSize: '14px',
                 color: '#555',
