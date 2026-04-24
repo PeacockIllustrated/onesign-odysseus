@@ -18,8 +18,10 @@ import {
 } from '@/lib/artwork/utils';
 import { ArtworkJobStatus, ComponentStatus } from '@/lib/artwork/types';
 import { getApprovalForJob, getComponentDecisionsForJob } from '@/lib/artwork/approval-actions';
+import { getActiveProductionApprovalForJob } from '@/lib/artwork/production-approval-actions';
 import { AddComponentForm } from './components/AddComponentForm';
 import { ApprovalLinkSection } from './components/ApprovalLinkSection';
+import { ProductionApprovalLinkSection } from './components/ProductionApprovalLinkSection';
 import { ClientDeliveryCard } from './components/ClientDeliveryCard';
 import { JobFieldsForm } from './components/JobFieldsForm';
 import { ReleaseToProductionButton } from './components/ReleaseToProductionButton';
@@ -36,12 +38,13 @@ export default async function ArtworkJobDetailPage({
     await requireAdmin();
 
     const { id } = await params;
-    const [job, approval, stages, lineage, componentDecisions] = await Promise.all([
+    const [job, approval, stages, lineage, componentDecisions, productionApproval] = await Promise.all([
         getArtworkJob(id),
         getApprovalForJob(id),
         getProductionStages(),
         getArtworkJobLineage(id),
         getComponentDecisionsForJob(id),
+        getActiveProductionApprovalForJob(id),
     ]);
 
     if (!job) {
@@ -531,6 +534,14 @@ export default async function ArtworkJobDetailPage({
                                 : undefined
                         }
                     />
+
+                    {/* Internal production sign-off — production-flavour jobs only */}
+                    {job.job_type !== 'visual_approval' && (
+                        <ProductionApprovalLinkSection
+                            jobId={id}
+                            activeApproval={productionApproval}
+                        />
+                    )}
                 </div>
             </div>
         </div>
