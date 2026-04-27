@@ -8,7 +8,7 @@ import { formatDate, formatDateTime } from '@/lib/artwork/utils';
 import { formatPence } from '@/lib/invoices/utils';
 import {
     List, LayoutGrid, Search, X, Check, Play, Ban, Trash2,
-    ChevronDown, ChevronRight, FileText, Truck, Inbox, Bell, Calendar, PoundSterling,
+    ChevronDown, ChevronRight, FileText, Truck,
 } from 'lucide-react';
 import type { ExternalOrder, ExternalOrderSource, ExternalOrderStatus } from '@/lib/external-orders/types';
 import {
@@ -225,49 +225,87 @@ export function ExternalOrdersClient({ orders }: Props) {
         setStatus('open'); setSource('all'); setDateRange('all'); setSearch('');
     };
 
-    const act = (fn: () => Promise<unknown>) => startTransition(async () => {
-        await fn();
+    // Per-source dashboard stats — powers the brand-logo cards at the top.
+    const sourceStats = useMemo(() => {
+        const init: Record<ExternalOrderSource, { total: number; needsAction: number; outstandingPence: number }> = {
+            persimmon: { total: 0, needsAction: 0, outstandingPence: 0 },
+            mapleleaf: { total: 0, needsAction: 0, outstandingPence: 0 },
+            lynx: { total: 0, needsAction: 0, outstandingPence: 0 },
+            other: { total: 0, needsAction: 0, outstandingPence: 0 },
+        };
+        for (const o of orders) {
+            const s = init[o.source_app];
+            s.total++;
+            if (['new', 'acknowledged', 'in_progress'].includes(o.status)) {
+                s.needsAction++;
+                if (o.total_pence != null) s.outstandingPence += o.total_pence;
+            }
+        }
+        return init;
+    }, [orders]);
+
+    const [actionError, setActionError] = useState<string | null>(null);
+    // Server actions all return Result<T> — { ok: true; data } | { ok: false; error }
+    const act = (fn: () => Promise<{ ok: boolean; error?: string }>) => startTransition(async () => {
+        setActionError(null);
+        try {
+            const res = await fn();
+            if (!res.ok && res.error) setActionError(res.error);
+        } catch (e: unknown) {
+            setActionError(e instanceof Error ? e.message : 'action failed');
+        }
         router.refresh();
     });
 
-    const toggleOne = (id: string) => setExpanded((p) => ({ ...p, [id]: !p[id] }));
-    const expandAll = () => setExpanded(Object.fromEntries(filtered.map((o) => [o.id, true])));
+    // Stable key for cards + expanded state. When a Persimmon row is first
+    // actioned, its id flips from "psp:<uuid>" to the tracked external_orders
+    // UUID — using id directly would remount the card and collapse it. Keying
+    // on (source_app, external_ref) keeps identity stable across that flip.
+    const rowKey = (o: ExternalOrder) =>
+        o.external_ref ? `${o.source_app}:${o.external_ref}` : o.id;
+
+    const toggleOne = (key: string) => setExpanded((p) => ({ ...p, [key]: !p[key] }));
+    const expandAll = () => setExpanded(Object.fromEntries(filtered.map((o) => [rowKey(o), true])));
     const collapseAll = () => setExpanded({});
 
     return (
         <>
-            {/* Top KPI stats. Each card doubles as a filter shortcut. */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-                <StatCard
-                    icon={<Inbox size={16} />}
-                    label="Total inbound"
-                    value={String(statCounts.total)}
-                    tone="neutral"
-                    active={status === 'all' && source === 'all' && dateRange === 'all' && !search}
-                    onClick={clearFilters}
-                />
-                <StatCard
-                    icon={<Bell size={16} />}
-                    label="Needs action"
-                    value={String(statCounts.needsAction)}
-                    tone={statCounts.needsAction > 0 ? 'urgent' : 'muted'}
-                    active={status === 'open'}
-                    onClick={() => setStatus('open')}
-                />
-                <StatCard
-                    icon={<Calendar size={16} />}
-                    label="This week"
-                    value={String(statCounts.thisWeek)}
-                    tone="info"
-                    active={dateRange === '7d'}
-                    onClick={() => setDateRange(dateRange === '7d' ? 'all' : '7d')}
-                />
-                <StatCard
-                    icon={<PoundSterling size={16} />}
-                    label="Outstanding value"
-                    value={formatPence(statCounts.outstandingPence)}
-                    tone="money"
-                />
+            {/* Brief overview strip */}
+            <div className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+                <span>
+                    <span className="text-neutral-500">Total inbound: </span>
+                    <span className="font-semibold text-neutral-900">{statCounts.total}</span>
+                </span>
+                <span>
+                    <span className="text-neutral-500">Needs action: </span>
+                    <span className={`font-semibold ${statCounts.needsAction > 0 ? 'text-orange-700' : 'text-neutral-400'}`}>
+                        {statCounts.needsAction}
+                    </span>
+                </span>
+                <span>
+                    <span className="text-neutral-500">This week: </span>
+                    <span className="font-semibold text-neutral-900">{statCounts.thisWeek}</span>
+                </span>
+                <span>
+                    <span className="text-neutral-500">Outstanding: </span>
+                    <span className="font-semibold text-green-700">{formatPence(statCounts.outstandingPence)}</span>
+                </span>
+                <span className="ml-auto text-[10px] text-neutral-400" title="Live via Supabase Realtime">● live</span>
+            </div>
+
+            {/* Source cards — one per external-ordering app. Clicking filters
+                the list below. Replace the placeholder logo per source when
+                the brand assets land. */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+                {(['persimmon', 'mapleleaf', 'lynx', 'other'] as ExternalOrderSource[]).map((s) => (
+                    <SourceCard
+                        key={s}
+                        source={s}
+                        stats={sourceStats[s]}
+                        active={source === s}
+                        onClick={() => setSource(source === s ? 'all' : s)}
+                    />
+                ))}
             </div>
 
             {/* Filter chips */}
@@ -373,6 +411,16 @@ export function ExternalOrdersClient({ orders }: Props) {
                 </div>
             </div>
 
+            {actionError && (
+                <div className="mb-3 p-3 rounded border border-red-200 bg-red-50 text-sm text-red-700 flex items-start gap-2">
+                    <span className="font-semibold">Action failed:</span>
+                    <span className="flex-1">{actionError}</span>
+                    <button type="button" onClick={() => setActionError(null)} className="text-red-500 hover:text-red-700">
+                        <X size={14} />
+                    </button>
+                </div>
+            )}
+
             {filtered.length === 0 ? (
                 <Card>
                     <p className="text-sm text-neutral-500 text-center py-8">
@@ -388,6 +436,7 @@ export function ExternalOrdersClient({ orders }: Props) {
                     isPending={isPending}
                     expanded={expanded}
                     onToggle={toggleOne}
+                    rowKey={rowKey}
                 />
             )}
         </>
@@ -398,39 +447,7 @@ export function ExternalOrdersClient({ orders }: Props) {
 // Sub-components
 // ---------------------------------------------------------------------------
 
-function StatCard({
-    icon, label, value, tone, active, onClick,
-}: {
-    icon: React.ReactNode;
-    label: string;
-    value: string;
-    tone: 'neutral' | 'urgent' | 'info' | 'money' | 'muted';
-    active?: boolean;
-    onClick?: () => void;
-}) {
-    const toneCls =
-        tone === 'urgent' ? 'text-red-700 bg-red-50 border-red-200'
-        : tone === 'info' ? 'text-blue-700 bg-blue-50 border-blue-200'
-        : tone === 'money' ? 'text-green-700 bg-green-50 border-green-200'
-        : tone === 'muted' ? 'text-neutral-500 bg-neutral-50 border-neutral-200'
-        : 'text-neutral-900 bg-white border-neutral-200';
-    const ring = active ? 'ring-2 ring-offset-1 ring-neutral-400' : '';
-    const Wrapper = onClick ? 'button' : 'div';
-    return (
-        <Wrapper
-            {...(onClick ? { type: 'button' as const, onClick } : {})}
-            className={`text-left rounded-lg border px-3 py-3 transition-all ${toneCls} ${ring} ${onClick ? 'hover:shadow-sm cursor-pointer' : ''}`}
-        >
-            <div className="flex items-center gap-2 opacity-75 mb-1">
-                {icon}
-                <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
-            </div>
-            <div className="text-2xl font-bold leading-tight">{value}</div>
-        </Wrapper>
-    );
-}
-
-type ActRunner = (fn: () => Promise<unknown>) => void;
+type ActRunner = (fn: () => Promise<{ ok: boolean; error?: string }>) => void;
 
 function OrderActions({ o, onAct, isPending }: { o: ExternalOrder; onAct: ActRunner; isPending: boolean }) {
     return (
@@ -528,27 +545,93 @@ function CompactList({ rows, onAct, isPending }: { rows: ExternalOrder[]; onAct:
 }
 
 function DashboardList({
-    rows, onAct, isPending, expanded, onToggle,
+    rows, onAct, isPending, expanded, onToggle, rowKey,
 }: {
     rows: ExternalOrder[];
     onAct: ActRunner;
     isPending: boolean;
     expanded: Record<string, boolean>;
-    onToggle: (id: string) => void;
+    onToggle: (key: string) => void;
+    rowKey: (o: ExternalOrder) => string;
 }) {
     return (
         <div className="space-y-2">
-            {rows.map((o) => (
-                <OrderCard
-                    key={o.id}
-                    o={o}
-                    onAct={onAct}
-                    isPending={isPending}
-                    isOpen={!!expanded[o.id]}
-                    onToggle={() => onToggle(o.id)}
-                />
-            ))}
+            {rows.map((o) => {
+                const k = rowKey(o);
+                return (
+                    <OrderCard
+                        key={k}
+                        o={o}
+                        onAct={onAct}
+                        isPending={isPending}
+                        isOpen={!!expanded[k]}
+                        onToggle={() => onToggle(k)}
+                    />
+                );
+            })}
         </div>
+    );
+}
+
+function SourceCard({
+    source, stats, active, onClick,
+}: {
+    source: ExternalOrderSource;
+    stats: { total: number; needsAction: number; outstandingPence: number };
+    active: boolean;
+    onClick: () => void;
+}) {
+    const name = SOURCE_LABEL[source];
+    const chipClass = SOURCE_CHIP[source];
+    // Placeholder: same Onesign logo for every source until brand assets land.
+    // Swap the logoSrc per source when those arrive.
+    const logoSrc = '/Onesign-Logo-Black.svg';
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            aria-pressed={active}
+            className={`text-left rounded-lg border bg-white px-4 py-4 transition-all hover:shadow-sm ${
+                active ? 'border-neutral-900 ring-2 ring-neutral-400 ring-offset-1' : 'border-neutral-200'
+            }`}
+        >
+            <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 rounded-lg bg-neutral-50 border border-neutral-200 flex items-center justify-center shrink-0 overflow-hidden">
+                    <img src={logoSrc} alt={name} className="max-w-full max-h-full object-contain p-1" />
+                </div>
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-neutral-900 text-sm">{name}</span>
+                        <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${chipClass}`}>
+                            source
+                        </span>
+                    </div>
+                    <div className="text-[11px] text-neutral-500">
+                        {stats.total} order{stats.total !== 1 ? 's' : ''} total
+                    </div>
+                </div>
+            </div>
+            <div className="flex items-end justify-between gap-2">
+                <div>
+                    <div className={`text-2xl font-bold leading-none ${stats.needsAction > 0 ? 'text-orange-700' : 'text-neutral-400'}`}>
+                        {stats.needsAction}
+                    </div>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 mt-1">
+                        needs action
+                    </div>
+                </div>
+                {stats.outstandingPence > 0 && (
+                    <div className="text-right">
+                        <div className="text-xs font-mono font-semibold text-green-700">
+                            {formatPence(stats.outstandingPence)}
+                        </div>
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 mt-0.5">
+                            outstanding
+                        </div>
+                    </div>
+                )}
+            </div>
+        </button>
     );
 }
 
