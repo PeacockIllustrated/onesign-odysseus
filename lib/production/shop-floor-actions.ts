@@ -3,7 +3,8 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { createServerClient } from '@/lib/supabase-server';
-import { getUser } from '@/lib/auth';
+import { getUser, requireSuperAdminOrError } from '@/lib/auth';
+import { type Result, ok, okVoid, err } from '@/lib/result';
 
 // ---------------------------------------------------------------------------
 // getSubItemsForItemAtStage
@@ -241,5 +242,175 @@ export async function reportShopFloorProblem(
     revalidatePath(`/shop-floor/check/${parsed.jobItemId}`);
     revalidatePath('/admin/artwork');
     revalidatePath('/admin/jobs');
+    revalidatePath('/admin/flags');
     return { id: flag.id };
+}
+
+// ---------------------------------------------------------------------------
+// Admin: list + resolve shop-floor flags
+// ---------------------------------------------------------------------------
+
+export interface ShopFloorFlagRow {
+    id: string;
+    notes: string;
+    status: 'open' | 'resolved';
+    reportedAt: string;
+    reportedByName: string | null;
+    resolvedAt: string | null;
+    subItem: {
+        id: string;
+        label: string;
+        name: string | null;
+        componentName: string | null;
+    } | null;
+    jobItem: {
+        id: string;
+        description: string;
+        itemNumber: string | null;
+        jobId: string;
+        jobNumber: string | null;
+        clientName: string | null;
+    } | null;
+    stage: {
+        id: string;
+        name: string;
+        slug: string;
+    } | null;
+}
+
+/**
+ * List shop-floor flags for the admin review surface. Open flags first
+ * (oldest at the top so the longest-stuck issue is the most visible),
+ * then a tail of recently-resolved ones for context.
+ */
+export async function listShopFloorFlags(opts?: {
+    includeResolved?: boolean;
+    resolvedLimit?: number;
+}): Promise<Result<ShopFloorFlagRow[]>> {
+    const includeResolved = opts?.includeResolved ?? true;
+    const resolvedLimit = opts?.resolvedLimit ?? 25;
+
+    const supabase = await createServerClient();
+
+    // RLS lets any authed user read flags (migration 042). No extra gate.
+    const select = `
+        id, notes, status, created_at, reported_by_name, resolved_at,
+        sub_item:artwork_component_items!shop_floor_flags_sub_item_id_fkey(
+            id, label, name,
+            component:artwork_components(name)
+        ),
+        job_item:job_items!shop_floor_flags_job_item_id_fkey(
+            id, description, item_number,
+            job:production_jobs(id, job_number, client_name)
+        ),
+        stage:production_stages(id, name, slug)
+    `;
+
+    const open = await supabase
+        .from('shop_floor_flags')
+        .select(select)
+        .eq('status', 'open')
+        .order('created_at', { ascending: true });
+    if (open.error) return err(open.error.message);
+
+    let rows = open.data ?? [];
+    if (includeResolved) {
+        const resolved = await supabase
+            .from('shop_floor_flags')
+            .select(select)
+            .eq('status', 'resolved')
+            .order('resolved_at', { ascending: false })
+            .limit(resolvedLimit);
+        if (resolved.error) return err(resolved.error.message);
+        rows = [...rows, ...(resolved.data ?? [])];
+    }
+
+    // Supabase's typed select returns relationships as arrays even for
+    // single FKs depending on the codegen path; normalise here so the UI
+    // can rely on a flat shape.
+    const mapped: ShopFloorFlagRow[] = rows.map((r: any) => {
+        const sub = Array.isArray(r.sub_item) ? r.sub_item[0] : r.sub_item;
+        const ji = Array.isArray(r.job_item) ? r.job_item[0] : r.job_item;
+        const job = ji ? (Array.isArray(ji.job) ? ji.job[0] : ji.job) : null;
+        const comp = sub ? (Array.isArray(sub.component) ? sub.component[0] : sub.component) : null;
+        const st = Array.isArray(r.stage) ? r.stage[0] : r.stage;
+        return {
+            id: r.id,
+            notes: r.notes,
+            status: r.status,
+            reportedAt: r.created_at,
+            reportedByName: r.reported_by_name,
+            resolvedAt: r.resolved_at,
+            subItem: sub
+                ? {
+                      id: sub.id,
+                      label: sub.label,
+                      name: sub.name,
+                      componentName: comp?.name ?? null,
+                  }
+                : null,
+            jobItem: ji
+                ? {
+                      id: ji.id,
+                      description: ji.description,
+                      itemNumber: ji.item_number,
+                      jobId: job?.id ?? '',
+                      jobNumber: job?.job_number ?? null,
+                      clientName: job?.client_name ?? null,
+                  }
+                : null,
+            stage: st ? { id: st.id, name: st.name, slug: st.slug } : null,
+        };
+    });
+    return ok(mapped);
+}
+
+const ResolveFlagInputSchema = z.object({
+    flagId: z.string().uuid(),
+});
+
+/**
+ * Mark a flag resolved. Super-admin only (RLS enforces this too).
+ * Does NOT change the underlying job_item status — admins are expected
+ * to either resume the item via the Kanban or move it back a stage by
+ * hand. Resolving a flag is purely an inbox-clearing action.
+ */
+export async function resolveShopFloorFlag(
+    input: { flagId: string }
+): Promise<Result<null>> {
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return err(gate.error);
+
+    const parsed = ResolveFlagInputSchema.safeParse(input);
+    if (!parsed.success) return err(parsed.error.issues[0].message);
+
+    const user = await getUser();
+    const supabase = await createServerClient();
+
+    const { error: updErr } = await supabase
+        .from('shop_floor_flags')
+        .update({
+            status: 'resolved',
+            resolved_at: new Date().toISOString(),
+            resolved_by: user?.id ?? null,
+        })
+        .eq('id', parsed.data.flagId)
+        .eq('status', 'open');
+
+    if (updErr) return err(updErr.message);
+
+    revalidatePath('/admin/flags');
+    revalidatePath('/shop-floor');
+    return okVoid();
+}
+
+/** Lightweight counter for sidebar badge / dashboard tile. */
+export async function countOpenShopFloorFlags(): Promise<Result<number>> {
+    const supabase = await createServerClient();
+    const { count, error } = await supabase
+        .from('shop_floor_flags')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'open');
+    if (error) return err(error.message);
+    return ok(count ?? 0);
 }

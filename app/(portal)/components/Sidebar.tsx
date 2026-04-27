@@ -18,6 +18,7 @@ import {
     BadgeCheck,
     Wrench,
     Inbox,
+    AlertTriangle,
     X,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -57,6 +58,7 @@ const adminNavGroups: NavGroup[] = [
             { label: 'Artwork', href: '/admin/artwork', icon: ClipboardCheck },
             { label: 'Job Board', href: '/admin/jobs', icon: LayoutGrid },
             { label: 'Shop Floor', href: '/shop-floor', icon: Zap },
+            { label: 'Flags', href: '/admin/flags', icon: AlertTriangle },
             { label: 'Deliveries', href: '/admin/deliveries', icon: Truck },
         ],
     },
