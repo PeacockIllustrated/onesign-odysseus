@@ -1412,15 +1412,22 @@ export async function completeArtworkAndAdvanceItem(
         return { error: `Failed to update item routing: ${routingError.message}` };
     }
 
+    // Mark artwork completed BEFORE advancing the item. The artwork-approval
+    // gate in moveJobItemToStage rejects forward moves when the linked
+    // artwork is not yet completed — flipping status here is what authorises
+    // this legitimate release. See lib/production/actions.ts:moveJobItemToStage.
+    const { error: artworkStatusError } = await supabase
+        .from('artwork_jobs')
+        .update({ status: 'completed' })
+        .eq('id', artworkJobId);
+    if (artworkStatusError) {
+        return { error: `Failed to mark artwork completed: ${artworkStatusError.message}` };
+    }
+
     const advanceResult = await advanceItemToNextRoutedStage(artworkJob.job_item_id);
     if ('error' in advanceResult) {
         return { error: `Routing updated but failed to advance item: ${advanceResult.error}` };
     }
-
-    await supabase
-        .from('artwork_jobs')
-        .update({ status: 'completed' })
-        .eq('id', artworkJobId);
 
     revalidatePath('/admin/artwork');
     revalidatePath(`/admin/artwork/${artworkJobId}`);
