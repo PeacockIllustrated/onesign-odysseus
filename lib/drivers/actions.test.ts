@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createMockSupabase } from '@/lib/__mocks__/supabase';
 
-const mockBag = vi.hoisted(() => ({ current: createMockSupabase() }));
+// Lazy init — referencing createMockSupabase inside the hoisted factory
+// triggers "Cannot access ... before initialization" because vi.hoisted
+// runs before the top-level imports resolve.
+const mockBag = vi.hoisted(() => ({ current: null as any }));
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
