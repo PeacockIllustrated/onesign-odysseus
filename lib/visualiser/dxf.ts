@@ -9,12 +9,15 @@
  * Flat-development space is y-down (screen-like). DXF is y-up, so we flip Y
  * about the blank height: the part opens the right way up with origin at the
  * bottom-left, which is what CAD/laser software expects.
+ *
+ * All text is ASCII-only and properly justified — R12 readers and older CAM
+ * post-processors mangle non-ASCII glyphs and ignore un-justified TEXT
+ * placement, both of which made earlier files hard to read on the shop floor.
  */
 
 import {
     DXF_LAYERS,
     DXF_LAYER_COLORS,
-    BEND_RULE_TEXT,
     type DxfLayer,
     type PanelParams,
     type PanelDevelopment,
@@ -22,8 +25,30 @@ import {
     type FlatPath,
 } from './types';
 
+/** Fold/cut-safe ASCII. R12 + many laser post-processors choke on Unicode. */
+function ascii(s: string): string {
+    return s
+        .replace(/[×✕✖]/g, 'x')
+        .replace(/÷/g, '/')
+        .replace(/[—–]/g, '-')
+        .replace(/°/g, ' deg')
+        .replace(/[·•]/g, '-')
+        .replace(/≤/g, '<=')
+        .replace(/≥/g, '>=')
+        .replace(/…/g, '...')
+        .replace(/[\r\n]+/g, ' ')
+        .replace(/[^\x20-\x7E]/g, '')
+        .trim();
+}
+
 function header(): string {
-    return '0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n';
+    // $INSUNITS=4 (mm), $MEASUREMENT=1 (metric) so importers scale correctly.
+    return (
+        '0\nSECTION\n2\nHEADER\n' +
+        '9\n$INSUNITS\n70\n4\n' +
+        '9\n$MEASUREMENT\n70\n1\n' +
+        '0\nENDSEC\n'
+    );
 }
 
 function tables(): string {
@@ -45,6 +70,7 @@ function line(
     return `0\nLINE\n8\n${layer}\n10\n${r(x1)}\n20\n${r(y1)}\n30\n0\n11\n${r(x2)}\n21\n${r(y2)}\n31\n0\n`;
 }
 
+/** Left-baseline TEXT (notes / annotations placed clear of geometry). */
 function text(
     layer: DxfLayer,
     x: number,
@@ -52,13 +78,35 @@ function text(
     h: number,
     value: string,
 ): string {
-    // Strip newlines/control chars — one TEXT entity per call.
-    const safe = value.replace(/[\r\n]+/g, ' ');
-    return `0\nTEXT\n8\n${layer}\n10\n${r(x)}\n20\n${r(y)}\n30\n0\n40\n${r(h)}\n1\n${safe}\n`;
+    return `0\nTEXT\n8\n${layer}\n10\n${r(x)}\n20\n${r(y)}\n30\n0\n40\n${r(h)}\n1\n${ascii(value)}\n`;
+}
+
+/** Centre/middle-justified TEXT — group codes 72=1, 73=2 with the aligned
+ *  point (11/21). Without these an R12 reader left-aligns at the baseline,
+ *  so on-part labels drift off their boxes. */
+function textCentered(
+    layer: DxfLayer,
+    x: number,
+    y: number,
+    h: number,
+    value: string,
+): string {
+    return (
+        `0\nTEXT\n8\n${layer}\n` +
+        `10\n${r(x)}\n20\n${r(y)}\n30\n0\n` +
+        `40\n${r(h)}\n1\n${ascii(value)}\n` +
+        `72\n1\n` +
+        `11\n${r(x)}\n21\n${r(y)}\n31\n0\n` +
+        `73\n2\n`
+    );
 }
 
 function r(n: number): number {
     return Math.round(n * 1000) / 1000;
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+    return Math.max(lo, Math.min(hi, v));
 }
 
 interface DxfOptions {
@@ -78,35 +126,69 @@ export function generateDxf(opts: DxfOptions): string {
 
     let e = '0\nSECTION\n2\nENTITIES\n';
 
-    // Panel outline + fold lines.
+    // Panel outline (4 discrete LINEs) + a centred role label per segment.
     for (const seg of dev.segments) {
         const { xMm: x, yMm: y, wMm: w, hMm: h } = seg;
         e += line(DXF_LAYERS.PANEL_OUTLINE, x, fy(y), x + w, fy(y));
         e += line(DXF_LAYERS.PANEL_OUTLINE, x + w, fy(y), x + w, fy(y + h));
         e += line(DXF_LAYERS.PANEL_OUTLINE, x + w, fy(y + h), x, fy(y + h));
         e += line(DXF_LAYERS.PANEL_OUTLINE, x, fy(y + h), x, fy(y));
-        e += text(
-            DXF_LAYERS.DIMENSIONS,
-            x + w / 2,
-            fy(y + h / 2),
-            Math.max(6, Math.min(w, h) / 12),
-            `${seg.label}`,
-        );
-    }
-    for (const f of dev.foldLines) {
-        e += line(DXF_LAYERS.FOLD_LINES, f.x1, fy(f.y1), f.x2, fy(f.y2));
+        // Only label segments big enough to hold legible text.
+        const small = Math.min(w, h);
+        if (small >= 25) {
+            e += textCentered(
+                DXF_LAYERS.DIMENSIONS,
+                x + w / 2,
+                fy(y + h / 2),
+                clamp(small / 9, 4, 22),
+                seg.label,
+            );
+        }
     }
 
-    // Seam lines: vertical splits across the face, in flat-development X.
+    // Fold lines + an explicit "FOLD - DO NOT CUT" tag at each midpoint so a
+    // laser operator can never mistake a bend for a cut.
+    for (const f of dev.foldLines) {
+        e += line(DXF_LAYERS.FOLD_LINES, f.x1, fy(f.y1), f.x2, fy(f.y2));
+        const mx = (f.x1 + f.x2) / 2;
+        const my = (f.y1 + f.y2) / 2;
+        const horizontal = Math.abs(f.x2 - f.x1) >= Math.abs(f.y2 - f.y1);
+        const tagH = clamp(
+            (horizontal ? Math.abs(f.x2 - f.x1) : Math.abs(f.y2 - f.y1)) / 14,
+            3,
+            14,
+        );
+        e += textCentered(
+            DXF_LAYERS.FOLD_LINES,
+            mx,
+            fy(my),
+            tagH,
+            `FOLD ${f.note.includes('in') ? 'IN' : 'BACK'} - DO NOT CUT`,
+        );
+    }
+
+    // Seam lines: vertical splits across the face + a "PANEL JOIN" tag.
     if (split.wasSplit) {
         const face = dev.segments.find((s) => s.role === 'face');
         if (face) {
-            // Face X spans faceFlatW for the (deduction-adjusted) face. Seam
-            // positions are given in nominal face mm; scale to flat face mm.
             const k = face.wMm / dev.faceNominalWMm;
+            const tagH = clamp(face.hMm / 16, 3, 14);
             for (const sx of split.seamXsMm) {
                 const fx = face.xMm + sx * k;
-                e += line(DXF_LAYERS.SEAM, fx, fy(face.yMm), fx, fy(face.yMm + face.hMm));
+                e += line(
+                    DXF_LAYERS.SEAM,
+                    fx,
+                    fy(face.yMm),
+                    fx,
+                    fy(face.yMm + face.hMm),
+                );
+                e += textCentered(
+                    DXF_LAYERS.SEAM,
+                    fx,
+                    fy(face.yMm + face.hMm / 2),
+                    tagH,
+                    'PANEL JOIN',
+                );
             }
         }
     }
@@ -123,18 +205,29 @@ export function generateDxf(opts: DxfOptions): string {
         }
     }
 
-    // Notes block, below the part.
+    // Notes block, below the part, left-aligned and legible. Includes a
+    // layer legend so whoever opens the file knows what cuts and what bends.
+    const sectionLabel = split.wasSplit
+        ? `Split ${split.sections.length} panels (centre full): ${split.sections.join(' / ')} mm`
+        : 'Single panel (no split)';
     const notes = [
-        `Onesign panel — ${params.name}`,
-        params.materialLabel ? `Material: ${params.materialLabel}` : null,
-        `Thickness: ${params.materialThicknessMm}mm`,
-        BEND_RULE_TEXT,
-        split.wasSplit
-            ? `Split into ${split.sections.length} panels (centre full): ${split.sections.join(' / ')}mm`
-            : 'Single panel (no split)',
-    ].filter(Boolean) as string[];
+        `ONESIGN PANEL  -  ${params.name}`,
+        `Overall flat blank: ${dev.totalFlatWMm} x ${dev.totalFlatHMm} mm`,
+        `Sign face: ${dev.faceNominalWMm} x ${dev.faceNominalHMm} mm   Return: ${params.returnDepthMm} mm` +
+            (params.shadowGapMm > 0
+                ? `   Shadow gap: ${params.shadowGapMm} mm`
+                : '') +
+            (params.keylineMm > 0 ? `   Keyline: ${params.keylineMm} mm` : ''),
+        params.materialLabel
+            ? `Material: ${params.materialLabel}   Thickness: ${params.materialThicknessMm} mm`
+            : `Thickness: ${params.materialThicknessMm} mm`,
+        'Bend allowance: half material thickness deducted each side of every fold line',
+        sectionLabel,
+        'LAYERS:  PANEL_OUTLINE = cut   APERTURE = cut   KEYLINE = register (cut if specified)   FOLD_LINES = bend, DO NOT CUT   SEAM = panel join, DO NOT CUT',
+    ];
+    const noteH = 7;
     notes.forEach((nLine, i) => {
-        e += text(DXF_LAYERS.NOTES, 0, -20 - i * 12, 7, nLine);
+        e += text(DXF_LAYERS.NOTES, 0, -24 - i * (noteH * 1.8), noteH, nLine);
     });
 
     e += '0\nENDSEC\n';
@@ -142,6 +235,10 @@ export function generateDxf(opts: DxfOptions): string {
 }
 
 export function dxfFilename(params: PanelParams): string {
-    const safe = params.name.replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '');
-    return `${safe || 'panel'}-${Math.round(params.panelWidthMm)}x${Math.round(params.panelHeightMm)}-flat.dxf`;
+    const safe = params.name
+        .replace(/[^a-z0-9-_]+/gi, '-')
+        .replace(/^-+|-+$/g, '');
+    return `${safe || 'panel'}-${Math.round(params.panelWidthMm)}x${Math.round(
+        params.panelHeightMm,
+    )}-flat.dxf`;
 }

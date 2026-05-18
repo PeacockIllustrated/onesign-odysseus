@@ -1,22 +1,41 @@
 /**
- * Dimensioned PDF shop drawing.
+ * Dimensioned PDF shop drawing — TRUE 1:1.
  *
- * Not a cut file — a human-readable reference for the shop floor: the flat
- * development drawn to scale, fold/seam lines, a spec block, the per-panel
- * size breakdown and (optionally) the 3D thumbnail. Drawn with real jsPDF
- * vector primitives in mm, so it stays crisp and light.
+ * The page is sized to the actual flat blank so 1 mm on paper = 1 mm of
+ * metal: the shop can measure straight off it or use it as a full-size
+ * template. The part is drawn at scale 1; an info column carries the spec,
+ * a colour legend (so nobody mistakes a fold for a cut) and the 3D
+ * thumbnail. If a part is so large it would exceed the PDF page limit we
+ * fall back to a reduced-scale A4 sheet and say so on the drawing.
+ *
+ * Text is ASCII-only — jsPDF's built-in Helvetica is WinAnsi and renders
+ * stray glyphs for things like x / ÷ / — / ·.
  *
  * Browser-only (jsPDF). Callers are client components.
  */
 
 import { jsPDF } from 'jspdf';
 import {
-    BEND_RULE_TEXT,
     type PanelParams,
     type PanelDevelopment,
     type PanelSplit,
     type FlatPath,
 } from './types';
+
+/** PDF media box limit is ~5080 mm; stay safely under it. */
+const MAX_PAGE_MM = 4800;
+
+function ascii(s: string): string {
+    return s
+        .replace(/[×✕✖]/g, 'x')
+        .replace(/÷/g, '/')
+        .replace(/[—–]/g, '-')
+        .replace(/°/g, ' deg')
+        .replace(/[·•]/g, '|')
+        .replace(/…/g, '...')
+        .replace(/[^\x20-\x7E]/g, '')
+        .trim();
+}
 
 interface PdfOptions {
     development: PanelDevelopment;
@@ -30,147 +49,330 @@ interface PdfOptions {
 
 export function generatePdfBlob(opts: PdfOptions): Blob {
     const { development: dev, split, params } = opts;
-    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
-    const PAGE_W = 297;
-    const PAGE_H = 210;
-    const M = 12;
+    const T = (s: string) => ascii(s);
 
-    // Header.
+    const M = 18; // page margin
+    const COL_W = 86; // left info column
+    const partW = Math.max(1, dev.totalFlatWMm);
+    const partH = Math.max(1, dev.totalFlatHMm);
+
+    // Drawing origin leaves room for the left column + the vertical dim.
+    const drawX = M + COL_W + 16;
+    const drawY = M + 18;
+
+    // How tall the info column needs to be (fixed line steps + thumbnail).
+    const specRows = 9;
+    let infoBottom = M + 13 + specRows * 5.2;
+    if (split.wasSplit) infoBottom += 6;
+    infoBottom += 14; // bend note
+    infoBottom += 6 + 5 * 5; // legend header + 5 rows
+    const hasThumb = !!opts.thumbnailDataUrl;
+    if (hasThumb) infoBottom += 52;
+    const infoColH = infoBottom + M;
+
+    // Prefer true 1:1; fall back to a reduced A4 only if the part is huge.
+    const oneToOneW = drawX + partW + M + 18;
+    const oneToOneH = Math.max(infoColH, drawY + partH + 26) + M;
+    const oneToOne =
+        oneToOneW <= MAX_PAGE_MM && oneToOneH <= MAX_PAGE_MM;
+
+    let PAGE_W: number;
+    let PAGE_H: number;
+    let scale: number;
+    let dX = drawX;
+    let dY = drawY;
+    let doc: jsPDF;
+
+    if (oneToOne) {
+        PAGE_W = oneToOneW;
+        PAGE_H = oneToOneH;
+        scale = 1;
+        doc = new jsPDF({
+            unit: 'mm',
+            format: [PAGE_W, PAGE_H],
+            orientation: PAGE_W >= PAGE_H ? 'landscape' : 'portrait',
+        });
+    } else {
+        PAGE_W = 297;
+        PAGE_H = 210;
+        doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+        dX = M + COL_W + 6;
+        dY = M + 22;
+        const drawW = PAGE_W - dX - M - 14;
+        const drawH = PAGE_H - dY - M - 12;
+        scale = Math.min(drawW / partW, drawH / partH);
+    }
+
+    const px = (x: number) => dX + x * scale;
+    const py = (y: number) => dY + y * scale;
+
+    // ---- Header --------------------------------------------------------
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(15);
-    doc.text(`Onesign Panel — ${params.name}`, M, M);
+    doc.text(T(`Onesign Panel - ${params.name}`), M, M);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(110);
     doc.text(
-        `Production shop drawing · not to be used as a cut file · ${new Date().toLocaleDateString('en-GB')}`,
+        T(
+            `Production shop drawing | NOT a cut file | ${new Date().toLocaleDateString('en-GB')}`,
+        ),
         M,
         M + 5,
     );
     doc.setTextColor(0);
 
-    // Spec block (left column).
-    const specY = M + 14;
+    // ---- Spec block ----------------------------------------------------
+    const matLabel = params.materialLabel
+        ? params.materialLabel.length > 30
+            ? params.materialLabel.slice(0, 29) + '...'
+            : params.materialLabel
+        : '-';
+    const specY = M + 13;
     const spec: Array<[string, string]> = [
-        ['Face size', `${dev.faceNominalWMm} × ${dev.faceNominalHMm} mm`],
+        ['Sign face', `${dev.faceNominalWMm} x ${dev.faceNominalHMm} mm`],
         ['Returns', returnsLabel(params)],
         ['Return depth', `${params.returnDepthMm} mm`],
-        ['Shadow gap', params.shadowGapMm > 0 ? `${params.shadowGapMm} mm` : '—'],
-        ['Keyline', params.keylineMm > 0 ? `${params.keylineMm} mm` : '—'],
-        ['Material', params.materialLabel || '—'],
+        ['Shadow gap', params.shadowGapMm > 0 ? `${params.shadowGapMm} mm` : '-'],
+        ['Keyline', params.keylineMm > 0 ? `${params.keylineMm} mm` : '-'],
+        ['Material', matLabel],
         ['Thickness', `${params.materialThicknessMm} mm`],
         [
             'Panels',
             split.wasSplit
-                ? `${split.sections.length} (centre full): ${split.sections.join(' / ')} mm`
+                ? `${split.sections.length} (centre full)`
                 : 'Single panel',
         ],
-        ['Flat blank', `${dev.totalFlatWMm} × ${dev.totalFlatHMm} mm`],
+        ['Flat blank', `${dev.totalFlatWMm} x ${dev.totalFlatHMm} mm`],
     ];
     doc.setFontSize(8);
     spec.forEach(([k, v], i) => {
-        const y = specY + i * 5.4;
+        const y = specY + i * 5.2;
         doc.setFont('helvetica', 'bold');
-        doc.text(k, M, y);
+        doc.text(T(k), M, y);
         doc.setFont('helvetica', 'normal');
-        doc.text(v, M + 28, y);
+        doc.text(T(v), M + 26, y);
     });
-    doc.setFontSize(7);
-    doc.setTextColor(110);
-    doc.text(BEND_RULE_TEXT, M, specY + spec.length * 5.4 + 4, { maxWidth: 70 });
-    doc.setTextColor(0);
+    let cursorY = specY + spec.length * 5.2 + 2;
 
-    // 3D thumbnail (top-right) if provided.
-    if (opts.thumbnailDataUrl) {
-        const tw = 70;
-        const th = 50;
+    if (split.wasSplit) {
+        doc.setFontSize(7);
+        doc.setTextColor(90);
+        doc.text(
+            T(`Section widths: ${split.sections.join(' / ')} mm`),
+            M,
+            cursorY,
+            { maxWidth: COL_W },
+        );
+        doc.setTextColor(0);
+        cursorY += 6;
+    }
+
+    doc.setFontSize(7);
+    doc.setTextColor(90);
+    doc.text(
+        T(
+            'Bend allowance: half the material thickness is deducted from each side of every fold line.',
+        ),
+        M,
+        cursorY,
+        { maxWidth: COL_W },
+    );
+    doc.setTextColor(0);
+    cursorY += 12;
+
+    // ---- Legend --------------------------------------------------------
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.text('LEGEND', M, cursorY);
+    doc.setFont('helvetica', 'normal');
+    cursorY += 4;
+    const legend: Array<{
+        rgb: [number, number, number];
+        dash: number[];
+        label: string;
+        w: number;
+    }> = [
+        { rgb: [20, 20, 20], dash: [], label: 'Cut outline', w: 0.5 },
+        {
+            rgb: [200, 0, 0],
+            dash: [1.2, 1.2],
+            label: 'Fold line - DO NOT CUT',
+            w: 0.4,
+        },
+        {
+            rgb: [0, 150, 60],
+            dash: [1.6, 1.2],
+            label: 'Panel seam / join',
+            w: 0.5,
+        },
+        { rgb: [30, 90, 200], dash: [], label: 'Aperture cut', w: 0.35 },
+        {
+            rgb: [0, 170, 190],
+            dash: [0.8, 0.8],
+            label: 'Keyline (register)',
+            w: 0.35,
+        },
+    ];
+    doc.setFontSize(7);
+    legend.forEach((l, i) => {
+        const y = cursorY + i * 5;
+        doc.setDrawColor(l.rgb[0], l.rgb[1], l.rgb[2]);
+        doc.setLineWidth(l.w);
+        doc.setLineDashPattern(l.dash, 0);
+        doc.line(M, y - 1, M + 10, y - 1);
+        doc.setLineDashPattern([], 0);
+        doc.setTextColor(40);
+        doc.text(T(l.label), M + 13, y);
+    });
+    doc.setTextColor(0);
+    cursorY += 5 * 5 + 4;
+
+    // ---- 3D thumbnail (in the info column) ----------------------------
+    if (hasThumb && opts.thumbnailDataUrl) {
+        const tw = 64;
+        const th = 44;
         try {
             doc.addImage(
                 opts.thumbnailDataUrl,
                 'PNG',
-                PAGE_W - M - tw,
                 M,
+                cursorY,
                 tw,
                 th,
                 undefined,
                 'FAST',
             );
-            doc.setDrawColor(200);
-            doc.rect(PAGE_W - M - tw, M, tw, th);
+            doc.setDrawColor(210);
+            doc.setLineWidth(0.2);
+            doc.rect(M, cursorY, tw, th);
         } catch {
             /* thumbnail is best-effort */
         }
     }
 
-    // Flat development drawing area (right of the spec column).
-    const drawX = M + 90;
-    const drawY = M + 18;
-    const drawW = PAGE_W - drawX - M;
-    const drawH = PAGE_H - drawY - M;
-    const scale = Math.min(
-        drawW / (dev.totalFlatWMm || 1),
-        drawH / (dev.totalFlatHMm || 1),
-    );
-    const offX = drawX + (drawW - dev.totalFlatWMm * scale) / 2;
-    const offY = drawY + (drawH - dev.totalFlatHMm * scale) / 2;
-    const px = (x: number) => offX + x * scale;
-    const py = (y: number) => offY + y * scale;
-
+    // ---- Flat development drawing -------------------------------------
+    const scaleText = oneToOne
+        ? '1:1 (true size)'
+        : `1:${Math.round(1 / scale)} (reduced to fit A4)`;
     doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
-    doc.text(`Flat development (1:${(1 / scale).toFixed(1)})`, drawX, drawY - 4);
+    doc.text(
+        T(
+            `Flat development  |  scale ${scaleText}  |  blank ${dev.totalFlatWMm} x ${dev.totalFlatHMm} mm`,
+        ),
+        dX,
+        dY - 6,
+    );
     doc.setFont('helvetica', 'normal');
 
-    // Panel outline.
+    // Cut outline.
     doc.setDrawColor(20);
-    doc.setLineWidth(0.3);
+    doc.setLineWidth(0.4);
     for (const seg of dev.segments) {
         doc.rect(px(seg.xMm), py(seg.yMm), seg.wMm * scale, seg.hMm * scale);
     }
 
     // Fold lines — red dashed.
     doc.setDrawColor(200, 0, 0);
-    doc.setLineWidth(0.2);
+    doc.setLineWidth(0.3);
     doc.setLineDashPattern([1.2, 1.2], 0);
     for (const f of dev.foldLines) {
         doc.line(px(f.x1), py(f.y1), px(f.x2), py(f.y2));
     }
+    doc.setLineDashPattern([], 0);
 
     // Seam lines — green dashed.
     if (split.wasSplit) {
-        const face = dev.segments.find((s) => s.role === 'face');
-        if (face) {
-            const k = face.wMm / dev.faceNominalWMm;
+        const sFace = dev.segments.find((s) => s.role === 'face');
+        if (sFace) {
+            const k = sFace.wMm / dev.faceNominalWMm;
             doc.setDrawColor(0, 150, 60);
+            doc.setLineWidth(0.4);
+            doc.setLineDashPattern([1.6, 1.2], 0);
             for (const sx of split.seamXsMm) {
-                const fx = face.xMm + sx * k;
-                doc.line(px(fx), py(face.yMm), px(fx), py(face.yMm + face.hMm));
+                const fx = sFace.xMm + sx * k;
+                doc.line(
+                    px(fx),
+                    py(sFace.yMm),
+                    px(fx),
+                    py(sFace.yMm + sFace.hMm),
+                );
             }
+            doc.setLineDashPattern([], 0);
         }
     }
-    doc.setLineDashPattern([], 0);
 
-    // Aperture (blue) + keyline (cyan) as thin polylines.
-    drawPaths(doc, opts.aperture ?? [], px, py, [30, 90, 200]);
-    drawPaths(doc, opts.keyline ?? [], px, py, [0, 170, 190]);
+    // Aperture (blue) + keyline (cyan).
+    drawPaths(doc, opts.aperture ?? [], px, py, [30, 90, 200], 0.3);
+    drawPaths(doc, opts.keyline ?? [], px, py, [0, 170, 190], 0.25);
 
-    // Overall dimensions.
-    doc.setDrawColor(120);
-    doc.setTextColor(80);
-    doc.setFontSize(7);
-    const bx = px(0);
-    const byTop = py(0);
-    const byBot = py(dev.totalFlatHMm);
-    doc.text(`${dev.totalFlatWMm} mm`, (px(0) + px(dev.totalFlatWMm)) / 2, byBot + 6, {
-        align: 'center',
-    });
-    doc.text(`${dev.totalFlatHMm} mm`, bx - 4, (byTop + byBot) / 2, {
-        align: 'center',
-        angle: 90,
-    });
+    // ---- Dimension lines ----------------------------------------------
+    doc.setTextColor(70);
+    dimH(
+        doc,
+        px(0),
+        px(dev.totalFlatWMm),
+        py(dev.totalFlatHMm) + 8,
+        T(`${dev.totalFlatWMm} mm`),
+    );
+    dimV(
+        doc,
+        py(0),
+        py(dev.totalFlatHMm),
+        px(0) - 8,
+        T(`${dev.totalFlatHMm} mm`),
+    );
+    const face = dev.segments.find((s) => s.role === 'face');
+    if (face) {
+        dimH(
+            doc,
+            px(face.xMm),
+            px(face.xMm + face.wMm),
+            py(face.yMm) - 6,
+            T(`face ${dev.faceNominalWMm} mm`),
+        );
+    }
     doc.setTextColor(0);
 
     return doc.output('blob');
+}
+
+/** Horizontal dimension: extension ticks at both ends + centred value. */
+function dimH(
+    doc: jsPDF,
+    x1: number,
+    x2: number,
+    y: number,
+    label: string,
+): void {
+    doc.setDrawColor(120);
+    doc.setLineWidth(0.2);
+    doc.line(x1, y, x2, y);
+    doc.line(x1, y - 1.4, x1, y + 1.4);
+    doc.line(x2, y - 1.4, x2, y + 1.4);
+    doc.setFontSize(7);
+    doc.text(label, (x1 + x2) / 2, y + 3.2, { align: 'center' });
+}
+
+/** Vertical dimension: extension ticks at both ends + rotated value. */
+function dimV(
+    doc: jsPDF,
+    y1: number,
+    y2: number,
+    x: number,
+    label: string,
+): void {
+    doc.setDrawColor(120);
+    doc.setLineWidth(0.2);
+    doc.line(x, y1, x, y2);
+    doc.line(x - 1.4, y1, x + 1.4, y1);
+    doc.line(x - 1.4, y2, x + 1.4, y2);
+    doc.setFontSize(7);
+    doc.text(label, x - 2.4, (y1 + y2) / 2, {
+        align: 'center',
+        angle: 90,
+    });
 }
 
 function drawPaths(
@@ -179,10 +381,11 @@ function drawPaths(
     px: (n: number) => number,
     py: (n: number) => number,
     rgb: [number, number, number],
+    width: number,
 ) {
     if (!paths.length) return;
     doc.setDrawColor(rgb[0], rgb[1], rgb[2]);
-    doc.setLineWidth(0.15);
+    doc.setLineWidth(width);
     for (const p of paths) {
         for (let i = 0; i + 1 < p.points.length; i++) {
             const a = p.points[i];
@@ -204,6 +407,10 @@ function returnsLabel(p: PanelParams): string {
 }
 
 export function pdfFilename(params: PanelParams): string {
-    const safe = params.name.replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '');
-    return `${safe || 'panel'}-${Math.round(params.panelWidthMm)}x${Math.round(params.panelHeightMm)}-shop.pdf`;
+    const safe = params.name
+        .replace(/[^a-z0-9-_]+/gi, '-')
+        .replace(/^-+|-+$/g, '');
+    return `${safe || 'panel'}-${Math.round(params.panelWidthMm)}x${Math.round(
+        params.panelHeightMm,
+    )}-shop.pdf`;
 }
