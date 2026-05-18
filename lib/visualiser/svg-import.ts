@@ -591,12 +591,18 @@ export function buildKeyline(paths: FlatPath[], offsetMm: number): FlatPath[] {
     const closed = paths.filter((p) => p.closed && p.points.length > 3);
     if (closed.length === 0) return [];
 
+    // Deduplicate near-coincident points first — flattening can emit
+    // micro-segments whose normals are noisy and spawn tiny spikes.
+    const rings = closed
+        .map((p) => dedupeRing(p.points.slice(0, -1)))
+        .filter((r) => r.length >= 3);
+    if (rings.length === 0) return [];
+
     // Pick the global sign from the largest ring (the outer contour) so a
     // positive offset enlarges the shape overall, regardless of winding.
-    let outer = closed[0].points.slice(0, -1);
-    let outerArea = Math.abs(signedArea(outer));
-    for (const p of closed) {
-        const ring = p.points.slice(0, -1);
+    let outer = rings[0];
+    let outerArea = Math.abs(signedArea(rings[0]));
+    for (const ring of rings) {
         const a = Math.abs(signedArea(ring));
         if (a > outerArea) {
             outerArea = a;
@@ -606,11 +612,75 @@ export function buildKeyline(paths: FlatPath[], offsetMm: number): FlatPath[] {
     const probe = offsetRing(outer, offsetMm, 1);
     const sign = Math.abs(signedArea(probe)) >= outerArea ? 1 : -1;
 
-    return closed.map((p) => {
-        const ring = offsetRing(p.points.slice(0, -1), offsetMm, sign);
+    return rings.map((src) => {
+        const raw = offsetRing(src, offsetMm, sign);
+        // A naive offset self-intersects at concave corners and across
+        // narrow letter gaps (V notch, E slots, U base) → spikes. A valid
+        // outward point sits ~offset from the source; anything that folded
+        // back to within half the offset is an artifact. Drop those and let
+        // the survivors bridge — Illustrator's overlap-removal result.
+        const cleaned = stripOffsetSpikes(raw, src, offsetMm);
+        const ring = cleaned.length >= 4 ? cleaned : raw;
         if (ring.length) ring.push(ring[0]); // re-close
         return { points: ring, closed: true };
     });
+}
+
+/** Drop consecutive points within `eps` mm — kills flattening noise. */
+function dedupeRing(pts: number[][], eps = 1e-3): number[][] {
+    const out: number[][] = [];
+    for (const p of pts) {
+        const q = out[out.length - 1];
+        if (!q || Math.hypot(p[0] - q[0], p[1] - q[1]) > eps) out.push(p);
+    }
+    while (
+        out.length > 1 &&
+        Math.hypot(
+            out[0][0] - out[out.length - 1][0],
+            out[0][1] - out[out.length - 1][1],
+        ) <= eps
+    ) {
+        out.pop();
+    }
+    return out;
+}
+
+/**
+ * Remove offset points that folded back toward the source (concave-corner
+ * spikes and narrow-gap collisions), keeping only points at least half the
+ * offset clear of the source.
+ */
+function stripOffsetSpikes(
+    offsetPts: Array<[number, number]>,
+    source: number[][],
+    offsetMm: number,
+): Array<[number, number]> {
+    if (offsetPts.length < 4) return offsetPts;
+    // Cap the distance test for dense glyphs — offset-scale precision is
+    // plenty for spotting fold-backs.
+    const stride = Math.max(1, Math.ceil(source.length / 1200));
+    const ref: number[][] = [];
+    for (let i = 0; i < source.length; i += stride) ref.push(source[i]);
+    const threshold = offsetMm * 0.5;
+    return offsetPts.filter((p) => minDistToRing(p, ref) >= threshold);
+}
+
+function minDistToRing(p: [number, number], ring: number[][]): number {
+    let m = Infinity;
+    for (let i = 0; i < ring.length; i++) {
+        const a = ring[i];
+        const b = ring[(i + 1) % ring.length];
+        const dx = b[0] - a[0];
+        const dy = b[1] - a[1];
+        const l2 = dx * dx + dy * dy;
+        let t = l2 > 0 ? ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2 : 0;
+        t = Math.max(0, Math.min(1, t));
+        const cx = a[0] + t * dx;
+        const cy = a[1] + t * dy;
+        const d = Math.hypot(p[0] - cx, p[1] - cy);
+        if (d < m) m = d;
+    }
+    return m;
 }
 
 /** Offset one closed ring by `d` along edge perpendiculars (miter join). */
