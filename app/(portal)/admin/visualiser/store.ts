@@ -1,11 +1,12 @@
 'use client';
 
 import { create } from 'zustand';
-import type {
-    PanelParams,
-    PanelEdge,
-    ImportedSvg,
-    VisualiserDesignRow,
+import {
+    DEFAULT_PLACEMENT,
+    type PanelParams,
+    type PanelEdge,
+    type ImportedSvg,
+    type VisualiserDesignRow,
 } from '@/lib/visualiser/types';
 
 export const DEFAULT_PARAMS: PanelParams = {
@@ -65,9 +66,7 @@ export const useVisualiser = create<VisualiserState>((set) => ({
             params: {
                 ...s.params,
                 aperturePlacement: {
-                    offsetXMm: 0,
-                    offsetYMm: 0,
-                    scale: 1,
+                    ...DEFAULT_PLACEMENT,
                     ...(s.params.aperturePlacement ?? {}),
                     ...patch,
                 },
@@ -81,11 +80,8 @@ export const useVisualiser = create<VisualiserState>((set) => ({
             imported,
             params: {
                 ...s.params,
-                aperturePlacement: s.params.aperturePlacement ?? {
-                    offsetXMm: 0,
-                    offsetYMm: 0,
-                    scale: 1,
-                },
+                aperturePlacement:
+                    s.params.aperturePlacement ?? DEFAULT_PLACEMENT,
             },
             dirty: true,
         })),

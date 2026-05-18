@@ -78,16 +78,34 @@ export const ReturnsSchema = z.object({
 export type Returns = z.infer<typeof ReturnsSchema>;
 
 /**
- * Placement of the uploaded aperture SVG on the face. Offsets are mm from the
- * face top-left; scale multiplies the SVG's native mm units. Nullable — a
- * panel-only design has no aperture.
+ * Placement of the uploaded aperture SVG on the face.
+ *
+ * The anchor is the artwork's CENTRE OF MASS (its bounding-box centre), so
+ * scaling and re-aligning never drift the artwork. `alignH`/`alignV` snap
+ * that centre to a face position (default: dead centre); `nudge` is a fine
+ * mm adjustment from there; `scale` multiplies the SVG's native units.
+ * Nullable — a panel-only design has no aperture.
  */
+export type AlignH = 'left' | 'center' | 'right';
+export type AlignV = 'top' | 'middle' | 'bottom';
+
 export const AperturePlacementSchema = z.object({
-    offsetXMm: z.number(),
-    offsetYMm: z.number(),
+    alignH: z.enum(['left', 'center', 'right']),
+    alignV: z.enum(['top', 'middle', 'bottom']),
+    nudgeXMm: z.number(),
+    nudgeYMm: z.number(),
     scale: z.number().positive(),
 });
 export type AperturePlacement = z.infer<typeof AperturePlacementSchema>;
+
+/** Default: artwork centred on the face, no nudge, 1:1 scale. */
+export const DEFAULT_PLACEMENT: AperturePlacement = {
+    alignH: 'center',
+    alignV: 'middle',
+    nudgeXMm: 0,
+    nudgeYMm: 0,
+    scale: 1,
+};
 
 export const PanelParamsSchema = z.object({
     name: z.string().min(1, 'name is required').max(120),

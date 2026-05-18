@@ -12,6 +12,7 @@ import { splitPanels } from '@/lib/visualiser/split';
 import { importSvg, buildKeyline } from '@/lib/visualiser/svg-import';
 import {
     PanelParamsSchema,
+    DEFAULT_PLACEMENT,
     type VisualiserDesignRow,
     type PanelParams,
 } from '@/lib/visualiser/types';
@@ -19,7 +20,7 @@ import {
 const Scene3D = dynamic(() => import('./Scene3D'), {
     ssr: false,
     loading: () => (
-        <div className="flex h-full items-center justify-center bg-[#1a1f23] text-sm text-neutral-500">
+        <div className="flex h-full items-center justify-center bg-white text-sm text-neutral-400">
             Loading 3D preview…
         </div>
     ),
@@ -61,11 +62,7 @@ export function VisualiserClient({
         [params.panelWidthMm],
     );
 
-    const placement = params.aperturePlacement ?? {
-        offsetXMm: 0,
-        offsetYMm: 0,
-        scale: 1,
-    };
+    const placement = params.aperturePlacement ?? DEFAULT_PLACEMENT;
 
     const aperture = useMemo(() => {
         if (!development || !imported) return [];

@@ -222,27 +222,57 @@ function cap(s: string): string {
 
 /**
  * Map imported aperture paths (native SVG mm) into flat-development space.
- * Placement offsets are mm from the face top-left; the artwork's own bbox
- * origin is normalised out so (0,0) offset = artwork flush to the face
- * corner. `scale` multiplies the artwork's native units.
+ *
+ * Anchor = the artwork's centre of mass (bbox centre). Alignment snaps that
+ * centre to a face position (centre by default; left/right/top/bottom flush
+ * the scaled artwork edge to the face edge); nudge is a fine mm offset from
+ * there. Scaling about the centre never drifts the artwork.
  */
 export function placeAperture(
     dev: PanelDevelopment,
     paths: FlatPath[],
-    bbox: { x: number; y: number },
+    bbox: { x: number; y: number; w: number; h: number },
     placement: AperturePlacement,
 ): FlatPath[] {
     const face = dev.segments.find((s) => s.role === 'face');
     if (!face) return [];
-    const ox = face.xMm + placement.offsetXMm;
-    const oy = face.yMm + placement.offsetYMm;
+
+    const faceHalfW = face.wMm / 2;
+    const faceHalfH = face.hMm / 2;
+    const faceCx = face.xMm + faceHalfW;
+    const faceCy = face.yMm + faceHalfH;
+
+    const scaledHalfW = (bbox.w * placement.scale) / 2;
+    const scaledHalfH = (bbox.h * placement.scale) / 2;
+
+    // Offset of the artwork centre from the face centre (mm, y-down).
+    const baseX =
+        placement.alignH === 'left'
+            ? scaledHalfW - faceHalfW
+            : placement.alignH === 'right'
+              ? faceHalfW - scaledHalfW
+              : 0;
+    const baseY =
+        placement.alignV === 'top'
+            ? scaledHalfH - faceHalfH
+            : placement.alignV === 'bottom'
+              ? faceHalfH - scaledHalfH
+              : 0;
+
+    const cx = faceCx + baseX + placement.nudgeXMm;
+    const cy = faceCy + baseY + placement.nudgeYMm;
+
+    // Artwork's own centre of mass (bbox centre) — the anchor.
+    const svgCx = bbox.x + bbox.w / 2;
+    const svgCy = bbox.y + bbox.h / 2;
+
     return paths.map((p) => ({
         closed: p.closed,
         points: p.points.map(
             ([x, y]) =>
                 [
-                    ox + (x - bbox.x) * placement.scale,
-                    oy + (y - bbox.y) * placement.scale,
+                    cx + (x - svgCx) * placement.scale,
+                    cy + (y - svgCy) * placement.scale,
                 ] as [number, number],
         ),
     }));

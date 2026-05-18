@@ -399,34 +399,109 @@ export function thinFeatureScan(
     return warnings;
 }
 
+const MITER_LIMIT = 4; // Adobe Illustrator "Offset Path" default
+
 /**
- * Keyline = uniform outward offset around each closed aperture path.
- * Pragmatic vertex-normal offset (orientation from signed area). Good enough
- * for a register/relief line; exact polygon offsetting is a noted follow-up.
+ * Keyline = uniform outward offset around the aperture, matching Adobe
+ * Illustrator's **Offset Path** (miter join, miter limit 4, bevel fallback).
+ *
+ * Every edge is translated *exactly* `offsetMm` along its perpendicular and
+ * the corners are the true intersection of the two offset edges — not an
+ * averaged-normal nudge, which under-offsets corners and made the old
+ * keyline look tight/wrong. A positive value grows the outer contour; the
+ * global perpendicular sign is resolved from the largest sub-path so holes
+ * keep their relative winding and the band stays uniform on compound paths
+ * (letters like O / A), exactly like Illustrator.
  */
 export function buildKeyline(paths: FlatPath[], offsetMm: number): FlatPath[] {
     if (offsetMm <= 0) return [];
-    return paths
-        .filter((p) => p.closed && p.points.length > 3)
-        .map((p) => {
-            const pts = p.points.slice(0, -1); // drop closing dup
-            const area = signedArea(pts);
-            const dir = area < 0 ? -1 : 1; // CCW vs CW → outward sign
-            const out: Array<[number, number]> = pts.map((cur, k) => {
-                const prev = pts[(k - 1 + pts.length) % pts.length];
-                const next = pts[(k + 1) % pts.length];
-                const n1 = normal(prev, cur);
-                const n2 = normal(cur, next);
-                let nx = (n1[0] + n2[0]) * dir;
-                let ny = (n1[1] + n2[1]) * dir;
-                const len = Math.hypot(nx, ny) || 1;
-                nx /= len;
-                ny /= len;
-                return [cur[0] + nx * offsetMm, cur[1] + ny * offsetMm];
-            });
-            out.push(out[0]);
-            return { points: out, closed: true };
-        });
+    const closed = paths.filter((p) => p.closed && p.points.length > 3);
+    if (closed.length === 0) return [];
+
+    // Pick the global sign from the largest ring (the outer contour) so a
+    // positive offset enlarges the shape overall, regardless of winding.
+    let outer = closed[0].points.slice(0, -1);
+    let outerArea = Math.abs(signedArea(outer));
+    for (const p of closed) {
+        const ring = p.points.slice(0, -1);
+        const a = Math.abs(signedArea(ring));
+        if (a > outerArea) {
+            outerArea = a;
+            outer = ring;
+        }
+    }
+    const probe = offsetRing(outer, offsetMm, 1);
+    const sign = Math.abs(signedArea(probe)) >= outerArea ? 1 : -1;
+
+    return closed.map((p) => {
+        const ring = offsetRing(p.points.slice(0, -1), offsetMm, sign);
+        if (ring.length) ring.push(ring[0]); // re-close
+        return { points: ring, closed: true };
+    });
+}
+
+/** Offset one closed ring by `d` along edge perpendiculars (miter join). */
+function offsetRing(
+    pts: number[][],
+    d: number,
+    sign: number,
+): Array<[number, number]> {
+    const n = pts.length;
+    if (n < 3) return pts.map((p) => [p[0], p[1]] as [number, number]);
+
+    const dir: Array<[number, number]> = [];
+    const nrm: Array<[number, number]> = [];
+    const linePt: Array<[number, number]> = []; // a point on offset line i
+    for (let i = 0; i < n; i++) {
+        const a = pts[i];
+        const b = pts[(i + 1) % n];
+        let ux = b[0] - a[0];
+        let uy = b[1] - a[1];
+        const L = Math.hypot(ux, uy) || 1;
+        ux /= L;
+        uy /= L;
+        dir.push([ux, uy]);
+        const nx = -uy * sign;
+        const ny = ux * sign;
+        nrm.push([nx, ny]);
+        linePt.push([a[0] + nx * d, a[1] + ny * d]);
+    }
+
+    const out: Array<[number, number]> = [];
+    for (let i = 0; i < n; i++) {
+        const j = (i - 1 + n) % n; // previous edge
+        const ip = lineIntersect(linePt[j], dir[j], linePt[i], dir[i]);
+        const vx = pts[i][0];
+        const vy = pts[i][1];
+        if (ip) {
+            const miter = Math.hypot(ip[0] - vx, ip[1] - vy);
+            if (miter <= Math.abs(d) * MITER_LIMIT) {
+                out.push(ip);
+                continue;
+            }
+            // Past the miter limit → bevel the corner (two points).
+            out.push([vx + nrm[j][0] * d, vy + nrm[j][1] * d]);
+            out.push([vx + nrm[i][0] * d, vy + nrm[i][1] * d]);
+        } else {
+            // Collinear / straight continuation → single offset point.
+            out.push([vx + nrm[i][0] * d, vy + nrm[i][1] * d]);
+        }
+    }
+    return out;
+}
+
+function lineIntersect(
+    p0: number[],
+    u0: number[],
+    p1: number[],
+    u1: number[],
+): [number, number] | null {
+    const cross = u0[0] * u1[1] - u0[1] * u1[0];
+    if (Math.abs(cross) < 1e-9) return null;
+    const dx = p1[0] - p0[0];
+    const dy = p1[1] - p0[1];
+    const t = (dx * u1[1] - dy * u1[0]) / cross;
+    return [p0[0] + t * u0[0], p0[1] + t * u0[1]];
 }
 
 function signedArea(pts: number[][]): number {
@@ -437,11 +512,4 @@ function signedArea(pts: number[][]): number {
         s += x1 * y2 - x2 * y1;
     }
     return s / 2;
-}
-
-function normal(a: number[], b: number[]): [number, number] {
-    const dx = b[0] - a[0];
-    const dy = b[1] - a[1];
-    const len = Math.hypot(dx, dy) || 1;
-    return [dy / len, -dx / len];
 }

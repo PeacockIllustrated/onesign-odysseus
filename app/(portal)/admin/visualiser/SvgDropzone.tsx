@@ -3,7 +3,67 @@
 import { useRef, useState } from 'react';
 import { useVisualiser } from './store';
 import { importSvg } from '@/lib/visualiser/svg-import';
+import type { AlignH, AlignV } from '@/lib/visualiser/types';
 import { AlertTriangle, Upload, X } from 'lucide-react';
+
+function Segmented<T extends string>({
+    options,
+    value,
+    onChange,
+}: {
+    options: Array<[T, string]>;
+    value: T;
+    onChange: (v: T) => void;
+}) {
+    return (
+        <div className="flex overflow-hidden rounded-md border border-neutral-300">
+            {options.map(([val, label], i) => (
+                <button
+                    key={val}
+                    type="button"
+                    onClick={() => onChange(val)}
+                    className={`flex-1 py-1 text-xs font-medium transition-colors ${
+                        i > 0 ? 'border-l border-neutral-300' : ''
+                    } ${
+                        value === val
+                            ? 'bg-black text-white'
+                            : 'bg-white text-neutral-500 hover:bg-neutral-100'
+                    }`}
+                >
+                    {label}
+                </button>
+            ))}
+        </div>
+    );
+}
+
+function NumField({
+    label,
+    value,
+    onChange,
+    step,
+}: {
+    label: string;
+    value: number;
+    onChange: (n: number) => void;
+    step: number;
+}) {
+    return (
+        <label className="block">
+            <span className="text-[10px] text-neutral-500">{label}</span>
+            <input
+                type="number"
+                step={step}
+                value={value}
+                onChange={(e) => {
+                    const n = parseFloat(e.target.value);
+                    onChange(Number.isNaN(n) ? 0 : n);
+                }}
+                className="mt-0.5 w-full rounded border border-neutral-300 px-1.5 py-1 text-xs focus:border-black focus:outline-none"
+            />
+        </label>
+    );
+}
 
 export function SvgDropzone() {
     const { svgSource, imported, params, setSvg, clearSvg, setPlacement } =
@@ -96,32 +156,97 @@ export function SvgDropzone() {
             )}
 
             {placement && (
-                <div className="grid grid-cols-3 gap-2">
-                    {(
-                        [
-                            ['offsetXMm', 'X offset'],
-                            ['offsetYMm', 'Y offset'],
-                            ['scale', 'Scale'],
-                        ] as const
-                    ).map(([key, label]) => (
-                        <label key={key} className="block">
+                <div className="space-y-2.5">
+                    <div className="grid grid-cols-2 gap-2">
+                        <div>
                             <span className="text-[10px] text-neutral-500">
-                                {label}
+                                Horizontal
                             </span>
-                            <input
-                                type="number"
-                                step={key === 'scale' ? 0.05 : 1}
-                                value={placement[key]}
-                                onChange={(e) => {
-                                    const n = parseFloat(e.target.value);
+                            <div className="mt-0.5">
+                                <Segmented<AlignH>
+                                    options={[
+                                        ['left', 'Left'],
+                                        ['center', 'Centre'],
+                                        ['right', 'Right'],
+                                    ]}
+                                    value={placement.alignH}
+                                    onChange={(v) =>
+                                        setPlacement({ alignH: v })
+                                    }
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <span className="text-[10px] text-neutral-500">
+                                Vertical
+                            </span>
+                            <div className="mt-0.5">
+                                <Segmented<AlignV>
+                                    options={[
+                                        ['top', 'Top'],
+                                        ['middle', 'Middle'],
+                                        ['bottom', 'Bottom'],
+                                    ]}
+                                    value={placement.alignV}
+                                    onChange={(v) =>
+                                        setPlacement({ alignV: v })
+                                    }
+                                />
+                            </div>
+                        </div>
+                    </div>
+                    {imported && imported.bbox.w > 0 && imported.bbox.h > 0 && (
+                        <div className="grid grid-cols-2 gap-2">
+                            <NumField
+                                label="Width (mm)"
+                                step={1}
+                                value={
+                                    Math.round(
+                                        imported.bbox.w * placement.scale * 10,
+                                    ) / 10
+                                }
+                                onChange={(n) =>
                                     setPlacement({
-                                        [key]: Number.isNaN(n) ? 0 : n,
-                                    });
-                                }}
-                                className="mt-0.5 w-full rounded border border-neutral-300 px-1.5 py-1 text-xs focus:border-black focus:outline-none"
+                                        scale:
+                                            n > 0 ? n / imported.bbox.w : 0.01,
+                                    })
+                                }
                             />
-                        </label>
-                    ))}
+                            <NumField
+                                label="Height (mm)"
+                                step={1}
+                                value={
+                                    Math.round(
+                                        imported.bbox.h * placement.scale * 10,
+                                    ) / 10
+                                }
+                                onChange={(n) =>
+                                    setPlacement({
+                                        scale:
+                                            n > 0 ? n / imported.bbox.h : 0.01,
+                                    })
+                                }
+                            />
+                        </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-2">
+                        <NumField
+                            label="Nudge X (mm)"
+                            step={1}
+                            value={placement.nudgeXMm}
+                            onChange={(n) => setPlacement({ nudgeXMm: n })}
+                        />
+                        <NumField
+                            label="Nudge Y (mm)"
+                            step={1}
+                            value={placement.nudgeYMm}
+                            onChange={(n) => setPlacement({ nudgeYMm: n })}
+                        />
+                    </div>
+                    <p className="text-[10px] text-neutral-400">
+                        Size in mm — aspect locked, edit width or height.
+                        Anchored to the artwork centre; default is dead centre.
+                    </p>
                 </div>
             )}
         </div>

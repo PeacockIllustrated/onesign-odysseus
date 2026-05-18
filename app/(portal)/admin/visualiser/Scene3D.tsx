@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
+import { OrbitControls, Edges } from '@react-three/drei';
 import * as THREE from 'three';
 import type {
     PanelParams,
@@ -33,6 +33,25 @@ function CaptureBinder() {
 }
 
 const S = 0.01; // mm → scene units
+const PANEL_COLOR = '#d6d6d6'; // flat light grey
+const EDGE_COLOR = '#111111'; // technical-drawing black strokes
+
+/** Flat light-grey box with crisp black edge strokes. */
+function PanelBox({
+    args,
+    position,
+}: {
+    args: [number, number, number];
+    position?: [number, number, number];
+}) {
+    return (
+        <mesh position={position}>
+            <boxGeometry args={args} />
+            <meshBasicMaterial color={PANEL_COLOR} />
+            <Edges color={EDGE_COLOR} />
+        </mesh>
+    );
+}
 
 function Panel({
     params,
@@ -53,16 +72,6 @@ function Panel({
     const D = params.returnDepthMm;
     const Sg = params.shadowGapMm;
     const r = params.returns;
-
-    const metal = useMemo(
-        () =>
-            new THREE.MeshStandardMaterial({
-                color: '#c9d4d8',
-                metalness: 0.85,
-                roughness: 0.35,
-            }),
-        [],
-    );
 
     // Aperture / keyline as line segments on the face front.
     const face = dev.segments.find((s) => s.role === 'face');
@@ -95,64 +104,58 @@ function Panel({
     return (
         <group>
             {/* Face */}
-            <mesh material={metal}>
-                <boxGeometry args={[W * S, H * S, T * S]} />
-            </mesh>
+            <PanelBox args={[W * S, H * S, T * S]} />
 
             {/* Returns (fold back, −Z) */}
             {r.bottom && (
-                <mesh material={metal} position={[0, (-H / 2) * S, (-D / 2) * S]}>
-                    <boxGeometry args={[W * S, T * S, D * S]} />
-                </mesh>
+                <PanelBox
+                    args={[W * S, T * S, D * S]}
+                    position={[0, (-H / 2) * S, (-D / 2) * S]}
+                />
             )}
             {r.top && (
-                <mesh material={metal} position={[0, (H / 2) * S, (-D / 2) * S]}>
-                    <boxGeometry args={[W * S, T * S, D * S]} />
-                </mesh>
+                <PanelBox
+                    args={[W * S, T * S, D * S]}
+                    position={[0, (H / 2) * S, (-D / 2) * S]}
+                />
             )}
             {r.left && (
-                <mesh material={metal} position={[(-W / 2) * S, 0, (-D / 2) * S]}>
-                    <boxGeometry args={[T * S, H * S, D * S]} />
-                </mesh>
+                <PanelBox
+                    args={[T * S, H * S, D * S]}
+                    position={[(-W / 2) * S, 0, (-D / 2) * S]}
+                />
             )}
             {r.right && (
-                <mesh material={metal} position={[(W / 2) * S, 0, (-D / 2) * S]}>
-                    <boxGeometry args={[T * S, H * S, D * S]} />
-                </mesh>
+                <PanelBox
+                    args={[T * S, H * S, D * S]}
+                    position={[(W / 2) * S, 0, (-D / 2) * S]}
+                />
             )}
 
             {/* Shadow-gap lips (fold inward at return tip) */}
             {Sg > 0 && r.bottom && (
-                <mesh
-                    material={metal}
+                <PanelBox
+                    args={[W * S, Sg * S, T * S]}
                     position={[0, (-H / 2 + Sg / 2) * S, -D * S]}
-                >
-                    <boxGeometry args={[W * S, Sg * S, T * S]} />
-                </mesh>
+                />
             )}
             {Sg > 0 && r.top && (
-                <mesh
-                    material={metal}
+                <PanelBox
+                    args={[W * S, Sg * S, T * S]}
                     position={[0, (H / 2 - Sg / 2) * S, -D * S]}
-                >
-                    <boxGeometry args={[W * S, Sg * S, T * S]} />
-                </mesh>
+                />
             )}
             {Sg > 0 && r.left && (
-                <mesh
-                    material={metal}
+                <PanelBox
+                    args={[Sg * S, H * S, T * S]}
                     position={[(-W / 2 + Sg / 2) * S, 0, -D * S]}
-                >
-                    <boxGeometry args={[Sg * S, H * S, T * S]} />
-                </mesh>
+                />
             )}
             {Sg > 0 && r.right && (
-                <mesh
-                    material={metal}
+                <PanelBox
+                    args={[Sg * S, H * S, T * S]}
                     position={[(W / 2 - Sg / 2) * S, 0, -D * S]}
-                >
-                    <boxGeometry args={[Sg * S, H * S, T * S]} />
-                </mesh>
+                />
             )}
 
             {/* Seam lines on the face */}
@@ -203,10 +206,7 @@ export default function Scene3D(props: {
             gl={{ preserveDrawingBuffer: true, antialias: true }}
             className="h-full w-full"
         >
-            <color attach="background" args={['#1a1f23']} />
-            <ambientLight intensity={0.6} />
-            <directionalLight position={[20, 30, 20]} intensity={1.1} />
-            <directionalLight position={[-20, -10, -20]} intensity={0.4} />
+            <color attach="background" args={['#ffffff']} />
             <CaptureBinder />
             <Panel {...props} />
             <OrbitControls enablePan makeDefault />
