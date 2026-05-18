@@ -73,36 +73,176 @@ function parseTransform(t: string | null): Matrix {
     return m;
 }
 
-const CURVE_SAMPLES = 24;
+// Adaptive curve flattening. Curves are recursively subdivided until the
+// polyline is within FLATNESS_TOL of the true curve — so quality scales with
+// curvature (no faceting on big shapes, no wasted points on small ones).
+// 0.05 native units is far below any laser kerf once placed, so the cut is
+// accurate beyond machine resolution.
+const FLATNESS_TOL = 0.05;
+const MAX_SUBDIV_DEPTH = 18;
 
-function cubic(p0: number[], p1: number[], p2: number[], p3: number[]): number[][] {
-    const pts: number[][] = [];
-    for (let i = 1; i <= CURVE_SAMPLES; i++) {
-        const t = i / CURVE_SAMPLES;
-        const u = 1 - t;
-        pts.push([
-            u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0],
-            u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1],
-        ]);
-    }
-    return pts;
+function mid(a: number[], b: number[]): number[] {
+    return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
 }
 
-function quad(p0: number[], p1: number[], p2: number[]): number[][] {
-    const pts: number[][] = [];
-    for (let i = 1; i <= CURVE_SAMPLES; i++) {
-        const t = i / CURVE_SAMPLES;
-        const u = 1 - t;
-        pts.push([
-            u * u * p0[0] + 2 * u * t * p1[0] + t * t * p2[0],
-            u * u * p0[1] + 2 * u * t * p1[1] + t * t * p2[1],
-        ]);
-    }
-    return pts;
+// Sederberg/AGG cubic flatness test: control-point deviation from the chord.
+function cubicFlatEnough(
+    p0: number[],
+    p1: number[],
+    p2: number[],
+    p3: number[],
+): boolean {
+    const ux = 3 * p1[0] - 2 * p0[0] - p3[0];
+    const uy = 3 * p1[1] - 2 * p0[1] - p3[1];
+    const vx = 3 * p2[0] - p0[0] - 2 * p3[0];
+    const vy = 3 * p2[1] - p0[1] - 2 * p3[1];
+    const u = Math.max(ux * ux, vx * vx) + Math.max(uy * uy, vy * vy);
+    return u <= 16 * FLATNESS_TOL * FLATNESS_TOL;
 }
 
-/** Parse path `d` data into absolute polyline points (curves sampled). */
-function parsePathData(d: string): { pts: number[][]; closed: boolean }[] {
+/** Adaptive de Casteljau subdivision. Appends points after p0, ending at p3. */
+function flattenCubic(
+    p0: number[],
+    p1: number[],
+    p2: number[],
+    p3: number[],
+    out: number[][],
+    depth = 0,
+): void {
+    if (depth >= MAX_SUBDIV_DEPTH || cubicFlatEnough(p0, p1, p2, p3)) {
+        out.push([p3[0], p3[1]]);
+        return;
+    }
+    const p01 = mid(p0, p1);
+    const p12 = mid(p1, p2);
+    const p23 = mid(p2, p3);
+    const p012 = mid(p01, p12);
+    const p123 = mid(p12, p23);
+    const m = mid(p012, p123);
+    flattenCubic(p0, p01, p012, m, out, depth + 1);
+    flattenCubic(m, p123, p23, p3, out, depth + 1);
+}
+
+/** Quadratic → degree-elevated cubic, then adaptively flattened. */
+function flattenQuad(
+    p0: number[],
+    c: number[],
+    p1: number[],
+    out: number[][],
+): void {
+    const c1 = [p0[0] + (2 / 3) * (c[0] - p0[0]), p0[1] + (2 / 3) * (c[1] - p0[1])];
+    const c2 = [p1[0] + (2 / 3) * (c[0] - p1[0]), p1[1] + (2 / 3) * (c[1] - p1[1])];
+    flattenCubic(p0, c1, c2, p1, out);
+}
+
+/**
+ * SVG elliptical arc → list of cubic Béziers (spec F.6.5 / F.6.6). The sweep
+ * is split into ≤90° pieces and each is fitted exactly with the standard
+ * tangent-length cubic — no straight-line approximation.
+ */
+function arcToCubics(
+    p0: number[],
+    rx: number,
+    ry: number,
+    xAxisRotDeg: number,
+    largeArc: boolean,
+    sweep: boolean,
+    end: number[],
+): Array<{ c1: number[]; c2: number[]; end: number[] }> {
+    const x1 = p0[0];
+    const y1 = p0[1];
+    const x2 = end[0];
+    const y2 = end[1];
+    if (rx === 0 || ry === 0 || (x1 === x2 && y1 === y2)) {
+        return [{ c1: p0, c2: end, end }];
+    }
+    const phi = (xAxisRotDeg * Math.PI) / 180;
+    const cosP = Math.cos(phi);
+    const sinP = Math.sin(phi);
+
+    const dx = (x1 - x2) / 2;
+    const dy = (y1 - y2) / 2;
+    const x1p = cosP * dx + sinP * dy;
+    const y1p = -sinP * dx + cosP * dy;
+
+    let rxA = Math.abs(rx);
+    let ryA = Math.abs(ry);
+    const lambda =
+        (x1p * x1p) / (rxA * rxA) + (y1p * y1p) / (ryA * ryA);
+    if (lambda > 1) {
+        const s = Math.sqrt(lambda);
+        rxA *= s;
+        ryA *= s;
+    }
+
+    const signCoef = largeArc !== sweep ? 1 : -1;
+    const numer = Math.max(
+        0,
+        rxA * rxA * ryA * ryA -
+            rxA * rxA * y1p * y1p -
+            ryA * ryA * x1p * x1p,
+    );
+    const denom = rxA * rxA * y1p * y1p + ryA * ryA * x1p * x1p;
+    const coef = signCoef * Math.sqrt(denom === 0 ? 0 : numer / denom);
+    const cxp = (coef * (rxA * y1p)) / ryA;
+    const cyp = (-coef * (ryA * x1p)) / rxA;
+
+    const cx = cosP * cxp - sinP * cyp + (x1 + x2) / 2;
+    const cy = sinP * cxp + cosP * cyp + (y1 + y2) / 2;
+
+    const angle = (ux: number, uy: number, vx: number, vy: number) => {
+        const dot = ux * vx + uy * vy;
+        const len = Math.sqrt((ux * ux + uy * uy) * (vx * vx + vy * vy));
+        let a = Math.acos(Math.min(1, Math.max(-1, dot / len)));
+        if (ux * vy - uy * vx < 0) a = -a;
+        return a;
+    };
+    const ux0 = (x1p - cxp) / rxA;
+    const uy0 = (y1p - cyp) / ryA;
+    const theta1 = angle(1, 0, ux0, uy0);
+    let dTheta = angle(ux0, uy0, (-x1p - cxp) / rxA, (-y1p - cyp) / ryA);
+    if (!sweep && dTheta > 0) dTheta -= 2 * Math.PI;
+    if (sweep && dTheta < 0) dTheta += 2 * Math.PI;
+
+    const segs = Math.max(1, Math.ceil(Math.abs(dTheta) / (Math.PI / 2)));
+    const delta = dTheta / segs;
+    const tan = (4 / 3) * Math.tan(delta / 4);
+    const ptAt = (a: number): number[] => [
+        cx + rxA * Math.cos(a) * cosP - ryA * Math.sin(a) * sinP,
+        cy + rxA * Math.cos(a) * sinP + ryA * Math.sin(a) * cosP,
+    ];
+    const derAt = (a: number): number[] => [
+        -rxA * Math.sin(a) * cosP - ryA * Math.cos(a) * sinP,
+        -rxA * Math.sin(a) * sinP + ryA * Math.cos(a) * cosP,
+    ];
+
+    const out: Array<{ c1: number[]; c2: number[]; end: number[] }> = [];
+    let a0 = theta1;
+    let start = ptAt(a0);
+    for (let s = 0; s < segs; s++) {
+        const a1 = a0 + delta;
+        const e = ptAt(a1);
+        const d0 = derAt(a0);
+        const d1 = derAt(a1);
+        out.push({
+            c1: [start[0] + tan * d0[0], start[1] + tan * d0[1]],
+            c2: [e[0] - tan * d1[0], e[1] - tan * d1[1]],
+            end: e,
+        });
+        a0 = a1;
+        start = e;
+    }
+    return out;
+}
+
+/**
+ * Parse path `d` data into absolute polyline points, with adaptive curve
+ * flattening and spec-correct arc / smooth-curve handling. Exported for unit
+ * tests (the geometry is the accuracy-critical part).
+ */
+export function parsePathData(
+    d: string,
+): { pts: number[][]; closed: boolean }[] {
     const tokens = d.match(/[a-zA-Z]|-?\d*\.?\d+(?:e[-+]?\d+)?/gi) || [];
     const out: { pts: number[][]; closed: boolean }[] = [];
     let pts: number[][] = [];
@@ -113,6 +253,13 @@ function parsePathData(d: string): { pts: number[][]; closed: boolean }[] {
     let i = 0;
     let cmd = '';
     let closed = false;
+    // Reflection state for smooth curves (S reflects the last cubic ctrl,
+    // T the last quadratic ctrl, about the current point).
+    let pcx = 0;
+    let pcy = 0;
+    let pqx = 0;
+    let pqy = 0;
+    let prevType = ''; // 'C' | 'Q' | '' — controls S/T reflection
 
     const num = () => parseFloat(tokens[i++]);
     const flush = () => {
@@ -139,6 +286,7 @@ function parsePathData(d: string): { pts: number[][]; closed: boolean }[] {
             sx = x;
             sy = y;
             pts.push([x, y]);
+            prevType = '';
             cmd = rel ? 'l' : 'L';
         } else if (C === 'L') {
             let x = num();
@@ -150,69 +298,94 @@ function parsePathData(d: string): { pts: number[][]; closed: boolean }[] {
             cx = x;
             cy = y;
             pts.push([x, y]);
+            prevType = '';
         } else if (C === 'H') {
             let x = num();
             if (rel) x += cx;
             cx = x;
             pts.push([x, cy]);
+            prevType = '';
         } else if (C === 'V') {
             let y = num();
             if (rel) y += cy;
             cy = y;
             pts.push([cx, y]);
+            prevType = '';
         } else if (C === 'C') {
-            const p1 = [rel ? cx + num() : num(), rel ? cy + num() : num()];
-            const p2 = [rel ? cx + num() : num(), rel ? cy + num() : num()];
-            const p3 = [rel ? cx + num() : num(), rel ? cy + num() : num()];
-            cubic([cx, cy], p1, p2, p3).forEach((p) => pts.push(p));
-            cx = p3[0];
-            cy = p3[1];
-        } else if (C === 'S' || C === 'Q' || C === 'T') {
-            // Approximate smooth/quadratic as straight-ish samples via control
-            // points read in order — good enough for laser-cut lettering.
-            if (C === 'Q') {
-                const p1 = [rel ? cx + num() : num(), rel ? cy + num() : num()];
-                const p2 = [rel ? cx + num() : num(), rel ? cy + num() : num()];
-                quad([cx, cy], p1, p2).forEach((p) => pts.push(p));
-                cx = p2[0];
-                cy = p2[1];
-            } else if (C === 'S') {
-                const p2 = [rel ? cx + num() : num(), rel ? cy + num() : num()];
-                const p3 = [rel ? cx + num() : num(), rel ? cy + num() : num()];
-                cubic([cx, cy], [cx, cy], p2, p3).forEach((p) => pts.push(p));
-                cx = p3[0];
-                cy = p3[1];
-            } else {
-                const p2 = [rel ? cx + num() : num(), rel ? cy + num() : num()];
-                quad([cx, cy], [cx, cy], p2).forEach((p) => pts.push(p));
-                cx = p2[0];
-                cy = p2[1];
-            }
+            const c1 = [rel ? cx + num() : num(), rel ? cy + num() : num()];
+            const c2 = [rel ? cx + num() : num(), rel ? cy + num() : num()];
+            const e = [rel ? cx + num() : num(), rel ? cy + num() : num()];
+            flattenCubic([cx, cy], c1, c2, e, pts);
+            cx = e[0];
+            cy = e[1];
+            pcx = c2[0];
+            pcy = c2[1];
+            prevType = 'C';
+        } else if (C === 'S') {
+            // First control = reflection of the previous cubic's 2nd control
+            // about the current point (else the current point itself).
+            const c1 =
+                prevType === 'C' ? [2 * cx - pcx, 2 * cy - pcy] : [cx, cy];
+            const c2 = [rel ? cx + num() : num(), rel ? cy + num() : num()];
+            const e = [rel ? cx + num() : num(), rel ? cy + num() : num()];
+            flattenCubic([cx, cy], c1, c2, e, pts);
+            cx = e[0];
+            cy = e[1];
+            pcx = c2[0];
+            pcy = c2[1];
+            prevType = 'C';
+        } else if (C === 'Q') {
+            const c = [rel ? cx + num() : num(), rel ? cy + num() : num()];
+            const e = [rel ? cx + num() : num(), rel ? cy + num() : num()];
+            flattenQuad([cx, cy], c, e, pts);
+            cx = e[0];
+            cy = e[1];
+            pqx = c[0];
+            pqy = c[1];
+            prevType = 'Q';
+        } else if (C === 'T') {
+            // Control = reflection of the previous quadratic control.
+            const c =
+                prevType === 'Q' ? [2 * cx - pqx, 2 * cy - pqy] : [cx, cy];
+            const e = [rel ? cx + num() : num(), rel ? cy + num() : num()];
+            flattenQuad([cx, cy], c, e, pts);
+            cx = e[0];
+            cy = e[1];
+            pqx = c[0];
+            pqy = c[1];
+            prevType = 'Q';
         } else if (C === 'A') {
-            // Arc: skip the radii/flags, sample a chord to the endpoint. A
-            // crude flatten, but laser cutters re-fit; advisory tool only.
-            num();
-            num();
-            num();
-            num();
-            num();
-            let x = num();
-            let y = num();
+            const rx = num();
+            const ry = num();
+            const rot = num();
+            const largeArc = num() !== 0;
+            const sweep = num() !== 0;
+            let ex = num();
+            let ey = num();
             if (rel) {
-                x += cx;
-                y += cy;
+                ex += cx;
+                ey += cy;
             }
-            const steps = 12;
-            for (let s = 1; s <= steps; s++) {
-                pts.push([cx + ((x - cx) * s) / steps, cy + ((y - cy) * s) / steps]);
+            for (const seg of arcToCubics(
+                [cx, cy],
+                rx,
+                ry,
+                rot,
+                largeArc,
+                sweep,
+                [ex, ey],
+            )) {
+                flattenCubic([cx, cy], seg.c1, seg.c2, seg.end, pts);
+                cx = seg.end[0];
+                cy = seg.end[1];
             }
-            cx = x;
-            cy = y;
+            prevType = '';
         } else if (C === 'Z') {
             closed = true;
             pts.push([sx, sy]);
             cx = sx;
             cy = sy;
+            prevType = '';
             flush();
         } else {
             i++; // unknown token, skip defensively
