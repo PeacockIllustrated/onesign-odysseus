@@ -24,6 +24,7 @@ import {
     type PanelSplit,
     type FlatPath,
 } from './types';
+import { outlinePerimeter } from './geometry';
 
 /** Fold/cut-safe ASCII. R12 + many laser post-processors choke on Unicode. */
 function ascii(s: string): string {
@@ -126,20 +127,41 @@ export function generateDxf(opts: DxfOptions): string {
 
     let e = '0\nSECTION\n2\nENTITIES\n';
 
-    // Panel outline (4 discrete LINEs) + a centred role label per segment.
+    // ONE merged outer cut perimeter — never the internal face/return
+    // edges, which are folds, not cuts. Discrete LINEs (no polyline/block)
+    // that share endpoints, so CAM chains them into one closed contour.
+    const perimeter = outlinePerimeter(dev);
+    if (perimeter) {
+        const pts = perimeter.points;
+        for (let i = 0; i + 1 < pts.length; i++) {
+            e += line(
+                DXF_LAYERS.PANEL_OUTLINE,
+                pts[i][0],
+                fy(pts[i][1]),
+                pts[i + 1][0],
+                fy(pts[i + 1][1]),
+            );
+        }
+    } else {
+        // Degenerate geometry — fall back to per-segment rectangles.
+        for (const seg of dev.segments) {
+            const { xMm: x, yMm: y, wMm: w, hMm: h } = seg;
+            e += line(DXF_LAYERS.PANEL_OUTLINE, x, fy(y), x + w, fy(y));
+            e += line(DXF_LAYERS.PANEL_OUTLINE, x + w, fy(y), x + w, fy(y + h));
+            e += line(DXF_LAYERS.PANEL_OUTLINE, x + w, fy(y + h), x, fy(y + h));
+            e += line(DXF_LAYERS.PANEL_OUTLINE, x, fy(y + h), x, fy(y));
+        }
+    }
+
+    // Centred role label per segment (DIMENSIONS layer — never on the cut
+    // layer, so a cutter selecting PANEL_OUTLINE never picks up text).
     for (const seg of dev.segments) {
-        const { xMm: x, yMm: y, wMm: w, hMm: h } = seg;
-        e += line(DXF_LAYERS.PANEL_OUTLINE, x, fy(y), x + w, fy(y));
-        e += line(DXF_LAYERS.PANEL_OUTLINE, x + w, fy(y), x + w, fy(y + h));
-        e += line(DXF_LAYERS.PANEL_OUTLINE, x + w, fy(y + h), x, fy(y + h));
-        e += line(DXF_LAYERS.PANEL_OUTLINE, x, fy(y + h), x, fy(y));
-        // Only label segments big enough to hold legible text.
-        const small = Math.min(w, h);
+        const small = Math.min(seg.wMm, seg.hMm);
         if (small >= 25) {
             e += textCentered(
                 DXF_LAYERS.DIMENSIONS,
-                x + w / 2,
-                fy(y + h / 2),
+                seg.xMm + seg.wMm / 2,
+                fy(seg.yMm + seg.hMm / 2),
                 clamp(small / 9, 4, 22),
                 seg.label,
             );

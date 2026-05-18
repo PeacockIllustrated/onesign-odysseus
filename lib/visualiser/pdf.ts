@@ -21,6 +21,7 @@ import {
     type PanelSplit,
     type FlatPath,
 } from './types';
+import { outlinePerimeter } from './geometry';
 
 /** PDF media box limit is ~5080 mm; stay safely under it. */
 const MAX_PAGE_MM = 4800;
@@ -105,6 +106,17 @@ export function generatePdfBlob(opts: PdfOptions): Blob {
 
     const px = (x: number) => dX + x * scale;
     const py = (y: number) => dY + y * scale;
+
+    // Annotation scaling — at 1:1 a fixed 7pt label on a 10 m part is
+    // unreadable, so dimensions/ticks/line-weights scale with part size.
+    const maxPart = Math.max(partW, partH) * scale;
+    const ann = Math.min(28, Math.max(1, maxPart / 380));
+    const dimFont = Math.min(96, Math.max(8, maxPart * 0.022));
+    const tick = 1.4 * ann;
+    const dimOff = 9 * ann;
+    const cutLW = 0.4 * Math.min(8, Math.max(1, ann));
+    const refLW = 0.3 * Math.min(8, Math.max(1, ann));
+    const dash = 1.6 * Math.min(6, Math.max(1, ann));
 
     // ---- Header --------------------------------------------------------
     doc.setFont('helvetica', 'bold');
@@ -266,17 +278,36 @@ export function generatePdfBlob(opts: PdfOptions): Blob {
     );
     doc.setFont('helvetica', 'normal');
 
-    // Cut outline.
+    // ONE merged cut outline (solid). Never the internal face/return
+    // edges — those are folds. A cutter can run this straight off.
     doc.setDrawColor(20);
-    doc.setLineWidth(0.4);
-    for (const seg of dev.segments) {
-        doc.rect(px(seg.xMm), py(seg.yMm), seg.wMm * scale, seg.hMm * scale);
+    doc.setLineWidth(cutLW);
+    const perimeter = outlinePerimeter(dev);
+    if (perimeter) {
+        const pts = perimeter.points;
+        for (let i = 0; i + 1 < pts.length; i++) {
+            doc.line(
+                px(pts[i][0]),
+                py(pts[i][1]),
+                px(pts[i + 1][0]),
+                py(pts[i + 1][1]),
+            );
+        }
+    } else {
+        for (const seg of dev.segments) {
+            doc.rect(
+                px(seg.xMm),
+                py(seg.yMm),
+                seg.wMm * scale,
+                seg.hMm * scale,
+            );
+        }
     }
 
-    // Fold lines — red dashed.
+    // Fold lines — red dashed (reference, NOT a cut).
     doc.setDrawColor(200, 0, 0);
-    doc.setLineWidth(0.3);
-    doc.setLineDashPattern([1.2, 1.2], 0);
+    doc.setLineWidth(refLW);
+    doc.setLineDashPattern([dash, dash], 0);
     for (const f of dev.foldLines) {
         doc.line(px(f.x1), py(f.y1), px(f.x2), py(f.y2));
     }
@@ -288,8 +319,8 @@ export function generatePdfBlob(opts: PdfOptions): Blob {
         if (sFace) {
             const k = sFace.wMm / dev.faceNominalWMm;
             doc.setDrawColor(0, 150, 60);
-            doc.setLineWidth(0.4);
-            doc.setLineDashPattern([1.6, 1.2], 0);
+            doc.setLineWidth(cutLW);
+            doc.setLineDashPattern([dash, dash * 0.75], 0);
             for (const sx of split.seamXsMm) {
                 const fx = sFace.xMm + sx * k;
                 doc.line(
@@ -303,25 +334,29 @@ export function generatePdfBlob(opts: PdfOptions): Blob {
         }
     }
 
-    // Aperture (blue) + keyline (cyan).
-    drawPaths(doc, opts.aperture ?? [], px, py, [30, 90, 200], 0.3);
-    drawPaths(doc, opts.keyline ?? [], px, py, [0, 170, 190], 0.25);
+    // Aperture (blue, solid cut) + keyline (cyan).
+    drawPaths(doc, opts.aperture ?? [], px, py, [30, 90, 200], cutLW * 0.8);
+    drawPaths(doc, opts.keyline ?? [], px, py, [0, 170, 190], refLW * 0.8);
 
-    // ---- Dimension lines ----------------------------------------------
+    // ---- Dimension lines (dashed — clearly NOT production cuts) -------
     doc.setTextColor(70);
     dimH(
         doc,
         px(0),
         px(dev.totalFlatWMm),
-        py(dev.totalFlatHMm) + 8,
+        py(dev.totalFlatHMm) + dimOff,
         T(`${dev.totalFlatWMm} mm`),
+        dimFont,
+        tick,
     );
     dimV(
         doc,
         py(0),
         py(dev.totalFlatHMm),
-        px(0) - 8,
+        px(0) - dimOff,
         T(`${dev.totalFlatHMm} mm`),
+        dimFont,
+        tick,
     );
     const face = dev.segments.find((s) => s.role === 'face');
     if (face) {
@@ -329,8 +364,10 @@ export function generatePdfBlob(opts: PdfOptions): Blob {
             doc,
             px(face.xMm),
             px(face.xMm + face.wMm),
-            py(face.yMm) - 6,
+            py(face.yMm) - dimOff * 0.7,
             T(`face ${dev.faceNominalWMm} mm`),
+            dimFont,
+            tick,
         );
     }
     doc.setTextColor(0);
@@ -338,38 +375,48 @@ export function generatePdfBlob(opts: PdfOptions): Blob {
     return doc.output('blob');
 }
 
-/** Horizontal dimension: extension ticks at both ends + centred value. */
+/** Horizontal dimension: dashed line + end ticks + centred value. */
 function dimH(
     doc: jsPDF,
     x1: number,
     x2: number,
     y: number,
     label: string,
+    font: number,
+    tick: number,
 ): void {
     doc.setDrawColor(120);
-    doc.setLineWidth(0.2);
+    doc.setLineWidth(0.2 * Math.max(1, tick / 1.4));
+    doc.setLineDashPattern([tick, tick * 0.7], 0);
     doc.line(x1, y, x2, y);
-    doc.line(x1, y - 1.4, x1, y + 1.4);
-    doc.line(x2, y - 1.4, x2, y + 1.4);
-    doc.setFontSize(7);
-    doc.text(label, (x1 + x2) / 2, y + 3.2, { align: 'center' });
+    doc.setLineDashPattern([], 0);
+    doc.line(x1, y - tick, x1, y + tick);
+    doc.line(x2, y - tick, x2, y + tick);
+    doc.setFontSize(font);
+    doc.text(label, (x1 + x2) / 2, y + tick * 2 + font * 0.18, {
+        align: 'center',
+    });
 }
 
-/** Vertical dimension: extension ticks at both ends + rotated value. */
+/** Vertical dimension: dashed line + end ticks + rotated value. */
 function dimV(
     doc: jsPDF,
     y1: number,
     y2: number,
     x: number,
     label: string,
+    font: number,
+    tick: number,
 ): void {
     doc.setDrawColor(120);
-    doc.setLineWidth(0.2);
+    doc.setLineWidth(0.2 * Math.max(1, tick / 1.4));
+    doc.setLineDashPattern([tick, tick * 0.7], 0);
     doc.line(x, y1, x, y2);
-    doc.line(x - 1.4, y1, x + 1.4, y1);
-    doc.line(x - 1.4, y2, x + 1.4, y2);
-    doc.setFontSize(7);
-    doc.text(label, x - 2.4, (y1 + y2) / 2, {
+    doc.setLineDashPattern([], 0);
+    doc.line(x - tick, y1, x + tick, y1);
+    doc.line(x - tick, y2, x + tick, y2);
+    doc.setFontSize(font);
+    doc.text(label, x - tick * 2 - font * 0.18, (y1 + y2) / 2, {
         align: 'center',
         angle: 90,
     });

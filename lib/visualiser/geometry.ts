@@ -277,3 +277,88 @@ export function placeAperture(
         ),
     }));
 }
+
+/**
+ * The single merged OUTER cut perimeter of the flat development.
+ *
+ * The face + returns + lips tile a cruciform with no overlap and share
+ * full edges, so the union outline is found by edge cancellation: every
+ * rectangle contributes 4 consistently-wound edges; an interior edge shared
+ * by two segments appears as an exact antiparallel pair and cancels, leaving
+ * only the true outer boundary. Critical for production — a cutter must see
+ * one continuous outline, not the internal face/return (fold) edges drawn as
+ * cuts. Returns null if the geometry is degenerate (caller falls back).
+ */
+export function outlinePerimeter(dev: PanelDevelopment): FlatPath | null {
+    type P = [number, number];
+    const q = (n: number) => Math.round(n * 1000) / 1000;
+    const ptKey = (p: P) => `${q(p[0])},${q(p[1])}`;
+    const edgeKey = (a: P, b: P) => `${ptKey(a)}->${ptKey(b)}`;
+
+    const edges = new Map<string, [P, P]>();
+    const addEdge = (a: P, b: P) => {
+        if (q(a[0]) === q(b[0]) && q(a[1]) === q(b[1])) return;
+        const rev = edgeKey(b, a);
+        if (edges.has(rev)) {
+            edges.delete(rev); // shared interior edge → cancels
+            return;
+        }
+        edges.set(edgeKey(a, b), [a, b]);
+    };
+
+    for (const s of dev.segments) {
+        if (s.wMm <= 0 || s.hMm <= 0) continue;
+        const x0 = s.xMm;
+        const y0 = s.yMm;
+        const x1 = s.xMm + s.wMm;
+        const y1 = s.yMm + s.hMm;
+        // Consistent winding for every rectangle.
+        addEdge([x0, y0], [x1, y0]);
+        addEdge([x1, y0], [x1, y1]);
+        addEdge([x1, y1], [x0, y1]);
+        addEdge([x0, y1], [x0, y0]);
+    }
+    if (edges.size < 4) return null;
+
+    // Chain remaining boundary edges end → start into one closed loop.
+    const byStart = new Map<string, [P, P]>();
+    for (const e of edges.values()) byStart.set(ptKey(e[0]), e);
+
+    const first = edges.values().next().value as [P, P];
+    const points: P[] = [first[0]];
+    let cur = first;
+    for (let guard = 0; guard <= edges.size; guard++) {
+        points.push(cur[1]);
+        const next = byStart.get(ptKey(cur[1]));
+        if (!next) break;
+        if (ptKey(next[0]) === ptKey(first[0])) break; // closed
+        cur = next;
+    }
+
+    const a = points[0];
+    const b = points[points.length - 1];
+    if (points.length < 5 || Math.hypot(a[0] - b[0], a[1] - b[1]) > 1e-3) {
+        return null;
+    }
+    return { points: simplifyCollinear(points), closed: true };
+}
+
+/** Drop redundant collinear vertices so the cut path is minimal. */
+function simplifyCollinear(pts: Array<[number, number]>): Array<[number, number]> {
+    const ring = pts.slice(0, -1); // drop closing dup
+    const n = ring.length;
+    if (n < 3) return pts;
+    const out: Array<[number, number]> = [];
+    for (let i = 0; i < n; i++) {
+        const prev = ring[(i - 1 + n) % n];
+        const p = ring[i];
+        const next = ring[(i + 1) % n];
+        const cross =
+            (p[0] - prev[0]) * (next[1] - prev[1]) -
+            (p[1] - prev[1]) * (next[0] - prev[0]);
+        if (Math.abs(cross) > 1e-6) out.push(p);
+    }
+    if (out.length < 3) return pts;
+    out.push(out[0]);
+    return out;
+}

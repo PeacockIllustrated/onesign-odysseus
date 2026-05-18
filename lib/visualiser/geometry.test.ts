@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { buildDevelopment } from './geometry';
+import { buildDevelopment, outlinePerimeter } from './geometry';
 import type { PanelParams } from './types';
+
+function polyArea(pts: Array<[number, number]>): number {
+    let s = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+        s += pts[i][0] * pts[i + 1][1] - pts[i + 1][0] * pts[i][1];
+    }
+    return Math.abs(s) / 2;
+}
 
 function base(overrides: Partial<PanelParams> = {}): PanelParams {
     return {
@@ -101,5 +109,47 @@ describe('buildDevelopment — user-specified bend rule', () => {
         );
         expect(dev.faceFlatHMm).toBe(345); // 350 − 5
         expect(dev.returnFlatDepthMm).toBe(75); // 80 − 5
+    });
+});
+
+describe('outlinePerimeter — single merged cut contour', () => {
+    it('no returns: perimeter is just the face rectangle', () => {
+        const dev = buildDevelopment(
+            base({ returns: { top: false, bottom: false, left: false, right: false } }),
+        );
+        const p = outlinePerimeter(dev)!;
+        expect(p).not.toBeNull();
+        expect(p.closed).toBe(true);
+        expect(p.points).toHaveLength(5); // 4 corners + closing dup
+        expect(polyArea(p.points)).toBeCloseTo(1000 * 350, 3);
+    });
+
+    it('all four returns: a 12-corner cross, internal fold edges cancelled', () => {
+        const dev = buildDevelopment(
+            base({ returns: { top: true, bottom: true, left: true, right: true } }),
+        );
+        const p = outlinePerimeter(dev)!;
+        // A plus/cross has exactly 12 vertices (+1 closing). If internal
+        // face/return edges were NOT cancelled this would be far larger.
+        expect(p.points).toHaveLength(13);
+        // Area equals the union of all segments (they tile without overlap),
+        // proving the merge dropped the shared interior edges.
+        const segArea = dev.segments.reduce((a, s) => a + s.wMm * s.hMm, 0);
+        expect(polyArea(p.points)).toBeCloseTo(segArea, 2);
+    });
+
+    it('vertex count is independent of segment count (truly merged)', () => {
+        const dev = buildDevelopment(
+            base({
+                returns: { top: true, bottom: true, left: true, right: true },
+                shadowGapMm: 15, // adds 4 lip segments
+            }),
+        );
+        const p = outlinePerimeter(dev)!;
+        expect(dev.segments.length).toBe(9); // face + 4 returns + 4 lips
+        // Still one clean rectilinear loop, not 9 stacked rectangles.
+        const segArea = dev.segments.reduce((a, s) => a + s.wMm * s.hMm, 0);
+        expect(polyArea(p.points)).toBeCloseTo(segArea, 2);
+        expect(p.points.length).toBeLessThanOrEqual(21);
     });
 });
