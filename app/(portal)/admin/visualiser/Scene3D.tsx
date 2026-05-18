@@ -9,6 +9,7 @@ import type {
     PanelDevelopment,
     PanelSplit,
     FlatPath,
+    PanelEdge,
 } from '@/lib/visualiser/types';
 
 /** Set by the scene on mount so ExportBar can grab a PDF thumbnail. */
@@ -33,6 +34,7 @@ function CaptureBinder() {
 }
 
 const S = 0.01; // mm → scene units
+const HALF_PI = Math.PI / 2;
 const PANEL_COLOR = '#d6d6d6'; // flat light grey
 const EDGE_COLOR = '#111111'; // technical-drawing black strokes
 
@@ -53,18 +55,104 @@ function PanelBox({
     );
 }
 
+/**
+ * A return flap hinged on its fold line. `fold` ∈ [0,1]: 0 = flat (coplanar
+ * with the face → the flat development laid out in 3D), 1 = folded 90° back.
+ * A shadow-gap lip is a nested flap that hinges at the return tip.
+ */
+function Flap({
+    edge,
+    W,
+    H,
+    D,
+    T,
+    Sg,
+    fold,
+}: {
+    edge: PanelEdge;
+    W: number;
+    H: number;
+    D: number;
+    T: number;
+    Sg: number;
+    fold: number;
+}) {
+    const a = fold * HALF_PI;
+    const hasLip = Sg > 0;
+
+    let groupPos: [number, number, number];
+    let groupRot: [number, number, number];
+    let boxArgs: [number, number, number];
+    let boxPos: [number, number, number];
+    let lipPos: [number, number, number] = [0, 0, 0];
+    let lipRot: [number, number, number] = [0, 0, 0];
+    let lipArgs: [number, number, number] = [0, 0, 0];
+    let lipBoxPos: [number, number, number] = [0, 0, 0];
+
+    if (edge === 'bottom') {
+        groupPos = [0, (-H / 2) * S, 0];
+        groupRot = [a, 0, 0];
+        boxArgs = [W * S, D * S, T * S];
+        boxPos = [0, (-D / 2) * S, 0];
+        lipPos = [0, -D * S, 0];
+        lipRot = [a, 0, 0];
+        lipArgs = [W * S, Sg * S, T * S];
+        lipBoxPos = [0, (-Sg / 2) * S, 0];
+    } else if (edge === 'top') {
+        groupPos = [0, (H / 2) * S, 0];
+        groupRot = [-a, 0, 0];
+        boxArgs = [W * S, D * S, T * S];
+        boxPos = [0, (D / 2) * S, 0];
+        lipPos = [0, D * S, 0];
+        lipRot = [-a, 0, 0];
+        lipArgs = [W * S, Sg * S, T * S];
+        lipBoxPos = [0, (Sg / 2) * S, 0];
+    } else if (edge === 'left') {
+        groupPos = [(-W / 2) * S, 0, 0];
+        groupRot = [0, -a, 0];
+        boxArgs = [D * S, H * S, T * S];
+        boxPos = [(-D / 2) * S, 0, 0];
+        lipPos = [-D * S, 0, 0];
+        lipRot = [0, -a, 0];
+        lipArgs = [Sg * S, H * S, T * S];
+        lipBoxPos = [(-Sg / 2) * S, 0, 0];
+    } else {
+        groupPos = [(W / 2) * S, 0, 0];
+        groupRot = [0, a, 0];
+        boxArgs = [D * S, H * S, T * S];
+        boxPos = [(D / 2) * S, 0, 0];
+        lipPos = [D * S, 0, 0];
+        lipRot = [0, a, 0];
+        lipArgs = [Sg * S, H * S, T * S];
+        lipBoxPos = [(Sg / 2) * S, 0, 0];
+    }
+
+    return (
+        <group position={groupPos} rotation={groupRot}>
+            <PanelBox args={boxArgs} position={boxPos} />
+            {hasLip && (
+                <group position={lipPos} rotation={lipRot}>
+                    <PanelBox args={lipArgs} position={lipBoxPos} />
+                </group>
+            )}
+        </group>
+    );
+}
+
 function Panel({
     params,
     development: dev,
     split,
     aperture,
     keyline,
+    fold,
 }: {
     params: PanelParams;
     development: PanelDevelopment;
     split: PanelSplit;
     aperture: FlatPath[];
     keyline: FlatPath[];
+    fold: number;
 }) {
     const W = dev.faceNominalWMm;
     const H = dev.faceNominalHMm;
@@ -72,8 +160,10 @@ function Panel({
     const D = params.returnDepthMm;
     const Sg = params.shadowGapMm;
     const r = params.returns;
+    const edges: PanelEdge[] = ['top', 'bottom', 'left', 'right'];
 
-    // Aperture / keyline as line segments on the face front.
+    // Aperture / keyline as line segments on the face front (the cut never
+    // moves — it's in the face, unaffected by folding).
     const face = dev.segments.find((s) => s.role === 'face');
     const overlay = useMemo(() => {
         if (!face) return null;
@@ -106,56 +196,20 @@ function Panel({
             {/* Face */}
             <PanelBox args={[W * S, H * S, T * S]} />
 
-            {/* Returns (fold back, −Z) */}
-            {r.bottom && (
-                <PanelBox
-                    args={[W * S, T * S, D * S]}
-                    position={[0, (-H / 2) * S, (-D / 2) * S]}
-                />
-            )}
-            {r.top && (
-                <PanelBox
-                    args={[W * S, T * S, D * S]}
-                    position={[0, (H / 2) * S, (-D / 2) * S]}
-                />
-            )}
-            {r.left && (
-                <PanelBox
-                    args={[T * S, H * S, D * S]}
-                    position={[(-W / 2) * S, 0, (-D / 2) * S]}
-                />
-            )}
-            {r.right && (
-                <PanelBox
-                    args={[T * S, H * S, D * S]}
-                    position={[(W / 2) * S, 0, (-D / 2) * S]}
-                />
-            )}
-
-            {/* Shadow-gap lips (fold inward at return tip) */}
-            {Sg > 0 && r.bottom && (
-                <PanelBox
-                    args={[W * S, Sg * S, T * S]}
-                    position={[0, (-H / 2 + Sg / 2) * S, -D * S]}
-                />
-            )}
-            {Sg > 0 && r.top && (
-                <PanelBox
-                    args={[W * S, Sg * S, T * S]}
-                    position={[0, (H / 2 - Sg / 2) * S, -D * S]}
-                />
-            )}
-            {Sg > 0 && r.left && (
-                <PanelBox
-                    args={[Sg * S, H * S, T * S]}
-                    position={[(-W / 2 + Sg / 2) * S, 0, -D * S]}
-                />
-            )}
-            {Sg > 0 && r.right && (
-                <PanelBox
-                    args={[Sg * S, H * S, T * S]}
-                    position={[(W / 2 - Sg / 2) * S, 0, -D * S]}
-                />
+            {/* Hinged return flaps (+ optional shadow-gap lips) */}
+            {edges.map((e) =>
+                r[e] ? (
+                    <Flap
+                        key={e}
+                        edge={e}
+                        W={W}
+                        H={H}
+                        D={D}
+                        T={T}
+                        Sg={Sg}
+                        fold={fold}
+                    />
+                ) : null,
             )}
 
             {/* Seam lines on the face */}
@@ -191,14 +245,18 @@ export default function Scene3D(props: {
     split: PanelSplit;
     aperture: FlatPath[];
     keyline: FlatPath[];
+    /** 0 = flat (unfolded in 3D), 1 = folded. Default folded. */
+    fold?: number;
 }) {
+    const fold = props.fold ?? 1;
+    // Frame the flat blank so both folded and unfolded states stay in view.
     const reach =
         Math.max(
-            props.development.faceNominalWMm,
-            props.development.faceNominalHMm,
+            props.development.totalFlatWMm,
+            props.development.totalFlatHMm,
         ) *
         S *
-        1.6;
+        1.5;
 
     return (
         <Canvas
@@ -208,7 +266,7 @@ export default function Scene3D(props: {
         >
             <color attach="background" args={['#ffffff']} />
             <CaptureBinder />
-            <Panel {...props} />
+            <Panel {...props} fold={fold} />
             <OrbitControls enablePan makeDefault />
         </Canvas>
     );

@@ -26,7 +26,13 @@ const Scene3D = dynamic(() => import('./Scene3D'), {
     ),
 });
 
-type Tab = '3d' | 'flat';
+type Tab = 'folded' | 'unfold' | 'flat';
+
+const TAB_LABELS: Record<Tab, string> = {
+    folded: '3D folded',
+    unfold: '3D unfold',
+    flat: 'Flat development',
+};
 
 export function VisualiserClient({
     initialDesigns,
@@ -37,8 +43,28 @@ export function VisualiserClient({
 }) {
     const { params, imported, applyPrefill, loadDesign, designId } =
         useVisualiser();
-    const [tab, setTab] = useState<Tab>('3d');
+    const [tab, setTab] = useState<Tab>('folded');
     const [designs] = useState(initialDesigns);
+    // 1 = folded, 0 = flat. Scrubbed by the unfold slider / replay.
+    const [fold, setFold] = useState(1);
+    const [unfoldKey, setUnfoldKey] = useState(0);
+
+    // Auto-play the unfold (folded → flat) when the tab opens or on replay.
+    useEffect(() => {
+        if (tab !== 'unfold') return;
+        let raf = 0;
+        const dur = 1400;
+        const t0 = performance.now();
+        const tick = (now: number) => {
+            const t = Math.min(1, (now - t0) / dur);
+            const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
+            setFold(1 - eased);
+            if (t < 1) raf = requestAnimationFrame(tick);
+        };
+        setFold(1);
+        raf = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(raf);
+    }, [tab, unfoldKey]);
 
     // One-shot quote pre-fill.
     useEffect(() => {
@@ -106,7 +132,7 @@ export function VisualiserClient({
             <div className="flex min-w-0 flex-1 flex-col rounded-lg border border-neutral-200 bg-white overflow-hidden">
                 <div className="flex items-center justify-between border-b border-neutral-100 px-3 py-2">
                     <div className="flex gap-1">
-                        {(['3d', 'flat'] as const).map((t) => (
+                        {(['folded', 'unfold', 'flat'] as const).map((t) => (
                             <button
                                 key={t}
                                 type="button"
@@ -117,7 +143,7 @@ export function VisualiserClient({
                                         : 'text-neutral-500 hover:bg-neutral-100'
                                 }`}
                             >
-                                {t === '3d' ? '3D folded' : 'Flat development'}
+                                {TAB_LABELS[t]}
                             </button>
                         ))}
                     </div>
@@ -135,21 +161,57 @@ export function VisualiserClient({
                             {valid.error.issues[0]?.message ??
                                 'Invalid parameters'}
                         </div>
-                    ) : !development ? null : tab === '3d' ? (
-                        <Scene3D
-                            params={params}
-                            development={development}
-                            split={split}
-                            aperture={aperture}
-                            keyline={keyline}
-                        />
-                    ) : (
+                    ) : !development ? null : tab === 'flat' ? (
                         <FlatPreview
                             development={development}
                             split={split}
                             aperture={aperture}
                             keyline={keyline}
                         />
+                    ) : (
+                        <Scene3D
+                            params={params}
+                            development={development}
+                            split={split}
+                            aperture={aperture}
+                            keyline={keyline}
+                            fold={tab === 'folded' ? 1 : fold}
+                        />
+                    )}
+
+                    {tab === 'unfold' && (
+                        <div className="absolute inset-x-0 top-3 flex justify-center">
+                            <div className="flex items-center gap-3 rounded-full border border-neutral-200 bg-white/90 px-4 py-2 shadow-sm backdrop-blur">
+                                <span className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">
+                                    Flat
+                                </span>
+                                <input
+                                    type="range"
+                                    min={0}
+                                    max={100}
+                                    value={Math.round(fold * 100)}
+                                    onChange={(e) =>
+                                        setFold(
+                                            Number(e.target.value) / 100,
+                                        )
+                                    }
+                                    className="h-1 w-48 accent-black"
+                                    aria-label="Fold amount"
+                                />
+                                <span className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">
+                                    Folded
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        setUnfoldKey((k) => k + 1)
+                                    }
+                                    className="ml-1 rounded-full bg-black px-3 py-1 text-[11px] font-medium text-white hover:bg-neutral-800"
+                                >
+                                    Replay
+                                </button>
+                            </div>
+                        </div>
                     )}
                     {geometryWarning && (
                         <div className="absolute inset-x-3 bottom-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700">
