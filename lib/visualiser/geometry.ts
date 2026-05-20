@@ -524,124 +524,185 @@ function clipPolylineToRect(pts: V[], r: Rect): V[][] {
 }
 
 /**
- * Place stand-off fixing holes inside the lettering outline.
+ * Place stand-off fixing holes inside the lettering — for real physical
+ * support, not just visual spread.
  *
- * Strategy:
- *   - Triangular brick-pattern grid across the artwork bbox (every other
- *     row offset by ½ a cell) so no two fixings line up vertically.
- *   - A small deterministic jitter (sin/cos of row+col) breaks any residual
- *     orthogonal alignment — the slight offset reduces wobble, per the
- *     user's note.
- *   - Even-odd inside test against all closed contours so counters of
- *     letters like O / A / B are correctly excluded.
- *   - Keep candidates clear of every edge (1.5 × radius minimum) and at
- *     least 0.7 × spacing apart from each other.
- *   - **Per-letter guarantee**: any outer contour that ended up empty is
- *     given one fallback fixing at its most "interior" sampled point, so
- *     every letter is mechanically supported.
+ * Physical principles encoded:
+ *   - A single fixing lets the letter rotate around it. So letters big
+ *     enough to "tip" get at least 2 fixings, spread along their **long
+ *     axis** — the natural resistance to bending/tipping moments.
+ *   - Two collinear fixings still let the letter rotate around the line
+ *     through them. So chunky letters (both dimensions large) get a third
+ *     fixing off-axis: triangulation that eliminates rotation entirely.
+ *   - Fixings sit only where the metal can carry them — far enough from
+ *     every edge (>= radius + 4 mm) so they're not at a hairline.
+ *   - Within a single letter, no two fixings share a vertical or
+ *     horizontal line (the slight-offset rule that reduces wobble).
  *
- * Returns small circle polygons placed in the same flat-development space
- * as the input contours — drop straight into the panel cut layer.
+ * Method (per outer contour = per letter):
+ *   1. Build a candidate grid inside the letter (sampled at ~radius), keep
+ *      only points that are filled (even-odd, so counters of O/A/B are
+ *      excluded) AND at least `edgeMargin` from every boundary. This
+ *      "eroded interior" is where a fixing can physically live.
+ *   2. Decide a target count from the letter's longest axis and density,
+ *      bumped to 3 when both axes are big (triangulation needed).
+ *   3. Pick fixings by **greedy farthest-point sampling**: first the
+ *      deepest interior point (most stable single fixing); each subsequent
+ *      one is the candidate maximising its distance to the already-placed
+ *      set. This naturally spreads them to the extremes of the letter.
+ *   4. Stop when the target is hit OR the next candidate would crowd a
+ *      previous one (< 2.5 × diameter), since crammed fixings give no
+ *      extra support and risk metal failure between them.
+ *   5. Per-letter guarantee: any outer with zero hits gets one fallback
+ *      fixing at its most interior point.
+ *
+ * Density > 1 means more fixings per unit of letter length (heavy
+ * materials like brass); < 1 means fewer (light materials like acrylic).
  */
 export function placeFixings(
     contours: FlatPath[],
-    radiusMm: number,
+    diameterMm: number,
     spacingMm?: number,
     densityFactor: number = 1,
 ): FlatPath[] {
     const closed = contours.filter((p) => p.closed && p.points.length > 3);
-    if (closed.length === 0 || radiusMm <= 0) return [];
+    if (closed.length === 0 || diameterMm <= 0) return [];
 
     const rings = closed.map((p) => p.points as Array<[number, number]>);
-    const bb = bboxOf(rings);
-    if (bb.h <= 0 || bb.w <= 0) return [];
+    if (rings.some((r) => r.length < 3)) return [];
 
-    // density > 1 = tighter spacing (more fixings, heavy materials like brass);
-    // density < 1 = looser (fewer, light materials like acrylic). Clamped.
+    const radius = diameterMm / 2;
     const d = Math.min(2.5, Math.max(0.4, densityFactor || 1));
-    const spacing = spacingMm ?? Math.min(200, Math.max(40, bb.h / 4)) / d;
-    const edgeMargin = Math.max(radiusMm * 1.5, 6);
-    const minDist = spacing * 0.7;
-    // Forbid any pair from sharing an x or y line within this tolerance —
-    // the user wants the slight offset that reduces wobble. Brick layout +
-    // jitter is the "try"; this is the guarantee.
-    const axisTol = Math.max(3, radiusMm * 0.6);
-    const rowStep = spacing * Math.sin(Math.PI / 3); // triangular packing
+    // Edge margin: hole edge needs material around it. 4 mm beyond the
+    // hole radius keeps the metal from cracking near a thin stroke edge.
+    const edgeMargin = Math.max(radius + 4, 7);
+    // Within-letter no-alignment tolerance (wobble rule).
+    const axisTol = Math.max(3, radius * 0.6);
+    // mm of letter length per fixing along the long axis at density 1.
+    const supportSpan = (spacingMm ?? 90) / d;
+    // Hard minimum centre-to-centre between any two fixings (no crowding).
+    const minPairwise = Math.max(diameterMm * 2.5, 18);
+    // Grid step for the candidate sampler. Finer is better at finding thin
+    // stroke positions; capped to keep large signs interactive.
+    const sampleStep = Math.max(2.5, Math.min(radius * 1.8, 12));
 
-    // Outer contours = even containment depth (0, 2, ...). Inner counters
-    // sit inside their outer; both still excluded from the filled area via
-    // the even-odd rule below.
-    const isOuter = rings.map((ring, i) => {
+    // Outer contours = even containment depth.
+    const depthOf = rings.map((ring, i) => {
         const probe = ring[0];
         let depth = 0;
         for (let j = 0; j < rings.length; j++) {
             if (i === j) continue;
             if (pointInRing(probe, rings[j])) depth++;
         }
-        return depth % 2 === 0;
+        return depth;
     });
 
     const accepted: Array<[number, number]> = [];
-    const accept = (p: [number, number]): boolean => {
-        if (!isFilled(p, rings)) return false;
-        if (minEdgeDist(p, rings) < edgeMargin) return false;
-        for (const a of accepted) {
-            if (Math.hypot(a[0] - p[0], a[1] - p[1]) < minDist) return false;
-            // No two fixings may share a vertical or horizontal line.
-            if (
-                Math.abs(a[0] - p[0]) < axisTol ||
-                Math.abs(a[1] - p[1]) < axisTol
-            ) {
-                return false;
-            }
-        }
-        accepted.push(p);
-        return true;
-    };
 
-    // Main pass: jittered triangular grid.
-    const rowMax = Math.ceil(bb.h / rowStep) + 1;
-    const colMax = Math.ceil(bb.w / spacing) + 1;
-    for (let r = 0; r <= rowMax; r++) {
-        const y0 = bb.y0 + (r + 0.5) * rowStep;
-        if (y0 > bb.y1 + spacing) break;
-        const odd = r % 2;
-        for (let c = 0; c <= colMax; c++) {
-            const x0 = bb.x0 + (c + 0.5 + odd * 0.5) * spacing;
-            if (x0 > bb.x1 + spacing) break;
-            const jx = Math.sin(r * 1.71 + c * 0.93) * spacing * 0.09;
-            const jy = Math.cos(r * 2.13 + c * 1.27) * spacing * 0.09;
-            accept([x0 + jx, y0 + jy]);
-        }
-    }
-
-    // Fallback: any outer letter shape that ended up empty gets one fixing
-    // at its most interior sampled point — every letter must be supported.
     for (let i = 0; i < rings.length; i++) {
-        if (!isOuter[i]) continue;
+        if (depthOf[i] % 2 !== 0) continue;
         const ring = rings[i];
-        const hasOne = accepted.some((a) => pointInRing(a, ring));
-        if (hasOne) continue;
         const lbb = bboxOf([ring]);
-        let best: [number, number] | null = null;
-        let bestEdge = -1;
-        for (let t = 0; t < 49; t++) {
-            const rx = ((t * 0.314 + 0.13) % 1) * lbb.w + lbb.x0;
-            const ry = ((t * 0.271 + 0.21) % 1) * lbb.h + lbb.y0;
-            const p: [number, number] = [rx, ry];
-            if (!isFilled(p, rings)) continue;
-            const e = minEdgeDist(p, rings);
-            if (e > bestEdge) {
-                bestEdge = e;
-                best = p;
+        if (lbb.w <= 0 || lbb.h <= 0) continue;
+
+        // 1. Eroded-interior candidate grid for this letter.
+        const candidates: Array<[number, number]> = [];
+        const candidateEdge: number[] = [];
+        for (let y = lbb.y0; y <= lbb.y1 + 1e-6; y += sampleStep) {
+            for (let x = lbb.x0; x <= lbb.x1 + 1e-6; x += sampleStep) {
+                const p: [number, number] = [x, y];
+                if (!pointInRing(p, ring)) continue;
+                if (!isFilled(p, rings)) continue;
+                const e = minEdgeDist(p, rings);
+                if (e < edgeMargin) continue;
+                candidates.push(p);
+                candidateEdge.push(e);
             }
         }
-        if (best && bestEdge >= Math.max(radiusMm + 1, 3)) {
-            accepted.push(best);
+
+        // 2. Target count: letter length / supportSpan, with the
+        //    triangulation bump for chunky letters.
+        const longDim = Math.max(lbb.w, lbb.h);
+        const shortDim = Math.min(lbb.w, lbb.h);
+        let target = Math.max(1, Math.ceil(longDim / supportSpan));
+        if (longDim >= 100 && shortDim >= 80 && target < 3) target = 3;
+        target = Math.min(target, 30); // safety cap
+
+        // Empty interior → fallback to letter centre with a relaxed margin.
+        if (candidates.length === 0) {
+            const p: [number, number] = [
+                (lbb.x0 + lbb.x1) / 2,
+                (lbb.y0 + lbb.y1) / 2,
+            ];
+            if (
+                isFilled(p, rings) &&
+                minEdgeDist(p, rings) >= Math.max(radius + 1, 3)
+            ) {
+                accepted.push(p);
+            }
+            continue;
         }
+
+        // 3. First fixing: deepest interior — best for a single-fixing
+        //    letter and a good "anchor" for farthest-point that follows.
+        let firstIdx = 0;
+        let firstScore = -Infinity;
+        for (let k = 0; k < candidates.length; k++) {
+            if (candidateEdge[k] > firstScore) {
+                firstScore = candidateEdge[k];
+                firstIdx = k;
+            }
+        }
+        const local: Array<[number, number]> = [candidates[firstIdx]];
+
+        // 3b. Greedy farthest-point for the rest, with within-letter
+        //     no-alignment and the global no-crowd rule.
+        while (local.length < target) {
+            let pickIdx = -1;
+            let pickScore = -Infinity;
+            for (let k = 0; k < candidates.length; k++) {
+                const c = candidates[k];
+                // skip already-picked
+                let dup = false;
+                for (const a of local) {
+                    if (a[0] === c[0] && a[1] === c[1]) {
+                        dup = true;
+                        break;
+                    }
+                }
+                if (dup) continue;
+                // within-letter alignment veto
+                let lines = false;
+                for (const a of local) {
+                    if (
+                        Math.abs(a[0] - c[0]) < axisTol ||
+                        Math.abs(a[1] - c[1]) < axisTol
+                    ) {
+                        lines = true;
+                        break;
+                    }
+                }
+                if (lines) continue;
+                // distance to nearest already-placed (this letter)
+                let minD = Infinity;
+                for (const a of local) {
+                    const dist = Math.hypot(a[0] - c[0], a[1] - c[1]);
+                    if (dist < minD) minD = dist;
+                }
+                if (minD > pickScore) {
+                    pickScore = minD;
+                    pickIdx = k;
+                }
+            }
+            // 4. Stop when crowded.
+            if (pickIdx < 0 || pickScore < minPairwise) break;
+            local.push(candidates[pickIdx]);
+        }
+
+        for (const p of local) accepted.push(p);
     }
 
-    return accepted.map(([cx, cy]) => circlePoly(cx, cy, radiusMm));
+    return accepted.map(([cx, cy]) => circlePoly(cx, cy, radius));
 }
 
 function bboxOf(

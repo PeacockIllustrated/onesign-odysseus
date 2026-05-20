@@ -29,7 +29,7 @@ function pointInRing(p: [number, number], ring: Array<[number, number]>): boolea
 
 describe('placeFixings — sensible stand-off hole placement', () => {
     it('empty input → no fixings', () => {
-        expect(placeFixings([], 5)).toEqual([]);
+        expect(placeFixings([], 10)).toEqual([]);
     });
 
     it('zero / negative radius → no fixings', () => {
@@ -58,7 +58,7 @@ describe('placeFixings — sensible stand-off hole placement', () => {
                 [0, 0],
             ],
         };
-        const out = placeFixings([sq], 5);
+        const out = placeFixings([sq], 10);
         expect(out.length).toBeGreaterThanOrEqual(3);
         // Every fixing centre lies inside the letter outline.
         for (const f of out) {
@@ -78,7 +78,7 @@ describe('placeFixings — sensible stand-off hole placement', () => {
                 [0, 0],
             ],
         };
-        const out = placeFixings([sq], 5);
+        const out = placeFixings([sq], 10);
         const centres = out.map(centre);
         for (let i = 0; i < centres.length; i++) {
             for (let j = i + 1; j < centres.length; j++) {
@@ -102,7 +102,7 @@ describe('placeFixings — sensible stand-off hole placement', () => {
                 [0, 0],
             ],
         };
-        const out = placeFixings([sq], 5);
+        const out = placeFixings([sq], 10);
         const centres = out.map(centre);
         // Minimum distance ≥ ~20mm (well above any sensible collision).
         for (let i = 0; i < centres.length; i++) {
@@ -137,7 +137,7 @@ describe('placeFixings — sensible stand-off hole placement', () => {
                 [120, 120],
             ],
         };
-        const out = placeFixings([outer, hole], 5);
+        const out = placeFixings([outer, hole], 10);
         expect(out.length).toBeGreaterThan(0);
         // None of the placed centres lies inside the counter.
         for (const f of out) {
@@ -145,6 +145,52 @@ describe('placeFixings — sensible stand-off hole placement', () => {
             expect(pointInRing(c, hole.points)).toBe(false);
             expect(pointInRing(c, outer.points)).toBe(true);
         }
+    });
+
+    it('chunky letter gets at least 3 fixings (triangulation vs rotation)', () => {
+        // Both dimensions large enough that a 2-fixing line would still
+        // let the letter rotate around it.
+        const chunky: FlatPath = {
+            closed: true,
+            points: [
+                [0, 0],
+                [220, 0],
+                [220, 220],
+                [0, 220],
+                [0, 0],
+            ],
+        };
+        const out = placeFixings([chunky], 10);
+        expect(out.length).toBeGreaterThanOrEqual(3);
+        // …and they're genuinely spread, not collinear.
+        const centres = out.map(centre);
+        const xs = centres.map((c) => c[0]);
+        const ys = centres.map((c) => c[1]);
+        const spreadX = Math.max(...xs) - Math.min(...xs);
+        const spreadY = Math.max(...ys) - Math.min(...ys);
+        expect(spreadX).toBeGreaterThan(60);
+        expect(spreadY).toBeGreaterThan(60);
+    });
+
+    it('elongated letter: fixings span the long axis (physical support)', () => {
+        // 50mm x 500mm — like an I, T stem, etc. Fixings must spread
+        // along the long axis or the letter tips around a single anchor.
+        const tall: FlatPath = {
+            closed: true,
+            points: [
+                [0, 0],
+                [50, 0],
+                [50, 500],
+                [0, 500],
+                [0, 0],
+            ],
+        };
+        const out = placeFixings([tall], 10);
+        expect(out.length).toBeGreaterThanOrEqual(3);
+        const ys = out.map(centre).map((c) => c[1]);
+        const span = Math.max(...ys) - Math.min(...ys);
+        // At least 60% of the letter's long-axis length is spanned.
+        expect(span).toBeGreaterThan(500 * 0.6);
     });
 
     it('density factor scales the count: dense > normal > sparse', () => {
@@ -158,9 +204,9 @@ describe('placeFixings — sensible stand-off hole placement', () => {
                 [0, 0],
             ],
         };
-        const sparse = placeFixings([sq], 5, undefined, 0.5).length;
-        const normal = placeFixings([sq], 5, undefined, 1.0).length;
-        const dense = placeFixings([sq], 5, undefined, 2.0).length;
+        const sparse = placeFixings([sq], 10, undefined, 0.5).length;
+        const normal = placeFixings([sq], 10, undefined, 1.0).length;
+        const dense = placeFixings([sq], 10, undefined, 2.0).length;
         expect(dense).toBeGreaterThan(normal);
         expect(normal).toBeGreaterThan(sparse);
     });
@@ -178,7 +224,7 @@ describe('placeFixings — sensible stand-off hole placement', () => {
                 [0, 0],
             ],
         };
-        const out = placeFixings([thin], 5);
+        const out = placeFixings([thin], 10);
         expect(out.length).toBeGreaterThanOrEqual(1);
     });
 });

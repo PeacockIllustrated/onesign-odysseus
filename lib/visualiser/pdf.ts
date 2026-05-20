@@ -146,13 +146,15 @@ export function generatePdfBlob(opts: PdfOptions): Blob {
         : '-';
     const specY = M + 13;
     const mode = params.apertureMode ?? 'aperture';
-    const fixingR = params.fixingRadiusMm ?? 5;
+    const fixingD =
+        params.fixingDiameterMm ??
+        (params.fixingRadiusMm ? params.fixingRadiusMm * 2 : 10);
     const nFixings = opts.fixings?.length ?? 0;
     const artworkRow: [string, string] =
         mode === 'standoff'
             ? [
                   'Artwork',
-                  `Stand-off  |  ${nFixings} x ${(fixingR * 2).toFixed(1)} mm fixings`,
+                  `Stand-off  |  ${nFixings} x ${fixingD.toFixed(1)} mm fixings`,
               ]
             : ['Artwork', 'Aperture cut'];
 

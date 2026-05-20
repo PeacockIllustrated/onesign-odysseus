@@ -283,13 +283,18 @@ export function SvgDropzone() {
                         {(params.apertureMode ?? 'aperture') === 'standoff' && (
                             <>
                                 <NumField
-                                    label="Fixing radius (mm)"
+                                    label="Fixing diameter (mm)"
                                     step={0.5}
-                                    value={params.fixingRadiusMm ?? 5}
+                                    value={
+                                        params.fixingDiameterMm ??
+                                        (params.fixingRadiusMm
+                                            ? params.fixingRadiusMm * 2
+                                            : 10)
+                                    }
                                     onChange={(n) =>
                                         setParam(
-                                            'fixingRadiusMm',
-                                            n > 0 ? n : 0.1,
+                                            'fixingDiameterMm',
+                                            n > 0 ? n : 0.2,
                                         )
                                     }
                                 />

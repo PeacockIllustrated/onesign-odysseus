@@ -135,7 +135,13 @@ export const PanelParamsSchema = z.object({
     aperturePlacement: AperturePlacementSchema.nullable().optional(),
     /** How the uploaded artwork is treated. Default 'aperture'. */
     apertureMode: z.enum(['aperture', 'standoff']).optional(),
-    /** Radius (mm) of each stand-off fixing hole. Default 5mm. */
+    /** Diameter (mm) of each stand-off fixing hole. Default 10mm. */
+    fixingDiameterMm: z.number().positive().max(100).optional(),
+    /**
+     * Deprecated — kept so saved designs from the previous radius-based
+     * schema still load. The UI reads fixingDiameterMm; if absent, falls
+     * back to `fixingRadiusMm * 2`.
+     */
     fixingRadiusMm: z.number().positive().max(50).optional(),
     /**
      * Fixing density multiplier: 1.0 = the auto default, >1 = denser (more

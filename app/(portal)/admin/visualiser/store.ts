@@ -21,7 +21,7 @@ export const DEFAULT_PARAMS: PanelParams = {
     materialLabel: 'Aluminium',
     aperturePlacement: null,
     apertureMode: 'aperture',
-    fixingRadiusMm: 5,
+    fixingDiameterMm: 10,
     fixingDensity: 1,
 };
 

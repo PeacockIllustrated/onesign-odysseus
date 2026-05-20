@@ -112,7 +112,11 @@ export function VisualiserClient({
     }, [development, imported, JSON.stringify(placement)]);
 
     const mode = params.apertureMode ?? 'aperture';
-    const fixingRadius = params.fixingRadiusMm ?? 5;
+    // Diameter is the source of truth; fall back to legacy radius * 2 for
+    // designs saved before the units change.
+    const fixingDiameter =
+        params.fixingDiameterMm ??
+        (params.fixingRadiusMm ? params.fixingRadiusMm * 2 : 10);
 
     // Aperture-mode cuts (lettering as holes).
     const aperture = useMemo(
@@ -133,14 +137,14 @@ export function VisualiserClient({
             return [];
         const raw = placeFixings(
             placedClip.paths,
-            fixingRadius,
+            fixingDiameter,
             undefined,
             fixingDensity,
         );
         // Clip — a fixing on the edge of a letter sitting near the face
         // border could otherwise stick out past the face.
         return clipApertureToFace(development, raw).paths;
-    }, [mode, development, placedClip.paths, fixingRadius, fixingDensity]);
+    }, [mode, development, placedClip.paths, fixingDiameter, fixingDensity]);
 
     // Build the keyline from the cut aperture so it tracks the visible
     // artwork, then clip it too. Standoff mode has no keyline.
