@@ -44,6 +44,10 @@ interface PdfOptions {
     params: PanelParams;
     aperture?: FlatPath[];
     keyline?: FlatPath[];
+    /** Stand-off fixing holes (cut). */
+    fixings?: FlatPath[];
+    /** Lettering outline shown as a reference in standoff mode (not cut). */
+    reference?: FlatPath[];
     /** PNG/JPEG data URL of the 3D preview, optional. */
     thumbnailDataUrl?: string;
 }
@@ -62,7 +66,7 @@ export function generatePdfBlob(opts: PdfOptions): Blob {
     const drawY = M + 18;
 
     // How tall the info column needs to be (fixed line steps + thumbnail).
-    const specRows = 9;
+    const specRows = 10; // matches the `spec` array length below
     let infoBottom = M + 13 + specRows * 5.2;
     if (split.wasSplit) infoBottom += 6;
     infoBottom += 14; // bend note
@@ -141,12 +145,24 @@ export function generatePdfBlob(opts: PdfOptions): Blob {
             : params.materialLabel
         : '-';
     const specY = M + 13;
+    const mode = params.apertureMode ?? 'aperture';
+    const fixingR = params.fixingRadiusMm ?? 5;
+    const nFixings = opts.fixings?.length ?? 0;
+    const artworkRow: [string, string] =
+        mode === 'standoff'
+            ? [
+                  'Artwork',
+                  `Stand-off  |  ${nFixings} x ${(fixingR * 2).toFixed(1)} mm fixings`,
+              ]
+            : ['Artwork', 'Aperture cut'];
+
     const spec: Array<[string, string]> = [
         ['Sign face', `${dev.faceNominalWMm} x ${dev.faceNominalHMm} mm`],
         ['Returns', returnsLabel(params)],
         ['Return depth', `${params.returnDepthMm} mm`],
         ['Shadow gap', params.shadowGapMm > 0 ? `${params.shadowGapMm} mm` : '-'],
-        ['Keyline', params.keylineMm > 0 ? `${params.keylineMm} mm` : '-'],
+        artworkRow,
+        ['Keyline', mode === 'standoff' || params.keylineMm <= 0 ? '-' : `${params.keylineMm} mm`],
         ['Material', matLabel],
         ['Thickness', `${params.materialThicknessMm} mm`],
         [
@@ -218,14 +234,48 @@ export function generatePdfBlob(opts: PdfOptions): Blob {
             label: 'Panel seam / join',
             w: 0.5,
         },
-        { rgb: [30, 90, 200], dash: [], label: 'Aperture cut', w: 0.35 },
-        {
+    ];
+    if ((opts.aperture?.length ?? 0) > 0) {
+        legend.push({
+            rgb: [30, 90, 200],
+            dash: [],
+            label: 'Aperture cut',
+            w: 0.35,
+        });
+    }
+    if ((opts.fixings?.length ?? 0) > 0) {
+        legend.push({
+            rgb: [30, 90, 200],
+            dash: [],
+            label: 'Stand-off fixing hole (cut)',
+            w: 0.5,
+        });
+    }
+    if ((opts.reference?.length ?? 0) > 0) {
+        legend.push({
+            rgb: [156, 163, 175],
+            dash: [0.8, 0.8],
+            label: 'Lettering position (NOT cut)',
+            w: 0.35,
+        });
+    }
+    if ((opts.keyline?.length ?? 0) > 0) {
+        legend.push({
             rgb: [0, 170, 190],
             dash: [0.8, 0.8],
             label: 'Keyline (register)',
             w: 0.35,
-        },
-    ];
+        });
+    }
+    // Pad so the layout reserves a consistent block; keeps info column tidy
+    while (legend.length < 5) {
+        legend.push({
+            rgb: [255, 255, 255],
+            dash: [],
+            label: '',
+            w: 0,
+        });
+    }
     doc.setFontSize(7);
     legend.forEach((l, i) => {
         const y = cursorY + i * 5;
@@ -334,9 +384,33 @@ export function generatePdfBlob(opts: PdfOptions): Blob {
         }
     }
 
+    // Reference letter outline (standoff mode, non-cut, light dashed grey).
+    if (opts.reference?.length) {
+        doc.setLineDashPattern([dash * 0.8, dash * 0.8], 0);
+        drawPaths(doc, opts.reference, px, py, [156, 163, 175], refLW * 0.7);
+        doc.setLineDashPattern([], 0);
+    }
+
     // Aperture (blue, solid cut) + keyline (cyan).
     drawPaths(doc, opts.aperture ?? [], px, py, [30, 90, 200], cutLW * 0.8);
     drawPaths(doc, opts.keyline ?? [], px, py, [0, 170, 190], refLW * 0.8);
+
+    // Stand-off fixing holes (filled blue dots, cut).
+    if (opts.fixings?.length) {
+        doc.setFillColor(30, 90, 200);
+        doc.setDrawColor(30, 90, 200);
+        doc.setLineWidth(cutLW * 0.6);
+        for (const p of opts.fixings) {
+            const cx = p.points.reduce((a, q) => a + q[0], 0) / p.points.length;
+            const cy = p.points.reduce((a, q) => a + q[1], 0) / p.points.length;
+            const rMm =
+                p.points.reduce(
+                    (a, q) => a + Math.hypot(q[0] - cx, q[1] - cy),
+                    0,
+                ) / p.points.length;
+            doc.circle(px(cx), py(cy), rMm * scale, 'FD');
+        }
+    }
 
     // ---- Dimension lines (dashed — clearly NOT production cuts) -------
     doc.setTextColor(70);

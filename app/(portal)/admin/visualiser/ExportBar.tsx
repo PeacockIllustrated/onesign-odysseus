@@ -28,11 +28,15 @@ export function ExportBar({
     split,
     aperture,
     keyline,
+    fixings = [],
+    reference = [],
 }: {
     development: PanelDevelopment;
     split: PanelSplit;
     aperture: FlatPath[];
     keyline: FlatPath[];
+    fixings?: FlatPath[];
+    reference?: FlatPath[];
 }) {
     const {
         params,
@@ -49,7 +53,14 @@ export function ExportBar({
     const valid = PanelParamsSchema.safeParse(params);
 
     const onDxf = () => {
-        const dxf = generateDxf({ development, split, params, aperture, keyline });
+        const dxf = generateDxf({
+            development,
+            split,
+            params,
+            aperture,
+            keyline,
+            fixings,
+        });
         download(
             new Blob([dxf], { type: 'application/dxf' }),
             dxfFilename(params),
@@ -64,6 +75,8 @@ export function ExportBar({
             params,
             aperture,
             keyline,
+            fixings,
+            reference,
             thumbnailDataUrl: thumb || undefined,
         });
         download(blob, pdfFilename(params));

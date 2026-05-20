@@ -145,6 +145,8 @@ function Panel({
     split,
     aperture,
     keyline,
+    fixings,
+    reference,
     fold,
 }: {
     params: PanelParams;
@@ -152,6 +154,8 @@ function Panel({
     split: PanelSplit;
     aperture: FlatPath[];
     keyline: FlatPath[];
+    fixings: FlatPath[];
+    reference: FlatPath[];
     fold: number;
 }) {
     const W = dev.faceNominalWMm;
@@ -188,8 +192,13 @@ function Panel({
             );
             return g;
         };
-        return { ap: build(aperture), kl: build(keyline) };
-    }, [aperture, keyline, face, T]);
+        return {
+            ap: build(aperture),
+            kl: build(keyline),
+            fx: build(fixings),
+            ref: build(reference),
+        };
+    }, [aperture, keyline, fixings, reference, face, T]);
 
     return (
         <group>
@@ -224,14 +233,21 @@ function Panel({
                     </mesh>
                 ))}
 
-            {/* Aperture + keyline overlays */}
+            {/* Reference letter outline (standoff mode, not cut) — drawn
+                faintly under the cut features. */}
             {overlay && (
                 <>
+                    <lineSegments geometry={overlay.ref}>
+                        <lineBasicMaterial color="#9ca3af" />
+                    </lineSegments>
                     <lineSegments geometry={overlay.ap}>
                         <lineBasicMaterial color="#1e5fc8" />
                     </lineSegments>
                     <lineSegments geometry={overlay.kl}>
                         <lineBasicMaterial color="#00aabe" />
+                    </lineSegments>
+                    <lineSegments geometry={overlay.fx}>
+                        <lineBasicMaterial color="#1e5fc8" />
                     </lineSegments>
                 </>
             )}
@@ -245,10 +261,14 @@ export default function Scene3D(props: {
     split: PanelSplit;
     aperture: FlatPath[];
     keyline: FlatPath[];
+    fixings?: FlatPath[];
+    reference?: FlatPath[];
     /** 0 = flat (unfolded in 3D), 1 = folded. Default folded. */
     fold?: number;
 }) {
     const fold = props.fold ?? 1;
+    const fixings = props.fixings ?? [];
+    const reference = props.reference ?? [];
     // Frame the flat blank so both folded and unfolded states stay in view.
     const reach =
         Math.max(
@@ -266,7 +286,7 @@ export default function Scene3D(props: {
         >
             <color attach="background" args={['#ffffff']} />
             <CaptureBinder />
-            <Panel {...props} fold={fold} />
+            <Panel {...props} fixings={fixings} reference={reference} fold={fold} />
             <OrbitControls enablePan makeDefault />
         </Canvas>
     );

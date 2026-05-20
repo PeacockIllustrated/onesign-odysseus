@@ -22,11 +22,15 @@ export function FlatPreview({
     split,
     aperture,
     keyline,
+    fixings = [],
+    reference = [],
 }: {
     development: PanelDevelopment;
     split: PanelSplit;
     aperture: FlatPath[];
     keyline: FlatPath[];
+    fixings?: FlatPath[];
+    reference?: FlatPath[];
 }) {
     const pad = Math.max(20, dev.totalFlatWMm * 0.06);
     const vb = useMemo(
@@ -105,7 +109,19 @@ export function FlatPreview({
                         );
                     })}
 
-                {/* Aperture + keyline */}
+                {/* Reference letter outline (standoff mode, not cut). */}
+                {reference.map((p, i) => (
+                    <path
+                        key={`ref-${i}`}
+                        d={pathD(p)}
+                        fill="none"
+                        stroke="#9ca3af"
+                        strokeWidth={stroke * 0.9}
+                        strokeDasharray={`${stroke * 3} ${stroke * 2}`}
+                    />
+                ))}
+
+                {/* Aperture + keyline (aperture mode). */}
                 {aperture.map((p, i) => (
                     <path
                         key={`ap-${i}`}
@@ -123,6 +139,18 @@ export function FlatPreview({
                         stroke="#00aabe"
                         strokeWidth={stroke}
                         strokeDasharray={`${stroke * 2} ${stroke * 2}`}
+                    />
+                ))}
+
+                {/* Stand-off fixing holes (standoff mode). */}
+                {fixings.map((p, i) => (
+                    <path
+                        key={`fx-${i}`}
+                        d={pathD(p)}
+                        fill="#1e5fc8"
+                        fillOpacity={0.85}
+                        stroke="#1e5fc8"
+                        strokeWidth={stroke}
                     />
                 ))}
 

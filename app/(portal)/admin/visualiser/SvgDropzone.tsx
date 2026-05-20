@@ -3,7 +3,11 @@
 import { useRef, useState } from 'react';
 import { useVisualiser } from './store';
 import { importSvg } from '@/lib/visualiser/svg-import';
-import type { AlignH, AlignV } from '@/lib/visualiser/types';
+import type {
+    AlignH,
+    AlignV,
+    ApertureMode,
+} from '@/lib/visualiser/types';
 import { AlertTriangle, Upload, X } from 'lucide-react';
 
 function Segmented<T extends string>({
@@ -66,8 +70,15 @@ function NumField({
 }
 
 export function SvgDropzone() {
-    const { svgSource, imported, params, setSvg, clearSvg, setPlacement } =
-        useVisualiser();
+    const {
+        svgSource,
+        imported,
+        params,
+        setSvg,
+        clearSvg,
+        setPlacement,
+        setParam,
+    } = useVisualiser();
     const inputRef = useRef<HTMLInputElement>(null);
     const [error, setError] = useState<string | null>(null);
 
@@ -247,6 +258,94 @@ export function SvgDropzone() {
                         Size in mm — aspect locked, edit width or height.
                         Anchored to the artwork centre; default is dead centre.
                     </p>
+
+                    {/* Cut mode: aperture (cut out of panel) vs stand-off
+                        (lettering mounts on studs; the panel gets fixing
+                        holes inside each letter instead). */}
+                    <div className="pt-2 border-t border-neutral-100 space-y-2">
+                        <div>
+                            <span className="text-[10px] text-neutral-500">
+                                Cut mode
+                            </span>
+                            <div className="mt-0.5">
+                                <Segmented<ApertureMode>
+                                    options={[
+                                        ['aperture', 'Aperture'],
+                                        ['standoff', 'Stood off'],
+                                    ]}
+                                    value={params.apertureMode ?? 'aperture'}
+                                    onChange={(v) =>
+                                        setParam('apertureMode', v)
+                                    }
+                                />
+                            </div>
+                        </div>
+                        {(params.apertureMode ?? 'aperture') === 'standoff' && (
+                            <>
+                                <NumField
+                                    label="Fixing radius (mm)"
+                                    step={0.5}
+                                    value={params.fixingRadiusMm ?? 5}
+                                    onChange={(n) =>
+                                        setParam(
+                                            'fixingRadiusMm',
+                                            n > 0 ? n : 0.1,
+                                        )
+                                    }
+                                />
+                                <div>
+                                    <div className="flex items-baseline justify-between">
+                                        <span className="text-[10px] text-neutral-500">
+                                            Fixing density
+                                        </span>
+                                        <span className="text-[10px] tabular-nums text-neutral-400">
+                                            {Math.round(
+                                                (params.fixingDensity ?? 1) *
+                                                    100,
+                                            )}
+                                            %
+                                        </span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min={0}
+                                        max={100}
+                                        // Symmetric mapping: slider 50 = 1.0×;
+                                        // 0 = 0.5× (sparse, acrylic-light);
+                                        // 100 = 2.0× (dense, brass-heavy).
+                                        value={Math.round(
+                                            50 +
+                                                (Math.log2(
+                                                    params.fixingDensity ?? 1,
+                                                ) *
+                                                    50),
+                                        )}
+                                        onChange={(e) => {
+                                            const v = Number(e.target.value);
+                                            const factor =
+                                                Math.pow(2, (v - 50) / 50);
+                                            setParam(
+                                                'fixingDensity',
+                                                Math.round(factor * 100) / 100,
+                                            );
+                                        }}
+                                        className="mt-1 h-1 w-full accent-black"
+                                        aria-label="Fixing density"
+                                    />
+                                    <div className="mt-0.5 flex justify-between text-[9px] uppercase tracking-wide text-neutral-400">
+                                        <span>Sparse</span>
+                                        <span>Normal</span>
+                                        <span>Dense</span>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                        <p className="text-[10px] text-neutral-400">
+                            {(params.apertureMode ?? 'aperture') === 'standoff'
+                                ? 'Lettering is fabricated separately; the panel gets fixing holes placed inside each letter, offset so they never line up vertically or horizontally.'
+                                : 'The artwork is cut out of the panel as one or more holes.'}
+                        </p>
+                    </div>
                 </div>
             )}
         </div>

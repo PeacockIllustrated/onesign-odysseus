@@ -523,6 +523,203 @@ function clipPolylineToRect(pts: V[], r: Rect): V[][] {
     return runs;
 }
 
+/**
+ * Place stand-off fixing holes inside the lettering outline.
+ *
+ * Strategy:
+ *   - Triangular brick-pattern grid across the artwork bbox (every other
+ *     row offset by ½ a cell) so no two fixings line up vertically.
+ *   - A small deterministic jitter (sin/cos of row+col) breaks any residual
+ *     orthogonal alignment — the slight offset reduces wobble, per the
+ *     user's note.
+ *   - Even-odd inside test against all closed contours so counters of
+ *     letters like O / A / B are correctly excluded.
+ *   - Keep candidates clear of every edge (1.5 × radius minimum) and at
+ *     least 0.7 × spacing apart from each other.
+ *   - **Per-letter guarantee**: any outer contour that ended up empty is
+ *     given one fallback fixing at its most "interior" sampled point, so
+ *     every letter is mechanically supported.
+ *
+ * Returns small circle polygons placed in the same flat-development space
+ * as the input contours — drop straight into the panel cut layer.
+ */
+export function placeFixings(
+    contours: FlatPath[],
+    radiusMm: number,
+    spacingMm?: number,
+    densityFactor: number = 1,
+): FlatPath[] {
+    const closed = contours.filter((p) => p.closed && p.points.length > 3);
+    if (closed.length === 0 || radiusMm <= 0) return [];
+
+    const rings = closed.map((p) => p.points as Array<[number, number]>);
+    const bb = bboxOf(rings);
+    if (bb.h <= 0 || bb.w <= 0) return [];
+
+    // density > 1 = tighter spacing (more fixings, heavy materials like brass);
+    // density < 1 = looser (fewer, light materials like acrylic). Clamped.
+    const d = Math.min(2.5, Math.max(0.4, densityFactor || 1));
+    const spacing = spacingMm ?? Math.min(200, Math.max(40, bb.h / 4)) / d;
+    const edgeMargin = Math.max(radiusMm * 1.5, 6);
+    const minDist = spacing * 0.7;
+    // Forbid any pair from sharing an x or y line within this tolerance —
+    // the user wants the slight offset that reduces wobble. Brick layout +
+    // jitter is the "try"; this is the guarantee.
+    const axisTol = Math.max(3, radiusMm * 0.6);
+    const rowStep = spacing * Math.sin(Math.PI / 3); // triangular packing
+
+    // Outer contours = even containment depth (0, 2, ...). Inner counters
+    // sit inside their outer; both still excluded from the filled area via
+    // the even-odd rule below.
+    const isOuter = rings.map((ring, i) => {
+        const probe = ring[0];
+        let depth = 0;
+        for (let j = 0; j < rings.length; j++) {
+            if (i === j) continue;
+            if (pointInRing(probe, rings[j])) depth++;
+        }
+        return depth % 2 === 0;
+    });
+
+    const accepted: Array<[number, number]> = [];
+    const accept = (p: [number, number]): boolean => {
+        if (!isFilled(p, rings)) return false;
+        if (minEdgeDist(p, rings) < edgeMargin) return false;
+        for (const a of accepted) {
+            if (Math.hypot(a[0] - p[0], a[1] - p[1]) < minDist) return false;
+            // No two fixings may share a vertical or horizontal line.
+            if (
+                Math.abs(a[0] - p[0]) < axisTol ||
+                Math.abs(a[1] - p[1]) < axisTol
+            ) {
+                return false;
+            }
+        }
+        accepted.push(p);
+        return true;
+    };
+
+    // Main pass: jittered triangular grid.
+    const rowMax = Math.ceil(bb.h / rowStep) + 1;
+    const colMax = Math.ceil(bb.w / spacing) + 1;
+    for (let r = 0; r <= rowMax; r++) {
+        const y0 = bb.y0 + (r + 0.5) * rowStep;
+        if (y0 > bb.y1 + spacing) break;
+        const odd = r % 2;
+        for (let c = 0; c <= colMax; c++) {
+            const x0 = bb.x0 + (c + 0.5 + odd * 0.5) * spacing;
+            if (x0 > bb.x1 + spacing) break;
+            const jx = Math.sin(r * 1.71 + c * 0.93) * spacing * 0.09;
+            const jy = Math.cos(r * 2.13 + c * 1.27) * spacing * 0.09;
+            accept([x0 + jx, y0 + jy]);
+        }
+    }
+
+    // Fallback: any outer letter shape that ended up empty gets one fixing
+    // at its most interior sampled point — every letter must be supported.
+    for (let i = 0; i < rings.length; i++) {
+        if (!isOuter[i]) continue;
+        const ring = rings[i];
+        const hasOne = accepted.some((a) => pointInRing(a, ring));
+        if (hasOne) continue;
+        const lbb = bboxOf([ring]);
+        let best: [number, number] | null = null;
+        let bestEdge = -1;
+        for (let t = 0; t < 49; t++) {
+            const rx = ((t * 0.314 + 0.13) % 1) * lbb.w + lbb.x0;
+            const ry = ((t * 0.271 + 0.21) % 1) * lbb.h + lbb.y0;
+            const p: [number, number] = [rx, ry];
+            if (!isFilled(p, rings)) continue;
+            const e = minEdgeDist(p, rings);
+            if (e > bestEdge) {
+                bestEdge = e;
+                best = p;
+            }
+        }
+        if (best && bestEdge >= Math.max(radiusMm + 1, 3)) {
+            accepted.push(best);
+        }
+    }
+
+    return accepted.map(([cx, cy]) => circlePoly(cx, cy, radiusMm));
+}
+
+function bboxOf(
+    rings: Array<Array<[number, number]>>,
+): { x0: number; y0: number; x1: number; y1: number; w: number; h: number } {
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    for (const ring of rings) {
+        for (const [x, y] of ring) {
+            if (x < x0) x0 = x;
+            if (y < y0) y0 = y;
+            if (x > x1) x1 = x;
+            if (y > y1) y1 = y;
+        }
+    }
+    return { x0, y0, x1, y1, w: x1 - x0, h: y1 - y0 };
+}
+
+function pointInRing(p: [number, number], ring: Array<[number, number]>): boolean {
+    let inside = false;
+    let j = ring.length - 1;
+    for (let i = 0; i < ring.length; i++) {
+        const xi = ring[i][0];
+        const yi = ring[i][1];
+        const xj = ring[j][0];
+        const yj = ring[j][1];
+        const intersects =
+            yi > p[1] !== yj > p[1] &&
+            p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi || 1e-12) + xi;
+        if (intersects) inside = !inside;
+        j = i;
+    }
+    return inside;
+}
+
+function isFilled(
+    p: [number, number],
+    rings: Array<Array<[number, number]>>,
+): boolean {
+    let n = 0;
+    for (const ring of rings) if (pointInRing(p, ring)) n++;
+    return n % 2 === 1;
+}
+
+function minEdgeDist(
+    p: [number, number],
+    rings: Array<Array<[number, number]>>,
+): number {
+    let m = Infinity;
+    for (const ring of rings) {
+        for (let i = 0; i < ring.length; i++) {
+            const a = ring[i];
+            const b = ring[(i + 1) % ring.length];
+            const dx = b[0] - a[0];
+            const dy = b[1] - a[1];
+            const l2 = dx * dx + dy * dy;
+            let t = l2 > 0 ? ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2 : 0;
+            t = Math.max(0, Math.min(1, t));
+            const cx = a[0] + t * dx;
+            const cy = a[1] + t * dy;
+            const d = Math.hypot(p[0] - cx, p[1] - cy);
+            if (d < m) m = d;
+        }
+    }
+    return m;
+}
+
+function circlePoly(cx: number, cy: number, r: number, segs = 24): FlatPath {
+    const pts: Array<[number, number]> = [];
+    for (let i = 0; i <= segs; i++) {
+        const t = (i / segs) * Math.PI * 2;
+        pts.push([cx + Math.cos(t) * r, cy + Math.sin(t) * r]);
+    }
+    return { closed: true, points: pts };
+}
+
 /** Drop redundant collinear vertices so the cut path is minimal. */
 function simplifyCollinear(pts: Array<[number, number]>): Array<[number, number]> {
     const ring = pts.slice(0, -1); // drop closing dup

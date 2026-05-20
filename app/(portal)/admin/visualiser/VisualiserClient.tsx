@@ -11,6 +11,7 @@ import {
     buildDevelopment,
     placeAperture,
     clipApertureToFace,
+    placeFixings,
 } from '@/lib/visualiser/geometry';
 import { splitPanels } from '@/lib/visualiser/split';
 import { importSvg, buildKeyline } from '@/lib/visualiser/svg-import';
@@ -94,10 +95,10 @@ export function VisualiserClient({
 
     const placement = params.aperturePlacement ?? DEFAULT_PLACEMENT;
 
-    // 1) Place the imported SVG into flat-development space, 2) clip it to
-    // the face rectangle so the production cut file never contains a line
-    // outside the face (which would slice through a fold or sheet edge).
-    const apertureClip = useMemo(() => {
+    // The placed + clipped lettering outline. In aperture mode this is what
+    // gets cut. In standoff mode it becomes a non-cut REFERENCE and we put
+    // small fixing holes inside it on the panel instead.
+    const placedClip = useMemo(() => {
         if (!development || !imported)
             return { paths: [], wasClipped: false, anyOutside: false };
         const placed = placeAperture(
@@ -109,11 +110,40 @@ export function VisualiserClient({
         return clipApertureToFace(development, placed);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [development, imported, JSON.stringify(placement)]);
-    const aperture = apertureClip.paths;
 
-    // Build the keyline from the clipped aperture so it tracks the visible
-    // artwork, then clip the keyline too — an outward offset near the face
-    // edge will otherwise spill past the face.
+    const mode = params.apertureMode ?? 'aperture';
+    const fixingRadius = params.fixingRadiusMm ?? 5;
+
+    // Aperture-mode cuts (lettering as holes).
+    const aperture = useMemo(
+        () => (mode === 'aperture' ? placedClip.paths : []),
+        [mode, placedClip.paths],
+    );
+
+    // Standoff-mode features: lettering outline shown as a reference, with
+    // fixing holes placed inside each letter shape.
+    const reference = useMemo(
+        () => (mode === 'standoff' ? placedClip.paths : []),
+        [mode, placedClip.paths],
+    );
+
+    const fixingDensity = params.fixingDensity ?? 1;
+    const fixings = useMemo(() => {
+        if (mode !== 'standoff' || !development || placedClip.paths.length === 0)
+            return [];
+        const raw = placeFixings(
+            placedClip.paths,
+            fixingRadius,
+            undefined,
+            fixingDensity,
+        );
+        // Clip — a fixing on the edge of a letter sitting near the face
+        // border could otherwise stick out past the face.
+        return clipApertureToFace(development, raw).paths;
+    }, [mode, development, placedClip.paths, fixingRadius, fixingDensity]);
+
+    // Build the keyline from the cut aperture so it tracks the visible
+    // artwork, then clip it too. Standoff mode has no keyline.
     const keylineClip = useMemo(() => {
         if (!development || params.keylineMm <= 0 || aperture.length === 0)
             return { paths: [], wasClipped: false, anyOutside: false };
@@ -123,7 +153,7 @@ export function VisualiserClient({
     const keyline = keylineClip.paths;
 
     const apertureClipNotice =
-        apertureClip.anyOutside || keylineClip.anyOutside
+        placedClip.anyOutside || keylineClip.anyOutside
             ? 'Some artwork (or its keyline) extended past the face and was clipped at the edge — reposition or reduce the size so every cut stays inside the face.'
             : null;
 
@@ -224,6 +254,8 @@ export function VisualiserClient({
                             split={split}
                             aperture={aperture}
                             keyline={keyline}
+                            fixings={fixings}
+                            reference={reference}
                         />
                     ) : (
                         <Scene3D
@@ -232,6 +264,8 @@ export function VisualiserClient({
                             split={split}
                             aperture={aperture}
                             keyline={keyline}
+                            fixings={fixings}
+                            reference={reference}
                             fold={tab === 'folded' ? 1 : fold}
                         />
                     )}
@@ -275,6 +309,8 @@ export function VisualiserClient({
                             split={split}
                             aperture={aperture}
                             keyline={keyline}
+                            fixings={fixings}
+                            reference={reference}
                         />
                     )}
                 </footer>

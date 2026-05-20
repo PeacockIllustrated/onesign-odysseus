@@ -20,6 +20,9 @@ export const DEFAULT_PARAMS: PanelParams = {
     materialThicknessMm: 5,
     materialLabel: 'Aluminium',
     aperturePlacement: null,
+    apertureMode: 'aperture',
+    fixingRadiusMm: 5,
+    fixingDensity: 1,
 };
 
 interface VisualiserState {

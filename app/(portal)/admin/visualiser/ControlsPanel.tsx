@@ -117,7 +117,11 @@ export function ControlsPanel() {
                     label="Keyline"
                     value={params.keylineMm}
                     onChange={(n) => setParam('keylineMm', n)}
-                    hint="Offset around aperture cut"
+                    hint={
+                        (params.apertureMode ?? 'aperture') === 'standoff'
+                            ? 'Aperture mode only — ignored for stand-off'
+                            : 'Offset around aperture cut'
+                    }
                 />
             </div>
 

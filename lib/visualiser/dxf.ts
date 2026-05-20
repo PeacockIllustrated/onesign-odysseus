@@ -118,6 +118,8 @@ interface DxfOptions {
     aperture?: FlatPath[];
     /** Keyline paths already placed into flat-development space. */
     keyline?: FlatPath[];
+    /** Stand-off fixing holes (already placed). Cut on FIXINGS layer. */
+    fixings?: FlatPath[];
 }
 
 export function generateDxf(opts: DxfOptions): string {
@@ -215,9 +217,10 @@ export function generateDxf(opts: DxfOptions): string {
         }
     }
 
-    // Aperture + keyline: each polyline as discrete LINE segments.
+    // Aperture + keyline + fixings: each polyline as discrete LINE segments.
     for (const p of opts.aperture ?? []) emitPath(p, DXF_LAYERS.APERTURE);
     for (const p of opts.keyline ?? []) emitPath(p, DXF_LAYERS.KEYLINE);
+    for (const p of opts.fixings ?? []) emitPath(p, DXF_LAYERS.FIXINGS);
 
     function emitPath(p: FlatPath, layer: DxfLayer) {
         for (let i = 0; i + 1 < p.points.length; i++) {
@@ -245,7 +248,7 @@ export function generateDxf(opts: DxfOptions): string {
             : `Thickness: ${params.materialThicknessMm} mm`,
         'Bend allowance: half material thickness deducted each side of every fold line',
         sectionLabel,
-        'LAYERS:  PANEL_OUTLINE = cut   APERTURE = cut   KEYLINE = register (cut if specified)   FOLD_LINES = bend, DO NOT CUT   SEAM = panel join, DO NOT CUT',
+        'LAYERS:  PANEL_OUTLINE = cut   APERTURE = cut   FIXINGS = stand-off fixing holes (cut)   KEYLINE = register (cut if specified)   FOLD_LINES = bend, DO NOT CUT   SEAM = panel join, DO NOT CUT',
     ];
     const noteH = 7;
     notes.forEach((nLine, i) => {

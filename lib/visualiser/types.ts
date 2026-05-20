@@ -46,6 +46,7 @@ export const DXF_LAYERS = {
     PANEL_OUTLINE: 'PANEL_OUTLINE',
     FOLD_LINES: 'FOLD_LINES',
     APERTURE: 'APERTURE',
+    FIXINGS: 'FIXINGS',
     KEYLINE: 'KEYLINE',
     SEAM: 'SEAM',
     DIMENSIONS: 'DIMENSIONS',
@@ -59,6 +60,7 @@ export const DXF_LAYER_COLORS: Record<DxfLayer, number> = {
     PANEL_OUTLINE: 7, // white/black
     FOLD_LINES: 1, // red
     APERTURE: 5, // blue
+    FIXINGS: 6, // magenta — stand-off fixing holes
     KEYLINE: 4, // cyan
     SEAM: 3, // green
     DIMENSIONS: 8, // grey
@@ -107,6 +109,16 @@ export const DEFAULT_PLACEMENT: AperturePlacement = {
     scale: 1,
 };
 
+/**
+ * What the uploaded SVG is used for:
+ *   - 'aperture' — the SVG is cut OUT of the panel (lettering becomes holes).
+ *   - 'standoff' — the lettering is fabricated separately and mounted with
+ *                  stand-off studs; the panel gets small fixing holes placed
+ *                  inside each letter shape instead, and the SVG appears as
+ *                  a non-cut reference outline on the PDF.
+ */
+export type ApertureMode = 'aperture' | 'standoff';
+
 export const PanelParamsSchema = z.object({
     name: z.string().min(1, 'name is required').max(120),
     panelWidthMm: z.number().positive('width must be > 0').max(20000),
@@ -121,6 +133,16 @@ export const PanelParamsSchema = z.object({
     /** Free-text finish/material, shown in the PDF spec block + DXF notes. */
     materialLabel: z.string().max(120).optional(),
     aperturePlacement: AperturePlacementSchema.nullable().optional(),
+    /** How the uploaded artwork is treated. Default 'aperture'. */
+    apertureMode: z.enum(['aperture', 'standoff']).optional(),
+    /** Radius (mm) of each stand-off fixing hole. Default 5mm. */
+    fixingRadiusMm: z.number().positive().max(50).optional(),
+    /**
+     * Fixing density multiplier: 1.0 = the auto default, >1 = denser (more
+     * holes, heavier lettering like brass), <1 = sparser (fewer holes, light
+     * lettering like acrylic). Clamped to a safe range.
+     */
+    fixingDensity: z.number().min(0.4).max(2.5).optional(),
 });
 export type PanelParams = z.infer<typeof PanelParamsSchema>;
 
