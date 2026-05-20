@@ -120,24 +120,35 @@ export function VisualiserClient({
     };
 
     return (
-        <div className="flex flex-1 gap-4 min-h-0">
-            {/* Left: controls */}
-            <div className="w-72 shrink-0 overflow-y-auto rounded-lg border border-neutral-200 bg-white p-4">
-                <ControlsPanel />
-                <div className="my-4 border-t border-neutral-100" />
-                <SvgDropzone />
-            </div>
+        // Three-column workspace. Outer is the page's flex-1 slot, so it
+        // takes the height the page reserves. min-h-0 / min-w-0 are the
+        // magic words that let the inner flex children scroll instead of
+        // pushing the layout off-screen.
+        <div className="flex flex-1 min-h-0 min-w-0 gap-3">
+            {/* Left: controls (independently scrollable) */}
+            <aside className="flex w-[18rem] shrink-0 flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
+                <div className="shrink-0 border-b border-neutral-100 px-4 py-2.5">
+                    <h2 className="text-[10px] font-semibold uppercase tracking-widest text-neutral-500">
+                        Panel
+                    </h2>
+                </div>
+                <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4">
+                    <ControlsPanel />
+                    <div className="my-4 border-t border-neutral-100" />
+                    <SvgDropzone />
+                </div>
+            </aside>
 
             {/* Centre: preview */}
-            <div className="flex min-w-0 flex-1 flex-col rounded-lg border border-neutral-200 bg-white overflow-hidden">
-                <div className="flex items-center justify-between border-b border-neutral-100 px-3 py-2">
-                    <div className="flex gap-1">
+            <section className="flex min-w-0 min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
+                <header className="shrink-0 flex items-center justify-between gap-3 border-b border-neutral-100 px-3 py-2">
+                    <nav className="flex gap-1">
                         {(['folded', 'unfold', 'flat'] as const).map((t) => (
                             <button
                                 key={t}
                                 type="button"
                                 onClick={() => setTab(t)}
-                                className={`rounded-md px-3 py-1.5 text-xs font-medium ${
+                                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                                     tab === t
                                         ? 'bg-black text-white'
                                         : 'text-neutral-500 hover:bg-neutral-100'
@@ -146,16 +157,27 @@ export function VisualiserClient({
                                 {TAB_LABELS[t]}
                             </button>
                         ))}
-                    </div>
-                    {split.wasSplit && (
-                        <span className="text-xs font-medium text-green-700">
-                            Split into {split.sections.length} panels (centre
-                            full)
+                    </nav>
+                    <div className="flex items-center gap-3 min-w-0">
+                        {split.wasSplit && (
+                            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-200">
+                                Split · {split.sections.length} panels (centre
+                                full)
+                            </span>
+                        )}
+                        <span className="hidden md:inline truncate text-xs text-neutral-400 max-w-[16rem]">
+                            {params.name}
                         </span>
-                    )}
-                </div>
+                    </div>
+                </header>
 
-                <div className="relative flex-1 min-h-0">
+                <div className="relative flex-1 min-h-0 min-w-0 bg-neutral-50">
+                    {geometryWarning && (
+                        <div className="pointer-events-none absolute inset-x-3 top-3 z-10 rounded-md border border-amber-300 bg-amber-50/95 px-3 py-2 text-xs text-amber-700 shadow-sm">
+                            {geometryWarning}
+                        </div>
+                    )}
+
                     {!valid.success ? (
                         <div className="flex h-full items-center justify-center p-6 text-center text-sm text-red-600">
                             {valid.error.issues[0]?.message ??
@@ -180,8 +202,8 @@ export function VisualiserClient({
                     )}
 
                     {tab === 'unfold' && (
-                        <div className="absolute inset-x-0 top-3 flex justify-center">
-                            <div className="flex items-center gap-3 rounded-full border border-neutral-200 bg-white/90 px-4 py-2 shadow-sm backdrop-blur">
+                        <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
+                            <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-neutral-200 bg-white/95 px-4 py-2 shadow backdrop-blur">
                                 <span className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">
                                     Flat
                                 </span>
@@ -191,9 +213,7 @@ export function VisualiserClient({
                                     max={100}
                                     value={Math.round(fold * 100)}
                                     onChange={(e) =>
-                                        setFold(
-                                            Number(e.target.value) / 100,
-                                        )
+                                        setFold(Number(e.target.value) / 100)
                                     }
                                     className="h-1 w-48 accent-black"
                                     aria-label="Fold amount"
@@ -203,9 +223,7 @@ export function VisualiserClient({
                                 </span>
                                 <button
                                     type="button"
-                                    onClick={() =>
-                                        setUnfoldKey((k) => k + 1)
-                                    }
+                                    onClick={() => setUnfoldKey((k) => k + 1)}
                                     className="ml-1 rounded-full bg-black px-3 py-1 text-[11px] font-medium text-white hover:bg-neutral-800"
                                 >
                                     Replay
@@ -213,14 +231,9 @@ export function VisualiserClient({
                             </div>
                         </div>
                     )}
-                    {geometryWarning && (
-                        <div className="absolute inset-x-3 bottom-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                            {geometryWarning}
-                        </div>
-                    )}
                 </div>
 
-                <div className="border-t border-neutral-100 px-3 py-2.5">
+                <footer className="shrink-0 border-t border-neutral-100 px-3 py-2.5">
                     {development && (
                         <ExportBar
                             development={development}
@@ -229,17 +242,19 @@ export function VisualiserClient({
                             keyline={keyline}
                         />
                     )}
-                </div>
-            </div>
+                </footer>
+            </section>
 
-            {/* Right: saved designs */}
-            <div className="w-60 shrink-0 overflow-y-auto rounded-lg border border-neutral-200 bg-white p-4">
-                <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                    Saved designs
-                </h2>
-                <ul className="mt-3 space-y-1">
+            {/* Right: saved designs (independently scrollable) */}
+            <aside className="flex w-[15rem] shrink-0 flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
+                <div className="shrink-0 border-b border-neutral-100 px-4 py-2.5">
+                    <h2 className="text-[10px] font-semibold uppercase tracking-widest text-neutral-500">
+                        Saved designs
+                    </h2>
+                </div>
+                <ul className="flex-1 min-h-0 overflow-y-auto p-2 space-y-1">
                     {designs.length === 0 && (
-                        <li className="text-xs text-neutral-400">
+                        <li className="px-2 py-3 text-xs text-neutral-400">
                             No saved designs yet.
                         </li>
                     )}
@@ -271,7 +286,7 @@ export function VisualiserClient({
                         </li>
                     ))}
                 </ul>
-            </div>
+            </aside>
         </div>
     );
 }
