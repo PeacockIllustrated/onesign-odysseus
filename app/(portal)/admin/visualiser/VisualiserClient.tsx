@@ -260,6 +260,7 @@ export function VisualiserClient({
                             keyline={keyline}
                             fixings={fixings}
                             reference={reference}
+                            panelColor={params.panelColor ?? '#d6d6d6'}
                         />
                     ) : (
                         <Scene3D

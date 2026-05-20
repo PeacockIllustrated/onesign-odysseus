@@ -145,6 +145,35 @@ export function ControlsPanel() {
                     className="mt-1 w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm focus:border-black focus:outline-none"
                 />
             </div>
+
+            <div>
+                <span className="text-xs font-medium text-neutral-600">
+                    Panel colour
+                </span>
+                <div className="mt-1 flex items-center gap-2">
+                    <input
+                        type="color"
+                        value={params.panelColor ?? '#d6d6d6'}
+                        onChange={(e) => setParam('panelColor', e.target.value)}
+                        className="h-8 w-12 cursor-pointer rounded border border-neutral-300 bg-white p-0.5"
+                        aria-label="Panel base colour"
+                    />
+                    <input
+                        type="text"
+                        value={params.panelColor ?? '#d6d6d6'}
+                        onChange={(e) => {
+                            const v = e.target.value.trim();
+                            if (/^#[0-9a-fA-F]{6}$/.test(v))
+                                setParam('panelColor', v);
+                        }}
+                        className="flex-1 rounded-md border border-neutral-300 px-2 py-1 font-mono text-xs uppercase tracking-wide focus:border-black focus:outline-none"
+                        placeholder="#d6d6d6"
+                    />
+                </div>
+                <span className="mt-0.5 block text-[10px] text-neutral-400">
+                    Carried into the 3D &amp; flat previews so the material reads at a glance.
+                </span>
+            </div>
         </div>
     );
 }

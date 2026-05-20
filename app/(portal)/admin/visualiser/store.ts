@@ -19,6 +19,7 @@ export const DEFAULT_PARAMS: PanelParams = {
     keylineMm: 0,
     materialThicknessMm: 5,
     materialLabel: 'Aluminium',
+    panelColor: '#d6d6d6',
     aperturePlacement: null,
     apertureMode: 'aperture',
     fixingDiameterMm: 10,

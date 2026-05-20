@@ -132,6 +132,11 @@ export const PanelParamsSchema = z.object({
     materialThicknessMm: z.number().positive('thickness must be > 0').max(50),
     /** Free-text finish/material, shown in the PDF spec block + DXF notes. */
     materialLabel: z.string().max(120).optional(),
+    /** Panel base colour (hex). Carried forward into 3D and flat previews. */
+    panelColor: z
+        .string()
+        .regex(/^#[0-9a-fA-F]{6}$/, 'panelColor must be a 6-digit hex colour')
+        .optional(),
     aperturePlacement: AperturePlacementSchema.nullable().optional(),
     /** How the uploaded artwork is treated. Default 'aperture'. */
     apertureMode: z.enum(['aperture', 'standoff']).optional(),

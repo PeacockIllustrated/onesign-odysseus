@@ -7,6 +7,8 @@ import type {
     FlatPath,
 } from '@/lib/visualiser/types';
 
+const DEFAULT_PANEL_COLOR = '#d6d6d6';
+
 function pathD(p: FlatPath): string {
     if (p.points.length === 0) return '';
     const [first, ...rest] = p.points;
@@ -24,6 +26,7 @@ export function FlatPreview({
     keyline,
     fixings = [],
     reference = [],
+    panelColor = DEFAULT_PANEL_COLOR,
 }: {
     development: PanelDevelopment;
     split: PanelSplit;
@@ -31,6 +34,7 @@ export function FlatPreview({
     keyline: FlatPath[];
     fixings?: FlatPath[];
     reference?: FlatPath[];
+    panelColor?: string;
 }) {
     const pad = Math.max(20, dev.totalFlatWMm * 0.06);
     const vb = useMemo(
@@ -44,6 +48,29 @@ export function FlatPreview({
     const face = dev.segments.find((s) => s.role === 'face');
     const k = face ? face.wMm / dev.faceNominalWMm : 1;
 
+    // Build the face as a single path with the cuts as holes (even-odd
+    // fill rule). Apertures and stand-off fixings genuinely show through
+    // the panel so the operator can see what the cutter will remove.
+    const faceD = useMemo(() => {
+        if (!face) return '';
+        const out: string[] = [
+            `M ${face.xMm} ${face.yMm} ` +
+                `H ${face.xMm + face.wMm} ` +
+                `V ${face.yMm + face.hMm} ` +
+                `H ${face.xMm} Z`,
+        ];
+        for (const cut of [...aperture, ...fixings]) {
+            if (cut.points.length < 3) continue;
+            const [first, ...rest] = cut.points;
+            out.push(
+                `M ${first[0]} ${first[1]} ` +
+                    rest.map(([x, y]) => `L ${x} ${y}`).join(' ') +
+                    ' Z',
+            );
+        }
+        return out.join(' ');
+    }, [face, aperture, fixings]);
+
     return (
         <div className="h-full w-full bg-neutral-50">
             <svg
@@ -51,30 +78,58 @@ export function FlatPreview({
                 className="h-full w-full"
                 preserveAspectRatio="xMidYMid meet"
             >
-                {/* Segments */}
-                {dev.segments.map((s) => (
-                    <g key={s.id}>
-                        <rect
-                            x={s.xMm}
-                            y={s.yMm}
-                            width={s.wMm}
-                            height={s.hMm}
-                            fill={s.role === 'face' ? '#e8f0f3' : '#f4f7f8'}
+                {/* Non-face segments — returns + shadow lips, all in the
+                    same panel colour, edges in technical-drawing black. */}
+                {dev.segments
+                    .filter((s) => s.role !== 'face')
+                    .map((s) => (
+                        <g key={s.id}>
+                            <rect
+                                x={s.xMm}
+                                y={s.yMm}
+                                width={s.wMm}
+                                height={s.hMm}
+                                fill={panelColor}
+                                stroke="#1a1f23"
+                                strokeWidth={stroke}
+                            />
+                            <text
+                                x={s.xMm + s.wMm / 2}
+                                y={s.yMm + s.hMm / 2}
+                                fontSize={Math.max(8, Math.min(s.wMm, s.hMm) / 10)}
+                                fill="#6b7280"
+                                textAnchor="middle"
+                                dominantBaseline="middle"
+                            >
+                                {s.label}
+                            </text>
+                        </g>
+                    ))}
+
+                {/* Face — drawn as a single path with cut-outs (even-odd
+                    fill) so the holes really do show through. */}
+                {face && (
+                    <g>
+                        <path
+                            d={faceD}
+                            fill={panelColor}
+                            fillRule="evenodd"
                             stroke="#1a1f23"
                             strokeWidth={stroke}
                         />
                         <text
-                            x={s.xMm + s.wMm / 2}
-                            y={s.yMm + s.hMm / 2}
-                            fontSize={Math.max(8, Math.min(s.wMm, s.hMm) / 10)}
+                            x={face.xMm + face.wMm / 2}
+                            y={face.yMm + face.hMm / 2}
+                            fontSize={Math.max(8, Math.min(face.wMm, face.hMm) / 10)}
                             fill="#6b7280"
                             textAnchor="middle"
                             dominantBaseline="middle"
+                            pointerEvents="none"
                         >
-                            {s.label}
+                            {face.label}
                         </text>
                     </g>
-                ))}
+                )}
 
                 {/* Fold lines */}
                 {dev.foldLines.map((f) => (
@@ -109,7 +164,7 @@ export function FlatPreview({
                         );
                     })}
 
-                {/* Reference letter outline (standoff mode, not cut). */}
+                {/* Reference lettering outline (standoff mode, NOT cut). */}
                 {reference.map((p, i) => (
                     <path
                         key={`ref-${i}`}
@@ -121,16 +176,8 @@ export function FlatPreview({
                     />
                 ))}
 
-                {/* Aperture + keyline (aperture mode). */}
-                {aperture.map((p, i) => (
-                    <path
-                        key={`ap-${i}`}
-                        d={pathD(p)}
-                        fill="none"
-                        stroke="#1e5fc8"
-                        strokeWidth={stroke}
-                    />
-                ))}
+                {/* Keyline (register line, NOT cut). Apertures and fixings
+                    are real cut-outs in the face path above. */}
                 {keyline.map((p, i) => (
                     <path
                         key={`kl-${i}`}
@@ -139,18 +186,6 @@ export function FlatPreview({
                         stroke="#00aabe"
                         strokeWidth={stroke}
                         strokeDasharray={`${stroke * 2} ${stroke * 2}`}
-                    />
-                ))}
-
-                {/* Stand-off fixing holes (standoff mode). */}
-                {fixings.map((p, i) => (
-                    <path
-                        key={`fx-${i}`}
-                        d={pathD(p)}
-                        fill="#1e5fc8"
-                        fillOpacity={0.85}
-                        stroke="#1e5fc8"
-                        strokeWidth={stroke}
                     />
                 ))}
 

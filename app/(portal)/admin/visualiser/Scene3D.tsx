@@ -35,21 +35,73 @@ function CaptureBinder() {
 
 const S = 0.01; // mm → scene units
 const HALF_PI = Math.PI / 2;
-const PANEL_COLOR = '#d6d6d6'; // flat light grey
+const DEFAULT_PANEL_COLOR = '#d6d6d6';
 const EDGE_COLOR = '#111111'; // technical-drawing black strokes
 
-/** Flat light-grey box with crisp black edge strokes. */
-function PanelBox({
+/**
+ * A single sheet-metal plane with crisp black edges. Double-sided material so
+ * the back of the metal is visible — but there's only one surface, no extra
+ * back plate (which isn't there in production either).
+ */
+function PanelPlane({
     args,
     position,
+    color,
 }: {
-    args: [number, number, number];
+    args: [number, number];
     position?: [number, number, number];
+    color: string;
 }) {
     return (
         <mesh position={position}>
-            <boxGeometry args={args} />
-            <meshBasicMaterial color={PANEL_COLOR} />
+            <planeGeometry args={args} />
+            <meshBasicMaterial color={color} side={THREE.DoubleSide} />
+            <Edges color={EDGE_COLOR} />
+        </mesh>
+    );
+}
+
+/**
+ * The face panel as a flat shape with real cut-outs for every aperture
+ * polygon / stand-off fixing hole — so the 3D shows what will actually be
+ * cut on the panel, not just a coloured outline.
+ */
+function FacePlane({
+    W,
+    H,
+    color,
+    holesLocal,
+}: {
+    W: number; // mm
+    H: number; // mm
+    color: string;
+    /** Holes in face-local mm coords (face centred at origin, y-up). */
+    holesLocal: Array<Array<[number, number]>>;
+}) {
+    const shape = useMemo(() => {
+        const s = new THREE.Shape();
+        const hw = (W * S) / 2;
+        const hh = (H * S) / 2;
+        s.moveTo(-hw, -hh);
+        s.lineTo(hw, -hh);
+        s.lineTo(hw, hh);
+        s.lineTo(-hw, hh);
+        s.lineTo(-hw, -hh);
+        for (const pts of holesLocal) {
+            if (pts.length < 3) continue;
+            const h = new THREE.Path();
+            h.moveTo(pts[0][0], pts[0][1]);
+            for (let i = 1; i < pts.length; i++) h.lineTo(pts[i][0], pts[i][1]);
+            h.closePath();
+            s.holes.push(h);
+        }
+        return s;
+    }, [W, H, holesLocal]);
+
+    return (
+        <mesh>
+            <shapeGeometry args={[shape, 12]} />
+            <meshBasicMaterial color={color} side={THREE.DoubleSide} />
             <Edges color={EDGE_COLOR} />
         </mesh>
     );
@@ -65,74 +117,78 @@ function Flap({
     W,
     H,
     D,
-    T,
     Sg,
     fold,
+    color,
 }: {
     edge: PanelEdge;
     W: number;
     H: number;
     D: number;
-    T: number;
     Sg: number;
     fold: number;
+    color: string;
 }) {
     const a = fold * HALF_PI;
     const hasLip = Sg > 0;
 
     let groupPos: [number, number, number];
     let groupRot: [number, number, number];
-    let boxArgs: [number, number, number];
-    let boxPos: [number, number, number];
+    let planeArgs: [number, number];
+    let planePos: [number, number, number];
     let lipPos: [number, number, number] = [0, 0, 0];
     let lipRot: [number, number, number] = [0, 0, 0];
-    let lipArgs: [number, number, number] = [0, 0, 0];
-    let lipBoxPos: [number, number, number] = [0, 0, 0];
+    let lipArgs: [number, number] = [0, 0];
+    let lipPlanePos: [number, number, number] = [0, 0, 0];
 
     if (edge === 'bottom') {
         groupPos = [0, (-H / 2) * S, 0];
         groupRot = [a, 0, 0];
-        boxArgs = [W * S, D * S, T * S];
-        boxPos = [0, (-D / 2) * S, 0];
+        planeArgs = [W * S, D * S];
+        planePos = [0, (-D / 2) * S, 0];
         lipPos = [0, -D * S, 0];
         lipRot = [a, 0, 0];
-        lipArgs = [W * S, Sg * S, T * S];
-        lipBoxPos = [0, (-Sg / 2) * S, 0];
+        lipArgs = [W * S, Sg * S];
+        lipPlanePos = [0, (-Sg / 2) * S, 0];
     } else if (edge === 'top') {
         groupPos = [0, (H / 2) * S, 0];
         groupRot = [-a, 0, 0];
-        boxArgs = [W * S, D * S, T * S];
-        boxPos = [0, (D / 2) * S, 0];
+        planeArgs = [W * S, D * S];
+        planePos = [0, (D / 2) * S, 0];
         lipPos = [0, D * S, 0];
         lipRot = [-a, 0, 0];
-        lipArgs = [W * S, Sg * S, T * S];
-        lipBoxPos = [0, (Sg / 2) * S, 0];
+        lipArgs = [W * S, Sg * S];
+        lipPlanePos = [0, (Sg / 2) * S, 0];
     } else if (edge === 'left') {
         groupPos = [(-W / 2) * S, 0, 0];
         groupRot = [0, -a, 0];
-        boxArgs = [D * S, H * S, T * S];
-        boxPos = [(-D / 2) * S, 0, 0];
+        planeArgs = [D * S, H * S];
+        planePos = [(-D / 2) * S, 0, 0];
         lipPos = [-D * S, 0, 0];
         lipRot = [0, -a, 0];
-        lipArgs = [Sg * S, H * S, T * S];
-        lipBoxPos = [(-Sg / 2) * S, 0, 0];
+        lipArgs = [Sg * S, H * S];
+        lipPlanePos = [(-Sg / 2) * S, 0, 0];
     } else {
         groupPos = [(W / 2) * S, 0, 0];
         groupRot = [0, a, 0];
-        boxArgs = [D * S, H * S, T * S];
-        boxPos = [(D / 2) * S, 0, 0];
+        planeArgs = [D * S, H * S];
+        planePos = [(D / 2) * S, 0, 0];
         lipPos = [D * S, 0, 0];
         lipRot = [0, a, 0];
-        lipArgs = [Sg * S, H * S, T * S];
-        lipBoxPos = [(Sg / 2) * S, 0, 0];
+        lipArgs = [Sg * S, H * S];
+        lipPlanePos = [(Sg / 2) * S, 0, 0];
     }
 
     return (
         <group position={groupPos} rotation={groupRot}>
-            <PanelBox args={boxArgs} position={boxPos} />
+            <PanelPlane args={planeArgs} position={planePos} color={color} />
             {hasLip && (
                 <group position={lipPos} rotation={lipRot}>
-                    <PanelBox args={lipArgs} position={lipBoxPos} />
+                    <PanelPlane
+                        args={lipArgs}
+                        position={lipPlanePos}
+                        color={color}
+                    />
                 </group>
             )}
         </group>
@@ -164,17 +220,37 @@ function Panel({
     const D = params.returnDepthMm;
     const Sg = params.shadowGapMm;
     const r = params.returns;
+    const panelColor = params.panelColor ?? DEFAULT_PANEL_COLOR;
     const edges: PanelEdge[] = ['top', 'bottom', 'left', 'right'];
 
-    // Aperture / keyline as line segments on the face front (the cut never
-    // moves — it's in the face, unaffected by folding).
     const face = dev.segments.find((s) => s.role === 'face');
+
+    // Convert every "cut" path from flat-development coords (y-down) into
+    // face-local mm × S (face centred at the world origin, y-up). Apertures
+    // and stand-off fixings become real holes in the face geometry below.
+    const holesLocal = useMemo(() => {
+        if (!face) return [];
+        const toLocal = (p: [number, number]): [number, number] => [
+            (p[0] - face.xMm - face.wMm / 2) * S,
+            (face.yMm + face.hMm / 2 - p[1]) * S,
+        ];
+        const out: Array<Array<[number, number]>> = [];
+        for (const cut of [...aperture, ...fixings]) {
+            const pts = cut.points.map(toLocal);
+            if (pts.length >= 3) out.push(pts);
+        }
+        return out;
+    }, [face, aperture, fixings]);
+
+    // Reference (lettering outline, NOT cut) and keyline (register line, NOT
+    // cut) ride on top of the face as thin line overlays.
     const overlay = useMemo(() => {
         if (!face) return null;
+        const z = (T / 2 + 1) * S;
         const toLocal = (x: number, y: number): [number, number, number] => [
             (x - face.xMm - face.wMm / 2) * S,
             (face.yMm + face.hMm / 2 - y) * S,
-            (T / 2 + 1) * S,
+            z,
         ];
         const build = (paths: FlatPath[]) => {
             const pos: number[] = [];
@@ -192,18 +268,20 @@ function Panel({
             );
             return g;
         };
-        return {
-            ap: build(aperture),
-            kl: build(keyline),
-            fx: build(fixings),
-            ref: build(reference),
-        };
-    }, [aperture, keyline, fixings, reference, face, T]);
+        return { kl: build(keyline), ref: build(reference) };
+    }, [face, keyline, reference, T]);
 
     return (
         <group>
-            {/* Face */}
-            <PanelBox args={[W * S, H * S, T * S]} />
+            {/* Face — a single sheet with real cut-outs for every aperture /
+                stand-off fixing. No back plate (there isn't one in
+                production), and what you see here is what the cutter cuts. */}
+            <FacePlane
+                W={W}
+                H={H}
+                color={panelColor}
+                holesLocal={holesLocal}
+            />
 
             {/* Hinged return flaps (+ optional shadow-gap lips) */}
             {edges.map((e) =>
@@ -214,9 +292,9 @@ function Panel({
                         W={W}
                         H={H}
                         D={D}
-                        T={T}
                         Sg={Sg}
                         fold={fold}
+                        color={panelColor}
                     />
                 ) : null,
             )}
@@ -233,21 +311,16 @@ function Panel({
                     </mesh>
                 ))}
 
-            {/* Reference letter outline (standoff mode, not cut) — drawn
-                faintly under the cut features. */}
+            {/* Reference lettering outline (standoff mode, NOT cut) and
+                keyline (register, NOT cut) — drawn as thin overlays.
+                Apertures and fixings are real holes in the face above. */}
             {overlay && (
                 <>
                     <lineSegments geometry={overlay.ref}>
                         <lineBasicMaterial color="#9ca3af" />
                     </lineSegments>
-                    <lineSegments geometry={overlay.ap}>
-                        <lineBasicMaterial color="#1e5fc8" />
-                    </lineSegments>
                     <lineSegments geometry={overlay.kl}>
                         <lineBasicMaterial color="#00aabe" />
-                    </lineSegments>
-                    <lineSegments geometry={overlay.fx}>
-                        <lineBasicMaterial color="#1e5fc8" />
                     </lineSegments>
                 </>
             )}
