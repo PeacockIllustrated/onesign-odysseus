@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { buildDevelopment, outlinePerimeter } from './geometry';
-import type { PanelParams } from './types';
+import {
+    buildDevelopment,
+    outlinePerimeter,
+    clipApertureToFace,
+} from './geometry';
+import type { FlatPath, PanelParams } from './types';
 
 function polyArea(pts: Array<[number, number]>): number {
     let s = 0;
@@ -136,6 +140,65 @@ describe('outlinePerimeter — single merged cut contour', () => {
         // proving the merge dropped the shared interior edges.
         const segArea = dev.segments.reduce((a, s) => a + s.wMm * s.hMm, 0);
         expect(polyArea(p.points)).toBeCloseTo(segArea, 2);
+    });
+
+    it('clipApertureToFace: inside stays unchanged, outside dropped, crossing clipped', () => {
+        // No returns -> face is the full development at (0,0)-(1000,350).
+        const dev = buildDevelopment(
+            base({
+                returns: { top: false, bottom: false, left: false, right: false },
+            }),
+        );
+
+        const inside: FlatPath = {
+            closed: true,
+            points: [
+                [100, 100],
+                [200, 100],
+                [200, 200],
+                [100, 200],
+                [100, 100],
+            ],
+        };
+        const r1 = clipApertureToFace(dev, [inside]);
+        expect(r1.anyOutside).toBe(false);
+        expect(r1.wasClipped).toBe(false);
+        expect(r1.paths[0].points).toEqual(inside.points);
+
+        const outside: FlatPath = {
+            closed: true,
+            points: [
+                [2000, 2000],
+                [2100, 2000],
+                [2100, 2100],
+                [2000, 2100],
+                [2000, 2000],
+            ],
+        };
+        const r2 = clipApertureToFace(dev, [outside]);
+        expect(r2.anyOutside).toBe(true);
+        expect(r2.paths.length).toBe(0); // dropped entirely
+
+        const crossing: FlatPath = {
+            closed: true,
+            points: [
+                [900, 100],
+                [1100, 100],
+                [1100, 200],
+                [900, 200],
+                [900, 100],
+            ],
+        };
+        const r3 = clipApertureToFace(dev, [crossing]);
+        expect(r3.anyOutside).toBe(true);
+        expect(r3.wasClipped).toBe(true);
+        // Every surviving point must be inside the face.
+        for (const [x, y] of r3.paths[0].points) {
+            expect(x).toBeGreaterThanOrEqual(-1e-6);
+            expect(x).toBeLessThanOrEqual(1000 + 1e-6);
+            expect(y).toBeGreaterThanOrEqual(-1e-6);
+            expect(y).toBeLessThanOrEqual(350 + 1e-6);
+        }
     });
 
     it('vertex count is independent of segment count (truly merged)', () => {

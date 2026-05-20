@@ -56,4 +56,14 @@ describe('parsePathData — accurate adaptive flattening', () => {
         expect(abs.closed).toBe(true);
         expect(rel.closed).toBe(true);
     });
+
+    it('auto-closes a near-closed path that omits Z (so it cuts as a hole)', () => {
+        const [sp] = parsePathData('M 0 0 L 10 0 L 10 10 L 0 10 L 0 0');
+        expect(sp.closed).toBe(true);
+    });
+
+    it('keeps a truly open path open', () => {
+        const [sp] = parsePathData('M 0 0 L 10 0 L 10 10');
+        expect(sp.closed).toBe(false);
+    });
 });

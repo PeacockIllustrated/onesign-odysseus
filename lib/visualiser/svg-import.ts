@@ -263,7 +263,20 @@ export function parsePathData(
 
     const num = () => parseFloat(tokens[i++]);
     const flush = () => {
-        if (pts.length > 1) out.push({ pts, closed });
+        if (pts.length > 1) {
+            // Auto-close near-closed paths: some exporters omit the final Z
+            // even when start/end coincide. Without this they would export
+            // as open polylines and the laser wouldn't cut a clean hole.
+            if (!closed) {
+                const a = pts[0];
+                const b = pts[pts.length - 1];
+                if (Math.hypot(a[0] - b[0], a[1] - b[1]) < 0.1) {
+                    pts[pts.length - 1] = [a[0], a[1]];
+                    closed = true;
+                }
+            }
+            out.push({ pts, closed });
+        }
         pts = [];
         closed = false;
     };

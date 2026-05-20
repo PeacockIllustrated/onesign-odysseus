@@ -7,7 +7,11 @@ import { ControlsPanel } from './ControlsPanel';
 import { SvgDropzone } from './SvgDropzone';
 import { FlatPreview } from './FlatPreview';
 import { ExportBar } from './ExportBar';
-import { buildDevelopment, placeAperture } from '@/lib/visualiser/geometry';
+import {
+    buildDevelopment,
+    placeAperture,
+    clipApertureToFace,
+} from '@/lib/visualiser/geometry';
 import { splitPanels } from '@/lib/visualiser/split';
 import { importSvg, buildKeyline } from '@/lib/visualiser/svg-import';
 import {
@@ -90,16 +94,38 @@ export function VisualiserClient({
 
     const placement = params.aperturePlacement ?? DEFAULT_PLACEMENT;
 
-    const aperture = useMemo(() => {
-        if (!development || !imported) return [];
-        return placeAperture(development, imported.paths, imported.bbox, placement);
+    // 1) Place the imported SVG into flat-development space, 2) clip it to
+    // the face rectangle so the production cut file never contains a line
+    // outside the face (which would slice through a fold or sheet edge).
+    const apertureClip = useMemo(() => {
+        if (!development || !imported)
+            return { paths: [], wasClipped: false, anyOutside: false };
+        const placed = placeAperture(
+            development,
+            imported.paths,
+            imported.bbox,
+            placement,
+        );
+        return clipApertureToFace(development, placed);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [development, imported, JSON.stringify(placement)]);
+    const aperture = apertureClip.paths;
 
-    const keyline = useMemo(() => {
-        if (params.keylineMm <= 0 || aperture.length === 0) return [];
-        return buildKeyline(aperture, params.keylineMm);
-    }, [aperture, params.keylineMm]);
+    // Build the keyline from the clipped aperture so it tracks the visible
+    // artwork, then clip the keyline too — an outward offset near the face
+    // edge will otherwise spill past the face.
+    const keylineClip = useMemo(() => {
+        if (!development || params.keylineMm <= 0 || aperture.length === 0)
+            return { paths: [], wasClipped: false, anyOutside: false };
+        const raw = buildKeyline(aperture, params.keylineMm);
+        return clipApertureToFace(development, raw);
+    }, [development, aperture, params.keylineMm]);
+    const keyline = keylineClip.paths;
+
+    const apertureClipNotice =
+        apertureClip.anyOutside || keylineClip.anyOutside
+            ? 'Some artwork (or its keyline) extended past the face and was clipped at the edge — reposition or reduce the size so every cut stays inside the face.'
+            : null;
 
     const geometryWarning =
         development &&
@@ -172,9 +198,18 @@ export function VisualiserClient({
                 </header>
 
                 <div className="relative flex-1 min-h-0 min-w-0 bg-neutral-50">
-                    {geometryWarning && (
-                        <div className="pointer-events-none absolute inset-x-3 top-3 z-10 rounded-md border border-amber-300 bg-amber-50/95 px-3 py-2 text-xs text-amber-700 shadow-sm">
-                            {geometryWarning}
+                    {(geometryWarning || apertureClipNotice) && (
+                        <div className="pointer-events-none absolute inset-x-3 top-3 z-10 space-y-2">
+                            {geometryWarning && (
+                                <div className="rounded-md border border-amber-300 bg-amber-50/95 px-3 py-2 text-xs text-amber-700 shadow-sm">
+                                    {geometryWarning}
+                                </div>
+                            )}
+                            {apertureClipNotice && (
+                                <div className="rounded-md border border-amber-300 bg-amber-50/95 px-3 py-2 text-xs text-amber-700 shadow-sm">
+                                    {apertureClipNotice}
+                                </div>
+                            )}
                         </div>
                     )}
 

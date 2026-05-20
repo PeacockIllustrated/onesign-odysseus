@@ -343,6 +343,186 @@ export function outlinePerimeter(dev: PanelDevelopment): FlatPath | null {
     return { points: simplifyCollinear(points), closed: true };
 }
 
+/**
+ * Clip aperture / keyline paths to the face rectangle so the production cut
+ * file never contains a cut line outside the face. A laser following an
+ * unclipped aperture would slice through a fold line or off the sheet edge.
+ *
+ * Closed paths are clipped with Sutherland–Hodgman (axis-aligned window);
+ * open paths are clipped segment-by-segment with Liang–Barsky. Paths fully
+ * outside the face are dropped. Returns a flag so the UI can warn — the
+ * user normally wants to reposition or scale down rather than silently lose
+ * artwork at the edge.
+ */
+export function clipApertureToFace(
+    dev: PanelDevelopment,
+    paths: FlatPath[],
+): { paths: FlatPath[]; wasClipped: boolean; anyOutside: boolean } {
+    const face = dev.segments.find((s) => s.role === 'face');
+    if (!face || paths.length === 0) {
+        return { paths, wasClipped: false, anyOutside: false };
+    }
+    const rect = {
+        x0: face.xMm,
+        y0: face.yMm,
+        x1: face.xMm + face.wMm,
+        y1: face.yMm + face.hMm,
+    };
+    const out: FlatPath[] = [];
+    let wasClipped = false;
+    let anyOutside = false;
+
+    for (const p of paths) {
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+        for (const [x, y] of p.points) {
+            if (x < minX) minX = x;
+            if (y < minY) minY = y;
+            if (x > maxX) maxX = x;
+            if (y > maxY) maxY = y;
+        }
+        const inside =
+            minX >= rect.x0 - 1e-6 &&
+            maxX <= rect.x1 + 1e-6 &&
+            minY >= rect.y0 - 1e-6 &&
+            maxY <= rect.y1 + 1e-6;
+        if (inside) {
+            out.push(p);
+            continue;
+        }
+        anyOutside = true;
+
+        if (p.closed) {
+            const ring = p.points.slice(0, -1) as Array<[number, number]>;
+            const clipped = clipPolygonToRect(ring, rect);
+            if (clipped.length >= 3) {
+                clipped.push(clipped[0]);
+                out.push({ closed: true, points: clipped });
+                wasClipped = true;
+            } else {
+                wasClipped = true; // dropped entirely
+            }
+        } else {
+            const runs = clipPolylineToRect(p.points as Array<[number, number]>, rect);
+            for (const run of runs) {
+                if (run.length >= 2) {
+                    out.push({ closed: false, points: run });
+                }
+            }
+            wasClipped = true;
+        }
+    }
+    return { paths: out, wasClipped, anyOutside };
+}
+
+type V = [number, number];
+interface Rect {
+    x0: number;
+    y0: number;
+    x1: number;
+    y1: number;
+}
+
+/** Sutherland–Hodgman polygon clip against an axis-aligned rectangle. */
+function clipPolygonToRect(poly: V[], r: Rect): V[] {
+    const inside = (p: V, edge: number) =>
+        edge === 0
+            ? p[0] >= r.x0
+            : edge === 1
+              ? p[0] <= r.x1
+              : edge === 2
+                ? p[1] >= r.y0
+                : p[1] <= r.y1;
+    const intersect = (a: V, b: V, edge: number): V => {
+        const dx = b[0] - a[0];
+        const dy = b[1] - a[1];
+        if (edge === 0) {
+            const t = (r.x0 - a[0]) / dx;
+            return [r.x0, a[1] + t * dy];
+        }
+        if (edge === 1) {
+            const t = (r.x1 - a[0]) / dx;
+            return [r.x1, a[1] + t * dy];
+        }
+        if (edge === 2) {
+            const t = (r.y0 - a[1]) / dy;
+            return [a[0] + t * dx, r.y0];
+        }
+        const t = (r.y1 - a[1]) / dy;
+        return [a[0] + t * dx, r.y1];
+    };
+    let output: V[] = poly;
+    for (let e = 0; e < 4 && output.length > 0; e++) {
+        const input = output;
+        output = [];
+        let S = input[input.length - 1];
+        for (const E of input) {
+            const sIn = inside(S, e);
+            const eIn = inside(E, e);
+            if (eIn) {
+                if (!sIn) output.push(intersect(S, E, e));
+                output.push(E);
+            } else if (sIn) {
+                output.push(intersect(S, E, e));
+            }
+            S = E;
+        }
+    }
+    return output;
+}
+
+/** Liang–Barsky line-segment clip; returns the in-window portion or null. */
+function clipSegmentToRect(a: V, b: V, r: Rect): [V, V] | null {
+    let t0 = 0;
+    let t1 = 1;
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const p = [-dx, dx, -dy, dy];
+    const q = [a[0] - r.x0, r.x1 - a[0], a[1] - r.y0, r.y1 - a[1]];
+    for (let i = 0; i < 4; i++) {
+        if (p[i] === 0) {
+            if (q[i] < 0) return null;
+        } else {
+            const t = q[i] / p[i];
+            if (p[i] < 0) t0 = Math.max(t0, t);
+            else t1 = Math.min(t1, t);
+            if (t0 > t1) return null;
+        }
+    }
+    return [
+        [a[0] + t0 * dx, a[1] + t0 * dy],
+        [a[0] + t1 * dx, a[1] + t1 * dy],
+    ];
+}
+
+/** Clip an open polyline to a rect; returns one or more contiguous runs. */
+function clipPolylineToRect(pts: V[], r: Rect): V[][] {
+    const runs: V[][] = [];
+    let cur: V[] = [];
+    for (let i = 0; i + 1 < pts.length; i++) {
+        const seg = clipSegmentToRect(pts[i], pts[i + 1], r);
+        if (!seg) {
+            if (cur.length >= 2) runs.push(cur);
+            cur = [];
+            continue;
+        }
+        if (cur.length === 0) {
+            cur.push(seg[0]);
+        } else {
+            const last = cur[cur.length - 1];
+            if (Math.hypot(last[0] - seg[0][0], last[1] - seg[0][1]) > 1e-6) {
+                if (cur.length >= 2) runs.push(cur);
+                cur = [seg[0]];
+            }
+        }
+        cur.push(seg[1]);
+    }
+    if (cur.length >= 2) runs.push(cur);
+    return runs;
+}
+
 /** Drop redundant collinear vertices so the cut path is minimal. */
 function simplifyCollinear(pts: Array<[number, number]>): Array<[number, number]> {
     const ring = pts.slice(0, -1); // drop closing dup

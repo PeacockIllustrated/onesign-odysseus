@@ -17,7 +17,7 @@ export const DEFAULT_PARAMS: PanelParams = {
     returns: { top: true, bottom: true, left: true, right: true },
     shadowGapMm: 0,
     keylineMm: 0,
-    materialThicknessMm: 3,
+    materialThicknessMm: 5,
     materialLabel: 'Aluminium',
     aperturePlacement: null,
 };
