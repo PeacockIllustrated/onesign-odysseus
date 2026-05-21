@@ -56,7 +56,11 @@ function PanelPlane({
         <mesh position={position}>
             <planeGeometry args={args} />
             <meshBasicMaterial color={color} side={THREE.DoubleSide} />
-            <Edges color={EDGE_COLOR} />
+            {/* lineWidth > 1 makes drei swap to LineMaterial under the
+                hood, which renders proper antialiased line geometry
+                (gl.LINES is always 1px aliased on most GPUs). 1.5 reads
+                crisp on both retina and standard screens. */}
+            <Edges color={EDGE_COLOR} lineWidth={1.5} />
         </mesh>
     );
 }
@@ -107,7 +111,11 @@ function FacePlane({
                 bezier into the Shape via bezierCurveTo. */}
             <shapeGeometry args={[shape, 48]} />
             <meshBasicMaterial color={color} side={THREE.DoubleSide} />
-            <Edges color={EDGE_COLOR} />
+            {/* lineWidth > 1 makes drei swap to LineMaterial under the
+                hood, which renders proper antialiased line geometry
+                (gl.LINES is always 1px aliased on most GPUs). 1.5 reads
+                crisp on both retina and standard screens. */}
+            <Edges color={EDGE_COLOR} lineWidth={1.5} />
         </mesh>
     );
 }
@@ -359,6 +367,11 @@ export default function Scene3D(props: {
     return (
         <Canvas
             camera={{ position: [reach, reach * 0.7, reach], fov: 45 }}
+            // dpr [1, 2] = retina/HiDPI rendering up to 2x. r3f defaults to
+            // 1x without this, which makes hole boundaries + black edge
+            // strokes look stair-stepped on phones / retina screens even
+            // when the underlying polyline is dense.
+            dpr={[1, 2]}
             gl={{ preserveDrawingBuffer: true, antialias: true }}
             className="h-full w-full"
         >

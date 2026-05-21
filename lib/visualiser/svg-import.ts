@@ -78,12 +78,14 @@ function parseTransform(t: string | null): Matrix {
 // with curvature (no faceting on big shapes, no wasted points on small
 // ones). The polyline is then consumed by every downstream surface (3D
 // shape geometry, flat preview, DXF cut, PDF), so the same tolerance
-// governs them all.
+// governs them all — including the holes cut into the panel mesh.
 //
-// 0.015 native units is the typography sweet spot: visibly smooth bowls
-// on C / O / R in the 3D preview, still ~3x lighter than 0.005 would be,
-// and far below any laser kerf at production scale.
-const FLATNESS_TOL = 0.015;
+// 0.005 native units stays sharp even on SVGs with very small viewBoxes
+// (e.g. viewBox="0 0 10 10" representing a 100 mm letter, where 0.005
+// units = 0.05 mm — below visible). Adds ~3x the points of 0.015 but
+// still trivial at our scene scale, and means the bowls of C / O / R
+// cut into the 3D panel are visually round regardless of source SVG.
+const FLATNESS_TOL = 0.005;
 const MAX_SUBDIV_DEPTH = 18;
 
 function mid(a: number[], b: number[]): number[] {
