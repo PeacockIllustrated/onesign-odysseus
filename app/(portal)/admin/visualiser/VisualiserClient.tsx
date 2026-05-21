@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { Eye, Sliders, Bookmark } from 'lucide-react';
 import { useVisualiser } from './store';
 import { ControlsPanel } from './ControlsPanel';
 import { SvgDropzone } from './SvgDropzone';
@@ -42,6 +43,9 @@ const TAB_LABELS: Record<Tab, string> = {
     flat: 'Flat development',
 };
 
+/** Which pane is showing on a phone-sized screen. Desktop ignores this. */
+type MobilePane = 'preview' | 'settings' | 'designs';
+
 export function VisualiserClient({
     initialDesigns,
     prefill,
@@ -52,6 +56,7 @@ export function VisualiserClient({
     const { params, imported, applyPrefill, loadDesign, designId } =
         useVisualiser();
     const [tab, setTab] = useState<Tab>('folded');
+    const [mobilePane, setMobilePane] = useState<MobilePane>('preview');
     const [designs] = useState(initialDesigns);
     // 1 = folded, 0 = flat. Scrubbed by the unfold slider / replay.
     const [fold, setFold] = useState(1);
@@ -242,14 +247,22 @@ export function VisualiserClient({
         loadDesign(row, imp);
     };
 
+    // Pane visibility classes. On desktop (md+) every pane is always
+    // visible at its fixed/flex size; on mobile only one pane shows at a
+    // time, switched via the bottom tab bar.
+    const paneShow = (pane: MobilePane) =>
+        mobilePane === pane
+            ? 'flex flex-1 flex-col'
+            : 'hidden md:flex md:flex-col';
+
     return (
-        // Three-column workspace. Outer is the page's flex-1 slot, so it
-        // takes the height the page reserves. min-h-0 / min-w-0 are the
-        // magic words that let the inner flex children scroll instead of
-        // pushing the layout off-screen.
-        <div className="flex flex-1 min-h-0 min-w-0 gap-3">
-            {/* Left: controls (independently scrollable) */}
-            <aside className="flex w-[18rem] shrink-0 flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
+        <div className="flex flex-col flex-1 min-h-0 min-w-0 gap-2 md:gap-3">
+            {/* Three-column workspace on desktop; single-pane on mobile. */}
+            <div className="flex flex-1 min-h-0 min-w-0 flex-col md:flex-row gap-2 md:gap-3">
+                {/* Left: controls (Panel + Artwork) — "Settings" on mobile */}
+                <aside
+                    className={`${paneShow('settings')} md:w-[18rem] md:shrink-0 md:flex-none overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm`}
+                >
                 <div className="shrink-0 border-b border-neutral-100 px-4 py-2.5">
                     <h2 className="text-[10px] font-semibold uppercase tracking-widest text-neutral-500">
                         Panel
@@ -262,16 +275,18 @@ export function VisualiserClient({
                 </div>
             </aside>
 
-            {/* Centre: preview */}
-            <section className="flex min-w-0 min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
-                <header className="shrink-0 flex items-center justify-between gap-3 border-b border-neutral-100 px-3 py-2">
-                    <nav className="flex gap-1">
+                {/* Centre: preview */}
+                <section
+                    className={`${paneShow('preview')} min-w-0 min-h-0 md:flex-1 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm`}
+                >
+                <header className="shrink-0 flex items-center justify-between gap-2 md:gap-3 border-b border-neutral-100 px-2 md:px-3 py-1.5 md:py-2">
+                    <nav className="flex gap-1 min-w-0">
                         {(['folded', 'unfold', 'flat'] as const).map((t) => (
                             <button
                                 key={t}
                                 type="button"
                                 onClick={() => setTab(t)}
-                                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                                className={`rounded-md px-2 md:px-3 py-1.5 text-[11px] md:text-xs font-medium transition-colors ${
                                     tab === t
                                         ? 'bg-black text-white'
                                         : 'text-neutral-500 hover:bg-neutral-100'
@@ -281,9 +296,9 @@ export function VisualiserClient({
                             </button>
                         ))}
                     </nav>
-                    <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex items-center gap-2 md:gap-3 min-w-0">
                         {split.wasSplit && (
-                            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-200">
+                            <span className="hidden sm:inline rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-200">
                                 Split · {split.sections.length} panels (centre
                                 full)
                             </span>
@@ -339,8 +354,8 @@ export function VisualiserClient({
                     )}
 
                     {tab === 'unfold' && (
-                        <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
-                            <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-neutral-200 bg-white/95 px-4 py-2 shadow backdrop-blur">
+                        <div className="pointer-events-none absolute inset-x-2 bottom-3 flex justify-center md:inset-x-0 md:bottom-4">
+                            <div className="pointer-events-auto flex max-w-full items-center gap-2 md:gap-3 rounded-full border border-neutral-200 bg-white/95 px-3 md:px-4 py-2 shadow backdrop-blur">
                                 <span className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">
                                     Flat
                                 </span>
@@ -352,7 +367,7 @@ export function VisualiserClient({
                                     onChange={(e) =>
                                         setFold(Number(e.target.value) / 100)
                                     }
-                                    className="h-1 w-48 accent-black"
+                                    className="h-2 w-32 md:w-48 accent-black"
                                     aria-label="Fold amount"
                                 />
                                 <span className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">
@@ -384,8 +399,10 @@ export function VisualiserClient({
                 </footer>
             </section>
 
-            {/* Right: saved designs (independently scrollable) */}
-            <aside className="flex w-[15rem] shrink-0 flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
+                {/* Right: saved designs (independently scrollable) */}
+                <aside
+                    className={`${paneShow('designs')} md:w-[15rem] md:shrink-0 md:flex-none overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm`}
+                >
                 <div className="shrink-0 border-b border-neutral-100 px-4 py-2.5">
                     <h2 className="text-[10px] font-semibold uppercase tracking-widest text-neutral-500">
                         Saved designs
@@ -425,7 +442,37 @@ export function VisualiserClient({
                         </li>
                     ))}
                 </ul>
-            </aside>
+                </aside>
+            </div>
+
+            {/* Mobile tab bar — switches which pane is visible on phones. */}
+            <nav className="md:hidden shrink-0 grid grid-cols-3 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
+                {(
+                    [
+                        ['preview', 'Preview', Eye],
+                        ['settings', 'Panel', Sliders],
+                        ['designs', 'Designs', Bookmark],
+                    ] as const
+                ).map(([pane, label, Icon]) => {
+                    const active = mobilePane === pane;
+                    return (
+                        <button
+                            key={pane}
+                            type="button"
+                            onClick={() => setMobilePane(pane)}
+                            className={`flex items-center justify-center gap-1.5 py-3 text-[11px] font-medium transition-colors ${
+                                active
+                                    ? 'bg-black text-white'
+                                    : 'text-neutral-500 active:bg-neutral-100'
+                            }`}
+                            aria-pressed={active}
+                        >
+                            <Icon size={14} />
+                            {label}
+                        </button>
+                    );
+                })}
+            </nav>
         </div>
     );
 }

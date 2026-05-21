@@ -26,6 +26,7 @@ function NumberField({
             <div className="mt-1 flex items-center gap-1">
                 <input
                     type="number"
+                    inputMode="decimal"
                     value={Number.isFinite(value) ? value : ''}
                     min={min}
                     step={step}

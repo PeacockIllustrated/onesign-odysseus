@@ -57,6 +57,7 @@ function NumField({
             <span className="text-[10px] text-neutral-500">{label}</span>
             <input
                 type="number"
+                inputMode="decimal"
                 step={step}
                 value={value}
                 onChange={(e) => {

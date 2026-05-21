@@ -29,14 +29,15 @@ export default async function VisualiserPage({
         // Pin the whole tool to the viewport so the visualiser stays on
         // screen — only the inner panels scroll. Calc offsets the topbar
         // (h-16) + main padding so we don't overlap or get a page scroll.
-        // The min-height keeps it usable on short windows.
-        <div className="flex flex-col gap-3 h-[calc(100dvh-7rem)] min-h-[560px] overflow-hidden">
+        // The min-height applies on desktop only; on phones / landscape
+        // mobile the available height is honoured directly.
+        <div className="flex flex-col gap-2 md:gap-3 h-[calc(100dvh-7rem)] md:min-h-[560px] overflow-hidden">
             <header className="shrink-0 flex items-baseline justify-between gap-4">
                 <div>
-                    <h1 className="text-lg font-bold tracking-tight text-neutral-900">
+                    <h1 className="text-base md:text-lg font-bold tracking-tight text-neutral-900">
                         Panel Visualiser
                     </h1>
-                    <p className="text-xs text-neutral-500">
+                    <p className="hidden sm:block text-xs text-neutral-500">
                         Folded aluminium — 3D preview, unfold &amp;
                         production-ready cut files
                     </p>
