@@ -300,6 +300,8 @@ function StandoffLettering({
     faceThicknessMm,
     color,
     outlines = true,
+    placeFixingMode = false,
+    onPlaceFixing,
 }: {
     face: { xMm: number; yMm: number; wMm: number; hMm: number };
     reference: FlatPath[];
@@ -309,6 +311,8 @@ function StandoffLettering({
     faceThicknessMm: number;
     color: string;
     outlines?: boolean;
+    placeFixingMode?: boolean;
+    onPlaceFixing?: (p: [number, number]) => void;
 }) {
     const shapes = useMemo(() => {
         const closed = reference.filter(
@@ -436,10 +440,43 @@ function StandoffLettering({
 
     if (shapes.length === 0) return null;
 
+    // Click-to-place on the letter itself: r3f's raycaster reports the
+    // front-most hit first, and stopPropagation here halts it before the
+    // panel handler underneath gets a turn. So clicking a letter that
+    // sits over an aperture lands the fixing on the letter (closer to
+    // camera), not on whatever is behind it.
+    const letterClick =
+        placeFixingMode && onPlaceFixing
+            ? (e: {
+                  stopPropagation: () => void;
+                  point: { x: number; y: number };
+              }) => {
+                  e.stopPropagation();
+                  const devX = face.xMm + face.wMm / 2 + e.point.x / S;
+                  const devY = face.yMm + face.hMm / 2 - e.point.y / S;
+                  onPlaceFixing([devX, devY]);
+              }
+            : undefined;
+    const letterPointerOver = placeFixingMode
+        ? (e: { stopPropagation: () => void }) => {
+              e.stopPropagation();
+              document.body.style.cursor = 'crosshair';
+          }
+        : undefined;
+    const letterPointerOut = placeFixingMode
+        ? () => {
+              document.body.style.cursor = '';
+          }
+        : undefined;
+
     return (
         <group position={[0, 0, baseZ]}>
             {shapes.map((shape, i) => (
-                <mesh key={i}>
+                <mesh
+                    key={i}
+                    onClick={letterClick}
+                    onPointerOver={letterPointerOver}
+                    onPointerOut={letterPointerOut}>
                     <extrudeGeometry
                         args={[
                             shape,
@@ -685,6 +722,8 @@ function Panel({
                                 faceThicknessMm={T}
                                 color={params.letterColor ?? '#1a1f23'}
                                 outlines={showOutlines}
+                                placeFixingMode={placeFixingMode}
+                                onPlaceFixing={onPlaceFixing}
                             />
                         )}
                     </>
