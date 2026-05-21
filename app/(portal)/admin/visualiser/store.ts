@@ -39,11 +39,13 @@ interface VisualiserState {
     quoteItemId: string | null;
     dirty: boolean;
     /**
-     * When true the preview canvases listen for clicks and drop a manual
-     * fixing at the click position (mapped to flat-dev coords). Survives
-     * density/radius changes, since it's stored on params.manualFixings.
+     * Current fixing-edit mode. 'place' drops a fixing on click; 'delete'
+     * removes the nearest manual fixing within a tolerance. 'off' is the
+     * default — clicks don't affect fixings. Stored on `params.manualFixings`
+     * in SVG-local coords so fixings track the lettering across placement
+     * changes (re-aligning the SVG drags the fixings with it).
      */
-    placeFixingMode: boolean;
+    fixingMode: 'off' | 'place' | 'delete';
 
     setParam: <K extends keyof PanelParams>(k: K, v: PanelParams[K]) => void;
     setReturn: (edge: PanelEdge, on: boolean) => void;
@@ -55,8 +57,9 @@ interface VisualiserState {
     loadDesign: (row: VisualiserDesignRow, imported: ImportedSvg | null) => void;
     applyPrefill: (patch: Partial<PanelParams>, quoteId: string | null, quoteItemId: string) => void;
     addManualFixing: (p: [number, number]) => void;
+    removeManualFixing: (index: number) => void;
     clearManualFixings: () => void;
-    setPlaceFixingMode: (on: boolean) => void;
+    setFixingMode: (m: 'off' | 'place' | 'delete') => void;
     markSaved: (id: string) => void;
 }
 
@@ -68,7 +71,7 @@ export const useVisualiser = create<VisualiserState>((set) => ({
     quoteId: null,
     quoteItemId: null,
     dirty: false,
-    placeFixingMode: false,
+    fixingMode: 'off',
 
     setParam: (k, v) =>
         set((s) => ({ params: { ...s.params, [k]: v }, dirty: true })),
@@ -140,13 +143,26 @@ export const useVisualiser = create<VisualiserState>((set) => ({
             dirty: true,
         })),
 
+    removeManualFixing: (index) =>
+        set((s) => {
+            const list = s.params.manualFixings ?? [];
+            if (index < 0 || index >= list.length) return {} as Partial<VisualiserState>;
+            return {
+                params: {
+                    ...s.params,
+                    manualFixings: list.filter((_, i) => i !== index),
+                },
+                dirty: true,
+            };
+        }),
+
     clearManualFixings: () =>
         set((s) => ({
             params: { ...s.params, manualFixings: [] },
             dirty: true,
         })),
 
-    setPlaceFixingMode: (on) => set({ placeFixingMode: on }),
+    setFixingMode: (m) => set({ fixingMode: m }),
 
     markSaved: (id) => set({ designId: id, dirty: false }),
 }));

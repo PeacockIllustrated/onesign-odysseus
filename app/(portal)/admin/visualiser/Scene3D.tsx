@@ -321,8 +321,8 @@ function StandoffLettering({
     faceThicknessMm,
     color,
     outlines = true,
-    placeFixingMode = false,
-    onPlaceFixing,
+    fixingMode = 'off',
+    onFixingClick,
 }: {
     face: { xMm: number; yMm: number; wMm: number; hMm: number };
     reference: FlatPath[];
@@ -332,8 +332,8 @@ function StandoffLettering({
     faceThicknessMm: number;
     color: string;
     outlines?: boolean;
-    placeFixingMode?: boolean;
-    onPlaceFixing?: (p: [number, number]) => void;
+    fixingMode?: 'off' | 'place' | 'delete';
+    onFixingClick?: (p: [number, number]) => void;
 }) {
     const shapes = useMemo(() => {
         const closed = reference.filter(
@@ -468,8 +468,9 @@ function StandoffLettering({
     // panel handler underneath gets a turn. So clicking a letter that
     // sits over an aperture lands the fixing on the letter (closer to
     // camera), not on whatever is behind it.
+    const fixingActive = fixingMode !== 'off';
     const letterClick =
-        placeFixingMode && onPlaceFixing
+        fixingActive && onFixingClick
             ? (e: {
                   stopPropagation: () => void;
                   point: { x: number; y: number };
@@ -477,16 +478,16 @@ function StandoffLettering({
                   e.stopPropagation();
                   const devX = face.xMm + face.wMm / 2 + e.point.x / S;
                   const devY = face.yMm + face.hMm / 2 - e.point.y / S;
-                  onPlaceFixing([devX, devY]);
+                  onFixingClick([devX, devY]);
               }
             : undefined;
-    const letterPointerOver = placeFixingMode
+    const letterPointerOver = fixingActive
         ? (e: { stopPropagation: () => void }) => {
               e.stopPropagation();
               document.body.style.cursor = 'crosshair';
           }
         : undefined;
-    const letterPointerOut = placeFixingMode
+    const letterPointerOut = fixingActive
         ? () => {
               document.body.style.cursor = '';
           }
@@ -611,8 +612,8 @@ function Panel({
     fixings,
     reference,
     fold,
-    placeFixingMode,
-    onPlaceFixing,
+    fixingMode,
+    onFixingClick,
     showOutlines = true,
     showStandoffLetters = true,
     showStandoffLocators = true,
@@ -625,8 +626,8 @@ function Panel({
     fixings: FlatPath[];
     reference: FlatPath[];
     fold: number;
-    placeFixingMode?: boolean;
-    onPlaceFixing?: (p: [number, number]) => void;
+    fixingMode?: 'off' | 'place' | 'delete';
+    onFixingClick?: (p: [number, number]) => void;
     showOutlines?: boolean;
     showStandoffLetters?: boolean;
     showStandoffLocators?: boolean;
@@ -702,9 +703,9 @@ function Panel({
                 color={panelColor}
                 holesLocal={holesLocal}
                 outlines={showOutlines}
-                cursorCrosshair={placeFixingMode}
+                cursorCrosshair={(fixingMode ?? 'off') !== 'off'}
                 onClick={
-                    placeFixingMode && face && onPlaceFixing
+                    (fixingMode ?? 'off') !== 'off' && face && onFixingClick
                         ? (sceneX, sceneY) => {
                               // Scene units are mm × S. The face mesh is
                               // centred at world origin, so convert back to
@@ -713,7 +714,7 @@ function Panel({
                                   face.xMm + face.wMm / 2 + sceneX / S;
                               const devY =
                                   face.yMm + face.hMm / 2 - sceneY / S;
-                              onPlaceFixing([devX, devY]);
+                              onFixingClick([devX, devY]);
                           }
                         : undefined
                 }
@@ -750,8 +751,8 @@ function Panel({
                                 faceThicknessMm={T}
                                 color={params.letterColor ?? '#1a1f23'}
                                 outlines={showOutlines}
-                                placeFixingMode={placeFixingMode}
-                                onPlaceFixing={onPlaceFixing}
+                                fixingMode={fixingMode}
+                                onFixingClick={onFixingClick}
                             />
                         )}
                     </>
@@ -817,9 +818,9 @@ export default function Scene3D(props: {
     reference?: FlatPath[];
     /** 0 = flat (unfolded in 3D), 1 = folded. Default folded. */
     fold?: number;
-    /** When true, clicks on the panel face drop a manual fixing. */
-    placeFixingMode?: boolean;
-    onPlaceFixing?: (p: [number, number]) => void;
+    /** Active fixing edit mode: 'place' drops, 'delete' removes. */
+    fixingMode?: 'off' | 'place' | 'delete';
+    onFixingClick?: (p: [number, number]) => void;
     showOutlines?: boolean;
     showStandoffLetters?: boolean;
     showStandoffLocators?: boolean;
@@ -857,8 +858,8 @@ export default function Scene3D(props: {
                 fixings={fixings}
                 reference={reference}
                 fold={fold}
-                placeFixingMode={props.placeFixingMode}
-                onPlaceFixing={props.onPlaceFixing}
+                fixingMode={props.fixingMode}
+                onFixingClick={props.onFixingClick}
                 showOutlines={showOutlines}
                 showStandoffLetters={showStandoffLetters}
                 showStandoffLocators={showStandoffLocators}

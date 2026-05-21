@@ -11,6 +11,7 @@ import { ExportBar } from './ExportBar';
 import {
     buildDevelopment,
     placeAperture,
+    placementTransform,
     clipApertureToFace,
     placeFixings,
     buildSectionedExport,
@@ -87,8 +88,9 @@ export function VisualiserClient({
         applyPrefill,
         loadDesign,
         designId,
-        placeFixingMode,
+        fixingMode,
         addManualFixing,
+        removeManualFixing,
     } = useVisualiser();
     const [tab, setTab] = useState<Tab>('folded');
     const [mobilePane, setMobilePane] = useState<MobilePane>('preview');
@@ -195,34 +197,42 @@ export function VisualiserClient({
         return clipApertureToFace(development, raw).paths;
     }, [mode, development, placedClip.paths, fixingDiameter, fixingDensity]);
 
+    // Transform between the SVG's own coord frame and the flat-dev
+    // frame — manual fixings are stored in the SVG frame so they follow
+    // the lettering when alignment / scale / nudge changes.
+    const placementXf = useMemo(() => {
+        if (!development || !imported) return null;
+        return placementTransform(development, imported.bbox, placement);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [development, imported, JSON.stringify(placement)]);
+
     // Manual fixings — user clicks on the canvases to drop pins exactly
-    // where they're needed. Stored as flat-dev coords on params so they
-    // survive density / radius / artwork edits. Clipped to the face so a
-    // stray click outside the panel never reaches the export.
+    // where they're needed. Persisted in SVG-local coords so they follow
+    // the lettering across placement edits; converted to flat-dev coords
+    // for rendering / export. Each entry retains its store index so the
+    // delete handler can target it by index.
     const manualFixings = useMemo(() => {
-        if (mode !== 'standoff' || !development) return [];
+        if (mode !== 'standoff' || !development || !placementXf) return [];
         const r = fixingDiameter / 2;
-        const polys = (params.manualFixings ?? []).map(([x, y]) =>
-            circlePoly(x, y, r),
-        );
+        const polys = (params.manualFixings ?? []).map((p) => {
+            const [x, y] = placementXf.toFlat(p);
+            return circlePoly(x, y, r);
+        });
         return clipApertureToFace(development, polys).paths;
-    }, [mode, development, fixingDiameter, params.manualFixings]);
+    }, [mode, development, placementXf, fixingDiameter, params.manualFixings]);
 
     const fixings = useMemo(
         () => [...autoFixings, ...manualFixings],
         [autoFixings, manualFixings],
     );
 
-    // Click-to-place must land INSIDE the lettering shape — clicks on the
-    // panel background drop nothing. Even-odd rule across every reference
-    // ring so counters of O / A / B (which sit "outside" the lettering)
-    // correctly exclude.
-    const handlePlaceFixing = (p: [number, number]) => {
-        if (reference.length === 0) return;
+    // Even-odd inside test across the reference rings — counters of O /
+    // A / B correctly exclude. Used by the place handler to reject
+    // clicks on the panel background.
+    const insideLettering = (p: [number, number]): boolean => {
         let n = 0;
         for (const r of reference) {
             const ring = r.points;
-            // Ray-cast inside test.
             let inside = false;
             let j = ring.length - 1;
             for (let i = 0; i < ring.length; i++) {
@@ -241,8 +251,36 @@ export function VisualiserClient({
             }
             if (inside) n++;
         }
-        if (n % 2 !== 1) return; // click landed outside the lettering
-        addManualFixing(p);
+        return n % 2 === 1;
+    };
+
+    const handleFixingClick = (p: [number, number]) => {
+        if (fixingMode === 'place') {
+            if (!placementXf) return;
+            if (reference.length > 0 && !insideLettering(p)) return;
+            addManualFixing(placementXf.toLocal(p));
+            return;
+        }
+        if (fixingMode === 'delete') {
+            if (!placementXf) return;
+            const stored = params.manualFixings ?? [];
+            if (stored.length === 0) return;
+            // Forgiveness window: clicking anywhere inside the visible
+            // fixing circle deletes it. Slightly larger than the radius
+            // so a near-miss still counts.
+            const tol = Math.max(fixingDiameter / 2, 6) * 1.4;
+            let bestIdx = -1;
+            let bestDist = tol;
+            for (let i = 0; i < stored.length; i++) {
+                const [fx, fy] = placementXf.toFlat(stored[i]);
+                const d = Math.hypot(fx - p[0], fy - p[1]);
+                if (d < bestDist) {
+                    bestDist = d;
+                    bestIdx = i;
+                }
+            }
+            if (bestIdx >= 0) removeManualFixing(bestIdx);
+        }
     };
 
     // Build the keyline from the cut aperture so it tracks the visible
@@ -430,8 +468,8 @@ export function VisualiserClient({
                             fixings={fixings}
                             reference={reference}
                             panelColor={params.panelColor ?? '#d6d6d6'}
-                            placeFixingMode={placeFixingMode}
-                            onPlaceFixing={handlePlaceFixing}
+                            fixingMode={fixingMode}
+                            onFixingClick={handleFixingClick}
                         />
                     ) : (
                         <Scene3D
@@ -443,8 +481,8 @@ export function VisualiserClient({
                             fixings={fixings}
                             reference={reference}
                             fold={tab === 'folded' ? 1 : fold}
-                            placeFixingMode={placeFixingMode}
-                            onPlaceFixing={handlePlaceFixing}
+                            fixingMode={fixingMode}
+                            onFixingClick={handleFixingClick}
                             showOutlines={showOutlines}
                             showStandoffLetters={showStandoffLetters}
                             showStandoffLocators={showStandoffLocators}

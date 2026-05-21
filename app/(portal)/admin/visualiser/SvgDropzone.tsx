@@ -8,7 +8,7 @@ import type {
     AlignV,
     ApertureMode,
 } from '@/lib/visualiser/types';
-import { AlertTriangle, Crosshair, Upload, X } from 'lucide-react';
+import { AlertTriangle, Crosshair, Eraser, Upload, X } from 'lucide-react';
 
 function Segmented<T extends string>({
     options,
@@ -79,8 +79,8 @@ export function SvgDropzone() {
         clearSvg,
         setPlacement,
         setParam,
-        placeFixingMode,
-        setPlaceFixingMode,
+        fixingMode,
+        setFixingMode,
         clearManualFixings,
     } = useVisualiser();
     const inputRef = useRef<HTMLInputElement>(null);
@@ -436,26 +436,55 @@ export function SvgDropzone() {
                                         </div>
                                     </div>
 
-                                    {/* Manual placement */}
+                                    {/* Manual placement + deletion. Modes
+                                        are mutually exclusive; clicking the
+                                        active mode again turns it off. */}
                                     <div className="flex items-center gap-2">
                                         <button
                                             type="button"
                                             onClick={() =>
-                                                setPlaceFixingMode(
-                                                    !placeFixingMode,
+                                                setFixingMode(
+                                                    fixingMode === 'place'
+                                                        ? 'off'
+                                                        : 'place',
                                                 )
                                             }
                                             className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${
-                                                placeFixingMode
+                                                fixingMode === 'place'
                                                     ? 'bg-black text-white'
                                                     : 'border border-neutral-300 text-neutral-700 hover:bg-neutral-100'
                                             }`}
-                                            title="Click anywhere on the 3D scene or flat preview to drop a fixing exactly there. Manual fixings stay put when density changes."
+                                            title="Click anywhere on the lettering to drop a fixing. Manual fixings track the lettering across placement changes."
                                         >
                                             <Crosshair size={12} />
-                                            {placeFixingMode
+                                            {fixingMode === 'place'
                                                 ? 'Done placing'
-                                                : 'Place fixings'}
+                                                : 'Place'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            disabled={
+                                                (params.manualFixings?.length ??
+                                                    0) === 0
+                                            }
+                                            onClick={() =>
+                                                setFixingMode(
+                                                    fixingMode === 'delete'
+                                                        ? 'off'
+                                                        : 'delete',
+                                                )
+                                            }
+                                            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                                                fixingMode === 'delete'
+                                                    ? 'bg-red-600 text-white'
+                                                    : 'border border-neutral-300 text-neutral-700 hover:bg-neutral-100'
+                                            }`}
+                                            title="Click on a manually-placed fixing to remove it."
+                                        >
+                                            <Eraser size={12} />
+                                            {fixingMode === 'delete'
+                                                ? 'Done deleting'
+                                                : 'Delete'}
                                         </button>
                                         {(params.manualFixings?.length ?? 0) >
                                             0 && (
@@ -476,12 +505,19 @@ export function SvgDropzone() {
                                             </button>
                                         )}
                                     </div>
-                                    {placeFixingMode && (
+                                    {fixingMode === 'place' && (
                                         <p className="text-[10px] text-neutral-500">
                                             Tap the 3D scene or flat preview
                                             to drop a fixing at that point.
-                                            These stay where you put them
-                                            even when you change density.
+                                            Anchored to the lettering, so it
+                                            follows when you re-align the
+                                            artwork.
+                                        </p>
+                                    )}
+                                    {fixingMode === 'delete' && (
+                                        <p className="text-[10px] text-red-600">
+                                            Tap a manually-placed fixing to
+                                            remove it.
                                         </p>
                                     )}
                                 </div>

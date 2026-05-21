@@ -27,8 +27,8 @@ export function FlatPreview({
     fixings = [],
     reference = [],
     panelColor = DEFAULT_PANEL_COLOR,
-    placeFixingMode = false,
-    onPlaceFixing,
+    fixingMode = 'off',
+    onFixingClick,
 }: {
     development: PanelDevelopment;
     split: PanelSplit;
@@ -37,14 +37,14 @@ export function FlatPreview({
     fixings?: FlatPath[];
     reference?: FlatPath[];
     panelColor?: string;
-    placeFixingMode?: boolean;
+    fixingMode?: 'off' | 'place' | 'delete';
     /** Called with the click point in flat-development mm coords. */
-    onPlaceFixing?: (p: [number, number]) => void;
+    onFixingClick?: (p: [number, number]) => void;
 }) {
     const svgRef = useRef<SVGSVGElement | null>(null);
 
     const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
-        if (!placeFixingMode || !onPlaceFixing || !svgRef.current) return;
+        if (fixingMode === 'off' || !onFixingClick || !svgRef.current) return;
         const ctm = svgRef.current.getScreenCTM();
         if (!ctm) return;
         const pt = svgRef.current.createSVGPoint();
@@ -62,7 +62,7 @@ export function FlatPreview({
             local.y > face.yMm + face.hMm
         )
             return;
-        onPlaceFixing([local.x, local.y]);
+        onFixingClick([local.x, local.y]);
     };
     const pad = Math.max(20, dev.totalFlatWMm * 0.06);
     const vb = useMemo(
@@ -105,7 +105,7 @@ export function FlatPreview({
                 ref={svgRef}
                 viewBox={vb}
                 className={`h-full w-full ${
-                    placeFixingMode ? 'cursor-crosshair' : ''
+                    fixingMode !== 'off' ? 'cursor-crosshair' : ''
                 }`}
                 preserveAspectRatio="xMidYMid meet"
                 onClick={handleClick}

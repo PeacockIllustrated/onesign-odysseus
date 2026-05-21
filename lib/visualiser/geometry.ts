@@ -233,6 +233,56 @@ function cap(s: string): string {
  * the scaled artwork edge to the face edge); nudge is a fine mm offset from
  * there. Scaling about the centre never drifts the artwork.
  */
+/**
+ * The forward + inverse mapping between the SVG's own coordinate system
+ * (anchored at the imported bbox centre) and the flat development. Used
+ * to anchor manual fixings to the lettering itself, so they follow it
+ * when the placement shifts instead of staying stuck in flat-dev coords.
+ */
+export function placementTransform(
+    dev: PanelDevelopment,
+    bbox: { x: number; y: number; w: number; h: number },
+    placement: AperturePlacement,
+): {
+    toFlat: (p: [number, number]) => [number, number];
+    toLocal: (p: [number, number]) => [number, number];
+} {
+    const face = dev.segments.find((s) => s.role === 'face');
+    if (!face || placement.scale === 0) {
+        const id = (p: [number, number]): [number, number] => [p[0], p[1]];
+        return { toFlat: id, toLocal: id };
+    }
+
+    const faceHalfW = face.wMm / 2;
+    const faceHalfH = face.hMm / 2;
+    const faceCx = face.xMm + faceHalfW;
+    const faceCy = face.yMm + faceHalfH;
+    const scaledHalfW = (bbox.w * placement.scale) / 2;
+    const scaledHalfH = (bbox.h * placement.scale) / 2;
+    const baseX =
+        placement.alignH === 'left'
+            ? scaledHalfW - faceHalfW
+            : placement.alignH === 'right'
+              ? faceHalfW - scaledHalfW
+              : 0;
+    const baseY =
+        placement.alignV === 'top'
+            ? scaledHalfH - faceHalfH
+            : placement.alignV === 'bottom'
+              ? faceHalfH - scaledHalfH
+              : 0;
+    const cx = faceCx + baseX + placement.nudgeXMm;
+    const cy = faceCy + baseY + placement.nudgeYMm;
+    const svgCx = bbox.x + bbox.w / 2;
+    const svgCy = bbox.y + bbox.h / 2;
+    const s = placement.scale;
+
+    return {
+        toFlat: ([x, y]) => [cx + (x - svgCx) * s, cy + (y - svgCy) * s],
+        toLocal: ([x, y]) => [svgCx + (x - cx) / s, svgCy + (y - cy) / s],
+    };
+}
+
 export function placeAperture(
     dev: PanelDevelopment,
     paths: FlatPath[],
