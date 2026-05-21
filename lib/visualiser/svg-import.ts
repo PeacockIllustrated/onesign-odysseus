@@ -74,11 +74,16 @@ function parseTransform(t: string | null): Matrix {
 }
 
 // Adaptive curve flattening. Curves are recursively subdivided until the
-// polyline is within FLATNESS_TOL of the true curve — so quality scales with
-// curvature (no faceting on big shapes, no wasted points on small ones).
-// 0.05 native units is far below any laser kerf once placed, so the cut is
-// accurate beyond machine resolution.
-const FLATNESS_TOL = 0.05;
+// polyline is within FLATNESS_TOL of the true curve — so quality scales
+// with curvature (no faceting on big shapes, no wasted points on small
+// ones). The polyline is then consumed by every downstream surface (3D
+// shape geometry, flat preview, DXF cut, PDF), so the same tolerance
+// governs them all.
+//
+// 0.015 native units is the typography sweet spot: visibly smooth bowls
+// on C / O / R in the 3D preview, still ~3x lighter than 0.005 would be,
+// and far below any laser kerf at production scale.
+const FLATNESS_TOL = 0.015;
 const MAX_SUBDIV_DEPTH = 18;
 
 function mid(a: number[], b: number[]): number[] {

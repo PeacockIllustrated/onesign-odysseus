@@ -100,7 +100,12 @@ function FacePlane({
 
     return (
         <mesh>
-            <shapeGeometry args={[shape, 12]} />
+            {/* curveSegments = 48 (hero/close-up typography preset). In
+                our pipeline SVG curves are pre-flattened at parse time
+                (lib/visualiser/svg-import.ts FLATNESS_TOL), so this is
+                defensive — kept in case any future code feeds a real
+                bezier into the Shape via bezierCurveTo. */}
+            <shapeGeometry args={[shape, 48]} />
             <meshBasicMaterial color={color} side={THREE.DoubleSide} />
             <Edges color={EDGE_COLOR} />
         </mesh>
