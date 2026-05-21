@@ -37,42 +37,47 @@ const S = 0.01; // mm → scene units
 const HALF_PI = Math.PI / 2;
 const DEFAULT_PANEL_COLOR = '#d6d6d6';
 const EDGE_COLOR = '#111111'; // technical-drawing black strokes
+const STANDOFF_STUD_COLOR = '#9aa0a4'; // brushed-metal grey for the studs
+
+/** Pick black or white based on the perceptual luminance of `hex`. */
+function contrastTo(hex: string): string {
+    const h = hex.replace('#', '');
+    if (h.length !== 6) return '#ffffff';
+    const r = parseInt(h.substring(0, 2), 16);
+    const g = parseInt(h.substring(2, 4), 16);
+    const b = parseInt(h.substring(4, 6), 16);
+    const L = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    return L < 0.55 ? '#ffffff' : '#111111';
+}
 
 /**
- * A single sheet-metal plane with crisp black edges. Double-sided material so
- * the back of the metal is visible — but there's only one surface, no extra
- * back plate (which isn't there in production either).
+ * A solid sheet-metal box with crisp black edges. The third dimension is the
+ * material thickness — gives the panel and its returns real depth instead of
+ * a paper-thin look, which matters as soon as material is 3–8 mm thick.
  */
-function PanelPlane({
+function PanelBox({
     args,
     position,
+    rotation,
     color,
+    outlines = true,
 }: {
-    args: [number, number];
+    args: [number, number, number];
     position?: [number, number, number];
+    rotation?: [number, number, number];
     color: string;
+    outlines?: boolean;
 }) {
     return (
-        <mesh position={position}>
-            <planeGeometry args={args} />
-            {/* polygonOffset pushes the fill slightly away from the camera
-                in depth, so the Edges lines always sit "in front" of it —
-                regardless of whether the camera is looking at the front
-                of the panel or orbited around to the back. Without this,
-                the back-facing fill (DoubleSide) lands at the same depth
-                as the edges and paints over them when viewed from behind. */}
+        <mesh position={position} rotation={rotation}>
+            <boxGeometry args={args} />
             <meshBasicMaterial
                 color={color}
-                side={THREE.DoubleSide}
                 polygonOffset
                 polygonOffsetFactor={1}
                 polygonOffsetUnits={1}
             />
-            {/* lineWidth > 1 makes drei swap to LineMaterial under the
-                hood, which renders proper antialiased line geometry
-                (gl.LINES is always 1px aliased on most GPUs). 1.5 reads
-                crisp on both retina and standard screens. */}
-            <Edges color={EDGE_COLOR} lineWidth={1.5} />
+            {outlines && <Edges color={EDGE_COLOR} lineWidth={1.5} />}
         </mesh>
     );
 }
@@ -85,19 +90,23 @@ function PanelPlane({
 function FacePlane({
     W,
     H,
+    T,
     color,
     holesLocal,
     onClick,
     cursorCrosshair,
+    outlines = true,
 }: {
     W: number; // mm
     H: number; // mm
+    T: number; // mm — material thickness
     color: string;
     /** Holes in face-local mm coords (face centred at origin, y-up). */
     holesLocal: Array<Array<[number, number]>>;
     /** Click handler receives the hit point in scene-local mm × S. */
     onClick?: (sceneX: number, sceneY: number) => void;
     cursorCrosshair?: boolean;
+    outlines?: boolean;
 }) {
     const shape = useMemo(() => {
         const s = new THREE.Shape();
@@ -119,8 +128,15 @@ function FacePlane({
         return s;
     }, [W, H, holesLocal]);
 
+    const depth = T * S;
+
     return (
+        // Extruded face — material thickness becomes visible at every
+        // cut-out edge instead of the old paper-thin look. Mesh sits at
+        // z = -T/2 so the geometry (extruded 0..depth in local) ends up
+        // centred at z = 0 in world.
         <mesh
+            position={[0, 0, -depth / 2]}
             onClick={
                 onClick
                     ? (e) => {
@@ -144,30 +160,19 @@ function FacePlane({
                       }
                     : undefined
             }>
-            {/* curveSegments = 48 (hero/close-up typography preset). In
-                our pipeline SVG curves are pre-flattened at parse time
-                (lib/visualiser/svg-import.ts FLATNESS_TOL), so this is
-                defensive — kept in case any future code feeds a real
-                bezier into the Shape via bezierCurveTo. */}
-            <shapeGeometry args={[shape, 48]} />
-            {/* polygonOffset pushes the fill slightly away from the camera
-                in depth, so the Edges lines always sit "in front" of it —
-                regardless of whether the camera is looking at the front
-                of the panel or orbited around to the back. Without this,
-                the back-facing fill (DoubleSide) lands at the same depth
-                as the edges and paints over them when viewed from behind. */}
+            <extrudeGeometry
+                args={[
+                    shape,
+                    { depth, bevelEnabled: false, curveSegments: 48 },
+                ]}
+            />
             <meshBasicMaterial
                 color={color}
-                side={THREE.DoubleSide}
                 polygonOffset
                 polygonOffsetFactor={1}
                 polygonOffsetUnits={1}
             />
-            {/* lineWidth > 1 makes drei swap to LineMaterial under the
-                hood, which renders proper antialiased line geometry
-                (gl.LINES is always 1px aliased on most GPUs). 1.5 reads
-                crisp on both retina and standard screens. */}
-            <Edges color={EDGE_COLOR} lineWidth={1.5} />
+            {outlines && <Edges color={EDGE_COLOR} lineWidth={1.5} />}
         </mesh>
     );
 }
@@ -183,76 +188,91 @@ function Flap({
     H,
     D,
     Sg,
+    T,
     fold,
     color,
+    outlines = true,
 }: {
     edge: PanelEdge;
     W: number;
     H: number;
     D: number;
     Sg: number;
+    T: number; // material thickness (mm)
     fold: number;
     color: string;
+    outlines?: boolean;
 }) {
     const a = fold * HALF_PI;
     const hasLip = Sg > 0;
+    const t = T * S;
 
+    // The fold pivots around the inside-back edge of the panel (z = -T/2)
+    // for every edge, so when folded 90° the inside surface of the return
+    // lands flush with the back of the face and the outside steps out by
+    // the material thickness — like a real sheet-metal break.
     let groupPos: [number, number, number];
     let groupRot: [number, number, number];
-    let planeArgs: [number, number];
-    let planePos: [number, number, number];
+    let boxArgs: [number, number, number];
+    let boxPos: [number, number, number];
     let lipPos: [number, number, number] = [0, 0, 0];
     let lipRot: [number, number, number] = [0, 0, 0];
-    let lipArgs: [number, number] = [0, 0];
-    let lipPlanePos: [number, number, number] = [0, 0, 0];
+    let lipArgs: [number, number, number] = [0, 0, 0];
+    let lipBoxPos: [number, number, number] = [0, 0, 0];
 
     if (edge === 'bottom') {
-        groupPos = [0, (-H / 2) * S, 0];
+        groupPos = [0, (-H / 2) * S, -t / 2];
         groupRot = [a, 0, 0];
-        planeArgs = [W * S, D * S];
-        planePos = [0, (-D / 2) * S, 0];
+        boxArgs = [W * S, D * S, t];
+        boxPos = [0, (-D / 2) * S, t / 2];
         lipPos = [0, -D * S, 0];
         lipRot = [a, 0, 0];
-        lipArgs = [W * S, Sg * S];
-        lipPlanePos = [0, (-Sg / 2) * S, 0];
+        lipArgs = [W * S, Sg * S, t];
+        lipBoxPos = [0, (-Sg / 2) * S, 0];
     } else if (edge === 'top') {
-        groupPos = [0, (H / 2) * S, 0];
+        groupPos = [0, (H / 2) * S, -t / 2];
         groupRot = [-a, 0, 0];
-        planeArgs = [W * S, D * S];
-        planePos = [0, (D / 2) * S, 0];
+        boxArgs = [W * S, D * S, t];
+        boxPos = [0, (D / 2) * S, t / 2];
         lipPos = [0, D * S, 0];
         lipRot = [-a, 0, 0];
-        lipArgs = [W * S, Sg * S];
-        lipPlanePos = [0, (Sg / 2) * S, 0];
+        lipArgs = [W * S, Sg * S, t];
+        lipBoxPos = [0, (Sg / 2) * S, 0];
     } else if (edge === 'left') {
-        groupPos = [(-W / 2) * S, 0, 0];
+        groupPos = [(-W / 2) * S, 0, -t / 2];
         groupRot = [0, -a, 0];
-        planeArgs = [D * S, H * S];
-        planePos = [(-D / 2) * S, 0, 0];
+        boxArgs = [D * S, H * S, t];
+        boxPos = [(-D / 2) * S, 0, t / 2];
         lipPos = [-D * S, 0, 0];
         lipRot = [0, -a, 0];
-        lipArgs = [Sg * S, H * S];
-        lipPlanePos = [(-Sg / 2) * S, 0, 0];
+        lipArgs = [Sg * S, H * S, t];
+        lipBoxPos = [(-Sg / 2) * S, 0, 0];
     } else {
-        groupPos = [(W / 2) * S, 0, 0];
+        groupPos = [(W / 2) * S, 0, -t / 2];
         groupRot = [0, a, 0];
-        planeArgs = [D * S, H * S];
-        planePos = [(D / 2) * S, 0, 0];
+        boxArgs = [D * S, H * S, t];
+        boxPos = [(D / 2) * S, 0, t / 2];
         lipPos = [D * S, 0, 0];
         lipRot = [0, a, 0];
-        lipArgs = [Sg * S, H * S];
-        lipPlanePos = [(Sg / 2) * S, 0, 0];
+        lipArgs = [Sg * S, H * S, t];
+        lipBoxPos = [(Sg / 2) * S, 0, 0];
     }
 
     return (
         <group position={groupPos} rotation={groupRot}>
-            <PanelPlane args={planeArgs} position={planePos} color={color} />
+            <PanelBox
+                args={boxArgs}
+                position={boxPos}
+                color={color}
+                outlines={outlines}
+            />
             {hasLip && (
                 <group position={lipPos} rotation={lipRot}>
-                    <PanelPlane
+                    <PanelBox
                         args={lipArgs}
-                        position={lipPlanePos}
+                        position={lipBoxPos}
                         color={color}
+                        outlines={outlines}
                     />
                 </group>
             )}
@@ -298,6 +318,7 @@ function StandoffLettering({
     standoffMm,
     faceThicknessMm,
     color,
+    outlines = true,
 }: {
     face: { xMm: number; yMm: number; wMm: number; hMm: number };
     reference: FlatPath[];
@@ -306,6 +327,7 @@ function StandoffLettering({
     standoffMm: number;
     faceThicknessMm: number;
     color: string;
+    outlines?: boolean;
 }) {
     const shapes = useMemo(() => {
         const closed = reference.filter(
@@ -454,14 +476,85 @@ function StandoffLettering({
                         polygonOffsetFactor={1}
                         polygonOffsetUnits={1}
                     />
-                    <Edges color={EDGE_COLOR} lineWidth={1.5} />
+                    {outlines && (
+                        <Edges color={EDGE_COLOR} lineWidth={1.5} />
+                    )}
                 </mesh>
             ))}
             {fixingStrokes && (
                 <lineSegments geometry={fixingStrokes}>
-                    <lineBasicMaterial color={EDGE_COLOR} />
+                    {/* Contrast the locator circles against the letter
+                        colour so dark letters get white circles and
+                        light letters get black ones — installers need
+                        the holes to read at a glance. */}
+                    <lineBasicMaterial color={contrastTo(color)} />
                 </lineSegments>
             )}
+        </group>
+    );
+}
+
+/**
+ * The physical stand-off locators — short metal cylinders that bridge the
+ * gap between the panel face and the back of the extruded lettering, one
+ * per fixing position. Diameter is slightly smaller than the fixing hole
+ * so the operator can see the locator going through the cut-out cleanly.
+ */
+function StandoffLocators({
+    face,
+    fixings,
+    fixingDiameterMm,
+    faceThicknessMm,
+    standoffMm,
+    outlines = true,
+}: {
+    face: { xMm: number; yMm: number; wMm: number; hMm: number };
+    fixings: FlatPath[];
+    fixingDiameterMm: number;
+    faceThicknessMm: number;
+    standoffMm: number;
+    outlines?: boolean;
+}) {
+    if (fixings.length === 0 || standoffMm <= 0) return null;
+    // Slight clearance so the stud reads as something inside the hole,
+    // not the hole itself painted in a different colour.
+    const radius = (fixingDiameterMm / 2) * 0.7 * S;
+    const length = standoffMm * S;
+    const zCenter = (faceThicknessMm / 2 + standoffMm / 2) * S;
+    return (
+        <group>
+            {fixings.map((f, i) => {
+                if (f.points.length < 3) return null;
+                let cx = 0;
+                let cy = 0;
+                for (const q of f.points) {
+                    cx += q[0];
+                    cy += q[1];
+                }
+                cx /= f.points.length;
+                cy /= f.points.length;
+                const lx = (cx - face.xMm - face.wMm / 2) * S;
+                const ly = (face.yMm + face.hMm / 2 - cy) * S;
+                return (
+                    <mesh
+                        key={i}
+                        position={[lx, ly, zCenter]}
+                        rotation={[HALF_PI, 0, 0]}>
+                        <cylinderGeometry
+                            args={[radius, radius, length, 20]}
+                        />
+                        <meshBasicMaterial
+                            color={STANDOFF_STUD_COLOR}
+                            polygonOffset
+                            polygonOffsetFactor={1}
+                            polygonOffsetUnits={1}
+                        />
+                        {outlines && (
+                            <Edges color={EDGE_COLOR} lineWidth={1.5} />
+                        )}
+                    </mesh>
+                );
+            })}
         </group>
     );
 }
@@ -477,6 +570,9 @@ function Panel({
     fold,
     placeFixingMode,
     onPlaceFixing,
+    showOutlines = true,
+    showStandoffLetters = true,
+    showStandoffLocators = true,
 }: {
     params: PanelParams;
     development: PanelDevelopment;
@@ -488,6 +584,9 @@ function Panel({
     fold: number;
     placeFixingMode?: boolean;
     onPlaceFixing?: (p: [number, number]) => void;
+    showOutlines?: boolean;
+    showStandoffLetters?: boolean;
+    showStandoffLocators?: boolean;
 }) {
     const W = dev.faceNominalWMm;
     const H = dev.faceNominalHMm;
@@ -554,8 +653,10 @@ function Panel({
             <FacePlane
                 W={W}
                 H={H}
+                T={T}
                 color={panelColor}
                 holesLocal={holesLocal}
+                outlines={showOutlines}
                 cursorCrosshair={placeFixingMode}
                 onClick={
                     placeFixingMode && face && onPlaceFixing
@@ -576,19 +677,37 @@ function Panel({
             {/* Stand-off lettering — when in standoff mode, the reference
                 paths become 3D extruded letter pieces mounted in front of
                 the panel by `standoffDistanceMm`, with their own thickness
-                and colour. */}
+                and colour. Locator studs bridge the gap so the connection
+                between panel and lettering reads physically. */}
             {(params.apertureMode ?? 'aperture') === 'standoff' &&
                 reference.length > 0 &&
                 face && (
-                    <StandoffLettering
-                        face={face}
-                        reference={reference}
-                        fixings={fixings}
-                        thicknessMm={params.letterThicknessMm ?? 5}
-                        standoffMm={params.standoffDistanceMm ?? 25}
-                        faceThicknessMm={T}
-                        color={params.letterColor ?? '#1a1f23'}
-                    />
+                    <>
+                        {showStandoffLocators && (
+                            <StandoffLocators
+                                face={face}
+                                fixings={fixings}
+                                fixingDiameterMm={
+                                    params.fixingDiameterMm ?? 10
+                                }
+                                faceThicknessMm={T}
+                                standoffMm={params.standoffDistanceMm ?? 25}
+                                outlines={showOutlines}
+                            />
+                        )}
+                        {showStandoffLetters && (
+                            <StandoffLettering
+                                face={face}
+                                reference={reference}
+                                fixings={fixings}
+                                thicknessMm={params.letterThicknessMm ?? 5}
+                                standoffMm={params.standoffDistanceMm ?? 25}
+                                faceThicknessMm={T}
+                                color={params.letterColor ?? '#1a1f23'}
+                                outlines={showOutlines}
+                            />
+                        )}
+                    </>
                 )}
 
             {/* Hinged return flaps (+ optional shadow-gap lips) */}
@@ -601,8 +720,10 @@ function Panel({
                         H={H}
                         D={D}
                         Sg={Sg}
+                        T={T}
                         fold={fold}
                         color={panelColor}
+                        outlines={showOutlines}
                     />
                 ) : null,
             )}
@@ -624,9 +745,11 @@ function Panel({
                 Apertures and fixings are real holes in the face above. */}
             {overlay && (
                 <>
-                    <lineSegments geometry={overlay.ref}>
-                        <lineBasicMaterial color="#9ca3af" />
-                    </lineSegments>
+                    {showStandoffLetters && (
+                        <lineSegments geometry={overlay.ref}>
+                            <lineBasicMaterial color="#9ca3af" />
+                        </lineSegments>
+                    )}
                     <lineSegments geometry={overlay.kl}>
                         <lineBasicMaterial color="#00aabe" />
                     </lineSegments>
@@ -649,10 +772,16 @@ export default function Scene3D(props: {
     /** When true, clicks on the panel face drop a manual fixing. */
     placeFixingMode?: boolean;
     onPlaceFixing?: (p: [number, number]) => void;
+    showOutlines?: boolean;
+    showStandoffLetters?: boolean;
+    showStandoffLocators?: boolean;
 }) {
     const fold = props.fold ?? 1;
     const fixings = props.fixings ?? [];
     const reference = props.reference ?? [];
+    const showOutlines = props.showOutlines ?? true;
+    const showStandoffLetters = props.showStandoffLetters ?? true;
+    const showStandoffLocators = props.showStandoffLocators ?? true;
     // Frame the flat blank so both folded and unfolded states stay in view.
     const reach =
         Math.max(
@@ -682,6 +811,9 @@ export default function Scene3D(props: {
                 fold={fold}
                 placeFixingMode={props.placeFixingMode}
                 onPlaceFixing={props.onPlaceFixing}
+                showOutlines={showOutlines}
+                showStandoffLetters={showStandoffLetters}
+                showStandoffLocators={showStandoffLocators}
             />
             <OrbitControls enablePan makeDefault />
         </Canvas>

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Eye, Sliders, Bookmark } from 'lucide-react';
+import { Eye, EyeOff, Sliders, Bookmark } from 'lucide-react';
 import { useVisualiser } from './store';
 import { ControlsPanel } from './ControlsPanel';
 import { SvgDropzone } from './SvgDropzone';
@@ -47,6 +47,33 @@ const TAB_LABELS: Record<Tab, string> = {
 /** Which pane is showing on a phone-sized screen. Desktop ignores this. */
 type MobilePane = 'preview' | 'settings' | 'designs';
 
+function ViewToggle({
+    on,
+    setOn,
+    label,
+}: {
+    on: boolean;
+    setOn: (v: boolean) => void;
+    label: string;
+}) {
+    const Icon = on ? Eye : EyeOff;
+    return (
+        <button
+            type="button"
+            onClick={() => setOn(!on)}
+            aria-pressed={on}
+            className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                on
+                    ? 'bg-black text-white'
+                    : 'text-neutral-500 hover:bg-neutral-100'
+            }`}
+        >
+            <Icon size={12} />
+            {label}
+        </button>
+    );
+}
+
 export function VisualiserClient({
     initialDesigns,
     prefill,
@@ -69,6 +96,11 @@ export function VisualiserClient({
     // 1 = folded, 0 = flat. Scrubbed by the unfold slider / replay.
     const [fold, setFold] = useState(1);
     const [unfoldKey, setUnfoldKey] = useState(0);
+    // View-layer toggles. Defaults keep the production-realistic look on
+    // first paint; the operator turns layers off for clarity when needed.
+    const [showStandoffLetters, setShowStandoffLetters] = useState(true);
+    const [showStandoffLocators, setShowStandoffLocators] = useState(true);
+    const [showOutlines, setShowOutlines] = useState(true);
 
     // Auto-play the unfold (folded → flat) when the tab opens or on replay.
     useEffect(() => {
@@ -413,8 +445,52 @@ export function VisualiserClient({
                             fold={tab === 'folded' ? 1 : fold}
                             placeFixingMode={placeFixingMode}
                             onPlaceFixing={handlePlaceFixing}
+                            showOutlines={showOutlines}
+                            showStandoffLetters={showStandoffLetters}
+                            showStandoffLocators={showStandoffLocators}
                         />
                     )}
+
+                    {tab !== 'flat' && (() => {
+                        const showLettersToggle =
+                            mode === 'standoff' && reference.length > 0;
+                        const showLocatorsToggle =
+                            mode === 'standoff' && fixings.length > 0;
+                        const showOutlinesToggle = true;
+                        if (
+                            !showLettersToggle &&
+                            !showLocatorsToggle &&
+                            !showOutlinesToggle
+                        )
+                            return null;
+                        return (
+                            <div className="pointer-events-none absolute right-2 md:right-3 bottom-3 md:bottom-4 z-10">
+                                <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-neutral-200 bg-white/95 px-1 py-1 shadow backdrop-blur">
+                                    {showLettersToggle && (
+                                        <ViewToggle
+                                            on={showStandoffLetters}
+                                            setOn={setShowStandoffLetters}
+                                            label="Letters"
+                                        />
+                                    )}
+                                    {showLocatorsToggle && (
+                                        <ViewToggle
+                                            on={showStandoffLocators}
+                                            setOn={setShowStandoffLocators}
+                                            label="Locators"
+                                        />
+                                    )}
+                                    {showOutlinesToggle && (
+                                        <ViewToggle
+                                            on={showOutlines}
+                                            setOn={setShowOutlines}
+                                            label="Outlines"
+                                        />
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     {tab === 'unfold' && (
                         <div className="pointer-events-none absolute inset-x-2 bottom-3 flex justify-center md:inset-x-0 md:bottom-4">
