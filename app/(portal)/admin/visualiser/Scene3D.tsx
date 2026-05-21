@@ -91,6 +91,7 @@ function PanelPlane({
 function FacePlane({
     W,
     H,
+    T,
     color,
     holesLocal,
     onClick,
@@ -99,6 +100,7 @@ function FacePlane({
 }: {
     W: number; // mm
     H: number; // mm
+    T: number; // mm — material thickness, extruded INTO the panel
     color: string;
     /** Holes in face-local mm coords (face centred at origin, y-up). */
     holesLocal: Array<Array<[number, number]>>;
@@ -127,8 +129,16 @@ function FacePlane({
         return s;
     }, [W, H, holesLocal]);
 
+    const depth = T * S;
+
     return (
+        // Extrude inward — front cap stays at world z = 0 (camera-facing),
+        // material extends backward to z = -T*S. Returns hinge from the
+        // back edge so the corner joinery stays clean (paper-thin returns
+        // meet at the corner without overlap), but the cut-out edges now
+        // show the full material depth.
         <mesh
+            position={[0, 0, -depth]}
             onClick={
                 onClick
                     ? (e) => {
@@ -152,10 +162,14 @@ function FacePlane({
                       }
                     : undefined
             }>
-            <shapeGeometry args={[shape, 48]} />
+            <extrudeGeometry
+                args={[
+                    shape,
+                    { depth, bevelEnabled: false, curveSegments: 48 },
+                ]}
+            />
             <meshBasicMaterial
                 color={color}
-                side={THREE.DoubleSide}
                 polygonOffset
                 polygonOffsetFactor={1}
                 polygonOffsetUnits={1}
@@ -176,6 +190,7 @@ function Flap({
     H,
     D,
     Sg,
+    T,
     fold,
     color,
     outlines = true,
@@ -185,12 +200,18 @@ function Flap({
     H: number;
     D: number;
     Sg: number;
+    T: number; // material thickness (mm) — only used to offset the hinge
     fold: number;
     color: string;
     outlines?: boolean;
 }) {
     const a = fold * HALF_PI;
     const hasLip = Sg > 0;
+    // Hinge sits at the back surface of the face. Returns themselves stay
+    // paper-thin so the four panel corners meet cleanly without needing
+    // proper miter / notch joinery — the face provides the visible
+    // thickness, the returns are flanges off the back.
+    const hingeZ = -T * S;
 
     let groupPos: [number, number, number];
     let groupRot: [number, number, number];
@@ -202,7 +223,7 @@ function Flap({
     let lipPlanePos: [number, number, number] = [0, 0, 0];
 
     if (edge === 'bottom') {
-        groupPos = [0, (-H / 2) * S, 0];
+        groupPos = [0, (-H / 2) * S, hingeZ];
         groupRot = [a, 0, 0];
         planeArgs = [W * S, D * S];
         planePos = [0, (-D / 2) * S, 0];
@@ -211,7 +232,7 @@ function Flap({
         lipArgs = [W * S, Sg * S];
         lipPlanePos = [0, (-Sg / 2) * S, 0];
     } else if (edge === 'top') {
-        groupPos = [0, (H / 2) * S, 0];
+        groupPos = [0, (H / 2) * S, hingeZ];
         groupRot = [-a, 0, 0];
         planeArgs = [W * S, D * S];
         planePos = [0, (D / 2) * S, 0];
@@ -220,7 +241,7 @@ function Flap({
         lipArgs = [W * S, Sg * S];
         lipPlanePos = [0, (Sg / 2) * S, 0];
     } else if (edge === 'left') {
-        groupPos = [(-W / 2) * S, 0, 0];
+        groupPos = [(-W / 2) * S, 0, hingeZ];
         groupRot = [0, -a, 0];
         planeArgs = [D * S, H * S];
         planePos = [(-D / 2) * S, 0, 0];
@@ -229,7 +250,7 @@ function Flap({
         lipArgs = [Sg * S, H * S];
         lipPlanePos = [(-Sg / 2) * S, 0, 0];
     } else {
-        groupPos = [(W / 2) * S, 0, 0];
+        groupPos = [(W / 2) * S, 0, hingeZ];
         groupRot = [0, a, 0];
         planeArgs = [D * S, H * S];
         planePos = [(D / 2) * S, 0, 0];
@@ -382,10 +403,12 @@ function StandoffLettering({
         return out;
     }, [face, reference]);
 
-    // Front of the panel sits at z = +faceT/2 (panel is centred at z=0
-    // with thickness faceT). The lettering sits standoffMm in front,
-    // extruded outward by thicknessMm.
-    const baseZ = (faceThicknessMm / 2 + standoffMm) * S;
+    // Front of the panel sits at z = 0 (face extrudes inward to z = -T).
+    // The lettering's back sits standoffMm in front of the face, extruded
+    // outward by thicknessMm. faceThicknessMm is kept for API stability
+    // but no longer affects positioning.
+    void faceThicknessMm;
+    const baseZ = standoffMm * S;
     const depthScene = thicknessMm * S;
 
     // Stroke each fixing circle onto the front face of the extruded
@@ -535,10 +558,12 @@ function StandoffLocators({
 }) {
     if (fixings.length === 0 || standoffMm <= 0) return null;
     // Slight clearance so the stud reads as something inside the hole,
-    // not the hole itself painted in a different colour.
+    // not the hole itself painted in a different colour. Face front is at
+    // z = 0, so studs span 0..standoff in front of the panel.
+    void faceThicknessMm;
     const radius = (fixingDiameterMm / 2) * 0.7 * S;
     const length = standoffMm * S;
-    const zCenter = (faceThicknessMm / 2 + standoffMm / 2) * S;
+    const zCenter = (standoffMm / 2) * S;
     return (
         <group>
             {fixings.map((f, i) => {
@@ -638,7 +663,9 @@ function Panel({
     // cut) ride on top of the face as thin line overlays.
     const overlay = useMemo(() => {
         if (!face) return null;
-        const z = (T / 2 + 1) * S;
+        // Front of the face is at z = 0; sit overlays ~1 mm in front so
+        // they read as crisp lines without z-fighting against the cap.
+        const z = 1 * S;
         const toLocal = (x: number, y: number): [number, number, number] => [
             (x - face.xMm - face.wMm / 2) * S,
             (face.yMm + face.hMm / 2 - y) * S,
@@ -671,6 +698,7 @@ function Panel({
             <FacePlane
                 W={W}
                 H={H}
+                T={T}
                 color={panelColor}
                 holesLocal={holesLocal}
                 outlines={showOutlines}
@@ -739,6 +767,7 @@ function Panel({
                         H={H}
                         D={D}
                         Sg={Sg}
+                        T={T}
                         fold={fold}
                         color={panelColor}
                         outlines={showOutlines}
@@ -751,7 +780,7 @@ function Panel({
                 split.seamXsMm.map((sx, i) => (
                     <mesh
                         key={`seam-${i}`}
-                        position={[(sx - W / 2) * S, 0, (T / 2 + 0.5) * S]}
+                        position={[(sx - W / 2) * S, 0, 0.5 * S]}
                     >
                         <boxGeometry args={[2 * S, H * S, 0.5 * S]} />
                         <meshBasicMaterial color="#009933" />
