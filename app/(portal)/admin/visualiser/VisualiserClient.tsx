@@ -12,6 +12,9 @@ import {
     placeAperture,
     clipApertureToFace,
     placeFixings,
+    buildSectionedExport,
+    clipApertureToSection,
+    validateExport,
 } from '@/lib/visualiser/geometry';
 import { splitPanels } from '@/lib/visualiser/split';
 import { importSvg, buildKeyline } from '@/lib/visualiser/svg-import';
@@ -167,6 +170,66 @@ export function VisualiserClient({
             ? 'Return depth is smaller than half the material thickness — the flat size goes negative. Increase the return or reduce thickness.'
             : null;
 
+    // Per-section export geometry. Single-panel signs get one section that
+    // collapses back to today's behaviour; split signs get N sections laid
+    // out side-by-side on the same export sheet, each with only the
+    // returns that sit on the outer perimeter of the assembled sign.
+    const sectionExport = useMemo(
+        () =>
+            development ? buildSectionedExport(params, split) : null,
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [development, JSON.stringify(params), split],
+    );
+
+    const apertureBySection = useMemo(() => {
+        if (!development || !sectionExport) return [];
+        return sectionExport.sections.map((s) =>
+            clipApertureToSection(development, s, aperture),
+        );
+    }, [development, sectionExport, aperture]);
+
+    const keylineBySection = useMemo(() => {
+        if (!development || !sectionExport) return [];
+        return sectionExport.sections.map((s) =>
+            clipApertureToSection(development, s, keyline),
+        );
+    }, [development, sectionExport, keyline]);
+
+    const fixingsBySection = useMemo(() => {
+        if (!development || !sectionExport) return [];
+        return sectionExport.sections.map((s) =>
+            clipApertureToSection(development, s, fixings),
+        );
+    }, [development, sectionExport, fixings]);
+
+    const referenceBySection = useMemo(() => {
+        if (!development || !sectionExport) return [];
+        return sectionExport.sections.map((s) =>
+            clipApertureToSection(development, s, reference),
+        );
+    }, [development, sectionExport, reference]);
+
+    const exportWarnings = useMemo(() => {
+        if (!development) return [];
+        return validateExport({
+            params,
+            split,
+            development,
+            aperture,
+            fixings,
+            apertureClipped:
+                placedClip.anyOutside || keylineClip.anyOutside,
+        });
+    }, [
+        development,
+        params,
+        split,
+        aperture,
+        fixings,
+        placedClip.anyOutside,
+        keylineClip.anyOutside,
+    ]);
+
     const handleLoad = async (row: VisualiserDesignRow) => {
         let imp = null;
         if (row.svg_source) {
@@ -308,14 +371,14 @@ export function VisualiserClient({
                 </div>
 
                 <footer className="shrink-0 border-t border-neutral-100 px-3 py-2.5">
-                    {development && (
+                    {development && sectionExport && (
                         <ExportBar
-                            development={development}
-                            split={split}
-                            aperture={aperture}
-                            keyline={keyline}
-                            fixings={fixings}
-                            reference={reference}
+                            sectionExport={sectionExport}
+                            apertureBySection={apertureBySection}
+                            keylineBySection={keylineBySection}
+                            fixingsBySection={fixingsBySection}
+                            referenceBySection={referenceBySection}
+                            warnings={exportWarnings}
                         />
                     )}
                 </footer>

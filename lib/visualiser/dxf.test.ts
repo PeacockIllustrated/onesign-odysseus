@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { generateDxf, dxfFilename } from './dxf';
-import { buildDevelopment } from './geometry';
+import { buildSectionedExport } from './geometry';
 import { splitPanels } from './split';
 import type { PanelParams } from './types';
 
@@ -20,9 +20,9 @@ function params(overrides: Partial<PanelParams> = {}): PanelParams {
 }
 
 function build(p: PanelParams) {
+    const split = splitPanels(p.panelWidthMm);
     return generateDxf({
-        development: buildDevelopment(p),
-        split: splitPanels(p.panelWidthMm),
+        sectionExport: buildSectionedExport(p, split),
         params: p,
     });
 }
@@ -72,13 +72,47 @@ describe('generateDxf — production correctness', () => {
         expect(dxf).toContain('\n73\n2\n');
     });
 
-    it('tags panel joins when the sign is split', () => {
+    it('split signs lay each section out side-by-side, no seam markers', () => {
         const wide = build(params({ panelWidthMm: 4000 }));
-        expect(wide).toContain('PANEL JOIN');
-        expect(wide).toContain('Split 3 panels');
+        // Sections are physically separate cuts now — no SEAM markers, no
+        // "PANEL JOIN" tags.
+        expect(wide).not.toContain('PANEL JOIN');
+        expect(wide).toContain('3 panel sections');
+        // Each section is labelled "SECTION i / N" on the DIMENSIONS layer.
+        expect(wide).toContain('SECTION 1 / 3');
+        expect(wide).toContain('SECTION 2 / 3');
+        expect(wide).toContain('SECTION 3 / 3');
+
         const single = build(params({ panelWidthMm: 1000 }));
         expect(single).not.toContain('PANEL JOIN');
         expect(single).toContain('Single panel');
+        expect(single).not.toContain('SECTION 1 / 1');
+    });
+
+    it('emits cuts INSIDE-OUT — perimeter is the last cut layer to appear', () => {
+        // Build a single panel; the order of entity emission per section
+        // should be aperture/fixings/keyline (none here) → fold lines →
+        // perimeter. So the first APERTURE layer reference (if any) comes
+        // before the first PANEL_OUTLINE reference, and FOLD_LINES geometry
+        // comes before PANEL_OUTLINE geometry.
+        const dxf = build(params());
+        const firstFold = dxf.indexOf('\nFOLD_LINES\n');
+        const firstPerim = dxf.indexOf('\nPANEL_OUTLINE\n');
+        // Both layers are also declared in the LAYER table near the top, so
+        // skip past that and look in the ENTITIES section.
+        const entitiesStart = dxf.indexOf('\nSECTION\n2\nENTITIES\n');
+        const foldInEntities = dxf.indexOf('\nFOLD_LINES\n', entitiesStart);
+        const perimInEntities = dxf.indexOf(
+            '\nPANEL_OUTLINE\n',
+            entitiesStart,
+        );
+        expect(entitiesStart).toBeGreaterThan(0);
+        expect(foldInEntities).toBeGreaterThan(0);
+        expect(perimInEntities).toBeGreaterThan(0);
+        expect(foldInEntities).toBeLessThan(perimInEntities);
+        // Sanity that the layer table came first.
+        expect(firstFold).toBeLessThan(foldInEntities);
+        expect(firstPerim).toBeLessThan(perimInEntities);
     });
 
     it('filename is filesystem-safe', () => {

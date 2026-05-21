@@ -21,11 +21,16 @@ import {
     bendDeductionPerSide,
     type PanelParams,
     type PanelDevelopment,
+    type PanelSplit,
     type FlatSegment,
     type FoldLine,
     type PanelEdge,
     type FlatPath,
     type AperturePlacement,
+    type SectionLayout,
+    type SectionedExport,
+    type ExportWarning,
+    type Returns,
 } from './types';
 
 function mm(n: number): number {
@@ -930,4 +935,259 @@ function simplifyCollinear(pts: Array<[number, number]>): Array<[number, number]
     if (out.length < 3) return pts;
     out.push(out[0]);
     return out;
+}
+
+// =============================================================================
+// SECTIONED EXPORT — for split signs, lay each section out as its own
+// cut-ready flat blank on the same export sheet.
+// =============================================================================
+
+/** Default gap between adjacent section flat blanks in the export sheet. */
+const SECTION_GAP_MM = 25;
+
+/**
+ * Build one `SectionLayout` per panel section the sign splits into.
+ *
+ * Returns config per section position (split signs only):
+ *   - leftmost: keeps the global LEFT return; right edge is a butt join.
+ *   - middle:   no left or right return (both edges are butt joins).
+ *   - rightmost: keeps the global RIGHT return; left edge is a butt join.
+ *   - top/bottom returns are the global value for every section.
+ *
+ * Single-panel signs (no split) collapse to one section with the global
+ * returns — so the existing single-panel export path is unchanged.
+ */
+export function buildSectionedExport(
+    params: PanelParams,
+    split: PanelSplit,
+): SectionedExport {
+    const N = Math.max(1, split.sections.length);
+    const sections: SectionLayout[] = [];
+    let layoutOriginX = 0;
+    let faceSliceX = 0;
+
+    for (let i = 0; i < N; i++) {
+        const sectionWidthMm = split.sections[i];
+        const returnsUsed: Returns = {
+            top: params.returns.top,
+            bottom: params.returns.bottom,
+            // Only the outer edges of the assembled sign get returns; the
+            // internal split edges are butt joins (no fold there).
+            left: i === 0 ? params.returns.left : false,
+            right: i === N - 1 ? params.returns.right : false,
+        };
+        const sectionParams: PanelParams = {
+            ...params,
+            panelWidthMm: sectionWidthMm,
+            returns: returnsUsed,
+        };
+        const development = buildDevelopment(sectionParams);
+        sections.push({
+            index: i,
+            count: N,
+            sectionWidthMm,
+            faceSliceXMm: faceSliceX,
+            returnsUsed,
+            development,
+            layoutOriginXMm: layoutOriginX,
+        });
+        layoutOriginX += development.totalFlatWMm + SECTION_GAP_MM;
+        faceSliceX += sectionWidthMm;
+    }
+
+    const totalLayoutWMm =
+        sections.length === 0 ? 0 : layoutOriginX - SECTION_GAP_MM;
+    const totalLayoutHMm = sections.reduce(
+        (m, s) => Math.max(m, s.development.totalFlatHMm),
+        0,
+    );
+
+    return { sections, totalLayoutWMm, totalLayoutHMm, gapMm: SECTION_GAP_MM };
+}
+
+/**
+ * Clip a set of aperture / fixings / keyline paths to one section and
+ * translate them into the export sheet's layout coordinate space.
+ *
+ * Inputs are in the FULL sign's flat-development coords. Output is in the
+ * export sheet coords (i.e. already offset by `layoutOriginXMm`) so the
+ * DXF / PDF generators can emit them as-is.
+ *
+ * Apertures that straddle a seam are correctly split between two sections.
+ */
+export function clipApertureToSection(
+    fullDev: PanelDevelopment,
+    section: SectionLayout,
+    paths: FlatPath[],
+): FlatPath[] {
+    if (paths.length === 0) return [];
+    const fullFace = fullDev.segments.find((s) => s.role === 'face');
+    const sectionFace = section.development.segments.find(
+        (s) => s.role === 'face',
+    );
+    if (!fullFace || !sectionFace) return [];
+
+    // The full face is shorter than nominal by T/2 on each side that has a
+    // return; the same per-mm-of-nominal-face scaling is applied to map a
+    // nominal slice X into full-flat-dev coords. ≤ 0.5 % over typical face
+    // widths, but doing it properly avoids a creeping mis-alignment.
+    const k = fullDev.faceNominalWMm
+        ? fullFace.wMm / fullDev.faceNominalWMm
+        : 1;
+    const sliceX0 = fullFace.xMm + section.faceSliceXMm * k;
+    const sliceX1 =
+        fullFace.xMm + (section.faceSliceXMm + section.sectionWidthMm) * k;
+    const rect = {
+        x0: sliceX0,
+        y0: fullFace.yMm,
+        x1: sliceX1,
+        y1: fullFace.yMm + fullFace.hMm,
+    };
+
+    const clipped: FlatPath[] = [];
+    for (const p of paths) {
+        if (p.closed) {
+            const ring = p.points.slice(0, -1) as Array<[number, number]>;
+            const c = clipPolygonToRect(ring, rect);
+            if (c.length >= 3) {
+                c.push(c[0]);
+                clipped.push({ closed: true, points: c });
+            }
+        } else {
+            const runs = clipPolylineToRect(
+                p.points as Array<[number, number]>,
+                rect,
+            );
+            for (const r of runs) {
+                if (r.length >= 2) clipped.push({ closed: false, points: r });
+            }
+        }
+    }
+    if (clipped.length === 0) return [];
+
+    // Translate from full-dev slice space into the export sheet space:
+    //   subtract the slice origin in full-dev → section-face-relative,
+    //   then add (sectionFace origin + layoutOriginX) → export sheet.
+    const dx = section.layoutOriginXMm + sectionFace.xMm - sliceX0;
+    const dy = sectionFace.yMm - fullFace.yMm;
+    return clipped.map((p) => ({
+        closed: p.closed,
+        points: p.points.map(
+            ([x, y]) => [x + dx, y + dy] as [number, number],
+        ),
+    }));
+}
+
+/**
+ * Pre-export checks. All advisory — these surface warnings but never block
+ * the download. The user normally wants to reposition / adjust based on
+ * the warning rather than ship a problematic cut file.
+ */
+export function validateExport(opts: {
+    params: PanelParams;
+    split: PanelSplit;
+    development: PanelDevelopment;
+    aperture: FlatPath[];
+    fixings: FlatPath[];
+    apertureClipped: boolean;
+}): ExportWarning[] {
+    const { params, split, development: dev, aperture, fixings } = opts;
+    const warnings: ExportWarning[] = [];
+
+    if (!params.materialLabel || params.materialLabel.trim() === '') {
+        warnings.push({
+            kind: 'missing_material',
+            message:
+                "Material / finish is blank — recipients won't know what stock to cut from.",
+        });
+    }
+
+    if (opts.apertureClipped) {
+        warnings.push({
+            kind: 'aperture_clipped',
+            message:
+                'Aperture or keyline extended past the face and was clipped — reposition or shrink so every cut stays on-face.',
+        });
+    }
+
+    // Aperture polygon points too close to a fold line — fold may crack.
+    const T = params.materialThicknessMm;
+    const foldMargin = Math.max(T / 2 + 4, 6);
+    outerFold: for (const f of dev.foldLines) {
+        for (const ap of aperture) {
+            for (const pt of ap.points) {
+                if (
+                    distPointToSegment(pt, [f.x1, f.y1], [f.x2, f.y2]) <
+                    foldMargin
+                ) {
+                    warnings.push({
+                        kind: 'aperture_near_fold',
+                        message: `An aperture sits within ${foldMargin.toFixed(0)} mm of a fold line — the fold may crack there. Move the artwork inward.`,
+                    });
+                    break outerFold;
+                }
+            }
+        }
+    }
+
+    // Seam-related checks (only when the sign actually splits).
+    if (split.wasSplit) {
+        const face = dev.segments.find((s) => s.role === 'face');
+        if (face) {
+            const k = dev.faceNominalWMm
+                ? face.wMm / dev.faceNominalWMm
+                : 1;
+            const seamXsFlat = split.seamXsMm.map((sx) => face.xMm + sx * k);
+            const diameter =
+                params.fixingDiameterMm ??
+                (params.fixingRadiusMm ? params.fixingRadiusMm * 2 : 10);
+            const fixingTol = Math.max(diameter * 1.5, 15);
+            const apertureSeamTol = 5;
+
+            // A fixing sitting on a seam ends up at the panel edge.
+            outerFix: for (const fx of fixings) {
+                const cx =
+                    fx.points.reduce((a, p) => a + p[0], 0) / fx.points.length;
+                for (const sx of seamXsFlat) {
+                    if (Math.abs(cx - sx) < fixingTol) {
+                        warnings.push({
+                            kind: 'fixing_on_seam',
+                            message: `A fixing sits within ${fixingTol.toFixed(0)} mm of a panel seam — it'll be cut at the panel edge. Reposition or change the split.`,
+                        });
+                        break outerFix;
+                    }
+                }
+            }
+
+            // Aperture crossing a seam means artwork split across two panels.
+            outerAp: for (const ap of aperture) {
+                for (const pt of ap.points) {
+                    for (const sx of seamXsFlat) {
+                        if (Math.abs(pt[0] - sx) < apertureSeamTol) {
+                            warnings.push({
+                                kind: 'aperture_on_seam',
+                                message: `An aperture crosses or sits within ${apertureSeamTol} mm of a panel seam — the artwork will be split across two panels.`,
+                            });
+                            break outerAp;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return warnings;
+}
+
+function distPointToSegment(
+    p: [number, number],
+    a: [number, number],
+    b: [number, number],
+): number {
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const len2 = dx * dx + dy * dy;
+    let t = len2 > 0 ? ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
 }

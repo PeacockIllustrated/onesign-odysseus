@@ -20,9 +20,9 @@ import {
     DXF_LAYER_COLORS,
     type DxfLayer,
     type PanelParams,
-    type PanelDevelopment,
-    type PanelSplit,
     type FlatPath,
+    type SectionedExport,
+    type SectionLayout,
 } from './types';
 import { outlinePerimeter } from './geometry';
 
@@ -111,134 +111,50 @@ function clamp(v: number, lo: number, hi: number): number {
 }
 
 interface DxfOptions {
-    development: PanelDevelopment;
-    split: PanelSplit;
+    sectionExport: SectionedExport;
     params: PanelParams;
-    /** Aperture paths already placed into flat-development space. */
-    aperture?: FlatPath[];
-    /** Keyline paths already placed into flat-development space. */
-    keyline?: FlatPath[];
-    /** Stand-off fixing holes (already placed). Cut on FIXINGS layer. */
-    fixings?: FlatPath[];
+    /**
+     * Per-section path arrays — index matches sectionExport.sections.
+     * Each path is already clipped to its section and translated into the
+     * export sheet's coordinate space by clipApertureToSection().
+     */
+    apertureBySection?: FlatPath[][];
+    keylineBySection?: FlatPath[][];
+    fixingsBySection?: FlatPath[][];
 }
 
+/**
+ * Emit one DXF for the whole export sheet. Every section sits on the same
+ * coordinate plane (offset by its `layoutOriginXMm`), each is independently
+ * cuttable, and cuts are sequenced **inside-out** (aperture → fixings →
+ * keyline → folds → perimeter) so inner pieces drop out before the outer
+ * is freed.
+ */
 export function generateDxf(opts: DxfOptions): string {
-    const { development: dev, split, params } = opts;
-    const H = dev.totalFlatHMm;
-    const fy = (y: number) => H - y; // flip Y (down → up)
+    const { sectionExport, params } = opts;
+    const H = sectionExport.totalLayoutHMm;
+    const fy = (y: number) => H - y; // flip Y (down → up for CAD)
 
     let e = '0\nSECTION\n2\nENTITIES\n';
 
-    // ONE merged outer cut perimeter — never the internal face/return
-    // edges, which are folds, not cuts. Discrete LINEs (no polyline/block)
-    // that share endpoints, so CAM chains them into one closed contour.
-    const perimeter = outlinePerimeter(dev);
-    if (perimeter) {
-        const pts = perimeter.points;
-        for (let i = 0; i + 1 < pts.length; i++) {
-            e += line(
-                DXF_LAYERS.PANEL_OUTLINE,
-                pts[i][0],
-                fy(pts[i][1]),
-                pts[i + 1][0],
-                fy(pts[i + 1][1]),
-            );
-        }
-    } else {
-        // Degenerate geometry — fall back to per-segment rectangles.
-        for (const seg of dev.segments) {
-            const { xMm: x, yMm: y, wMm: w, hMm: h } = seg;
-            e += line(DXF_LAYERS.PANEL_OUTLINE, x, fy(y), x + w, fy(y));
-            e += line(DXF_LAYERS.PANEL_OUTLINE, x + w, fy(y), x + w, fy(y + h));
-            e += line(DXF_LAYERS.PANEL_OUTLINE, x + w, fy(y + h), x, fy(y + h));
-            e += line(DXF_LAYERS.PANEL_OUTLINE, x, fy(y + h), x, fy(y));
-        }
-    }
+    sectionExport.sections.forEach((section, i) => {
+        const ap = opts.apertureBySection?.[i] ?? [];
+        const fx = opts.fixingsBySection?.[i] ?? [];
+        const kl = opts.keylineBySection?.[i] ?? [];
+        e += emitSection(section, ap, fx, kl, fy);
+    });
 
-    // Centred role label per segment (DIMENSIONS layer — never on the cut
-    // layer, so a cutter selecting PANEL_OUTLINE never picks up text).
-    for (const seg of dev.segments) {
-        const small = Math.min(seg.wMm, seg.hMm);
-        if (small >= 25) {
-            e += textCentered(
-                DXF_LAYERS.DIMENSIONS,
-                seg.xMm + seg.wMm / 2,
-                fy(seg.yMm + seg.hMm / 2),
-                clamp(small / 9, 4, 22),
-                seg.label,
-            );
-        }
-    }
-
-    // Fold lines + an explicit "FOLD - DO NOT CUT" tag at each midpoint so a
-    // laser operator can never mistake a bend for a cut.
-    for (const f of dev.foldLines) {
-        e += line(DXF_LAYERS.FOLD_LINES, f.x1, fy(f.y1), f.x2, fy(f.y2));
-        const mx = (f.x1 + f.x2) / 2;
-        const my = (f.y1 + f.y2) / 2;
-        const horizontal = Math.abs(f.x2 - f.x1) >= Math.abs(f.y2 - f.y1);
-        const tagH = clamp(
-            (horizontal ? Math.abs(f.x2 - f.x1) : Math.abs(f.y2 - f.y1)) / 14,
-            3,
-            14,
-        );
-        e += textCentered(
-            DXF_LAYERS.FOLD_LINES,
-            mx,
-            fy(my),
-            tagH,
-            `FOLD ${f.note.includes('in') ? 'IN' : 'BACK'} - DO NOT CUT`,
-        );
-    }
-
-    // Seam lines: vertical splits across the face + a "PANEL JOIN" tag.
-    if (split.wasSplit) {
-        const face = dev.segments.find((s) => s.role === 'face');
-        if (face) {
-            const k = face.wMm / dev.faceNominalWMm;
-            const tagH = clamp(face.hMm / 16, 3, 14);
-            for (const sx of split.seamXsMm) {
-                const fx = face.xMm + sx * k;
-                e += line(
-                    DXF_LAYERS.SEAM,
-                    fx,
-                    fy(face.yMm),
-                    fx,
-                    fy(face.yMm + face.hMm),
-                );
-                e += textCentered(
-                    DXF_LAYERS.SEAM,
-                    fx,
-                    fy(face.yMm + face.hMm / 2),
-                    tagH,
-                    'PANEL JOIN',
-                );
-            }
-        }
-    }
-
-    // Aperture + keyline + fixings: each polyline as discrete LINE segments.
-    for (const p of opts.aperture ?? []) emitPath(p, DXF_LAYERS.APERTURE);
-    for (const p of opts.keyline ?? []) emitPath(p, DXF_LAYERS.KEYLINE);
-    for (const p of opts.fixings ?? []) emitPath(p, DXF_LAYERS.FIXINGS);
-
-    function emitPath(p: FlatPath, layer: DxfLayer) {
-        for (let i = 0; i + 1 < p.points.length; i++) {
-            const a = p.points[i];
-            const b = p.points[i + 1];
-            e += line(layer, a[0], fy(a[1]), b[0], fy(b[1]));
-        }
-    }
-
-    // Notes block, below the part, left-aligned and legible. Includes a
-    // layer legend so whoever opens the file knows what cuts and what bends.
-    const sectionLabel = split.wasSplit
-        ? `Split ${split.sections.length} panels (centre full): ${split.sections.join(' / ')} mm`
-        : 'Single panel (no split)';
+    // Notes block, below everything, left-aligned ASCII.
+    const widthsLabel = sectionExport.sections
+        .map((s) => Math.round(s.sectionWidthMm))
+        .join(' / ');
+    const sectionsLabel =
+        sectionExport.sections.length === 1
+            ? 'Single panel (no split)'
+            : `${sectionExport.sections.length} panel sections at ${widthsLabel} mm (side-by-side on this sheet)`;
     const notes = [
         `ONESIGN PANEL  -  ${params.name}`,
-        `Overall flat blank: ${dev.totalFlatWMm} x ${dev.totalFlatHMm} mm`,
-        `Sign face: ${dev.faceNominalWMm} x ${dev.faceNominalHMm} mm   Return: ${params.returnDepthMm} mm` +
+        `Sign face: ${params.panelWidthMm} x ${params.panelHeightMm} mm   Return: ${params.returnDepthMm} mm` +
             (params.shadowGapMm > 0
                 ? `   Shadow gap: ${params.shadowGapMm} mm`
                 : '') +
@@ -247,8 +163,10 @@ export function generateDxf(opts: DxfOptions): string {
             ? `Material: ${params.materialLabel}   Thickness: ${params.materialThicknessMm} mm`
             : `Thickness: ${params.materialThicknessMm} mm`,
         'Bend allowance: half material thickness deducted each side of every fold line',
-        sectionLabel,
-        'LAYERS:  PANEL_OUTLINE = cut   APERTURE = cut   FIXINGS = stand-off fixing holes (cut)   KEYLINE = register (cut if specified)   FOLD_LINES = bend, DO NOT CUT   SEAM = panel join, DO NOT CUT',
+        sectionsLabel,
+        `Sheet layout: ${sectionExport.totalLayoutWMm} x ${sectionExport.totalLayoutHMm} mm (gap ${sectionExport.gapMm} mm between sections)`,
+        'CUT ORDER: aperture / fixings / keyline first, then folds (DO NOT CUT), then perimeter last',
+        'LAYERS:  PANEL_OUTLINE = cut   APERTURE = cut   FIXINGS = stand-off fixing holes (cut)   KEYLINE = register (cut if specified)   FOLD_LINES = bend, DO NOT CUT',
     ];
     const noteH = 7;
     notes.forEach((nLine, i) => {
@@ -257,6 +175,118 @@ export function generateDxf(opts: DxfOptions): string {
 
     e += '0\nENDSEC\n';
     return header() + tables() + e + '0\nEOF\n';
+}
+
+function emitSection(
+    section: SectionLayout,
+    aperture: FlatPath[],
+    fixings: FlatPath[],
+    keyline: FlatPath[],
+    fy: (y: number) => number,
+): string {
+    let out = '';
+    const dev = section.development;
+    const ox = section.layoutOriginXMm; // X offset into the export sheet
+
+    const emitPath = (p: FlatPath, layer: DxfLayer) => {
+        // Per-section paths are already translated into export sheet coords.
+        for (let i = 0; i + 1 < p.points.length; i++) {
+            const a = p.points[i];
+            const b = p.points[i + 1];
+            out += line(layer, a[0], fy(a[1]), b[0], fy(b[1]));
+        }
+    };
+
+    // ---- INSIDE-OUT cut order -----------------------------------------
+    // 1. Aperture cuts (inner holes drop first)
+    for (const p of aperture) emitPath(p, DXF_LAYERS.APERTURE);
+    // 2. Stand-off fixing holes
+    for (const p of fixings) emitPath(p, DXF_LAYERS.FIXINGS);
+    // 3. Keyline register cuts
+    for (const p of keyline) emitPath(p, DXF_LAYERS.KEYLINE);
+
+    // 4. Fold lines (reference layer — NOT cut) + "DO NOT CUT" tag.
+    //    Section folds are in section-local coords → offset by ox.
+    for (const f of dev.foldLines) {
+        out += line(
+            DXF_LAYERS.FOLD_LINES,
+            f.x1 + ox,
+            fy(f.y1),
+            f.x2 + ox,
+            fy(f.y2),
+        );
+        const mx = (f.x1 + f.x2) / 2 + ox;
+        const my = (f.y1 + f.y2) / 2;
+        const horizontal = Math.abs(f.x2 - f.x1) >= Math.abs(f.y2 - f.y1);
+        const tagH = clamp(
+            (horizontal ? Math.abs(f.x2 - f.x1) : Math.abs(f.y2 - f.y1)) / 14,
+            3,
+            14,
+        );
+        out += textCentered(
+            DXF_LAYERS.FOLD_LINES,
+            mx,
+            fy(my),
+            tagH,
+            `FOLD ${f.note.includes('in') ? 'IN' : 'BACK'} - DO NOT CUT`,
+        );
+    }
+
+    // 5. Perimeter LAST (so inside cuts drop out before the outer is freed).
+    const perimeter = outlinePerimeter(dev);
+    if (perimeter) {
+        const pts = perimeter.points;
+        for (let i = 0; i + 1 < pts.length; i++) {
+            out += line(
+                DXF_LAYERS.PANEL_OUTLINE,
+                pts[i][0] + ox,
+                fy(pts[i][1]),
+                pts[i + 1][0] + ox,
+                fy(pts[i + 1][1]),
+            );
+        }
+    } else {
+        // Degenerate — fall back to per-segment rectangles.
+        for (const seg of dev.segments) {
+            const x = seg.xMm + ox;
+            const y = seg.yMm;
+            const w = seg.wMm;
+            const h = seg.hMm;
+            out += line(DXF_LAYERS.PANEL_OUTLINE, x, fy(y), x + w, fy(y));
+            out += line(DXF_LAYERS.PANEL_OUTLINE, x + w, fy(y), x + w, fy(y + h));
+            out += line(DXF_LAYERS.PANEL_OUTLINE, x + w, fy(y + h), x, fy(y + h));
+            out += line(DXF_LAYERS.PANEL_OUTLINE, x, fy(y + h), x, fy(y));
+        }
+    }
+
+    // Centre-justified section + segment labels (DIMENSIONS layer only).
+    if (section.count > 1) {
+        const face = dev.segments.find((s) => s.role === 'face');
+        if (face) {
+            out += textCentered(
+                DXF_LAYERS.DIMENSIONS,
+                face.xMm + face.wMm / 2 + ox,
+                fy(face.yMm + face.hMm / 2),
+                clamp(Math.min(face.wMm, face.hMm) / 12, 6, 30),
+                `SECTION ${section.index + 1} / ${section.count}  ${Math.round(section.sectionWidthMm)} x ${Math.round(dev.faceNominalHMm)} mm`,
+            );
+        }
+    } else {
+        for (const seg of dev.segments) {
+            const small = Math.min(seg.wMm, seg.hMm);
+            if (small >= 25) {
+                out += textCentered(
+                    DXF_LAYERS.DIMENSIONS,
+                    seg.xMm + seg.wMm / 2 + ox,
+                    fy(seg.yMm + seg.hMm / 2),
+                    clamp(small / 9, 4, 22),
+                    seg.label,
+                );
+            }
+        }
+    }
+
+    return out;
 }
 
 export function dxfFilename(params: PanelParams): string {

@@ -246,6 +246,59 @@ export interface PanelSplit {
 }
 
 // =============================================================================
+// SECTIONED EXPORT (multi-panel cut sheet)
+// =============================================================================
+//
+// When a sign is wider than one piece of sheet stock, the export DXF/PDF
+// contains each section as its own cut-ready flat blank, laid out side by
+// side on the same sheet. Returns only sit on the outer perimeter of the
+// assembled sign — internal split edges are butt joins, no folds.
+
+export interface SectionLayout {
+    /** 0-based section index, left → right. */
+    index: number;
+    /** Total number of sections in this export. */
+    count: number;
+    /** Nominal face width of this section (mm). */
+    sectionWidthMm: number;
+    /** X start of this section in the full-sign's nominal face (mm). */
+    faceSliceXMm: number;
+    /** Returns config used when building this section's development. */
+    returnsUsed: Returns;
+    /**
+     * Flat development of this section alone, with its own bend deductions.
+     * Coords are local — see `layoutOriginXMm` for placement in the export.
+     */
+    development: PanelDevelopment;
+    /**
+     * X offset of this section's flat blank in the export sheet layout
+     * (cumulative widths of previous sections + per-section gap).
+     */
+    layoutOriginXMm: number;
+}
+
+export interface SectionedExport {
+    sections: SectionLayout[];
+    /** Overall export sheet width (sum of section flat widths + gaps). */
+    totalLayoutWMm: number;
+    /** Overall export sheet height (max section flat height). */
+    totalLayoutHMm: number;
+    /** Gap between adjacent sections in the layout (mm). */
+    gapMm: number;
+}
+
+/** A pre-export advisory warning. Never blocks the download. */
+export interface ExportWarning {
+    kind:
+        | 'missing_material'
+        | 'aperture_clipped'
+        | 'fixing_on_seam'
+        | 'aperture_near_fold'
+        | 'aperture_on_seam';
+    message: string;
+}
+
+// =============================================================================
 // SVG IMPORT TYPES
 // =============================================================================
 

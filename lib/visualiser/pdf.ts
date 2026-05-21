@@ -17,9 +17,8 @@
 import { jsPDF } from 'jspdf';
 import {
     type PanelParams,
-    type PanelDevelopment,
-    type PanelSplit,
     type FlatPath,
+    type SectionedExport,
 } from './types';
 import { outlinePerimeter } from './geometry';
 
@@ -39,27 +38,26 @@ function ascii(s: string): string {
 }
 
 interface PdfOptions {
-    development: PanelDevelopment;
-    split: PanelSplit;
+    sectionExport: SectionedExport;
     params: PanelParams;
-    aperture?: FlatPath[];
-    keyline?: FlatPath[];
-    /** Stand-off fixing holes (cut). */
-    fixings?: FlatPath[];
-    /** Lettering outline shown as a reference in standoff mode (not cut). */
-    reference?: FlatPath[];
+    /** Per-section path arrays, already in export-sheet coords. */
+    apertureBySection?: FlatPath[][];
+    keylineBySection?: FlatPath[][];
+    fixingsBySection?: FlatPath[][];
+    referenceBySection?: FlatPath[][];
     /** PNG/JPEG data URL of the 3D preview, optional. */
     thumbnailDataUrl?: string;
 }
 
 export function generatePdfBlob(opts: PdfOptions): Blob {
-    const { development: dev, split, params } = opts;
+    const { sectionExport, params } = opts;
     const T = (s: string) => ascii(s);
 
     const M = 18; // page margin
     const COL_W = 86; // left info column
-    const partW = Math.max(1, dev.totalFlatWMm);
-    const partH = Math.max(1, dev.totalFlatHMm);
+    const partW = Math.max(1, sectionExport.totalLayoutWMm);
+    const partH = Math.max(1, sectionExport.totalLayoutHMm);
+    const isSplit = sectionExport.sections.length > 1;
 
     // Drawing origin leaves room for the left column + the vertical dim.
     const drawX = M + COL_W + 16;
@@ -68,7 +66,7 @@ export function generatePdfBlob(opts: PdfOptions): Blob {
     // How tall the info column needs to be (fixed line steps + thumbnail).
     const specRows = 10; // matches the `spec` array length below
     let infoBottom = M + 13 + specRows * 5.2;
-    if (split.wasSplit) infoBottom += 6;
+    if (isSplit) infoBottom += 6;
     infoBottom += 14; // bend note
     infoBottom += 6 + 5 * 5; // legend header + 5 rows
     const hasThumb = !!opts.thumbnailDataUrl;
@@ -149,7 +147,10 @@ export function generatePdfBlob(opts: PdfOptions): Blob {
     const fixingD =
         params.fixingDiameterMm ??
         (params.fixingRadiusMm ? params.fixingRadiusMm * 2 : 10);
-    const nFixings = opts.fixings?.length ?? 0;
+    const nFixings = (opts.fixingsBySection ?? []).reduce(
+        (a, arr) => a + arr.length,
+        0,
+    );
     const artworkRow: [string, string] =
         mode === 'standoff'
             ? [
@@ -159,7 +160,7 @@ export function generatePdfBlob(opts: PdfOptions): Blob {
             : ['Artwork', 'Aperture cut'];
 
     const spec: Array<[string, string]> = [
-        ['Sign face', `${dev.faceNominalWMm} x ${dev.faceNominalHMm} mm`],
+        ['Sign face', `${params.panelWidthMm} x ${params.panelHeightMm} mm`],
         ['Returns', returnsLabel(params)],
         ['Return depth', `${params.returnDepthMm} mm`],
         ['Shadow gap', params.shadowGapMm > 0 ? `${params.shadowGapMm} mm` : '-'],
@@ -168,12 +169,15 @@ export function generatePdfBlob(opts: PdfOptions): Blob {
         ['Material', matLabel],
         ['Thickness', `${params.materialThicknessMm} mm`],
         [
-            'Panels',
-            split.wasSplit
-                ? `${split.sections.length} (centre full)`
+            'Sections',
+            isSplit
+                ? `${sectionExport.sections.length} (centre full)`
                 : 'Single panel',
         ],
-        ['Flat blank', `${dev.totalFlatWMm} x ${dev.totalFlatHMm} mm`],
+        [
+            'Sheet layout',
+            `${Math.round(sectionExport.totalLayoutWMm)} x ${Math.round(sectionExport.totalLayoutHMm)} mm`,
+        ],
     ];
     doc.setFontSize(8);
     spec.forEach(([k, v], i) => {
@@ -185,15 +189,15 @@ export function generatePdfBlob(opts: PdfOptions): Blob {
     });
     let cursorY = specY + spec.length * 5.2 + 2;
 
-    if (split.wasSplit) {
+    if (isSplit) {
         doc.setFontSize(7);
         doc.setTextColor(90);
-        doc.text(
-            T(`Section widths: ${split.sections.join(' / ')} mm`),
-            M,
-            cursorY,
-            { maxWidth: COL_W },
-        );
+        const widths = sectionExport.sections
+            .map((s) => Math.round(s.sectionWidthMm))
+            .join(' / ');
+        doc.text(T(`Section widths: ${widths} mm`), M, cursorY, {
+            maxWidth: COL_W,
+        });
         doc.setTextColor(0);
         cursorY += 6;
     }
@@ -217,6 +221,18 @@ export function generatePdfBlob(opts: PdfOptions): Blob {
     doc.text('LEGEND', M, cursorY);
     doc.setFont('helvetica', 'normal');
     cursorY += 4;
+    const apCount = (opts.apertureBySection ?? []).reduce(
+        (a, arr) => a + arr.length,
+        0,
+    );
+    const klCount = (opts.keylineBySection ?? []).reduce(
+        (a, arr) => a + arr.length,
+        0,
+    );
+    const refCount = (opts.referenceBySection ?? []).reduce(
+        (a, arr) => a + arr.length,
+        0,
+    );
     const legend: Array<{
         rgb: [number, number, number];
         dash: number[];
@@ -230,14 +246,8 @@ export function generatePdfBlob(opts: PdfOptions): Blob {
             label: 'Fold line - DO NOT CUT',
             w: 0.4,
         },
-        {
-            rgb: [0, 150, 60],
-            dash: [1.6, 1.2],
-            label: 'Panel seam / join',
-            w: 0.5,
-        },
     ];
-    if ((opts.aperture?.length ?? 0) > 0) {
+    if (apCount > 0) {
         legend.push({
             rgb: [30, 90, 200],
             dash: [],
@@ -245,7 +255,7 @@ export function generatePdfBlob(opts: PdfOptions): Blob {
             w: 0.35,
         });
     }
-    if ((opts.fixings?.length ?? 0) > 0) {
+    if (nFixings > 0) {
         legend.push({
             rgb: [30, 90, 200],
             dash: [],
@@ -253,7 +263,7 @@ export function generatePdfBlob(opts: PdfOptions): Blob {
             w: 0.5,
         });
     }
-    if ((opts.reference?.length ?? 0) > 0) {
+    if (refCount > 0) {
         legend.push({
             rgb: [156, 163, 175],
             dash: [0.8, 0.8],
@@ -261,7 +271,7 @@ export function generatePdfBlob(opts: PdfOptions): Blob {
             w: 0.35,
         });
     }
-    if ((opts.keyline?.length ?? 0) > 0) {
+    if (klCount > 0) {
         legend.push({
             rgb: [0, 170, 190],
             dash: [0.8, 0.8],
@@ -319,133 +329,136 @@ export function generatePdfBlob(opts: PdfOptions): Blob {
     const scaleText = oneToOne
         ? '1:1 (true size)'
         : `1:${Math.round(1 / scale)} (reduced to fit A4)`;
+    const layoutCaption = isSplit
+        ? `Cut sheet  |  scale ${scaleText}  |  ${sectionExport.sections.length} sections side-by-side, total ${Math.round(sectionExport.totalLayoutWMm)} x ${Math.round(sectionExport.totalLayoutHMm)} mm`
+        : `Flat development  |  scale ${scaleText}  |  blank ${Math.round(sectionExport.totalLayoutWMm)} x ${Math.round(sectionExport.totalLayoutHMm)} mm`;
     doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
-    doc.text(
-        T(
-            `Flat development  |  scale ${scaleText}  |  blank ${dev.totalFlatWMm} x ${dev.totalFlatHMm} mm`,
-        ),
-        dX,
-        dY - 6,
-    );
+    doc.text(T(layoutCaption), dX, dY - 6);
     doc.setFont('helvetica', 'normal');
 
-    // ONE merged cut outline (solid). Never the internal face/return
-    // edges — those are folds. A cutter can run this straight off.
-    doc.setDrawColor(20);
-    doc.setLineWidth(cutLW);
-    const perimeter = outlinePerimeter(dev);
-    if (perimeter) {
-        const pts = perimeter.points;
-        for (let i = 0; i + 1 < pts.length; i++) {
-            doc.line(
-                px(pts[i][0]),
-                py(pts[i][1]),
-                px(pts[i + 1][0]),
-                py(pts[i + 1][1]),
-            );
-        }
-    } else {
-        for (const seg of dev.segments) {
-            doc.rect(
-                px(seg.xMm),
-                py(seg.yMm),
-                seg.wMm * scale,
-                seg.hMm * scale,
-            );
-        }
-    }
+    // Each section gets its own perimeter + folds, drawn at its layout
+    // origin. The per-section aperture / fixings / keyline / reference
+    // arrays are already translated into export-sheet coords.
+    sectionExport.sections.forEach((section, i) => {
+        const ox = section.layoutOriginXMm;
+        const sectionAp = opts.apertureBySection?.[i] ?? [];
+        const sectionFx = opts.fixingsBySection?.[i] ?? [];
+        const sectionKl = opts.keylineBySection?.[i] ?? [];
+        const sectionRef = opts.referenceBySection?.[i] ?? [];
 
-    // Fold lines — red dashed (reference, NOT a cut).
-    doc.setDrawColor(200, 0, 0);
-    doc.setLineWidth(refLW);
-    doc.setLineDashPattern([dash, dash], 0);
-    for (const f of dev.foldLines) {
-        doc.line(px(f.x1), py(f.y1), px(f.x2), py(f.y2));
-    }
-    doc.setLineDashPattern([], 0);
-
-    // Seam lines — green dashed.
-    if (split.wasSplit) {
-        const sFace = dev.segments.find((s) => s.role === 'face');
-        if (sFace) {
-            const k = sFace.wMm / dev.faceNominalWMm;
-            doc.setDrawColor(0, 150, 60);
-            doc.setLineWidth(cutLW);
-            doc.setLineDashPattern([dash, dash * 0.75], 0);
-            for (const sx of split.seamXsMm) {
-                const fx = sFace.xMm + sx * k;
+        // Cut outline (solid).
+        doc.setDrawColor(20);
+        doc.setLineWidth(cutLW);
+        const perimeter = outlinePerimeter(section.development);
+        if (perimeter) {
+            const pts = perimeter.points;
+            for (let k = 0; k + 1 < pts.length; k++) {
                 doc.line(
-                    px(fx),
-                    py(sFace.yMm),
-                    px(fx),
-                    py(sFace.yMm + sFace.hMm),
+                    px(pts[k][0] + ox),
+                    py(pts[k][1]),
+                    px(pts[k + 1][0] + ox),
+                    py(pts[k + 1][1]),
                 );
             }
+        } else {
+            for (const seg of section.development.segments) {
+                doc.rect(
+                    px(seg.xMm + ox),
+                    py(seg.yMm),
+                    seg.wMm * scale,
+                    seg.hMm * scale,
+                );
+            }
+        }
+
+        // Fold lines — red dashed (reference, NOT a cut).
+        doc.setDrawColor(200, 0, 0);
+        doc.setLineWidth(refLW);
+        doc.setLineDashPattern([dash, dash], 0);
+        for (const f of section.development.foldLines) {
+            doc.line(
+                px(f.x1 + ox),
+                py(f.y1),
+                px(f.x2 + ox),
+                py(f.y2),
+            );
+        }
+        doc.setLineDashPattern([], 0);
+
+        // Reference lettering outline (standoff, non-cut, light dashed).
+        if (sectionRef.length) {
+            doc.setLineDashPattern([dash * 0.8, dash * 0.8], 0);
+            drawPaths(doc, sectionRef, px, py, [156, 163, 175], refLW * 0.7);
             doc.setLineDashPattern([], 0);
         }
-    }
 
-    // Reference letter outline (standoff mode, non-cut, light dashed grey).
-    if (opts.reference?.length) {
-        doc.setLineDashPattern([dash * 0.8, dash * 0.8], 0);
-        drawPaths(doc, opts.reference, px, py, [156, 163, 175], refLW * 0.7);
-        doc.setLineDashPattern([], 0);
-    }
+        // Aperture (blue) + keyline (cyan).
+        drawPaths(doc, sectionAp, px, py, [30, 90, 200], cutLW * 0.8);
+        drawPaths(doc, sectionKl, px, py, [0, 170, 190], refLW * 0.8);
 
-    // Aperture (blue, solid cut) + keyline (cyan).
-    drawPaths(doc, opts.aperture ?? [], px, py, [30, 90, 200], cutLW * 0.8);
-    drawPaths(doc, opts.keyline ?? [], px, py, [0, 170, 190], refLW * 0.8);
-
-    // Stand-off fixing holes (filled blue dots, cut).
-    if (opts.fixings?.length) {
-        doc.setFillColor(30, 90, 200);
-        doc.setDrawColor(30, 90, 200);
-        doc.setLineWidth(cutLW * 0.6);
-        for (const p of opts.fixings) {
-            const cx = p.points.reduce((a, q) => a + q[0], 0) / p.points.length;
-            const cy = p.points.reduce((a, q) => a + q[1], 0) / p.points.length;
-            const rMm =
-                p.points.reduce(
-                    (a, q) => a + Math.hypot(q[0] - cx, q[1] - cy),
-                    0,
-                ) / p.points.length;
-            doc.circle(px(cx), py(cy), rMm * scale, 'FD');
+        // Stand-off fixings (filled blue dots).
+        if (sectionFx.length) {
+            doc.setFillColor(30, 90, 200);
+            doc.setDrawColor(30, 90, 200);
+            doc.setLineWidth(cutLW * 0.6);
+            for (const p of sectionFx) {
+                const cx =
+                    p.points.reduce((a, q) => a + q[0], 0) / p.points.length;
+                const cy =
+                    p.points.reduce((a, q) => a + q[1], 0) / p.points.length;
+                const rMm =
+                    p.points.reduce(
+                        (a, q) => a + Math.hypot(q[0] - cx, q[1] - cy),
+                        0,
+                    ) / p.points.length;
+                doc.circle(px(cx), py(cy), rMm * scale, 'FD');
+            }
         }
-    }
 
-    // ---- Dimension lines (dashed — clearly NOT production cuts) -------
+        // Section label (only when split) + per-section width dim line.
+        const sFace = section.development.segments.find(
+            (s) => s.role === 'face',
+        );
+        if (sFace) {
+            doc.setTextColor(70);
+            if (isSplit) {
+                doc.setFontSize(Math.max(9, dimFont * 0.85));
+                doc.setFont('helvetica', 'bold');
+                doc.text(
+                    T(
+                        `SECTION ${section.index + 1} / ${section.count}  -  ${Math.round(section.sectionWidthMm)} x ${Math.round(section.development.faceNominalHMm)} mm`,
+                    ),
+                    px(sFace.xMm + sFace.wMm / 2 + ox),
+                    py(sFace.yMm + sFace.hMm / 2),
+                    { align: 'center' },
+                );
+                doc.setFont('helvetica', 'normal');
+            }
+            dimH(
+                doc,
+                px(ox),
+                px(ox + section.development.totalFlatWMm),
+                py(section.development.totalFlatHMm) + dimOff,
+                T(`${Math.round(section.development.totalFlatWMm)} mm`),
+                dimFont,
+                tick,
+            );
+            doc.setTextColor(0);
+        }
+    });
+
+    // Single overall-height dim line on the left of the layout.
     doc.setTextColor(70);
-    dimH(
-        doc,
-        px(0),
-        px(dev.totalFlatWMm),
-        py(dev.totalFlatHMm) + dimOff,
-        T(`${dev.totalFlatWMm} mm`),
-        dimFont,
-        tick,
-    );
     dimV(
         doc,
         py(0),
-        py(dev.totalFlatHMm),
+        py(partH),
         px(0) - dimOff,
-        T(`${dev.totalFlatHMm} mm`),
+        T(`${Math.round(partH)} mm`),
         dimFont,
         tick,
     );
-    const face = dev.segments.find((s) => s.role === 'face');
-    if (face) {
-        dimH(
-            doc,
-            px(face.xMm),
-            px(face.xMm + face.wMm),
-            py(face.yMm) - dimOff * 0.7,
-            T(`face ${dev.faceNominalWMm} mm`),
-            dimFont,
-            tick,
-        );
-    }
     doc.setTextColor(0);
 
     return doc.output('blob');
