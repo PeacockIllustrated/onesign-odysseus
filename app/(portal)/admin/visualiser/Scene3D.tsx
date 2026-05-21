@@ -763,11 +763,12 @@ function Panel({
                 Apertures and fixings are real holes in the face above. */}
             {overlay && (
                 <>
-                    {showStandoffLetters && (
-                        <lineSegments geometry={overlay.ref}>
-                            <lineBasicMaterial color="#9ca3af" />
-                        </lineSegments>
-                    )}
+                    {/* Reference outline always shows in standoff mode —
+                        the "Letters" toggle only hides the extruded 3D
+                        lettering, not the footprint on the panel face. */}
+                    <lineSegments geometry={overlay.ref}>
+                        <lineBasicMaterial color="#9ca3af" />
+                    </lineSegments>
                     <lineSegments geometry={overlay.kl}>
                         <lineBasicMaterial color="#00aabe" />
                     </lineSegments>
