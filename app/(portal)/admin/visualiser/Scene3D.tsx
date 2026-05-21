@@ -38,6 +38,13 @@ const HALF_PI = Math.PI / 2;
 const DEFAULT_PANEL_COLOR = '#d6d6d6';
 const EDGE_COLOR = '#111111'; // technical-drawing black strokes
 const STANDOFF_STUD_COLOR = '#9aa0a4'; // brushed-metal grey for the studs
+// When the operator is actively placing or deleting manual fixings,
+// recolour the manual circles so they pop out from the auto-placed
+// ones. Emerald = "place" (additive action), red = "delete" — both are
+// saturated enough to read against either dark or light letter
+// colours, and they match the SvgDropzone pills.
+const MANUAL_PLACE_COLOR = '#10b981';
+const MANUAL_DELETE_COLOR = '#ef4444';
 
 /** Pick black or white based on the perceptual luminance of `hex`. */
 function contrastTo(hex: string): string {
@@ -74,6 +81,37 @@ function PanelPlane({
             <meshBasicMaterial
                 color={color}
                 side={THREE.DoubleSide}
+                polygonOffset
+                polygonOffsetFactor={1}
+                polygonOffsetUnits={1}
+            />
+            {outlines && <Edges color={EDGE_COLOR} lineWidth={1.5} />}
+        </mesh>
+    );
+}
+
+/**
+ * A solid sheet-metal box — gives a return its real material thickness.
+ * Sized so it occupies the panel's own "inward" volume when folded, so two
+ * adjacent returns never share volume (the corner stays empty, matching
+ * the notched cruciform that's actually cut in production).
+ */
+function PanelBox({
+    args,
+    position,
+    color,
+    outlines = true,
+}: {
+    args: [number, number, number];
+    position?: [number, number, number];
+    color: string;
+    outlines?: boolean;
+}) {
+    return (
+        <mesh position={position}>
+            <boxGeometry args={args} />
+            <meshBasicMaterial
+                color={color}
                 polygonOffset
                 polygonOffsetFactor={1}
                 polygonOffsetUnits={1}
@@ -200,23 +238,27 @@ function Flap({
     H: number;
     D: number;
     Sg: number;
-    T: number; // material thickness (mm) — only used to offset the hinge
+    T: number; // material thickness (mm)
     fold: number;
     color: string;
     outlines?: boolean;
 }) {
     const a = fold * HALF_PI;
     const hasLip = Sg > 0;
-    // Hinge sits at the back surface of the face. Returns themselves stay
-    // paper-thin so the four panel corners meet cleanly without needing
-    // proper miter / notch joinery — the face provides the visible
-    // thickness, the returns are flanges off the back.
-    const hingeZ = -T * S;
+    const t = T * S;
+    // Pivot at the back surface of the face (z = -T). With the face
+    // extruded inward, this places the bend's inside corner at the back
+    // of the face. The return box sits with its inside face flush with
+    // the face's back when flat (coplanar at z ∈ [-T, 0]); when folded
+    // 90°, the return occupies the panel's "inward" volume just behind
+    // the face. Two adjacent returns never share volume — the corner is
+    // empty, matching the notched cruciform that's actually cut.
+    const hingeZ = -t;
 
     let groupPos: [number, number, number];
     let groupRot: [number, number, number];
-    let planeArgs: [number, number];
-    let planePos: [number, number, number];
+    let boxArgs: [number, number, number];
+    let boxPos: [number, number, number];
     let lipPos: [number, number, number] = [0, 0, 0];
     let lipRot: [number, number, number] = [0, 0, 0];
     let lipArgs: [number, number] = [0, 0];
@@ -225,8 +267,8 @@ function Flap({
     if (edge === 'bottom') {
         groupPos = [0, (-H / 2) * S, hingeZ];
         groupRot = [a, 0, 0];
-        planeArgs = [W * S, D * S];
-        planePos = [0, (-D / 2) * S, 0];
+        boxArgs = [W * S, D * S, t];
+        boxPos = [0, (-D / 2) * S, t / 2];
         lipPos = [0, -D * S, 0];
         lipRot = [a, 0, 0];
         lipArgs = [W * S, Sg * S];
@@ -234,8 +276,8 @@ function Flap({
     } else if (edge === 'top') {
         groupPos = [0, (H / 2) * S, hingeZ];
         groupRot = [-a, 0, 0];
-        planeArgs = [W * S, D * S];
-        planePos = [0, (D / 2) * S, 0];
+        boxArgs = [W * S, D * S, t];
+        boxPos = [0, (D / 2) * S, t / 2];
         lipPos = [0, D * S, 0];
         lipRot = [-a, 0, 0];
         lipArgs = [W * S, Sg * S];
@@ -243,8 +285,8 @@ function Flap({
     } else if (edge === 'left') {
         groupPos = [(-W / 2) * S, 0, hingeZ];
         groupRot = [0, -a, 0];
-        planeArgs = [D * S, H * S];
-        planePos = [(-D / 2) * S, 0, 0];
+        boxArgs = [D * S, H * S, t];
+        boxPos = [(-D / 2) * S, 0, t / 2];
         lipPos = [-D * S, 0, 0];
         lipRot = [0, -a, 0];
         lipArgs = [Sg * S, H * S];
@@ -252,8 +294,8 @@ function Flap({
     } else {
         groupPos = [(W / 2) * S, 0, hingeZ];
         groupRot = [0, a, 0];
-        planeArgs = [D * S, H * S];
-        planePos = [(D / 2) * S, 0, 0];
+        boxArgs = [D * S, H * S, t];
+        boxPos = [(D / 2) * S, 0, t / 2];
         lipPos = [D * S, 0, 0];
         lipRot = [0, a, 0];
         lipArgs = [Sg * S, H * S];
@@ -262,9 +304,9 @@ function Flap({
 
     return (
         <group position={groupPos} rotation={groupRot}>
-            <PanelPlane
-                args={planeArgs}
-                position={planePos}
+            <PanelBox
+                args={boxArgs}
+                position={boxPos}
                 color={color}
                 outlines={outlines}
             />
@@ -315,7 +357,8 @@ function pointInRing(
 function StandoffLettering({
     face,
     reference,
-    fixings,
+    autoFixings,
+    manualFixings,
     thicknessMm,
     standoffMm,
     faceThicknessMm,
@@ -326,7 +369,8 @@ function StandoffLettering({
 }: {
     face: { xMm: number; yMm: number; wMm: number; hMm: number };
     reference: FlatPath[];
-    fixings: FlatPath[];
+    autoFixings: FlatPath[];
+    manualFixings: FlatPath[];
     thicknessMm: number;
     standoffMm: number;
     faceThicknessMm: number;
@@ -414,13 +458,15 @@ function StandoffLettering({
     // Stroke each fixing circle onto the front face of the extruded
     // lettering so the installer can see where the studs land — and so
     // we have a visible target when adding more in place-fixing mode.
-    const fixingStrokes = useMemo(() => {
-        if (fixings.length === 0) return null;
+    // Auto + manual are built as separate geometries so they can be
+    // recoloured independently when the operator is in place/delete mode.
+    const buildStrokes = (paths: FlatPath[]): THREE.BufferGeometry | null => {
+        if (paths.length === 0) return null;
         const positions: number[] = [];
         const segs = 32;
         // Sit a hair above the front face (z = depth) to avoid z-fight.
         const z = depthScene + 0.3 * S;
-        for (const f of fixings) {
+        for (const f of paths) {
             const pts = f.points;
             if (pts.length < 3) continue;
             let cx = 0,
@@ -459,7 +505,23 @@ function StandoffLettering({
             new THREE.Float32BufferAttribute(positions, 3),
         );
         return g;
-    }, [fixings, face, depthScene]);
+    };
+    const autoStrokes = useMemo(
+        () => buildStrokes(autoFixings),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [autoFixings, face, depthScene],
+    );
+    const manualStrokes = useMemo(
+        () => buildStrokes(manualFixings),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [manualFixings, face, depthScene],
+    );
+    const manualColor =
+        fixingMode === 'place'
+            ? MANUAL_PLACE_COLOR
+            : fixingMode === 'delete'
+              ? MANUAL_DELETE_COLOR
+              : contrastTo(color);
 
     if (shapes.length === 0) return null;
 
@@ -523,13 +585,21 @@ function StandoffLettering({
                     )}
                 </mesh>
             ))}
-            {fixingStrokes && (
-                <lineSegments geometry={fixingStrokes}>
-                    {/* Contrast the locator circles against the letter
-                        colour so dark letters get white circles and
-                        light letters get black ones — installers need
-                        the holes to read at a glance. */}
+            {autoStrokes && (
+                // Auto-placed fixings — picked by the algorithm. Painted
+                // in a colour that contrasts with the letter, so the
+                // installer reads them clearly.
+                <lineSegments geometry={autoStrokes}>
                     <lineBasicMaterial color={contrastTo(color)} />
+                </lineSegments>
+            )}
+            {manualStrokes && (
+                // Manually-placed fixings. When the operator is in
+                // place or delete mode, these recolour (green to add,
+                // red to delete) so the user knows which circles they
+                // own and can target them precisely.
+                <lineSegments geometry={manualStrokes}>
+                    <lineBasicMaterial color={manualColor} />
                 </lineSegments>
             )}
         </group>
@@ -609,7 +679,8 @@ function Panel({
     split,
     aperture,
     keyline,
-    fixings,
+    autoFixings,
+    manualFixings,
     reference,
     fold,
     fixingMode,
@@ -623,7 +694,8 @@ function Panel({
     split: PanelSplit;
     aperture: FlatPath[];
     keyline: FlatPath[];
-    fixings: FlatPath[];
+    autoFixings: FlatPath[];
+    manualFixings: FlatPath[];
     reference: FlatPath[];
     fold: number;
     fixingMode?: 'off' | 'place' | 'delete';
@@ -642,6 +714,14 @@ function Panel({
     const edges: PanelEdge[] = ['top', 'bottom', 'left', 'right'];
 
     const face = dev.segments.find((s) => s.role === 'face');
+
+    // Cut-outs and locator studs treat every fixing the same — they're
+    // all holes in the face / studs through it. Manual-vs-auto only
+    // matters for the visual circle indicators on the letters.
+    const fixings = useMemo(
+        () => [...autoFixings, ...manualFixings],
+        [autoFixings, manualFixings],
+    );
 
     // Convert every "cut" path from flat-development coords (y-down) into
     // face-local mm × S (face centred at the world origin, y-up). Apertures
@@ -745,7 +825,8 @@ function Panel({
                             <StandoffLettering
                                 face={face}
                                 reference={reference}
-                                fixings={fixings}
+                                autoFixings={autoFixings}
+                                manualFixings={manualFixings}
                                 thicknessMm={params.letterThicknessMm ?? 5}
                                 standoffMm={params.standoffDistanceMm ?? 25}
                                 faceThicknessMm={T}
@@ -814,7 +895,8 @@ export default function Scene3D(props: {
     split: PanelSplit;
     aperture: FlatPath[];
     keyline: FlatPath[];
-    fixings?: FlatPath[];
+    autoFixings?: FlatPath[];
+    manualFixings?: FlatPath[];
     reference?: FlatPath[];
     /** 0 = flat (unfolded in 3D), 1 = folded. Default folded. */
     fold?: number;
@@ -826,7 +908,8 @@ export default function Scene3D(props: {
     showStandoffLocators?: boolean;
 }) {
     const fold = props.fold ?? 1;
-    const fixings = props.fixings ?? [];
+    const autoFixings = props.autoFixings ?? [];
+    const manualFixings = props.manualFixings ?? [];
     const reference = props.reference ?? [];
     const showOutlines = props.showOutlines ?? true;
     const showStandoffLetters = props.showStandoffLetters ?? true;
@@ -855,7 +938,8 @@ export default function Scene3D(props: {
             <CaptureBinder />
             <Panel
                 {...props}
-                fixings={fixings}
+                autoFixings={autoFixings}
+                manualFixings={manualFixings}
                 reference={reference}
                 fold={fold}
                 fixingMode={props.fixingMode}

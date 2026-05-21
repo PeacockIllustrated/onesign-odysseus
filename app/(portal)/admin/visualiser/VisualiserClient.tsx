@@ -478,7 +478,8 @@ export function VisualiserClient({
                             split={split}
                             aperture={aperture}
                             keyline={keyline}
-                            fixings={fixings}
+                            autoFixings={autoFixings}
+                            manualFixings={manualFixings}
                             reference={reference}
                             fold={tab === 'folded' ? 1 : fold}
                             fixingMode={fixingMode}
