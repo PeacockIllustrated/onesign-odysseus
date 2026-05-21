@@ -1,11 +1,22 @@
 /**
- * Dimensioned PDF shop drawing — TRUE 1:1.
+ * PDF exports — TRUE 1:1.
+ *
+ * Two flavours, same per-section layout (split signs stay split — each
+ * section is its own cut-ready blank, never welded across the seam):
+ *
+ *   - REFERENCE: the dimensioned shop drawing. Spec block, colour legend,
+ *     3D thumbnail, dashed fold lines, section labels and dimension lines.
+ *     This is what the shop prints to read off.
+ *
+ *   - PRODUCTION: cut-only. Welded outer perimeter per section + apertures
+ *     + fixings + keyline, drawn as continuous closed paths (one per
+ *     contour via doc.lines() with closed=true, so the CAM picks them up
+ *     as single shapes). No folds, no dimensions, no labels — a small
+ *     info strip out of the way of the cuts. Stroke is hairline-thin so
+ *     no CAM interpretation widens the cut.
  *
  * The page is sized to the actual flat blank so 1 mm on paper = 1 mm of
- * metal: the shop can measure straight off it or use it as a full-size
- * template. The part is drawn at scale 1; an info column carries the spec,
- * a colour legend (so nobody mistakes a fold for a cut) and the 3D
- * thumbnail. If a part is so large it would exceed the PDF page limit we
+ * metal. If a part is so large it would exceed the PDF page limit we
  * fall back to a reduced-scale A4 sheet and say so on the drawing.
  *
  * Text is ASCII-only — jsPDF's built-in Helvetica is WinAnsi and renders
@@ -49,7 +60,41 @@ interface PdfOptions {
     thumbnailDataUrl?: string;
 }
 
-export function generatePdfBlob(opts: PdfOptions): Blob {
+/**
+ * Continuous closed polyline via jsPDF's lines() API — one PDF path with
+ * 'Z' close, so CAM picks it up as a single welded shape rather than N
+ * disconnected line segments.
+ */
+function drawClosedPolyline(
+    doc: jsPDF,
+    pts: Array<[number, number]>,
+    style: 'S' | 'F' | 'FD' = 'S',
+): void {
+    if (pts.length < 2) return;
+    // Strip the closing-dup point if present — closed=true adds the Z.
+    const head = pts[0];
+    const tail = pts[pts.length - 1];
+    const ring =
+        Math.abs(tail[0] - head[0]) < 1e-6 && Math.abs(tail[1] - head[1]) < 1e-6
+            ? pts.slice(0, -1)
+            : pts;
+    if (ring.length < 2) return;
+    const deltas: number[][] = [];
+    for (let i = 1; i < ring.length; i++) {
+        deltas.push([
+            ring[i][0] - ring[i - 1][0],
+            ring[i][1] - ring[i - 1][1],
+        ]);
+    }
+    doc.lines(deltas, ring[0][0], ring[0][1], [1, 1], style, true);
+}
+
+/**
+ * REFERENCE PDF — the dimensioned shop drawing. Spec block, colour
+ * legend, dashed fold lines, section labels, dimension lines. Stays the
+ * same per-section layout as today.
+ */
+export function generateReferencePdfBlob(opts: PdfOptions): Blob {
     const { sectionExport, params } = opts;
     const T = (s: string) => ascii(s);
 
@@ -464,6 +509,175 @@ export function generatePdfBlob(opts: PdfOptions): Blob {
     return doc.output('blob');
 }
 
+/**
+ * PRODUCTION PDF — cut-only, welded perimeters, hairline stroke.
+ *
+ * Per-section layout is preserved (split signs stay split — never weld
+ * sections together). Each section gets its own continuous outer cut
+ * contour + closed aperture / keyline paths + fixing circles. No folds,
+ * no dimensions, no labels, no legends. A tiny single-line info strip
+ * sits below the cut area so the operator can sanity-check the file
+ * without it interfering with the geometry.
+ */
+export function generateProductionPdfBlob(opts: PdfOptions): Blob {
+    const { sectionExport, params } = opts;
+    const T = (s: string) => ascii(s);
+
+    const M = 18; // page margin — also reserves space for the info strip
+    const INFO_GAP = 6; // gap from the cut area to the info strip
+    const partW = Math.max(1, sectionExport.totalLayoutWMm);
+    const partH = Math.max(1, sectionExport.totalLayoutHMm);
+
+    // Try true 1:1; fall back to A4 if the part exceeds the PDF page limit.
+    const oneToOneW = partW + 2 * M;
+    const oneToOneH = partH + 2 * M;
+    const oneToOne =
+        oneToOneW <= MAX_PAGE_MM && oneToOneH <= MAX_PAGE_MM;
+
+    let PAGE_W: number;
+    let PAGE_H: number;
+    let scale: number;
+    let dX: number;
+    let dY: number;
+    let doc: jsPDF;
+
+    if (oneToOne) {
+        PAGE_W = oneToOneW;
+        PAGE_H = oneToOneH;
+        scale = 1;
+        dX = M;
+        dY = M;
+        doc = new jsPDF({
+            unit: 'mm',
+            format: [PAGE_W, PAGE_H],
+            orientation: PAGE_W >= PAGE_H ? 'landscape' : 'portrait',
+        });
+    } else {
+        PAGE_W = 297;
+        PAGE_H = 210;
+        doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+        const drawW = PAGE_W - 2 * M;
+        const drawH = PAGE_H - 2 * M - 6;
+        scale = Math.min(drawW / partW, drawH / partH);
+        dX = M + (drawW - partW * scale) / 2;
+        dY = M + (drawH - partH * scale) / 2;
+    }
+
+    const px = (x: number) => dX + x * scale;
+    const py = (y: number) => dY + y * scale;
+
+    // Hairline stroke that scales mildly with part size, capped well
+    // below any sensible kerf so no CAM interpretation widens the cut.
+    //   200 mm part → 0.05 mm   1 m → 0.20 mm   4 m → 0.20 mm (capped)
+    const maxPart = Math.max(partW, partH);
+    const productionStroke = Math.max(0.05, Math.min(0.2, maxPart / 5000));
+
+    // Project every section's geometry in export-sheet coords.
+    sectionExport.sections.forEach((section, i) => {
+        const ox = section.layoutOriginXMm;
+        const sectionAp = opts.apertureBySection?.[i] ?? [];
+        const sectionFx = opts.fixingsBySection?.[i] ?? [];
+        const sectionKl = opts.keylineBySection?.[i] ?? [];
+
+        // Outer perimeter — one continuous welded closed contour.
+        const perimeter = outlinePerimeter(section.development);
+        doc.setDrawColor(0);
+        doc.setLineWidth(productionStroke);
+        if (perimeter) {
+            const pts = perimeter.points.map(
+                ([x, y]) =>
+                    [px(x + ox), py(y)] as [number, number],
+            );
+            drawClosedPolyline(doc, pts, 'S');
+        } else {
+            // Degenerate fallback — per-segment rectangles. Validation
+            // upstream warns the user before they reach this state.
+            for (const seg of section.development.segments) {
+                doc.rect(
+                    px(seg.xMm + ox),
+                    py(seg.yMm),
+                    seg.wMm * scale,
+                    seg.hMm * scale,
+                );
+            }
+        }
+
+        // Aperture cut(s) — each closed sub-path as one welded contour.
+        for (const ap of sectionAp) {
+            const pts = ap.points.map(
+                ([x, y]) => [px(x), py(y)] as [number, number],
+            );
+            if (ap.closed) drawClosedPolyline(doc, pts, 'S');
+            else {
+                // Open paths (rare): emit as a single open polyline.
+                if (pts.length < 2) continue;
+                const deltas: number[][] = [];
+                for (let k = 1; k < pts.length; k++) {
+                    deltas.push([
+                        pts[k][0] - pts[k - 1][0],
+                        pts[k][1] - pts[k - 1][1],
+                    ]);
+                }
+                doc.lines(deltas, pts[0][0], pts[0][1], [1, 1], 'S', false);
+            }
+        }
+
+        // Keyline (register cuts). Skip if none.
+        for (const k of sectionKl) {
+            const pts = k.points.map(
+                ([x, y]) => [px(x), py(y)] as [number, number],
+            );
+            if (k.closed) drawClosedPolyline(doc, pts, 'S');
+        }
+
+        // Stand-off fixings — single circle per hole, naturally welded.
+        for (const f of sectionFx) {
+            const cx =
+                f.points.reduce((a, q) => a + q[0], 0) / f.points.length;
+            const cy =
+                f.points.reduce((a, q) => a + q[1], 0) / f.points.length;
+            const rMm =
+                f.points.reduce(
+                    (a, q) => a + Math.hypot(q[0] - cx, q[1] - cy),
+                    0,
+                ) / f.points.length;
+            doc.circle(px(cx), py(cy), rMm * scale, 'S');
+        }
+    });
+
+    // Tiny info strip in the bottom margin — out of the way of the cuts.
+    const widthsLabel = sectionExport.sections
+        .map((s) => Math.round(s.sectionWidthMm))
+        .join(' / ');
+    const info = [
+        `ONESIGN`,
+        params.name,
+        params.materialLabel || 'material -',
+        `${params.materialThicknessMm} mm`,
+        `face ${params.panelWidthMm}x${params.panelHeightMm} mm`,
+        sectionExport.sections.length > 1
+            ? `sections ${widthsLabel} mm`
+            : `1 panel`,
+        new Date().toLocaleDateString('en-GB'),
+        oneToOne ? '1:1' : `1:${Math.round(1 / scale)} (reduced to A4)`,
+    ]
+        .filter(Boolean)
+        .join('  |  ');
+    doc.setFontSize(8);
+    doc.setTextColor(110);
+    doc.text(
+        T(info),
+        dX,
+        Math.min(
+            PAGE_H - 4,
+            dY + partH * scale + INFO_GAP + (oneToOne ? 0 : 0),
+        ),
+    );
+    doc.setTextColor(0);
+
+    return doc.output('blob');
+}
+
 /** Horizontal dimension: dashed line + end ticks + centred value. */
 function dimH(
     doc: jsPDF,
@@ -542,11 +756,15 @@ function returnsLabel(p: PanelParams): string {
           : on.join(', ');
 }
 
-export function pdfFilename(params: PanelParams): string {
+export function pdfFilename(
+    params: PanelParams,
+    mode: 'reference' | 'production' = 'reference',
+): string {
     const safe = params.name
         .replace(/[^a-z0-9-_]+/gi, '-')
         .replace(/^-+|-+$/g, '');
+    const suffix = mode === 'production' ? 'production' : 'reference';
     return `${safe || 'panel'}-${Math.round(params.panelWidthMm)}x${Math.round(
         params.panelHeightMm,
-    )}-shop.pdf`;
+    )}-${suffix}.pdf`;
 }

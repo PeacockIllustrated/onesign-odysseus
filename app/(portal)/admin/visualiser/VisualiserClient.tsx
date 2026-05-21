@@ -16,6 +16,7 @@ import {
     buildSectionedExport,
     clipApertureToSection,
     validateExport,
+    circlePoly,
 } from '@/lib/visualiser/geometry';
 import { splitPanels } from '@/lib/visualiser/split';
 import { importSvg, buildKeyline } from '@/lib/visualiser/svg-import';
@@ -53,8 +54,15 @@ export function VisualiserClient({
     initialDesigns: VisualiserDesignRow[];
     prefill: { patch: Partial<PanelParams> & { quoteId: string | null }; quoteItemId: string } | null;
 }) {
-    const { params, imported, applyPrefill, loadDesign, designId } =
-        useVisualiser();
+    const {
+        params,
+        imported,
+        applyPrefill,
+        loadDesign,
+        designId,
+        placeFixingMode,
+        addManualFixing,
+    } = useVisualiser();
     const [tab, setTab] = useState<Tab>('folded');
     const [mobilePane, setMobilePane] = useState<MobilePane>('preview');
     const [designs] = useState(initialDesigns);
@@ -140,7 +148,10 @@ export function VisualiserClient({
     );
 
     const fixingDensity = params.fixingDensity ?? 1;
-    const fixings = useMemo(() => {
+
+    // Auto-placed fixings inside the lettering shapes (algorithmic). These
+    // re-compute when density / diameter / artwork changes.
+    const autoFixings = useMemo(() => {
         if (mode !== 'standoff' || !development || placedClip.paths.length === 0)
             return [];
         const raw = placeFixings(
@@ -149,10 +160,26 @@ export function VisualiserClient({
             undefined,
             fixingDensity,
         );
-        // Clip — a fixing on the edge of a letter sitting near the face
-        // border could otherwise stick out past the face.
         return clipApertureToFace(development, raw).paths;
     }, [mode, development, placedClip.paths, fixingDiameter, fixingDensity]);
+
+    // Manual fixings — user clicks on the canvases to drop pins exactly
+    // where they're needed. Stored as flat-dev coords on params so they
+    // survive density / radius / artwork edits. Clipped to the face so a
+    // stray click outside the panel never reaches the export.
+    const manualFixings = useMemo(() => {
+        if (mode !== 'standoff' || !development) return [];
+        const r = fixingDiameter / 2;
+        const polys = (params.manualFixings ?? []).map(([x, y]) =>
+            circlePoly(x, y, r),
+        );
+        return clipApertureToFace(development, polys).paths;
+    }, [mode, development, fixingDiameter, params.manualFixings]);
+
+    const fixings = useMemo(
+        () => [...autoFixings, ...manualFixings],
+        [autoFixings, manualFixings],
+    );
 
     // Build the keyline from the cut aperture so it tracks the visible
     // artwork, then clip it too. Standoff mode has no keyline.
@@ -339,6 +366,8 @@ export function VisualiserClient({
                             fixings={fixings}
                             reference={reference}
                             panelColor={params.panelColor ?? '#d6d6d6'}
+                            placeFixingMode={placeFixingMode}
+                            onPlaceFixing={addManualFixing}
                         />
                     ) : (
                         <Scene3D
@@ -350,6 +379,8 @@ export function VisualiserClient({
                             fixings={fixings}
                             reference={reference}
                             fold={tab === 'folded' ? 1 : fold}
+                            placeFixingMode={placeFixingMode}
+                            onPlaceFixing={addManualFixing}
                         />
                     )}
 

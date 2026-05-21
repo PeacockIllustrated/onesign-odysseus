@@ -908,7 +908,12 @@ function minEdgeDist(
     return m;
 }
 
-function circlePoly(cx: number, cy: number, r: number, segs = 24): FlatPath {
+export function circlePoly(
+    cx: number,
+    cy: number,
+    r: number,
+    segs = 24,
+): FlatPath {
     const pts: Array<[number, number]> = [];
     for (let i = 0; i <= segs; i++) {
         const t = (i / segs) * Math.PI * 2;

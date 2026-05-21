@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import type {
     PanelDevelopment,
     PanelSplit,
@@ -27,6 +27,8 @@ export function FlatPreview({
     fixings = [],
     reference = [],
     panelColor = DEFAULT_PANEL_COLOR,
+    placeFixingMode = false,
+    onPlaceFixing,
 }: {
     development: PanelDevelopment;
     split: PanelSplit;
@@ -35,7 +37,33 @@ export function FlatPreview({
     fixings?: FlatPath[];
     reference?: FlatPath[];
     panelColor?: string;
+    placeFixingMode?: boolean;
+    /** Called with the click point in flat-development mm coords. */
+    onPlaceFixing?: (p: [number, number]) => void;
 }) {
+    const svgRef = useRef<SVGSVGElement | null>(null);
+
+    const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
+        if (!placeFixingMode || !onPlaceFixing || !svgRef.current) return;
+        const ctm = svgRef.current.getScreenCTM();
+        if (!ctm) return;
+        const pt = svgRef.current.createSVGPoint();
+        pt.x = e.clientX;
+        pt.y = e.clientY;
+        const local = pt.matrixTransform(ctm.inverse());
+        // Only register clicks that land inside the face — outside it
+        // there's no panel to fix into, so silently ignore.
+        const face = dev.segments.find((s) => s.role === 'face');
+        if (!face) return;
+        if (
+            local.x < face.xMm ||
+            local.x > face.xMm + face.wMm ||
+            local.y < face.yMm ||
+            local.y > face.yMm + face.hMm
+        )
+            return;
+        onPlaceFixing([local.x, local.y]);
+    };
     const pad = Math.max(20, dev.totalFlatWMm * 0.06);
     const vb = useMemo(
         () =>
@@ -74,9 +102,13 @@ export function FlatPreview({
     return (
         <div className="h-full w-full bg-neutral-50">
             <svg
+                ref={svgRef}
                 viewBox={vb}
-                className="h-full w-full"
+                className={`h-full w-full ${
+                    placeFixingMode ? 'cursor-crosshair' : ''
+                }`}
                 preserveAspectRatio="xMidYMid meet"
+                onClick={handleClick}
             >
                 {/* Non-face segments — returns + shadow lips, all in the
                     same panel colour, edges in technical-drawing black. */}

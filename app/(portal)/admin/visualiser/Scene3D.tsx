@@ -87,12 +87,17 @@ function FacePlane({
     H,
     color,
     holesLocal,
+    onClick,
+    cursorCrosshair,
 }: {
     W: number; // mm
     H: number; // mm
     color: string;
     /** Holes in face-local mm coords (face centred at origin, y-up). */
     holesLocal: Array<Array<[number, number]>>;
+    /** Click handler receives the hit point in scene-local mm × S. */
+    onClick?: (sceneX: number, sceneY: number) => void;
+    cursorCrosshair?: boolean;
 }) {
     const shape = useMemo(() => {
         const s = new THREE.Shape();
@@ -115,7 +120,30 @@ function FacePlane({
     }, [W, H, holesLocal]);
 
     return (
-        <mesh>
+        <mesh
+            onClick={
+                onClick
+                    ? (e) => {
+                          e.stopPropagation();
+                          onClick(e.point.x, e.point.y);
+                      }
+                    : undefined
+            }
+            onPointerOver={
+                cursorCrosshair
+                    ? (e) => {
+                          e.stopPropagation();
+                          document.body.style.cursor = 'crosshair';
+                      }
+                    : undefined
+            }
+            onPointerOut={
+                cursorCrosshair
+                    ? () => {
+                          document.body.style.cursor = '';
+                      }
+                    : undefined
+            }>
             {/* curveSegments = 48 (hero/close-up typography preset). In
                 our pipeline SVG curves are pre-flattened at parse time
                 (lib/visualiser/svg-import.ts FLATNESS_TOL), so this is
@@ -232,6 +260,155 @@ function Flap({
     );
 }
 
+/** Even-odd ray cast — same as the placement-side helper, inlined. */
+function pointInRing(
+    p: [number, number],
+    ring: Array<[number, number]>,
+): boolean {
+    let inside = false;
+    let j = ring.length - 1;
+    for (let i = 0; i < ring.length; i++) {
+        const xi = ring[i][0];
+        const yi = ring[i][1];
+        const xj = ring[j][0];
+        const yj = ring[j][1];
+        if (
+            yi > p[1] !== yj > p[1] &&
+            p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi || 1e-12) + xi
+        ) {
+            inside = !inside;
+        }
+        j = i;
+    }
+    return inside;
+}
+
+/**
+ * Stand-off lettering — extrude each letter (outer + nested counter holes)
+ * by the letter thickness and mount it in front of the panel face. The
+ * panel keeps its fixing holes; the lettering sits proud of the face by
+ * `standoffMm`, so the 3D shows the assembled sign rather than just an
+ * outline overlay.
+ */
+function StandoffLettering({
+    face,
+    reference,
+    thicknessMm,
+    standoffMm,
+    faceThicknessMm,
+    color,
+}: {
+    face: { xMm: number; yMm: number; wMm: number; hMm: number };
+    reference: FlatPath[];
+    thicknessMm: number;
+    standoffMm: number;
+    faceThicknessMm: number;
+    color: string;
+}) {
+    const shapes = useMemo(() => {
+        const closed = reference.filter(
+            (p) => p.closed && p.points.length > 3,
+        );
+        if (closed.length === 0) return [];
+
+        const toLocal = (p: [number, number]): [number, number] => [
+            (p[0] - face.xMm - face.wMm / 2) * S,
+            (face.yMm + face.hMm / 2 - p[1]) * S,
+        ];
+
+        // Each ring's containment depth — even = outer, odd = hole.
+        const rings = closed.map((p) =>
+            p.points.slice(0, -1) as Array<[number, number]>,
+        );
+        const depth = rings.map((r, i) => {
+            const probe = r[0];
+            let d = 0;
+            for (let j = 0; j < rings.length; j++) {
+                if (i === j) continue;
+                if (pointInRing(probe, rings[j])) d++;
+            }
+            return d;
+        });
+
+        const out: THREE.Shape[] = [];
+        for (let i = 0; i < rings.length; i++) {
+            if (depth[i] % 2 !== 0) continue; // skip holes — picked up below
+            const local = rings[i].map(toLocal);
+            const shape = new THREE.Shape();
+            shape.moveTo(local[0][0], local[0][1]);
+            for (let k = 1; k < local.length; k++) {
+                shape.lineTo(local[k][0], local[k][1]);
+            }
+            shape.closePath();
+            // Direct child holes — odd-depth rings whose first point lies
+            // inside this outer (and not inside another tighter outer).
+            for (let j = 0; j < rings.length; j++) {
+                if (i === j || depth[j] % 2 === 0) continue;
+                if (!pointInRing(rings[j][0], rings[i])) continue;
+                // Skip if some intermediate outer wraps this hole more
+                // tightly (handles deeply nested compound paths).
+                let nested = false;
+                for (let m = 0; m < rings.length; m++) {
+                    if (m === i || m === j || depth[m] % 2 !== 0) continue;
+                    if (
+                        pointInRing(rings[j][0], rings[m]) &&
+                        pointInRing(rings[m][0], rings[i])
+                    ) {
+                        nested = true;
+                        break;
+                    }
+                }
+                if (nested) continue;
+                const lh = rings[j].map(toLocal);
+                const h = new THREE.Path();
+                h.moveTo(lh[0][0], lh[0][1]);
+                for (let k = 1; k < lh.length; k++) {
+                    h.lineTo(lh[k][0], lh[k][1]);
+                }
+                h.closePath();
+                shape.holes.push(h);
+            }
+            out.push(shape);
+        }
+        return out;
+    }, [face, reference]);
+
+    if (shapes.length === 0) return null;
+
+    // Front of the panel sits at z = +faceT/2 (panel is centred at z=0
+    // with thickness faceT). The lettering sits standoffMm in front,
+    // extruded outward by thicknessMm.
+    const baseZ = (faceThicknessMm / 2 + standoffMm) * S;
+    const depthScene = thicknessMm * S;
+
+    return (
+        <group position={[0, 0, baseZ]}>
+            {shapes.map((shape, i) => (
+                <mesh key={i}>
+                    <extrudeGeometry
+                        args={[
+                            shape,
+                            {
+                                depth: depthScene,
+                                bevelEnabled: false,
+                                curveSegments: 48,
+                            },
+                        ]}
+                    />
+                    <meshBasicMaterial
+                        color={color}
+                        side={THREE.DoubleSide}
+                        polygonOffset
+                        polygonOffsetFactor={1}
+                        polygonOffsetUnits={1}
+                    />
+                    <Edges color={EDGE_COLOR} lineWidth={1.5} />
+                </mesh>
+            ))}
+        </group>
+    );
+}
+
 function Panel({
     params,
     development: dev,
@@ -241,6 +418,8 @@ function Panel({
     fixings,
     reference,
     fold,
+    placeFixingMode,
+    onPlaceFixing,
 }: {
     params: PanelParams;
     development: PanelDevelopment;
@@ -250,6 +429,8 @@ function Panel({
     fixings: FlatPath[];
     reference: FlatPath[];
     fold: number;
+    placeFixingMode?: boolean;
+    onPlaceFixing?: (p: [number, number]) => void;
 }) {
     const W = dev.faceNominalWMm;
     const H = dev.faceNominalHMm;
@@ -318,7 +499,39 @@ function Panel({
                 H={H}
                 color={panelColor}
                 holesLocal={holesLocal}
+                cursorCrosshair={placeFixingMode}
+                onClick={
+                    placeFixingMode && face && onPlaceFixing
+                        ? (sceneX, sceneY) => {
+                              // Scene units are mm × S. The face mesh is
+                              // centred at world origin, so convert back to
+                              // flat-development coords (y-down).
+                              const devX =
+                                  face.xMm + face.wMm / 2 + sceneX / S;
+                              const devY =
+                                  face.yMm + face.hMm / 2 - sceneY / S;
+                              onPlaceFixing([devX, devY]);
+                          }
+                        : undefined
+                }
             />
+
+            {/* Stand-off lettering — when in standoff mode, the reference
+                paths become 3D extruded letter pieces mounted in front of
+                the panel by `standoffDistanceMm`, with their own thickness
+                and colour. */}
+            {(params.apertureMode ?? 'aperture') === 'standoff' &&
+                reference.length > 0 &&
+                face && (
+                    <StandoffLettering
+                        face={face}
+                        reference={reference}
+                        thicknessMm={params.letterThicknessMm ?? 5}
+                        standoffMm={params.standoffDistanceMm ?? 25}
+                        faceThicknessMm={T}
+                        color={params.letterColor ?? '#1a1f23'}
+                    />
+                )}
 
             {/* Hinged return flaps (+ optional shadow-gap lips) */}
             {edges.map((e) =>
@@ -375,6 +588,9 @@ export default function Scene3D(props: {
     reference?: FlatPath[];
     /** 0 = flat (unfolded in 3D), 1 = folded. Default folded. */
     fold?: number;
+    /** When true, clicks on the panel face drop a manual fixing. */
+    placeFixingMode?: boolean;
+    onPlaceFixing?: (p: [number, number]) => void;
 }) {
     const fold = props.fold ?? 1;
     const fixings = props.fixings ?? [];
@@ -401,7 +617,14 @@ export default function Scene3D(props: {
         >
             <color attach="background" args={['#ffffff']} />
             <CaptureBinder />
-            <Panel {...props} fixings={fixings} reference={reference} fold={fold} />
+            <Panel
+                {...props}
+                fixings={fixings}
+                reference={reference}
+                fold={fold}
+                placeFixingMode={props.placeFixingMode}
+                onPlaceFixing={props.onPlaceFixing}
+            />
             <OrbitControls enablePan makeDefault />
         </Canvas>
     );

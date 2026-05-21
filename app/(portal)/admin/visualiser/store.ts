@@ -24,6 +24,10 @@ export const DEFAULT_PARAMS: PanelParams = {
     apertureMode: 'aperture',
     fixingDiameterMm: 10,
     fixingDensity: 1,
+    letterThicknessMm: 5,
+    standoffDistanceMm: 25,
+    letterColor: '#1a1f23',
+    manualFixings: [],
 };
 
 interface VisualiserState {
@@ -34,6 +38,12 @@ interface VisualiserState {
     quoteId: string | null;
     quoteItemId: string | null;
     dirty: boolean;
+    /**
+     * When true the preview canvases listen for clicks and drop a manual
+     * fixing at the click position (mapped to flat-dev coords). Survives
+     * density/radius changes, since it's stored on params.manualFixings.
+     */
+    placeFixingMode: boolean;
 
     setParam: <K extends keyof PanelParams>(k: K, v: PanelParams[K]) => void;
     setReturn: (edge: PanelEdge, on: boolean) => void;
@@ -44,6 +54,9 @@ interface VisualiserState {
     clearSvg: () => void;
     loadDesign: (row: VisualiserDesignRow, imported: ImportedSvg | null) => void;
     applyPrefill: (patch: Partial<PanelParams>, quoteId: string | null, quoteItemId: string) => void;
+    addManualFixing: (p: [number, number]) => void;
+    clearManualFixings: () => void;
+    setPlaceFixingMode: (on: boolean) => void;
     markSaved: (id: string) => void;
 }
 
@@ -55,6 +68,7 @@ export const useVisualiser = create<VisualiserState>((set) => ({
     quoteId: null,
     quoteItemId: null,
     dirty: false,
+    placeFixingMode: false,
 
     setParam: (k, v) =>
         set((s) => ({ params: { ...s.params, [k]: v }, dirty: true })),
@@ -116,6 +130,23 @@ export const useVisualiser = create<VisualiserState>((set) => ({
             quoteItemId,
             dirty: true,
         })),
+
+    addManualFixing: (p) =>
+        set((s) => ({
+            params: {
+                ...s.params,
+                manualFixings: [...(s.params.manualFixings ?? []), p],
+            },
+            dirty: true,
+        })),
+
+    clearManualFixings: () =>
+        set((s) => ({
+            params: { ...s.params, manualFixings: [] },
+            dirty: true,
+        })),
+
+    setPlaceFixingMode: (on) => set({ placeFixingMode: on }),
 
     markSaved: (id) => set({ designId: id, dirty: false }),
 }));

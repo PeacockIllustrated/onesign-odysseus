@@ -1,11 +1,14 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { AlertTriangle, Download, Save, FileText } from 'lucide-react';
+import { AlertTriangle, FileText, Save, Scissors } from 'lucide-react';
 import { useVisualiser } from './store';
 import { sceneCapture } from './Scene3D';
-import { generateDxf, dxfFilename } from '@/lib/visualiser/dxf';
-import { generatePdfBlob, pdfFilename } from '@/lib/visualiser/pdf';
+import {
+    generateReferencePdfBlob,
+    generateProductionPdfBlob,
+    pdfFilename,
+} from '@/lib/visualiser/pdf';
 import { saveDesign } from '@/lib/visualiser/actions';
 import {
     PanelParamsSchema,
@@ -52,23 +55,9 @@ export function ExportBar({
 
     const valid = PanelParamsSchema.safeParse(params);
 
-    const onDxf = () => {
-        const dxf = generateDxf({
-            sectionExport,
-            params,
-            apertureBySection,
-            keylineBySection,
-            fixingsBySection,
-        });
-        download(
-            new Blob([dxf], { type: 'application/dxf' }),
-            dxfFilename(params),
-        );
-    };
-
-    const onPdf = () => {
+    const onReferencePdf = () => {
         const thumb = sceneCapture.fn?.() ?? undefined;
-        const blob = generatePdfBlob({
+        const blob = generateReferencePdfBlob({
             sectionExport,
             params,
             apertureBySection,
@@ -77,7 +66,20 @@ export function ExportBar({
             referenceBySection,
             thumbnailDataUrl: thumb || undefined,
         });
-        download(blob, pdfFilename(params));
+        download(blob, pdfFilename(params, 'reference'));
+    };
+
+    const onProductionPdf = () => {
+        const blob = generateProductionPdfBlob({
+            sectionExport,
+            params,
+            apertureBySection,
+            keylineBySection,
+            fixingsBySection,
+            // Reference outlines and the 3D thumbnail are reference-only —
+            // production gets cut geometry only.
+        });
+        download(blob, pdfFilename(params, 'production'));
     };
 
     const onSave = () => {
@@ -120,19 +122,21 @@ export function ExportBar({
             <div className="flex flex-wrap items-center gap-2">
                 <button
                     type="button"
-                    onClick={onDxf}
+                    onClick={onProductionPdf}
                     disabled={!valid.success}
+                    title="Cut-only PDF — welded perimeters, hairline stroke, sized to the part. Drop into the cutter."
                     className="flex items-center gap-1.5 rounded-md bg-black px-3 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-40"
                 >
-                    <Download size={15} /> DXF
+                    <Scissors size={15} /> PDF — Production
                 </button>
                 <button
                     type="button"
-                    onClick={onPdf}
+                    onClick={onReferencePdf}
                     disabled={!valid.success}
+                    title="Dimensioned shop drawing — spec, legend, fold lines, dimensions. For printing / reference."
                     className="flex items-center gap-1.5 rounded-md border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-40"
                 >
-                    <FileText size={15} /> PDF
+                    <FileText size={15} /> PDF — Reference
                 </button>
                 <button
                     type="button"

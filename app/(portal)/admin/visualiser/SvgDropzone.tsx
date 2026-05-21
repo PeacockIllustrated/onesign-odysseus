@@ -8,7 +8,7 @@ import type {
     AlignV,
     ApertureMode,
 } from '@/lib/visualiser/types';
-import { AlertTriangle, Upload, X } from 'lucide-react';
+import { AlertTriangle, Crosshair, Upload, X } from 'lucide-react';
 
 function Segmented<T extends string>({
     options,
@@ -79,6 +79,9 @@ export function SvgDropzone() {
         clearSvg,
         setPlacement,
         setParam,
+        placeFixingMode,
+        setPlaceFixingMode,
+        clearManualFixings,
     } = useVisualiser();
     const inputRef = useRef<HTMLInputElement>(null);
     const [error, setError] = useState<string | null>(null);
@@ -283,66 +286,204 @@ export function SvgDropzone() {
                         </div>
                         {(params.apertureMode ?? 'aperture') === 'standoff' && (
                             <>
-                                <NumField
-                                    label="Fixing diameter (mm)"
-                                    step={0.5}
-                                    value={
-                                        params.fixingDiameterMm ??
-                                        (params.fixingRadiusMm
-                                            ? params.fixingRadiusMm * 2
-                                            : 10)
-                                    }
-                                    onChange={(n) =>
-                                        setParam(
-                                            'fixingDiameterMm',
-                                            n > 0 ? n : 0.2,
-                                        )
-                                    }
-                                />
-                                <div>
-                                    <div className="flex items-baseline justify-between">
+                                {/* Lettering — physical letter material */}
+                                <div className="space-y-2 pt-1">
+                                    <h4 className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                                        Lettering
+                                    </h4>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <NumField
+                                            label="Thickness (mm)"
+                                            step={0.5}
+                                            value={
+                                                params.letterThicknessMm ?? 5
+                                            }
+                                            onChange={(n) =>
+                                                setParam(
+                                                    'letterThicknessMm',
+                                                    n > 0 ? n : 0.5,
+                                                )
+                                            }
+                                        />
+                                        <NumField
+                                            label="Stand-off (mm)"
+                                            step={1}
+                                            value={
+                                                params.standoffDistanceMm ??
+                                                25
+                                            }
+                                            onChange={(n) =>
+                                                setParam(
+                                                    'standoffDistanceMm',
+                                                    n >= 0 ? n : 0,
+                                                )
+                                            }
+                                        />
+                                    </div>
+                                    <label className="block">
                                         <span className="text-[10px] text-neutral-500">
-                                            Fixing density
+                                            Letter colour
                                         </span>
-                                        <span className="text-[10px] tabular-nums text-neutral-400">
-                                            {Math.round(
-                                                (params.fixingDensity ?? 1) *
-                                                    100,
-                                            )}
-                                            %
-                                        </span>
-                                    </div>
-                                    <input
-                                        type="range"
-                                        min={0}
-                                        max={100}
-                                        // Symmetric mapping: slider 50 = 1.0×;
-                                        // 0 = 0.5× (sparse, acrylic-light);
-                                        // 100 = 2.0× (dense, brass-heavy).
-                                        value={Math.round(
-                                            50 +
-                                                (Math.log2(
-                                                    params.fixingDensity ?? 1,
-                                                ) *
-                                                    50),
-                                        )}
-                                        onChange={(e) => {
-                                            const v = Number(e.target.value);
-                                            const factor =
-                                                Math.pow(2, (v - 50) / 50);
+                                        <div className="mt-0.5 flex items-center gap-2">
+                                            <input
+                                                type="color"
+                                                value={
+                                                    params.letterColor ??
+                                                    '#1a1f23'
+                                                }
+                                                onChange={(e) =>
+                                                    setParam(
+                                                        'letterColor',
+                                                        e.target.value,
+                                                    )
+                                                }
+                                                className="h-7 w-10 cursor-pointer rounded border border-neutral-300 bg-white p-0.5"
+                                                aria-label="Letter colour"
+                                            />
+                                            <input
+                                                type="text"
+                                                value={
+                                                    params.letterColor ??
+                                                    '#1a1f23'
+                                                }
+                                                onChange={(e) => {
+                                                    const v =
+                                                        e.target.value.trim();
+                                                    if (
+                                                        /^#[0-9a-fA-F]{6}$/.test(
+                                                            v,
+                                                        )
+                                                    )
+                                                        setParam(
+                                                            'letterColor',
+                                                            v,
+                                                        );
+                                                }}
+                                                className="flex-1 rounded border border-neutral-300 px-1.5 py-1 font-mono text-[10px] uppercase tracking-wide focus:border-black focus:outline-none"
+                                                placeholder="#1a1f23"
+                                            />
+                                        </div>
+                                    </label>
+                                </div>
+
+                                {/* Fixings — diameter + density + manual */}
+                                <div className="space-y-2 pt-1">
+                                    <h4 className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                                        Fixings
+                                    </h4>
+                                    <NumField
+                                        label="Diameter (mm)"
+                                        step={0.5}
+                                        value={
+                                            params.fixingDiameterMm ??
+                                            (params.fixingRadiusMm
+                                                ? params.fixingRadiusMm * 2
+                                                : 10)
+                                        }
+                                        onChange={(n) =>
                                             setParam(
-                                                'fixingDensity',
-                                                Math.round(factor * 100) / 100,
-                                            );
-                                        }}
-                                        className="mt-1 h-1 w-full accent-black"
-                                        aria-label="Fixing density"
+                                                'fixingDiameterMm',
+                                                n > 0 ? n : 0.2,
+                                            )
+                                        }
                                     />
-                                    <div className="mt-0.5 flex justify-between text-[9px] uppercase tracking-wide text-neutral-400">
-                                        <span>Sparse</span>
-                                        <span>Normal</span>
-                                        <span>Dense</span>
+                                    <div>
+                                        <div className="flex items-baseline justify-between">
+                                            <span className="text-[10px] text-neutral-500">
+                                                Density (auto-placed)
+                                            </span>
+                                            <span className="text-[10px] tabular-nums text-neutral-400">
+                                                {Math.round(
+                                                    (params.fixingDensity ??
+                                                        1) * 100,
+                                                )}
+                                                %
+                                            </span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min={0}
+                                            max={100}
+                                            value={Math.round(
+                                                50 +
+                                                    Math.log2(
+                                                        params.fixingDensity ??
+                                                            1,
+                                                    ) *
+                                                        50,
+                                            )}
+                                            onChange={(e) => {
+                                                const v = Number(
+                                                    e.target.value,
+                                                );
+                                                const factor = Math.pow(
+                                                    2,
+                                                    (v - 50) / 50,
+                                                );
+                                                setParam(
+                                                    'fixingDensity',
+                                                    Math.round(factor * 100) /
+                                                        100,
+                                                );
+                                            }}
+                                            className="mt-1 h-1 w-full accent-black"
+                                            aria-label="Fixing density"
+                                        />
+                                        <div className="mt-0.5 flex justify-between text-[9px] uppercase tracking-wide text-neutral-400">
+                                            <span>Sparse</span>
+                                            <span>Normal</span>
+                                            <span>Dense</span>
+                                        </div>
                                     </div>
+
+                                    {/* Manual placement */}
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setPlaceFixingMode(
+                                                    !placeFixingMode,
+                                                )
+                                            }
+                                            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${
+                                                placeFixingMode
+                                                    ? 'bg-black text-white'
+                                                    : 'border border-neutral-300 text-neutral-700 hover:bg-neutral-100'
+                                            }`}
+                                            title="Click anywhere on the 3D scene or flat preview to drop a fixing exactly there. Manual fixings stay put when density changes."
+                                        >
+                                            <Crosshair size={12} />
+                                            {placeFixingMode
+                                                ? 'Done placing'
+                                                : 'Place fixings'}
+                                        </button>
+                                        {(params.manualFixings?.length ?? 0) >
+                                            0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    clearManualFixings()
+                                                }
+                                                className="rounded-md border border-neutral-300 px-2 py-1.5 text-[11px] font-medium text-neutral-500 hover:bg-neutral-100"
+                                                title="Remove every manually-placed fixing"
+                                            >
+                                                Clear (
+                                                {
+                                                    params.manualFixings
+                                                        ?.length
+                                                }
+                                                )
+                                            </button>
+                                        )}
+                                    </div>
+                                    {placeFixingMode && (
+                                        <p className="text-[10px] text-neutral-500">
+                                            Tap the 3D scene or flat preview
+                                            to drop a fixing at that point.
+                                            These stay where you put them
+                                            even when you change density.
+                                        </p>
+                                    )}
                                 </div>
                             </>
                         )}

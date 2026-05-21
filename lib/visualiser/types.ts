@@ -39,35 +39,6 @@ export const BEND_RULE_TEXT =
     'Bend allowance: thickness ÷ 2 deducted from each side of every fold line';
 
 // =============================================================================
-// DXF LAYERS — named, discrete-entity layers. No blocks, no groups.
-// =============================================================================
-
-export const DXF_LAYERS = {
-    PANEL_OUTLINE: 'PANEL_OUTLINE',
-    FOLD_LINES: 'FOLD_LINES',
-    APERTURE: 'APERTURE',
-    FIXINGS: 'FIXINGS',
-    KEYLINE: 'KEYLINE',
-    SEAM: 'SEAM',
-    DIMENSIONS: 'DIMENSIONS',
-    NOTES: 'NOTES',
-} as const;
-
-export type DxfLayer = (typeof DXF_LAYERS)[keyof typeof DXF_LAYERS];
-
-// AutoCAD colour numbers, mirrors the halman-thompson convention.
-export const DXF_LAYER_COLORS: Record<DxfLayer, number> = {
-    PANEL_OUTLINE: 7, // white/black
-    FOLD_LINES: 1, // red
-    APERTURE: 5, // blue
-    FIXINGS: 6, // magenta — stand-off fixing holes
-    KEYLINE: 4, // cyan
-    SEAM: 3, // green
-    DIMENSIONS: 8, // grey
-    NOTES: 8, // grey
-};
-
-// =============================================================================
 // ZOD SCHEMAS
 // =============================================================================
 
@@ -154,6 +125,25 @@ export const PanelParamsSchema = z.object({
      * lettering like acrylic). Clamped to a safe range.
      */
     fixingDensity: z.number().min(0.4).max(2.5).optional(),
+    /**
+     * Stand-off lettering: physical thickness of the cut letter pieces, the
+     * distance they stand off the panel face, and their colour. Only used
+     * in standoff mode to render the lettering as 3D extruded geometry in
+     * front of the panel.
+     */
+    letterThicknessMm: z.number().positive().max(50).optional(),
+    standoffDistanceMm: z.number().min(0).max(300).optional(),
+    letterColor: z
+        .string()
+        .regex(/^#[0-9a-fA-F]{6}$/, 'letterColor must be a 6-digit hex colour')
+        .optional(),
+    /**
+     * Manually-placed fixing positions in flat-development coords (mm).
+     * These survive density / radius / artwork edits — they're the "I
+     * need a fixing exactly here" pins. Merged with the auto-placed
+     * fixings at render and export time.
+     */
+    manualFixings: z.array(z.tuple([z.number(), z.number()])).optional(),
 });
 export type PanelParams = z.infer<typeof PanelParamsSchema>;
 
