@@ -524,40 +524,37 @@ function clipPolylineToRect(pts: V[], r: Rect): V[][] {
 }
 
 /**
- * Place stand-off fixing holes inside the lettering — for real physical
- * support, not just visual spread.
+ * Place stand-off fixing holes inside the lettering — informed by how a
+ * sign fixer actually does it (anchor stroke ends + corners, not stroke
+ * centres). The Montserrat alphabet reference shows fixings concentrated
+ * at the **tips of each stroke** and the **outer corners of each letter**,
+ * not at midpoints.
  *
- * Physical principles encoded:
- *   - A single fixing lets the letter rotate around it. So letters big
- *     enough to "tip" get at least 2 fixings, spread along their **long
- *     axis** — the natural resistance to bending/tipping moments.
- *   - Two collinear fixings still let the letter rotate around the line
- *     through them. So chunky letters (both dimensions large) get a third
- *     fixing off-axis: triangulation that eliminates rotation entirely.
- *   - Fixings sit only where the metal can carry them — far enough from
- *     every edge (>= radius + 4 mm) so they're not at a hairline.
+ * The algorithm encodes that rule geometrically:
+ *
+ * Per outer contour (= per letter):
+ *   1. Build an eroded-interior candidate grid (filled, even-odd, ≥
+ *      edgeMargin from every boundary).
+ *   2. **Detect sharp convex corners on the outline** (≥ 60° turn) and
+ *      inset each toward the interior by radius + edgeMargin — these are
+ *      "tip seeds". Adjacent corners within a stroke-width are merged so a
+ *      single tip on a wedge (e.g. the apex of A) counts once.
+ *   3. Snap each tip seed to the nearest valid candidate.
+ *   4. Smooth shapes (O / C / S) have no convex corners — fall back to a
+ *      cardinal-style coverage (4 points on a chunky shape, 2 on a small).
+ *   5. Place tip-seed fixings first (outermost first by distance from
+ *      letter centroid), enforcing the no-alignment + no-crowd rules.
+ *   6. Fill any remaining target slots by farthest-point sampling biased
+ *      outward (so extras still go toward extremities, not the middle).
+ *   7. Density > 1 → tighter target count (more fixings, for heavy metals
+ *      like brass); < 1 → looser (acrylic).
+ *
+ * Constraints kept from the previous algorithm:
+ *   - Edge margin ≥ radius + 4 mm so the hole isn't at a hairline.
+ *   - Minimum centre-to-centre ≥ 2.5 × diameter (no crowding, no metal
+ *     failure between holes).
  *   - Within a single letter, no two fixings share a vertical or
- *     horizontal line (the slight-offset rule that reduces wobble).
- *
- * Method (per outer contour = per letter):
- *   1. Build a candidate grid inside the letter (sampled at ~radius), keep
- *      only points that are filled (even-odd, so counters of O/A/B are
- *      excluded) AND at least `edgeMargin` from every boundary. This
- *      "eroded interior" is where a fixing can physically live.
- *   2. Decide a target count from the letter's longest axis and density,
- *      bumped to 3 when both axes are big (triangulation needed).
- *   3. Pick fixings by **greedy farthest-point sampling**: first the
- *      deepest interior point (most stable single fixing); each subsequent
- *      one is the candidate maximising its distance to the already-placed
- *      set. This naturally spreads them to the extremes of the letter.
- *   4. Stop when the target is hit OR the next candidate would crowd a
- *      previous one (< 2.5 × diameter), since crammed fixings give no
- *      extra support and risk metal failure between them.
- *   5. Per-letter guarantee: any outer with zero hits gets one fallback
- *      fixing at its most interior point.
- *
- * Density > 1 means more fixings per unit of letter length (heavy
- * materials like brass); < 1 means fewer (light materials like acrylic).
+ *     horizontal line (reduces wobble).
  */
 export function placeFixings(
     contours: FlatPath[],
@@ -572,19 +569,17 @@ export function placeFixings(
     if (rings.some((r) => r.length < 3)) return [];
 
     const radius = diameterMm / 2;
-    const d = Math.min(2.5, Math.max(0.4, densityFactor || 1));
-    // Edge margin: hole edge needs material around it. 4 mm beyond the
-    // hole radius keeps the metal from cracking near a thin stroke edge.
+    const density = Math.min(2.5, Math.max(0.4, densityFactor || 1));
     const edgeMargin = Math.max(radius + 4, 7);
-    // Within-letter no-alignment tolerance (wobble rule).
     const axisTol = Math.max(3, radius * 0.6);
-    // mm of letter length per fixing along the long axis at density 1.
-    const supportSpan = (spacingMm ?? 90) / d;
-    // Hard minimum centre-to-centre between any two fixings (no crowding).
     const minPairwise = Math.max(diameterMm * 2.5, 18);
-    // Grid step for the candidate sampler. Finer is better at finding thin
-    // stroke positions; capped to keep large signs interactive.
     const sampleStep = Math.max(2.5, Math.min(radius * 1.8, 12));
+    // Corners closer than this are the two sides of a single tip (e.g. the
+    // apex of A) and get merged into one seed. spacingMm overrides as a
+    // legacy escape hatch.
+    const mergeSeedDist = Math.max(diameterMm * 3, 30);
+    // Reserved for callers that want to pin a particular spacing.
+    void spacingMm;
 
     // Outer contours = even containment depth.
     const depthOf = rings.map((ring, i) => {
@@ -605,9 +600,11 @@ export function placeFixings(
         const lbb = bboxOf([ring]);
         if (lbb.w <= 0 || lbb.h <= 0) continue;
 
-        // 1. Eroded-interior candidate grid for this letter.
-        const candidates: Array<[number, number]> = [];
-        const candidateEdge: number[] = [];
+        // 1. Candidate grid + per-candidate edge distance + letter centroid.
+        type Cand = { p: [number, number]; edge: number; cDist: number };
+        const candidates: Cand[] = [];
+        let sumX = 0;
+        let sumY = 0;
         for (let y = lbb.y0; y <= lbb.y1 + 1e-6; y += sampleStep) {
             for (let x = lbb.x0; x <= lbb.x1 + 1e-6; x += sampleStep) {
                 const p: [number, number] = [x, y];
@@ -615,20 +612,13 @@ export function placeFixings(
                 if (!isFilled(p, rings)) continue;
                 const e = minEdgeDist(p, rings);
                 if (e < edgeMargin) continue;
-                candidates.push(p);
-                candidateEdge.push(e);
+                candidates.push({ p, edge: e, cDist: 0 });
+                sumX += x;
+                sumY += y;
             }
         }
 
-        // 2. Target count: letter length / supportSpan, with the
-        //    triangulation bump for chunky letters.
-        const longDim = Math.max(lbb.w, lbb.h);
-        const shortDim = Math.min(lbb.w, lbb.h);
-        let target = Math.max(1, Math.ceil(longDim / supportSpan));
-        if (longDim >= 100 && shortDim >= 80 && target < 3) target = 3;
-        target = Math.min(target, 30); // safety cap
-
-        // Empty interior → fallback to letter centre with a relaxed margin.
+        // Empty interior — fallback to letter centre with a relaxed margin.
         if (candidates.length === 0) {
             const p: [number, number] = [
                 (lbb.x0 + lbb.x1) / 2,
@@ -642,67 +632,208 @@ export function placeFixings(
             }
             continue;
         }
+        const cx = sumX / candidates.length;
+        const cy = sumY / candidates.length;
+        for (const c of candidates) {
+            c.cDist = Math.hypot(c.p[0] - cx, c.p[1] - cy);
+        }
 
-        // 3. First fixing: deepest interior — best for a single-fixing
-        //    letter and a good "anchor" for farthest-point that follows.
-        let firstIdx = 0;
-        let firstScore = -Infinity;
-        for (let k = 0; k < candidates.length; k++) {
-            if (candidateEdge[k] > firstScore) {
-                firstScore = candidateEdge[k];
-                firstIdx = k;
+        // 2. Sharp convex outline corners → tip seeds, merged into clusters.
+        const rawSeeds = detectTipSeeds(
+            ring,
+            edgeMargin + radius,
+            Math.PI / 3, // 60° minimum turn
+        );
+        const mergedSeeds = mergeNearbyPoints(rawSeeds, mergeSeedDist);
+
+        // 3. Snap each seed to the nearest valid candidate.
+        const seedCandidates: Array<[number, number]> = [];
+        for (const s of mergedSeeds) {
+            let bestK = -1;
+            let bestD = Infinity;
+            for (let k = 0; k < candidates.length; k++) {
+                const d = Math.hypot(
+                    candidates[k].p[0] - s[0],
+                    candidates[k].p[1] - s[1],
+                );
+                if (d < bestD) {
+                    bestD = d;
+                    bestK = k;
+                }
+            }
+            if (bestK >= 0 && bestD <= sampleStep * 4) {
+                seedCandidates.push(candidates[bestK].p);
             }
         }
-        const local: Array<[number, number]> = [candidates[firstIdx]];
 
-        // 3b. Greedy farthest-point for the rest, with within-letter
-        //     no-alignment and the global no-crowd rule.
+        // 4. Decide the target count.
+        const longDim = Math.max(lbb.w, lbb.h);
+        const shortDim = Math.min(lbb.w, lbb.h);
+        let tipsCount = seedCandidates.length;
+        if (tipsCount === 0) {
+            // Smooth shape (no detectable corners) — cardinal coverage.
+            tipsCount = longDim >= 80 && shortDim >= 80 ? 4 : 2;
+        } else if (tipsCount === 1) {
+            // A single tip alone lets the letter pivot — bump to 2.
+            tipsCount = 2;
+        }
+        const extra = Math.floor(Math.max(0, longDim - 250) / 250);
+        let target = tipsCount + extra;
+        target = Math.max(1, Math.min(30, Math.round(target * density)));
+
+        const local: Array<[number, number]> = [];
+        const accepts = (p: [number, number]): boolean => {
+            for (const a of local) {
+                if (Math.hypot(a[0] - p[0], a[1] - p[1]) < minPairwise)
+                    return false;
+                if (
+                    Math.abs(a[0] - p[0]) < axisTol ||
+                    Math.abs(a[1] - p[1]) < axisTol
+                )
+                    return false;
+            }
+            return true;
+        };
+
+        // 5. Place tip seeds first, outermost-first so the corners win the
+        //    axisTol contest over more central seeds.
+        const seedsSorted = [...seedCandidates].sort((a, b) => {
+            const da = Math.hypot(a[0] - cx, a[1] - cy);
+            const db = Math.hypot(b[0] - cx, b[1] - cy);
+            return db - da;
+        });
+        for (const sp of seedsSorted) {
+            if (local.length >= target) break;
+            if (accepts(sp)) local.push(sp);
+        }
+
+        // No seeds landed → start with the most-extreme interior point so
+        // the farthest-point pass has a sensible anchor.
+        if (local.length === 0) {
+            let bestK = 0;
+            let bestS = -Infinity;
+            for (let k = 0; k < candidates.length; k++) {
+                const s = candidates[k].edge * 0.4 + candidates[k].cDist * 1.0;
+                if (s > bestS) {
+                    bestS = s;
+                    bestK = k;
+                }
+            }
+            local.push(candidates[bestK].p);
+        }
+
+        // 6. Fill any remaining slots with farthest-point sampling biased
+        //    outward (so extras keep going toward the letter's extremities).
         while (local.length < target) {
-            let pickIdx = -1;
-            let pickScore = -Infinity;
+            let pickK = -1;
+            let pickS = -Infinity;
             for (let k = 0; k < candidates.length; k++) {
                 const c = candidates[k];
-                // skip already-picked
                 let dup = false;
                 for (const a of local) {
-                    if (a[0] === c[0] && a[1] === c[1]) {
+                    if (a[0] === c.p[0] && a[1] === c.p[1]) {
                         dup = true;
                         break;
                     }
                 }
                 if (dup) continue;
-                // within-letter alignment veto
-                let lines = false;
-                for (const a of local) {
-                    if (
-                        Math.abs(a[0] - c[0]) < axisTol ||
-                        Math.abs(a[1] - c[1]) < axisTol
-                    ) {
-                        lines = true;
-                        break;
-                    }
-                }
-                if (lines) continue;
-                // distance to nearest already-placed (this letter)
+                if (!accepts(c.p)) continue;
                 let minD = Infinity;
                 for (const a of local) {
-                    const dist = Math.hypot(a[0] - c[0], a[1] - c[1]);
-                    if (dist < minD) minD = dist;
+                    const d = Math.hypot(a[0] - c.p[0], a[1] - c.p[1]);
+                    if (d < minD) minD = d;
                 }
-                if (minD > pickScore) {
-                    pickScore = minD;
-                    pickIdx = k;
+                const score = minD + c.cDist * 0.3;
+                if (score > pickS) {
+                    pickS = score;
+                    pickK = k;
                 }
             }
-            // 4. Stop when crowded.
-            if (pickIdx < 0 || pickScore < minPairwise) break;
-            local.push(candidates[pickIdx]);
+            if (pickK < 0) break;
+            local.push(candidates[pickK].p);
         }
 
         for (const p of local) accepted.push(p);
     }
 
     return accepted.map(([cx, cy]) => circlePoly(cx, cy, radius));
+}
+
+/**
+ * Sharp convex outline corners of `ring`, each inset inward by `insetDist`
+ * so the resulting seed sits inside the stroke (not at the cut edge).
+ * Sharpness is the turn angle between incoming and outgoing edges; anything
+ * shallower than `sharpThresholdRad` is treated as part of a smooth curve.
+ */
+function detectTipSeeds(
+    ring: Array<[number, number]>,
+    insetDist: number,
+    sharpThresholdRad: number,
+): Array<[number, number]> {
+    const n = ring.length;
+    if (n < 4) return [];
+    const sgn = Math.sign(polySignedArea(ring));
+    if (sgn === 0) return [];
+
+    const out: Array<[number, number]> = [];
+    for (let i = 0; i < n; i++) {
+        const prev = ring[(i - 1 + n) % n];
+        const curr = ring[i];
+        const next = ring[(i + 1) % n];
+        const ax = curr[0] - prev[0];
+        const ay = curr[1] - prev[1];
+        const bx = next[0] - curr[0];
+        const by = next[1] - curr[1];
+        const aL = Math.hypot(ax, ay);
+        const bL = Math.hypot(bx, by);
+        if (aL < 0.5 || bL < 0.5) continue;
+        const cross = ax * by - ay * bx;
+        if (cross * sgn <= 0) continue; // not convex for this winding
+        const dot = ax * bx + ay * by;
+        const turn = Math.atan2(Math.abs(cross), dot);
+        if (turn < sharpThresholdRad) continue;
+        // Inward bisector: average of the two edges' interior normals.
+        const lax = (-ay * sgn) / aL;
+        const lay = (ax * sgn) / aL;
+        const lbx = (-by * sgn) / bL;
+        const lby = (bx * sgn) / bL;
+        let nx = lax + lbx;
+        let ny = lay + lby;
+        const nLen = Math.hypot(nx, ny);
+        if (nLen < 1e-6) continue;
+        nx /= nLen;
+        ny /= nLen;
+        out.push([curr[0] + nx * insetDist, curr[1] + ny * insetDist]);
+    }
+    return out;
+}
+
+function mergeNearbyPoints(
+    pts: Array<[number, number]>,
+    mergeDist: number,
+): Array<[number, number]> {
+    const out: Array<[number, number]> = [];
+    for (const p of pts) {
+        // <= so two corners exactly mergeDist apart (e.g. the two top
+        // corners of an I-stem that happens to be diameter*3 wide) still
+        // merge into a single tip.
+        const dup = out.some(
+            (m) => Math.hypot(m[0] - p[0], m[1] - p[1]) <= mergeDist,
+        );
+        if (!dup) out.push(p);
+    }
+    return out;
+}
+
+function polySignedArea(pts: Array<[number, number]>): number {
+    let s = 0;
+    const n = pts.length;
+    for (let i = 0; i < n; i++) {
+        const [x1, y1] = pts[i];
+        const [x2, y2] = pts[(i + 1) % n];
+        s += x1 * y2 - x2 * y1;
+    }
+    return s / 2;
 }
 
 function bboxOf(
