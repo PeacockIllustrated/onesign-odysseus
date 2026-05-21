@@ -293,6 +293,7 @@ function pointInRing(
 function StandoffLettering({
     face,
     reference,
+    fixings,
     thicknessMm,
     standoffMm,
     faceThicknessMm,
@@ -300,6 +301,7 @@ function StandoffLettering({
 }: {
     face: { xMm: number; yMm: number; wMm: number; hMm: number };
     reference: FlatPath[];
+    fixings: FlatPath[];
     thicknessMm: number;
     standoffMm: number;
     faceThicknessMm: number;
@@ -373,13 +375,63 @@ function StandoffLettering({
         return out;
     }, [face, reference]);
 
-    if (shapes.length === 0) return null;
-
     // Front of the panel sits at z = +faceT/2 (panel is centred at z=0
     // with thickness faceT). The lettering sits standoffMm in front,
     // extruded outward by thicknessMm.
     const baseZ = (faceThicknessMm / 2 + standoffMm) * S;
     const depthScene = thicknessMm * S;
+
+    // Stroke each fixing circle onto the front face of the extruded
+    // lettering so the installer can see where the studs land — and so
+    // we have a visible target when adding more in place-fixing mode.
+    const fixingStrokes = useMemo(() => {
+        if (fixings.length === 0) return null;
+        const positions: number[] = [];
+        const segs = 32;
+        // Sit a hair above the front face (z = depth) to avoid z-fight.
+        const z = depthScene + 0.3 * S;
+        for (const f of fixings) {
+            const pts = f.points;
+            if (pts.length < 3) continue;
+            let cx = 0,
+                cy = 0;
+            for (const q of pts) {
+                cx += q[0];
+                cy += q[1];
+            }
+            cx /= pts.length;
+            cy /= pts.length;
+            let r = 0;
+            for (const q of pts) r += Math.hypot(q[0] - cx, q[1] - cy);
+            r /= pts.length;
+            const lx = (cx - face.xMm - face.wMm / 2) * S;
+            const ly = (face.yMm + face.hMm / 2 - cy) * S;
+            const rs = r * S;
+            for (let i = 0; i < segs; i++) {
+                const t0 = (i / segs) * Math.PI * 2;
+                const t1 = ((i + 1) / segs) * Math.PI * 2;
+                positions.push(
+                    lx + Math.cos(t0) * rs,
+                    ly + Math.sin(t0) * rs,
+                    z,
+                );
+                positions.push(
+                    lx + Math.cos(t1) * rs,
+                    ly + Math.sin(t1) * rs,
+                    z,
+                );
+            }
+        }
+        if (positions.length === 0) return null;
+        const g = new THREE.BufferGeometry();
+        g.setAttribute(
+            'position',
+            new THREE.Float32BufferAttribute(positions, 3),
+        );
+        return g;
+    }, [fixings, face, depthScene]);
+
+    if (shapes.length === 0) return null;
 
     return (
         <group position={[0, 0, baseZ]}>
@@ -405,6 +457,11 @@ function StandoffLettering({
                     <Edges color={EDGE_COLOR} lineWidth={1.5} />
                 </mesh>
             ))}
+            {fixingStrokes && (
+                <lineSegments geometry={fixingStrokes}>
+                    <lineBasicMaterial color={EDGE_COLOR} />
+                </lineSegments>
+            )}
         </group>
     );
 }
@@ -526,6 +583,7 @@ function Panel({
                     <StandoffLettering
                         face={face}
                         reference={reference}
+                        fixings={fixings}
                         thicknessMm={params.letterThicknessMm ?? 5}
                         standoffMm={params.standoffDistanceMm ?? 25}
                         faceThicknessMm={T}

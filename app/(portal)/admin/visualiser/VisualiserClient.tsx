@@ -181,6 +181,38 @@ export function VisualiserClient({
         [autoFixings, manualFixings],
     );
 
+    // Click-to-place must land INSIDE the lettering shape — clicks on the
+    // panel background drop nothing. Even-odd rule across every reference
+    // ring so counters of O / A / B (which sit "outside" the lettering)
+    // correctly exclude.
+    const handlePlaceFixing = (p: [number, number]) => {
+        if (reference.length === 0) return;
+        let n = 0;
+        for (const r of reference) {
+            const ring = r.points;
+            // Ray-cast inside test.
+            let inside = false;
+            let j = ring.length - 1;
+            for (let i = 0; i < ring.length; i++) {
+                const xi = ring[i][0];
+                const yi = ring[i][1];
+                const xj = ring[j][0];
+                const yj = ring[j][1];
+                if (
+                    yi > p[1] !== yj > p[1] &&
+                    p[0] <
+                        ((xj - xi) * (p[1] - yi)) / (yj - yi || 1e-12) + xi
+                ) {
+                    inside = !inside;
+                }
+                j = i;
+            }
+            if (inside) n++;
+        }
+        if (n % 2 !== 1) return; // click landed outside the lettering
+        addManualFixing(p);
+    };
+
     // Build the keyline from the cut aperture so it tracks the visible
     // artwork, then clip it too. Standoff mode has no keyline.
     const keylineClip = useMemo(() => {
@@ -367,7 +399,7 @@ export function VisualiserClient({
                             reference={reference}
                             panelColor={params.panelColor ?? '#d6d6d6'}
                             placeFixingMode={placeFixingMode}
-                            onPlaceFixing={addManualFixing}
+                            onPlaceFixing={handlePlaceFixing}
                         />
                     ) : (
                         <Scene3D
@@ -380,7 +412,7 @@ export function VisualiserClient({
                             reference={reference}
                             fold={tab === 'folded' ? 1 : fold}
                             placeFixingMode={placeFixingMode}
-                            onPlaceFixing={addManualFixing}
+                            onPlaceFixing={handlePlaceFixing}
                         />
                     )}
 
