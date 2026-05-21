@@ -55,7 +55,19 @@ function PanelPlane({
     return (
         <mesh position={position}>
             <planeGeometry args={args} />
-            <meshBasicMaterial color={color} side={THREE.DoubleSide} />
+            {/* polygonOffset pushes the fill slightly away from the camera
+                in depth, so the Edges lines always sit "in front" of it —
+                regardless of whether the camera is looking at the front
+                of the panel or orbited around to the back. Without this,
+                the back-facing fill (DoubleSide) lands at the same depth
+                as the edges and paints over them when viewed from behind. */}
+            <meshBasicMaterial
+                color={color}
+                side={THREE.DoubleSide}
+                polygonOffset
+                polygonOffsetFactor={1}
+                polygonOffsetUnits={1}
+            />
             {/* lineWidth > 1 makes drei swap to LineMaterial under the
                 hood, which renders proper antialiased line geometry
                 (gl.LINES is always 1px aliased on most GPUs). 1.5 reads
@@ -110,7 +122,19 @@ function FacePlane({
                 defensive — kept in case any future code feeds a real
                 bezier into the Shape via bezierCurveTo. */}
             <shapeGeometry args={[shape, 48]} />
-            <meshBasicMaterial color={color} side={THREE.DoubleSide} />
+            {/* polygonOffset pushes the fill slightly away from the camera
+                in depth, so the Edges lines always sit "in front" of it —
+                regardless of whether the camera is looking at the front
+                of the panel or orbited around to the back. Without this,
+                the back-facing fill (DoubleSide) lands at the same depth
+                as the edges and paints over them when viewed from behind. */}
+            <meshBasicMaterial
+                color={color}
+                side={THREE.DoubleSide}
+                polygonOffset
+                polygonOffsetFactor={1}
+                polygonOffsetUnits={1}
+            />
             {/* lineWidth > 1 makes drei swap to LineMaterial under the
                 hood, which renders proper antialiased line geometry
                 (gl.LINES is always 1px aliased on most GPUs). 1.5 reads
