@@ -69,6 +69,14 @@ interface PdfOptions {
     acrylicPieces?: MaterialPiece[];
     solidPieces?: MaterialPiece[];
     standoffPieces?: StandoffPiece[];
+    /**
+     * Solid piece OUTLINES (just the .path of each piece) clipped to
+     * each export section, in export-sheet coords. Used by the
+     * production PDF to emit them as compound-shape islands inside
+     * the panel cut so the cutter leaves the inner counter as panel
+     * material (e.g. the triangle inside the letter R).
+     */
+    solidPathsBySection?: FlatPath[][];
     /** PNG/JPEG data URL of the 3D preview, optional. */
     thumbnailDataUrl?: string;
 }
@@ -1015,6 +1023,33 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
                 );
             }
         }
+        // Overlay inner-counter "solid" islands inside the cut. The
+        // production PDF emits these as compound shapes so the cutter
+        // leaves them as panel material — surfacing the same boundary
+        // here makes the reference drawing match the actual cut.
+        const solids = opts.solidPieces ?? [];
+        if (solids.length > 0) {
+            const panelColor = opts.params.panelColor ?? '#d6d6d6';
+            const panelRgb = hexToRgb(panelColor);
+            for (const piece of solids) {
+                const fillRgb = hexToRgb(piece.color || panelColor);
+                const usePanel =
+                    fillRgb[0] === panelRgb[0] &&
+                    fillRgb[1] === panelRgb[1] &&
+                    fillRgb[2] === panelRgb[2];
+                drawMaterialPiece(
+                    doc,
+                    piece,
+                    px,
+                    py,
+                    scale,
+                    usePanel ? panelRgb : fillRgb,
+                    [80, 80, 80],
+                    0.25,
+                    'FD',
+                );
+            }
+        }
     } else if (spec.pieces) {
         for (const piece of spec.pieces) {
             const fillForPiece = hexToRgb(piece.color);
@@ -1191,6 +1226,7 @@ export function generateProductionPdfBlob(opts: PdfOptions): Blob {
         const sectionKl = opts.keylineBySection?.[i] ?? [];
         const panelCuts = sectionKl.length > 0 ? sectionKl : sectionAp;
         const sectionFx = opts.fixingsBySection?.[i] ?? [];
+        const sectionSolid = opts.solidPathsBySection?.[i] ?? [];
 
         // Outer perimeter — one continuous welded closed contour.
         const perimeter = outlinePerimeter(section.development);
@@ -1234,6 +1270,21 @@ export function generateProductionPdfBlob(opts: PdfOptions): Blob {
                 }
                 doc.lines(deltas, pts[0][0], pts[0][1], [1, 1], 'S', false);
             }
+        }
+
+        // Inner-counter / solid pieces — emitted as additional closed
+        // contours alongside the panel cut. CAM software interprets a
+        // smaller closed contour sitting inside a larger one as a
+        // compound shape (outer ring + inner island), so the cutter
+        // pierces both lines and leaves the inner area as panel
+        // material. Without this, the inside of letters like R / B /
+        // A / O would fall out as cut waste.
+        for (const sp of sectionSolid) {
+            if (!sp.closed || sp.points.length < 3) continue;
+            const pts = sp.points.map(
+                ([x, y]) => [px(x), py(y)] as [number, number],
+            );
+            drawClosedPolyline(doc, pts, 'S');
         }
 
         // Stand-off fixings — single circle per hole, naturally welded.
@@ -1290,13 +1341,25 @@ export function generateProductionPdfBlob(opts: PdfOptions): Blob {
     const allApertures: FlatPath[] = (opts.apertureBySection ?? []).flatMap(
         (arr) => arr,
     );
+    // Solid pieces (in flat-dev coords) — these are the inner-counter
+    // outlines of letters that should appear as ISLANDS inside their
+    // parent aperture. On the push-through page the parent aperture
+    // is the letter shape itself, so a solid that sits geometrically
+    // inside any aperture becomes an inner compound contour and the
+    // CAM cutter pierces both, leaving the counter as a separate
+    // small piece of insert material.
+    const allSolids: FlatPath[] = (opts.solidPieces ?? [])
+        .map((s) => s.path)
+        .filter((p) => p.closed && p.points.length >= 3);
     if (hasKeyline && allApertures.length > 0) {
         // Bounding box of the insert layout so we can size the page.
+        // Solids that sit inside the apertures contribute to the bbox
+        // implicitly via the apertures; iterate them too for safety.
         let minX = Infinity;
         let minY = Infinity;
         let maxX = -Infinity;
         let maxY = -Infinity;
-        for (const p of allApertures) {
+        for (const p of [...allApertures, ...allSolids]) {
             for (const [x, y] of p.points) {
                 if (x < minX) minX = x;
                 if (y < minY) minY = y;
@@ -1344,16 +1407,29 @@ export function generateProductionPdfBlob(opts: PdfOptions): Blob {
                     );
                 }
             }
+            // Solid pieces — inner-counter islands. CAM treats them as
+            // compound parts of the surrounding aperture letter.
+            for (const sp of allSolids) {
+                const pts = sp.points.map(
+                    ([x, y]) => [ipx(x), ipy(y)] as [number, number],
+                );
+                drawClosedPolyline(doc, pts, 'S');
+            }
             // Info strip
             const insertInfo = [
                 'ONESIGN',
                 params.name,
                 'PUSH-THROUGH INSERTS',
                 `${allApertures.length} piece${allApertures.length === 1 ? '' : 's'}`,
-                `bounding box ${Math.round(insertW)} x ${Math.round(insertH)} mm`,
+                allSolids.length > 0
+                    ? `${allSolids.length} counter island${allSolids.length === 1 ? '' : 's'}`
+                    : '',
+                `bbox ${Math.round(insertW)} x ${Math.round(insertH)} mm`,
                 new Date().toLocaleDateString('en-GB'),
                 '1:1',
-            ].join('  |  ');
+            ]
+                .filter(Boolean)
+                .join('  |  ');
             doc.setFontSize(8);
             doc.setTextColor(110);
             doc.text(T(insertInfo), M, M + insertH + INFO_GAP);
@@ -1361,7 +1437,300 @@ export function generateProductionPdfBlob(opts: PdfOptions): Blob {
         }
     }
 
+    // ---- Per-material cut pages -------------------------------------
+    // One 1:1 production-ready cut page per non-empty material type.
+    // Each piece is emitted as a compound shape: outer outline + inner
+    // counter holes as separate closed contours so the CAM cutter
+    // pierces both and leaves the inner counter as material of that
+    // type (acrylic / vinyl / standoff).
+    drawProductionMaterialPage(doc, {
+        title: 'ACRYLIC — FACE-STUCK',
+        pieces: opts.acrylicPieces ?? [],
+        params,
+        productionStroke,
+    });
+    drawProductionMaterialPage(doc, {
+        title: 'VINYL APPLIQUE',
+        pieces: opts.vinylPieces ?? [],
+        params,
+        productionStroke,
+    });
+    drawProductionMaterialPage(doc, {
+        title: 'STOOD-OFF LETTERING',
+        pieces: (opts.standoffPieces ?? []).map((p) => ({
+            pathIndex: p.pathIndex,
+            path: p.path,
+            holes: p.holes,
+            color: p.color,
+            thicknessMm: p.thicknessMm,
+        })),
+        params,
+        productionStroke,
+    });
+
+    // ---- Placement template page (1:1 panel face) -------------------
+    // Final page: face-only print at 1:1 with stand-off hole positions
+    // and faint letter reference outlines. The backshop prints this
+    // and lays it on the panel as a stencil for drilling stud holes
+    // and lining up the lettering. Skip when there's nothing to mark.
+    drawPlacementTemplatePage(doc, opts, productionStroke);
+
     return doc.output('blob');
+}
+
+/**
+ * One 1:1 cut page per material type. Sized to the bbox of the pieces
+ * with a margin; emits the outer outline + every nested counter as a
+ * closed contour so the cutter reads them as compound shapes.
+ *
+ * No-ops when `pieces` is empty.
+ */
+function drawProductionMaterialPage(
+    doc: jsPDF,
+    args: {
+        title: string;
+        pieces: MaterialPiece[];
+        params: PanelParams;
+        productionStroke: number;
+    },
+): void {
+    const { title, pieces, params, productionStroke } = args;
+    if (pieces.length === 0) return;
+
+    // Compute bbox over outer paths + holes.
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const piece of pieces) {
+        for (const path of [piece.path, ...(piece.holes ?? [])]) {
+            for (const [x, y] of path.points) {
+                if (x < minX) minX = x;
+                if (y < minY) minY = y;
+                if (x > maxX) maxX = x;
+                if (y > maxY) maxY = y;
+            }
+        }
+    }
+    const partW = Math.max(1, maxX - minX);
+    const partH = Math.max(1, maxY - minY);
+    const M = 18;
+    const INFO_GAP = 6;
+    const pageW = partW + 2 * M;
+    const pageH = partH + 2 * M;
+    if (pageW > MAX_PAGE_MM || pageH > MAX_PAGE_MM) return; // too big — skip
+    doc.addPage([pageW, pageH], pageW >= pageH ? 'landscape' : 'portrait');
+    const px = (x: number) => M + (x - minX);
+    const py = (y: number) => M + (y - minY);
+    doc.setDrawColor(0);
+    doc.setLineWidth(productionStroke);
+    for (const piece of pieces) {
+        // Outer ring
+        if (piece.path.closed && piece.path.points.length >= 3) {
+            const pts = piece.path.points.map(
+                ([x, y]) => [px(x), py(y)] as [number, number],
+            );
+            drawClosedPolyline(doc, pts, 'S');
+        }
+        // Inner counter holes → emitted as separate closed contours.
+        for (const hole of piece.holes ?? []) {
+            if (!hole.closed || hole.points.length < 3) continue;
+            const pts = hole.points.map(
+                ([x, y]) => [px(x), py(y)] as [number, number],
+            );
+            drawClosedPolyline(doc, pts, 'S');
+        }
+    }
+    // Info strip — colour / thickness varies per piece, summarise.
+    const colours = Array.from(
+        new Set(pieces.map((p) => p.color.toUpperCase())),
+    );
+    const thicknesses = Array.from(
+        new Set(
+            pieces
+                .map((p) =>
+                    p.thicknessMm != null ? `${p.thicknessMm}mm` : null,
+                )
+                .filter(Boolean),
+        ),
+    );
+    const info = [
+        'ONESIGN',
+        params.name,
+        title,
+        `${pieces.length} piece${pieces.length === 1 ? '' : 's'}`,
+        colours.length > 0 ? `colour ${colours.join(' / ')}` : '',
+        thicknesses.length > 0 ? `thickness ${thicknesses.join(' / ')}` : '',
+        `bbox ${Math.round(partW)} x ${Math.round(partH)} mm`,
+        new Date().toLocaleDateString('en-GB'),
+        '1:1',
+    ]
+        .filter(Boolean)
+        .join('  |  ');
+    doc.setFontSize(8);
+    doc.setTextColor(110);
+    doc.text(ascii(info), M, M + partH + INFO_GAP);
+    doc.setTextColor(0);
+}
+
+/**
+ * Final placement-template page — 1:1 panel FACE only (no returns) so
+ * the backshop can print, lay it on the panel, and mark stud-hole /
+ * letter positions. Skip when the sign has nothing position-critical
+ * to mark (no fixings, no standoff letters, no push-through inserts).
+ */
+function drawPlacementTemplatePage(
+    doc: jsPDF,
+    opts: PdfOptions,
+    productionStroke: number,
+): void {
+    const { sectionExport, params } = opts;
+    const allFixings: FlatPath[] = (opts.fixingsBySection ?? []).flatMap(
+        (a) => a,
+    );
+    const allReferences: FlatPath[] = (opts.referenceBySection ?? []).flatMap(
+        (a) => a,
+    );
+    const allApertures: FlatPath[] = (opts.apertureBySection ?? []).flatMap(
+        (a) => a,
+    );
+    if (
+        allFixings.length === 0 &&
+        allReferences.length === 0 &&
+        allApertures.length === 0
+    ) {
+        return;
+    }
+
+    // Face dimensions assembled across all sections, in face-local
+    // coords (origin at the face top-left of the first section).
+    const M = 18;
+    const INFO_GAP = 6;
+    // Use the assembled layout sheet height for the face — sectionExport
+    // already aggregates sections; the face occupies the central band
+    // of the layout. Simpler: bbox the fixings + references + apertures
+    // in export-sheet coords, plus the panel face rectangle that wraps
+    // them. We use sectionExport's total layout width as the worst-case
+    // canvas; the face height is params.panelHeightMm.
+    const partW = sectionExport.totalLayoutWMm;
+    const partH = params.panelHeightMm;
+    // Find the face's Y offset within the layout: use the first
+    // section's face segment, since the face is constant across
+    // sections.
+    const firstFace = sectionExport.sections[0]?.development.segments.find(
+        (s) => s.role === 'face',
+    );
+    const faceYInLayout = firstFace?.yMm ?? 0;
+
+    const pageW = partW + 2 * M;
+    const pageH = partH + 2 * M;
+    if (pageW > MAX_PAGE_MM || pageH > MAX_PAGE_MM) return;
+
+    doc.addPage([pageW, pageH], pageW >= pageH ? 'landscape' : 'portrait');
+    // Translate so the face top-left lands at (M, M).
+    const px = (x: number) => M + x;
+    const py = (y: number) => M + (y - faceYInLayout);
+
+    // Panel face outline — full-scale rectangle of the panel face.
+    // Walk the per-section face segments side-by-side so split panels
+    // show their seams.
+    doc.setDrawColor(0);
+    doc.setLineWidth(productionStroke);
+    sectionExport.sections.forEach((section) => {
+        const ox = section.layoutOriginXMm;
+        const face = section.development.segments.find(
+            (s) => s.role === 'face',
+        );
+        if (!face) return;
+        doc.rect(
+            px(face.xMm + ox),
+            py(face.yMm),
+            face.wMm,
+            face.hMm,
+        );
+    });
+
+    // Letter / reference outlines — faint dashed so they read as
+    // positioning guides, not as cuts. Drawn first so fixings on top
+    // pop out.
+    if (allReferences.length > 0) {
+        doc.setDrawColor(140);
+        doc.setLineWidth(0.25);
+        doc.setLineDashPattern([1.2, 0.8], 0);
+        for (const ref of allReferences) {
+            if (!ref.closed || ref.points.length < 3) continue;
+            const pts = ref.points.map(
+                ([x, y]) => [px(x), py(y)] as [number, number],
+            );
+            drawClosedPolyline(doc, pts, 'S');
+        }
+        doc.setLineDashPattern([], 0);
+    }
+
+    // Aperture outlines (faint) — useful even when there are no
+    // standoffs, so the installer sees where the cuts will land.
+    if (allApertures.length > 0) {
+        doc.setDrawColor(180);
+        doc.setLineWidth(0.25);
+        doc.setLineDashPattern([0.6, 0.6], 0);
+        for (const ap of allApertures) {
+            if (!ap.closed || ap.points.length < 3) continue;
+            const pts = ap.points.map(
+                ([x, y]) => [px(x), py(y)] as [number, number],
+            );
+            drawClosedPolyline(doc, pts, 'S');
+        }
+        doc.setLineDashPattern([], 0);
+    }
+
+    // Fixing positions — filled black dots + crosshairs at the
+    // centre so the installer can prick-mark accurately.
+    doc.setDrawColor(0);
+    doc.setFillColor(0, 0, 0);
+    doc.setLineWidth(productionStroke);
+    for (const f of allFixings) {
+        if (f.points.length < 3) continue;
+        let cx = 0;
+        let cy = 0;
+        for (const q of f.points) {
+            cx += q[0];
+            cy += q[1];
+        }
+        cx /= f.points.length;
+        cy /= f.points.length;
+        let rMm = 0;
+        for (const q of f.points)
+            rMm += Math.hypot(q[0] - cx, q[1] - cy);
+        rMm /= f.points.length;
+        // Outline at actual hole diameter
+        doc.circle(px(cx), py(cy), rMm, 'S');
+        // Crosshair through the centre — 1.5x the hole radius each side
+        const xh = rMm * 1.5;
+        doc.line(px(cx) - xh, py(cy), px(cx) + xh, py(cy));
+        doc.line(px(cx), py(cy) - xh, px(cx), py(cy) + xh);
+        // Centre prick mark
+        doc.circle(px(cx), py(cy), 0.4, 'F');
+    }
+
+    // Info strip
+    const info = [
+        'ONESIGN',
+        params.name,
+        'PLACEMENT TEMPLATE — face 1:1',
+        allFixings.length > 0
+            ? `${allFixings.length} hole${allFixings.length === 1 ? '' : 's'}`
+            : '',
+        `face ${Math.round(params.panelWidthMm)} x ${Math.round(params.panelHeightMm)} mm`,
+        'print 1:1, lay on panel, prick centres',
+        new Date().toLocaleDateString('en-GB'),
+        '1:1',
+    ]
+        .filter(Boolean)
+        .join('  |  ');
+    doc.setFontSize(8);
+    doc.setTextColor(110);
+    doc.text(ascii(info), M, M + partH + INFO_GAP);
+    doc.setTextColor(0);
 }
 
 /** Horizontal dimension: dashed line + end ticks + centred value. */

@@ -107,6 +107,7 @@ export function ExportBar({
     keylineBySection,
     fixingsBySection,
     referenceBySection,
+    solidPathsBySection,
     vinylPieces,
     acrylicPieces,
     solidPieces,
@@ -119,6 +120,7 @@ export function ExportBar({
     keylineBySection: FlatPath[][];
     fixingsBySection: FlatPath[][];
     referenceBySection: FlatPath[][];
+    solidPathsBySection: FlatPath[][];
     vinylPieces: MaterialPiece[];
     acrylicPieces: MaterialPiece[];
     solidPieces: MaterialPiece[];
@@ -181,13 +183,24 @@ export function ExportBar({
         if (pdfPending) return;
         setPdfPending('prod');
         try {
+            // Production PDF is a multi-page CAM bundle: panel cut +
+            // push-through inserts (when keyline) + a 1:1 cut page per
+            // material (acrylic / vinyl / standoff) + a final 1:1
+            // placement template for the backshop. Pass everything;
+            // each helper inside the generator no-ops when its data
+            // is empty.
             const blob = generateProductionPdfBlob({
                 sectionExport,
                 params,
                 apertureBySection,
                 keylineBySection,
                 fixingsBySection,
-                // Reference outlines + 3D thumbnail are reference-only.
+                referenceBySection,
+                solidPathsBySection,
+                vinylPieces,
+                acrylicPieces,
+                solidPieces,
+                standoffPieces,
             });
             const fname = pdfFilename(params, 'production');
             download(blob, fname);

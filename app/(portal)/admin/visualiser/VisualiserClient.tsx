@@ -760,6 +760,19 @@ export function VisualiserClient({
         );
     }, [development, sectionExport, reference]);
 
+    // Solid piece outlines (just the .path of each, holes are an edge
+    // case for solids) clipped per section in export-sheet coords —
+    // emitted on the production PDF panel cut page as inner compound
+    // islands inside the apertures so the cutter leaves them as panel
+    // material rather than removing them.
+    const solidPathsBySection = useMemo(() => {
+        if (!development || !sectionExport) return [];
+        const solidPaths = materialPieces.solid.map((p) => p.path);
+        return sectionExport.sections.map((s) =>
+            clipApertureToSection(development, s, solidPaths),
+        );
+    }, [development, sectionExport, materialPieces.solid]);
+
     const exportWarnings = useMemo(() => {
         if (!development) return [];
         return validateExport({
@@ -1131,6 +1144,7 @@ export function VisualiserClient({
                             apertureBySection={apertureBySection}
                             keylineBySection={keylineBySection}
                             fixingsBySection={fixingsBySection}
+                            solidPathsBySection={solidPathsBySection}
                             referenceBySection={referenceBySection}
                             vinylPieces={materialPieces.vinyl}
                             acrylicPieces={materialPieces.acrylic}
