@@ -531,19 +531,20 @@ export function VisualiserClient({
 
     const fixingDensity = params.fixingDensity ?? 1;
 
-    // Auto-placed fixings inside the lettering shapes (algorithmic). These
-    // re-compute when density / diameter / artwork changes.
+    // Auto-placed fixings inside the standoff lettering shapes. Driven by
+    // the live set of standoff paths (groups + default-standoff), NOT by
+    // the quick default — so a sign with default = Cut and one standoff
+    // group still gets fixings placed inside that group's letters.
     const autoFixings = useMemo(() => {
-        if (mode !== 'standoff' || !development || placedClip.paths.length === 0)
-            return [];
+        if (!development || reference.length === 0) return [];
         const raw = placeFixings(
-            placedClip.paths,
+            reference,
             fixingDiameter,
             undefined,
             fixingDensity,
         );
         return clipApertureToFace(development, raw).paths;
-    }, [mode, development, placedClip.paths, fixingDiameter, fixingDensity]);
+    }, [development, reference, fixingDiameter, fixingDensity]);
 
     // Transform between the SVG's own coord frame and the flat-dev
     // frame — manual fixings are stored in the SVG frame so they follow
@@ -557,17 +558,25 @@ export function VisualiserClient({
     // Manual fixings — user clicks on the canvases to drop pins exactly
     // where they're needed. Persisted in SVG-local coords so they follow
     // the lettering across placement edits; converted to flat-dev coords
-    // for rendering / export. Each entry retains its store index so the
-    // delete handler can target it by index.
+    // for rendering / export. Rendered whenever there's at least one
+    // standoff path on the sign (group or default), independent of the
+    // quick default mode.
     const manualFixings = useMemo(() => {
-        if (mode !== 'standoff' || !development || !placementXf) return [];
+        if (!development || !placementXf || reference.length === 0)
+            return [];
         const r = fixingDiameter / 2;
         const polys = (params.manualFixings ?? []).map((p) => {
             const [x, y] = placementXf.toFlat(p);
             return circlePoly(x, y, r);
         });
         return clipApertureToFace(development, polys).paths;
-    }, [mode, development, placementXf, fixingDiameter, params.manualFixings]);
+    }, [
+        development,
+        placementXf,
+        reference,
+        fixingDiameter,
+        params.manualFixings,
+    ]);
 
     const fixings = useMemo(
         () => [...autoFixings, ...manualFixings],
@@ -605,7 +614,11 @@ export function VisualiserClient({
     const handleFixingClick = (p: [number, number]) => {
         if (fixingMode === 'place') {
             if (!placementXf) return;
-            if (reference.length > 0 && !insideLettering(p)) return;
+            // Fixings only make sense inside a standoff letter — reject
+            // clicks on a sign with no standoff paths AND clicks that
+            // land outside every standoff outline.
+            if (reference.length === 0) return;
+            if (!insideLettering(p)) return;
             addManualFixing(placementXf.toLocal(p));
             return;
         }
