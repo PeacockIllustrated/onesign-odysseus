@@ -2,7 +2,18 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Eye, EyeOff, Sliders, Bookmark } from 'lucide-react';
+import {
+    AlertTriangle,
+    Bookmark,
+    ChevronDown,
+    Crosshair,
+    Eye,
+    EyeOff,
+    Layers,
+    Sliders,
+    Upload,
+    X,
+} from 'lucide-react';
 import { useVisualiser } from './store';
 import { ControlsPanel } from './ControlsPanel';
 import { SvgDropzone } from './SvgDropzone';
@@ -30,6 +41,9 @@ import {
     type MaterialPiece,
     type StandoffPiece,
 } from '@/lib/visualiser/types';
+
+const ACCENT = '#4e7e8c';
+const ACCENT_DARK = '#3a5f6a';
 
 const Scene3D = dynamic(() => import('./Scene3D'), {
     ssr: false,
@@ -66,13 +80,12 @@ function ViewToggle({
             type="button"
             onClick={() => setOn(!on)}
             aria-pressed={on}
-            className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                on
-                    ? 'bg-black text-white'
-                    : 'text-neutral-500 hover:bg-neutral-100'
+            className={`flex min-h-[28px] items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                on ? 'text-white' : 'text-neutral-500 hover:bg-neutral-100'
             }`}
+            style={on ? { background: ACCENT } : undefined}
         >
-            <Icon size={12} />
+            <Icon size={12} aria-hidden />
             {label}
         </button>
     );
@@ -92,11 +105,13 @@ export function VisualiserClient({
         loadDesign,
         designId,
         fixingMode,
+        setFixingMode,
         addManualFixing,
         removeManualFixing,
         editingGroupId,
         pendingPaths,
         togglePendingPath,
+        cancelGroupEdit,
     } = useVisualiser();
     const [tab, setTab] = useState<Tab>('folded');
     const [mobilePane, setMobilePane] = useState<MobilePane>('preview');
@@ -135,6 +150,22 @@ export function VisualiserClient({
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Global Escape handler — closes whichever modal state is active.
+    // Group edit takes priority over fixing mode so the operator can
+    // hold Esc and walk out of any nested workflow cleanly.
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key !== 'Escape') return;
+            if (editingGroupId !== null) {
+                cancelGroupEdit();
+            } else if (fixingMode !== 'off') {
+                setFixingMode('off');
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [editingGroupId, fixingMode, cancelGroupEdit, setFixingMode]);
 
     const valid = PanelParamsSchema.safeParse(params);
 
@@ -794,28 +825,37 @@ export function VisualiserClient({
                 <section
                     className={`${paneShow('preview')} min-w-0 min-h-0 md:flex-1 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm`}
                 >
-                <header className="shrink-0 flex items-center justify-between gap-2 md:gap-3 border-b border-neutral-100 px-2 md:px-3 py-1.5 md:py-2">
-                    <nav className="flex gap-1 min-w-0">
-                        {(['folded', 'unfold', 'flat'] as const).map((t) => (
-                            <button
-                                key={t}
-                                type="button"
-                                onClick={() => setTab(t)}
-                                className={`rounded-md px-2 md:px-3 py-1.5 text-[11px] md:text-xs font-medium transition-colors ${
-                                    tab === t
-                                        ? 'bg-black text-white'
-                                        : 'text-neutral-500 hover:bg-neutral-100'
-                                }`}
-                            >
-                                {TAB_LABELS[t]}
-                            </button>
-                        ))}
+                <header className="shrink-0 flex items-center justify-between gap-2 md:gap-3 border-b border-neutral-100 px-2 md:px-3 py-2">
+                    <nav className="flex gap-1 min-w-0" role="tablist" aria-label="Preview view">
+                        {(['folded', 'unfold', 'flat'] as const).map((t) => {
+                            const active = tab === t;
+                            return (
+                                <button
+                                    key={t}
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={active}
+                                    onClick={() => setTab(t)}
+                                    className={`min-h-[36px] rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                                        active
+                                            ? 'text-white shadow-sm'
+                                            : 'text-neutral-600 hover:bg-neutral-100'
+                                    }`}
+                                    style={
+                                        active
+                                            ? { background: ACCENT }
+                                            : undefined
+                                    }
+                                >
+                                    {TAB_LABELS[t]}
+                                </button>
+                            );
+                        })}
                     </nav>
                     <div className="flex items-center gap-2 md:gap-3 min-w-0">
                         {split.wasSplit && (
                             <span className="hidden sm:inline rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-200">
-                                Split · {split.sections.length} panels (centre
-                                full)
+                                Split · {split.sections.length} panels
                             </span>
                         )}
                         <span className="hidden md:inline truncate text-xs text-neutral-400 max-w-[16rem]">
@@ -825,26 +865,132 @@ export function VisualiserClient({
                 </header>
 
                 <div className="relative flex-1 min-h-0 min-w-0 bg-neutral-50">
-                    {(geometryWarning || apertureClipNotice || isEditingGroup) && (
-                        <div className="pointer-events-none absolute inset-x-3 top-3 z-10 space-y-2">
-                            {isEditingGroup && (
-                                <div className="rounded-md border border-orange-300 bg-orange-50/95 px-3 py-2 text-xs text-orange-900 shadow-sm">
-                                    Editing material group — click paths
-                                    on the canvas to add or remove them
-                                    from the selection, then pick a
-                                    material in the side panel.
-                                </div>
-                            )}
-                            {geometryWarning && (
-                                <div className="rounded-md border border-amber-300 bg-amber-50/95 px-3 py-2 text-xs text-amber-700 shadow-sm">
-                                    {geometryWarning}
-                                </div>
-                            )}
-                            {apertureClipNotice && (
-                                <div className="rounded-md border border-amber-300 bg-amber-50/95 px-3 py-2 text-xs text-amber-700 shadow-sm">
-                                    {apertureClipNotice}
-                                </div>
-                            )}
+                    {/* Single unified mode pill — top-centre of the
+                        canvas. Covers BOTH group-edit and fixing modes
+                        so the operator has one consistent place to look
+                        for "you are currently doing X" and one Cancel
+                        button to exit it. Esc also exits. */}
+                    {(isEditingGroup || fixingMode !== 'off') && (
+                        <div className="pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center px-3">
+                            <div
+                                className="pointer-events-auto flex max-w-full items-center gap-2 rounded-full border bg-white px-3 py-1.5 shadow-md"
+                                style={{ borderColor: ACCENT }}
+                                role="status"
+                                aria-live="polite"
+                            >
+                                {isEditingGroup ? (
+                                    <Layers
+                                        size={14}
+                                        aria-hidden
+                                        style={{ color: ACCENT }}
+                                    />
+                                ) : (
+                                    <Crosshair
+                                        size={14}
+                                        aria-hidden
+                                        style={{
+                                            color:
+                                                fixingMode === 'delete'
+                                                    ? '#dc2626'
+                                                    : ACCENT,
+                                        }}
+                                    />
+                                )}
+                                <span className="text-[11px] font-medium text-neutral-700">
+                                    {isEditingGroup
+                                        ? `Editing material group · ${pendingPaths.length} path${pendingPaths.length === 1 ? '' : 's'} selected · click paths to toggle`
+                                        : fixingMode === 'place'
+                                          ? 'Placing fixings · click the lettering on either canvas'
+                                          : 'Deleting fixings · click a manual fixing to remove'}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (isEditingGroup) cancelGroupEdit();
+                                        else setFixingMode('off');
+                                    }}
+                                    className="ml-1 flex min-h-[28px] items-center gap-1 rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] font-medium text-neutral-600 hover:bg-neutral-200"
+                                >
+                                    <X size={12} aria-hidden /> Cancel
+                                    <span className="ml-1 hidden md:inline rounded bg-white px-1 text-[9px] uppercase tracking-wide text-neutral-400">
+                                        Esc
+                                    </span>
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Unified warnings tray — replaces the three
+                        separately-floating banners. One row that the
+                        operator can fold out. aria-live so a screen
+                        reader user gets told when geometry breaks. */}
+                    {(geometryWarning || apertureClipNotice) && (
+                        <div className="pointer-events-none absolute inset-x-3 top-14 z-10">
+                            <details
+                                className="pointer-events-auto group rounded-md border border-amber-300 bg-amber-50/95 shadow-sm"
+                                open
+                            >
+                                <summary
+                                    className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs font-medium text-amber-800 [&::-webkit-details-marker]:hidden"
+                                    aria-live="polite"
+                                >
+                                    <AlertTriangle
+                                        size={14}
+                                        aria-hidden
+                                        className="text-amber-600"
+                                    />
+                                    <span>
+                                        {[geometryWarning, apertureClipNotice]
+                                            .filter(Boolean).length}{' '}
+                                        advisory warning
+                                        {[geometryWarning, apertureClipNotice]
+                                            .filter(Boolean).length === 1
+                                            ? ''
+                                            : 's'}
+                                    </span>
+                                    <ChevronDown
+                                        size={14}
+                                        aria-hidden
+                                        className="ml-auto text-amber-600 transition-transform group-open:rotate-180"
+                                    />
+                                </summary>
+                                <ul className="space-y-1 border-t border-amber-200 px-3 py-2 text-[11px] text-amber-800">
+                                    {geometryWarning && (
+                                        <li>{geometryWarning}</li>
+                                    )}
+                                    {apertureClipNotice && (
+                                        <li>{apertureClipNotice}</li>
+                                    )}
+                                </ul>
+                            </details>
+                        </div>
+                    )}
+
+                    {/* Empty-state walkthrough — only shown on the
+                        preview tabs when the operator hasn't uploaded
+                        artwork yet. The 3D preview still renders the
+                        blank panel underneath so they immediately see
+                        the geometry their dimensions produce. */}
+                    {!imported && (
+                        <div className="pointer-events-none absolute inset-x-3 bottom-20 z-10 flex justify-center md:bottom-24">
+                            <div className="pointer-events-auto max-w-md rounded-lg border bg-white/95 px-4 py-3 shadow-md backdrop-blur">
+                                <h3
+                                    className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide"
+                                    style={{ color: ACCENT_DARK }}
+                                >
+                                    <Upload size={12} aria-hidden /> Get
+                                    started
+                                </h3>
+                                <ol className="mt-1.5 space-y-0.5 text-[11px] text-neutral-600 list-decimal pl-4">
+                                    <li>Set the panel dimensions on the left</li>
+                                    <li>Upload an SVG of your artwork</li>
+                                    <li>
+                                        Group paths into materials (vinyl,
+                                        acrylic, standoff…)
+                                    </li>
+                                    <li>Export the production PDF</li>
+                                </ol>
+                            </div>
                         </div>
                     )}
 
@@ -991,6 +1137,7 @@ export function VisualiserClient({
                             solidPieces={materialPieces.solid}
                             standoffPieces={standoffPieces}
                             warnings={exportWarnings}
+                            pathCount={imported?.paths.length ?? 0}
                         />
                     )}
                 </footer>
@@ -1011,33 +1158,39 @@ export function VisualiserClient({
                             No saved designs yet.
                         </li>
                     )}
-                    {designs.map((d) => (
-                        <li key={d.id}>
-                            <button
-                                type="button"
-                                onClick={() => handleLoad(d)}
-                                className={`w-full rounded-md px-2.5 py-2 text-left text-xs transition-colors ${
-                                    designId === d.id
-                                        ? 'bg-black text-white'
-                                        : 'text-neutral-600 hover:bg-neutral-100'
-                                }`}
-                            >
-                                <div className="font-medium truncate">
-                                    {d.name}
-                                </div>
-                                <div
-                                    className={
-                                        designId === d.id
-                                            ? 'text-neutral-300'
-                                            : 'text-neutral-400'
+                    {designs.map((d) => {
+                        const active = designId === d.id;
+                        return (
+                            <li key={d.id}>
+                                <button
+                                    type="button"
+                                    onClick={() => handleLoad(d)}
+                                    className={`w-full rounded-md px-2.5 py-2 text-left text-xs transition-colors ${
+                                        active
+                                            ? 'text-white'
+                                            : 'text-neutral-600 hover:bg-neutral-100'
+                                    }`}
+                                    style={
+                                        active ? { background: ACCENT } : undefined
                                     }
                                 >
-                                    {d.params_json.panelWidthMm}×
-                                    {d.params_json.panelHeightMm}mm
-                                </div>
-                            </button>
-                        </li>
-                    ))}
+                                    <div className="font-medium truncate">
+                                        {d.name}
+                                    </div>
+                                    <div
+                                        className={
+                                            active
+                                                ? 'text-white/70'
+                                                : 'text-neutral-400'
+                                        }
+                                    >
+                                        {d.params_json.panelWidthMm}×
+                                        {d.params_json.panelHeightMm}mm
+                                    </div>
+                                </button>
+                            </li>
+                        );
+                    })}
                 </ul>
                 </aside>
             </div>
@@ -1057,14 +1210,17 @@ export function VisualiserClient({
                             key={pane}
                             type="button"
                             onClick={() => setMobilePane(pane)}
-                            className={`flex items-center justify-center gap-1.5 py-3 text-[11px] font-medium transition-colors ${
+                            className={`flex min-h-[44px] items-center justify-center gap-1.5 py-3 text-xs font-medium transition-colors ${
                                 active
-                                    ? 'bg-black text-white'
+                                    ? 'text-white'
                                     : 'text-neutral-500 active:bg-neutral-100'
                             }`}
+                            style={
+                                active ? { background: ACCENT } : undefined
+                            }
                             aria-pressed={active}
                         >
-                            <Icon size={14} />
+                            <Icon size={14} aria-hidden />
                             {label}
                         </button>
                     );

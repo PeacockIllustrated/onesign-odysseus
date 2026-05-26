@@ -7,7 +7,6 @@ import {
     GROUP_HIGHLIGHT_PALETTE,
     type AlignH,
     type AlignV,
-    type ApertureMode,
     type PanelParams,
 } from '@/lib/visualiser/types';
 import {
@@ -15,11 +14,17 @@ import {
     Check,
     Crosshair,
     Eraser,
-    Pencil,
+    Plus,
+    Sparkles,
     Trash2,
     Upload,
     X,
 } from 'lucide-react';
+
+const ACCENT = '#4e7e8c';
+const ACCENT_DARK = '#3a5f6a';
+const ACCENT_TINT_BG = '#e8f0f3';
+const ACCENT_TINT_BORDER = '#b8d0d8';
 
 type MaterialGroup = NonNullable<PanelParams['materialGroups']>[number];
 type GroupMaterial = MaterialGroup['material'];
@@ -103,19 +108,35 @@ function GroupEditControls({
     const hasThickness = material === 'acrylic' || material === 'standoff';
     const hasStandoff = material === 'standoff';
 
+    const materialHelp: Record<Exclude<GroupMaterial, 'cut'>, string> = {
+        solid: 'Kept as panel material — not cut. Use for inner counters of letters.',
+        vinyl: 'Flat vinyl appliqué bonded to the panel face.',
+        acrylic: 'Acrylic sheet face-stuck to the panel.',
+        standoff:
+            'Extruded letter mounted with studs at a distance from the face.',
+    };
     return (
-        <div className="rounded-md border border-orange-300 bg-orange-50 p-2.5 space-y-2">
-            <p className="text-[11px] text-orange-900">
+        <div
+            className="rounded-md border p-2.5 space-y-2"
+            style={{
+                borderColor: ACCENT_TINT_BORDER,
+                background: ACCENT_TINT_BG,
+            }}
+        >
+            <p className="text-[11px] font-medium" style={{ color: ACCENT_DARK }}>
                 {isExistingGroup
-                    ? `Editing group · ${pendingCount} path${pendingCount === 1 ? '' : 's'}`
-                    : `Building new group · ${pendingCount} path${pendingCount === 1 ? '' : 's'}`}
+                    ? `Editing group · ${pendingCount} path${pendingCount === 1 ? '' : 's'} selected`
+                    : `New material group · ${pendingCount} path${pendingCount === 1 ? '' : 's'} selected`}
             </p>
-            <p className="text-[10px] text-orange-800">
-                Click paths on the canvas to add or remove them, then
-                pick the material below.
+            <p className="text-[10px]" style={{ color: ACCENT_DARK }}>
+                Click paths on the canvas to add or remove them, then pick the
+                material below.
             </p>
 
-            <div className="grid grid-cols-5 overflow-hidden rounded-md border border-orange-300 text-[10px] font-medium">
+            <div
+                className="grid grid-cols-5 overflow-hidden rounded-md border text-[10px] font-medium"
+                style={{ borderColor: ACCENT_TINT_BORDER }}
+            >
                 {(
                     [
                         ['cut', 'Cut'],
@@ -132,33 +153,40 @@ function GroupEditControls({
                             if (v === 'cut') onApply('cut');
                             else pickMaterial(v);
                         }}
-                        className={`py-1.5 ${
-                            k > 0 ? 'border-l border-orange-300' : ''
+                        aria-pressed={v !== 'cut' && material === v}
+                        className={`min-h-[32px] py-1.5 ${
+                            k > 0 ? 'border-l' : ''
                         } ${
                             v === 'cut'
                                 ? 'bg-white text-red-600 hover:bg-red-50'
                                 : material === v
-                                  ? 'bg-black text-white'
+                                  ? 'text-white'
                                   : 'bg-white text-neutral-700 hover:bg-neutral-100'
                         }`}
-                        title={
-                            v === 'cut'
-                                ? 'Revert the selected paths to the default-for-ungrouped behaviour.'
-                                : v === 'solid'
-                                  ? 'Leave as panel material — no cut. Used for inner letter counters.'
-                                  : v === 'standoff'
-                                    ? 'Extruded letter mounted with studs at a distance from the panel face.'
-                                    : undefined
-                        }
+                        style={{
+                            borderColor:
+                                k > 0 ? ACCENT_TINT_BORDER : undefined,
+                            background:
+                                v !== 'cut' && material === v
+                                    ? ACCENT
+                                    : undefined,
+                        }}
                     >
                         {label}
                     </button>
                 ))}
             </div>
 
+            <p className="text-[10px] text-neutral-600">
+                {materialHelp[material]}
+            </p>
+
             {hasColor && (
                 <label className="block">
-                    <span className="text-[10px] text-orange-900">
+                    <span
+                        className="text-[10px] font-medium"
+                        style={{ color: ACCENT_DARK }}
+                    >
                         Colour
                     </span>
                     <div className="mt-0.5 flex items-center gap-1.5">
@@ -166,7 +194,9 @@ function GroupEditControls({
                             type="color"
                             value={color}
                             onChange={(e) => setColor(e.target.value)}
-                            className="h-7 w-9 cursor-pointer rounded border border-orange-300 bg-white p-0.5"
+                            className="h-11 w-14 cursor-pointer rounded border bg-white p-0.5"
+                            style={{ borderColor: ACCENT_TINT_BORDER }}
+                            aria-label="Group colour"
                         />
                         <input
                             type="text"
@@ -175,7 +205,8 @@ function GroupEditControls({
                                 const v = e.target.value.trim();
                                 if (/^#[0-9a-fA-F]{6}$/.test(v)) setColor(v);
                             }}
-                            className="flex-1 rounded border border-orange-300 px-2 py-1 font-mono text-[11px] uppercase focus:border-black focus:outline-none"
+                            className="flex-1 rounded border px-2 py-2 font-mono text-[11px] uppercase focus:border-black focus:outline-none"
+                            style={{ borderColor: ACCENT_TINT_BORDER }}
                         />
                     </div>
                 </label>
@@ -212,9 +243,17 @@ function GroupEditControls({
                         })
                     }
                     disabled={pendingCount === 0}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-black px-3 py-1.5 text-[11px] font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="flex min-h-[36px] flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                    style={{ background: ACCENT }}
+                    onMouseEnter={(e) => {
+                        if (!e.currentTarget.disabled)
+                            e.currentTarget.style.background = ACCENT_DARK;
+                    }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.background = ACCENT;
+                    }}
                 >
-                    <Check size={12} /> Apply{' '}
+                    <Check size={14} aria-hidden /> Apply{' '}
                     {material === 'standoff'
                         ? 'Stood off'
                         : material.charAt(0).toUpperCase() +
@@ -223,7 +262,11 @@ function GroupEditControls({
                 <button
                     type="button"
                     onClick={onCancel}
-                    className="rounded-md border border-orange-300 px-3 py-1.5 text-[11px] font-medium text-orange-900 hover:bg-orange-100"
+                    className="min-h-[36px] rounded-md border px-3 py-2 text-xs font-medium hover:bg-white"
+                    style={{
+                        borderColor: ACCENT_TINT_BORDER,
+                        color: ACCENT_DARK,
+                    }}
                 >
                     Cancel
                 </button>
@@ -286,13 +329,24 @@ function MaterialGroupsPanel({
                     <button
                         type="button"
                         onClick={startNewGroupEdit}
-                        className="flex items-center gap-1 rounded-md bg-black px-2 py-1 text-[11px] font-medium text-white hover:bg-neutral-800"
-                        title="Click paths on the canvas to bundle them into a new group"
+                        className="flex min-h-[32px] items-center gap-1 rounded-md px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition-colors"
+                        style={{ background: ACCENT }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.background = ACCENT_DARK;
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.background = ACCENT;
+                        }}
                     >
-                        <Pencil size={11} /> Edit cuts
+                        <Plus size={12} aria-hidden /> New material group
                     </button>
                 )}
             </div>
+            <p className="text-[10px] text-neutral-500">
+                Pull SVG paths out of the default cut and reassign them as
+                solid panel material, vinyl appliqué, face-stuck acrylic, or
+                stood-off lettering.
+            </p>
 
             {isEditing && (
                 <GroupEditControls
@@ -326,9 +380,8 @@ function MaterialGroupsPanel({
                 and member count, with pencil + trash actions. */}
             {groups.length === 0 && !isEditing && (
                 <p className="text-[10px] text-neutral-400">
-                    No groups yet. Click "Edit cuts" to pull SVG paths
-                    out of the production cut as solid panel material,
-                    vinyl appliqué, or extruded acrylic.
+                    No groups yet — every path will be cut from the panel
+                    by default.
                 </p>
             )}
             <ul className="space-y-1.5">
@@ -338,25 +391,35 @@ function MaterialGroupsPanel({
                             i % GROUP_HIGHLIGHT_PALETTE.length
                         ];
                     const isThisOne = editingGroupId === g.id;
+                    const isAuto = g.label === 'Counters (auto)';
                     return (
                         <li
                             key={g.id}
                             className={`rounded-md border bg-white p-2 ${
                                 isThisOne
-                                    ? 'border-orange-400 ring-1 ring-orange-300'
+                                    ? 'ring-1'
                                     : 'border-neutral-200 hover:border-neutral-300'
                             }`}
+                            style={
+                                isThisOne
+                                    ? {
+                                          borderColor: ACCENT,
+                                          // @ts-expect-error CSS custom prop for ring
+                                          '--tw-ring-color': ACCENT_TINT_BORDER,
+                                      }
+                                    : undefined
+                            }
                         >
                             <div className="flex items-center justify-between gap-2">
                                 <button
                                     type="button"
                                     onClick={() => startEditingGroup(g.id)}
                                     disabled={isEditing && !isThisOne}
-                                    className="flex min-w-0 flex-1 items-center gap-2 text-left disabled:cursor-not-allowed disabled:opacity-50"
-                                    title="Edit members and material"
+                                    className="flex min-h-[36px] min-w-0 flex-1 items-center gap-2 text-left disabled:cursor-not-allowed disabled:opacity-50"
+                                    aria-label={`Edit group ${g.label ?? g.material}`}
                                 >
                                     <span
-                                        className="h-3 w-3 shrink-0 rounded-sm border border-neutral-300"
+                                        className="h-3.5 w-3.5 shrink-0 rounded-sm border border-neutral-300"
                                         style={{ background: palette }}
                                         aria-hidden
                                     />
@@ -375,12 +438,23 @@ function MaterialGroupsPanel({
                                 <button
                                     type="button"
                                     onClick={() => deleteGroup(g.id)}
-                                    className="rounded p-1 text-neutral-500 hover:bg-red-50 hover:text-red-600"
-                                    title="Delete group (paths revert to cut)"
+                                    aria-label="Delete group (paths revert to cut)"
+                                    className="flex min-h-[36px] min-w-[36px] items-center justify-center rounded text-neutral-500 hover:bg-red-50 hover:text-red-600"
                                 >
-                                    <Trash2 size={12} />
+                                    <Trash2 size={14} aria-hidden />
                                 </button>
                             </div>
+                            {isAuto && (
+                                <p className="mt-1 flex items-center gap-1 text-[10px] text-neutral-500">
+                                    <Sparkles
+                                        size={10}
+                                        aria-hidden
+                                        style={{ color: ACCENT }}
+                                    />
+                                    Auto-detected from nested paths — edit or
+                                    delete freely.
+                                </p>
+                            )}
 
                             {/* Inline colour / thickness — live edits while
                                 not in selection edit, no Apply needed.
@@ -577,16 +651,16 @@ export function SvgDropzone() {
     return (
         <div className="space-y-3">
             <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                    Aperture artwork
-                </span>
+                <h3 className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                    Artwork
+                </h3>
                 {svgSource && (
                     <button
                         type="button"
                         onClick={clearSvg}
-                        className="flex items-center gap-1 text-xs text-neutral-500 hover:text-red-600"
+                        className="flex min-h-[28px] items-center gap-1 text-xs text-neutral-500 hover:text-red-600"
                     >
-                        <X size={12} /> Remove
+                        <X size={12} aria-hidden /> Remove
                     </button>
                 )}
             </div>
@@ -734,34 +808,21 @@ export function SvgDropzone() {
                         Anchored to the artwork centre; default is dead centre.
                     </p>
 
-                    {/* Quick default — sets the material every ungrouped
-                        SVG path falls back to. Groups override on a
-                        per-path basis, so the typical flow is "pick the
-                        one material most of the sign is, then group the
-                        exceptions". Without a quick default, everything
-                        in an all-standoff sign would need an explicit
-                        group, which adds clicks for the common case. */}
-                    <div className="pt-2 border-t border-neutral-100 space-y-2">
+                    {/* Path materials & fixings — unified card. Every
+                        ungrouped path is cut from the panel by default;
+                        operator opts paths out into explicit material
+                        groups. (The old apertureMode segmented control
+                        for "all stand-off by default" is gone — legacy
+                        designs that loaded with apertureMode='standoff'
+                        still flow through Standoff defaults below.) */}
+                    <div className="pt-2 border-t border-neutral-100 space-y-3">
                         <div>
-                            <span className="text-[10px] text-neutral-500">
-                                Quick default
-                            </span>
-                            <div className="mt-0.5">
-                                <Segmented<ApertureMode>
-                                    options={[
-                                        ['aperture', 'Cut'],
-                                        ['standoff', 'Stood off'],
-                                    ]}
-                                    value={params.apertureMode ?? 'aperture'}
-                                    onChange={(v) =>
-                                        setParam('apertureMode', v)
-                                    }
-                                />
-                            </div>
-                            <p className="mt-1 text-[10px] text-neutral-400">
-                                Any path not put into a Material Group below
-                                renders as this. Override individual paths
-                                with their own material in the group editor.
+                            <h3 className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                                Path materials &amp; fixings
+                            </h3>
+                            <p className="mt-1 text-[10px] text-neutral-500">
+                                Every artwork path is cut from the panel by
+                                default. Group paths below to reassign them.
                             </p>
                         </div>
                         {imported && (
@@ -961,17 +1022,27 @@ export function SvgDropzone() {
                                                         : 'place',
                                                 )
                                             }
-                                            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${
+                                            aria-pressed={
                                                 fixingMode === 'place'
-                                                    ? 'bg-black text-white'
+                                            }
+                                            className={`flex min-h-[40px] flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium transition-colors ${
+                                                fixingMode === 'place'
+                                                    ? 'text-white shadow-sm'
                                                     : 'border border-neutral-300 text-neutral-700 hover:bg-neutral-100'
                                             }`}
-                                            title="Click anywhere on the lettering to drop a fixing. Manual fixings track the lettering across placement changes."
+                                            style={
+                                                fixingMode === 'place'
+                                                    ? { background: ACCENT }
+                                                    : undefined
+                                            }
                                         >
-                                            <Crosshair size={12} />
+                                            <Crosshair
+                                                size={14}
+                                                aria-hidden
+                                            />
                                             {fixingMode === 'place'
                                                 ? 'Done placing'
-                                                : 'Place'}
+                                                : 'Place fixings'}
                                         </button>
                                         <button
                                             type="button"
@@ -986,14 +1057,16 @@ export function SvgDropzone() {
                                                         : 'delete',
                                                 )
                                             }
-                                            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                                            aria-pressed={
                                                 fixingMode === 'delete'
-                                                    ? 'bg-red-600 text-white'
+                                            }
+                                            className={`flex min-h-[40px] flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                                                fixingMode === 'delete'
+                                                    ? 'bg-red-600 text-white shadow-sm'
                                                     : 'border border-neutral-300 text-neutral-700 hover:bg-neutral-100'
                                             }`}
-                                            title="Click on a manually-placed fixing to remove it."
                                         >
-                                            <Eraser size={12} />
+                                            <Eraser size={14} aria-hidden />
                                             {fixingMode === 'delete'
                                                 ? 'Done deleting'
                                                 : 'Delete'}
@@ -1005,8 +1078,8 @@ export function SvgDropzone() {
                                                 onClick={() =>
                                                     clearManualFixings()
                                                 }
-                                                className="rounded-md border border-neutral-300 px-2 py-1.5 text-[11px] font-medium text-neutral-500 hover:bg-neutral-100"
-                                                title="Remove every manually-placed fixing"
+                                                className="min-h-[40px] rounded-md border border-neutral-300 px-2 py-2 text-xs font-medium text-neutral-500 hover:bg-neutral-100"
+                                                aria-label="Remove every manually-placed fixing"
                                             >
                                                 Clear (
                                                 {
@@ -1017,21 +1090,12 @@ export function SvgDropzone() {
                                             </button>
                                         )}
                                     </div>
-                                    {fixingMode === 'place' && (
-                                        <p className="text-[10px] text-neutral-500">
-                                            Tap the 3D scene or flat preview
-                                            to drop a fixing at that point.
-                                            Anchored to the lettering, so it
-                                            follows when you re-align the
-                                            artwork.
-                                        </p>
-                                    )}
-                                    {fixingMode === 'delete' && (
-                                        <p className="text-[10px] text-red-600">
-                                            Tap a manually-placed fixing to
-                                            remove it.
-                                        </p>
-                                    )}
+                                    <p className="text-[10px] text-neutral-500">
+                                        Place: click the lettering on either
+                                        canvas to drop a fixing. Fixings are
+                                        anchored to the artwork, so they
+                                        follow placement edits.
+                                    </p>
                                 </div>
                             </>
                         )}
