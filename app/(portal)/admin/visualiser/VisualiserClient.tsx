@@ -460,12 +460,19 @@ export function VisualiserClient({
         return out;
     }, [placedClipByIndex, effectiveMaterials]);
 
-    // Vinyl + acrylic compound pieces (face-stuck materials). Each
-    // top-level piece gathers its descendants as evenodd holes so a
-    // letter outline with an inner counter renders as a donut.
+    // Vinyl / acrylic / solid compound pieces (face-stuck materials).
+    // Each top-level piece gathers its descendants as evenodd holes so
+    // a letter outline with an inner counter renders as a donut.
+    //
+    // Solid pieces specifically use the panel colour (or the group's
+    // override). They visualise as filled panel-coloured shapes —
+    // exactly what makes a floating inner counter of an O / e / g
+    // read as a real piece of panel material rather than a cut.
     const materialPieces = useMemo(() => {
         const vinyl: MaterialPiece[] = [];
         const acrylic: MaterialPiece[] = [];
+        const solid: MaterialPiece[] = [];
+        const panelColor = params.panelColor ?? '#d6d6d6';
         for (let i = 0; i < placedClipByIndex.length; i++) {
             const path = placedClipByIndex[i];
             if (!path) continue;
@@ -486,10 +493,28 @@ export function VisualiserClient({
                     color: eff.color,
                     thicknessMm: eff.thicknessMm,
                 });
+            } else if (eff.kind === 'solid') {
+                // Group's stored colour wins (e.g. user picks a
+                // contrast solid). For freshly auto-detected counters
+                // the store seeds the colour to the panel colour, so
+                // by default solid pieces blend with the panel.
+                const groupEntry = groupByPath.get(i);
+                solid.push({
+                    pathIndex: i,
+                    path,
+                    holes: holesByIndex[i],
+                    color: groupEntry?.color ?? panelColor,
+                });
             }
         }
-        return { vinyl, acrylic };
-    }, [placedClipByIndex, effectiveMaterials, holesByIndex]);
+        return { vinyl, acrylic, solid };
+    }, [
+        placedClipByIndex,
+        effectiveMaterials,
+        holesByIndex,
+        groupByPath,
+        params.panelColor,
+    ]);
 
     // Standoff pieces — extruded 3D letters mounted with studs at
     // standoffDistanceMm. Each piece carries its own settings so a
@@ -838,6 +863,7 @@ export function VisualiserClient({
                             reference={reference}
                             vinylPieces={materialPieces.vinyl}
                             acrylicPieces={materialPieces.acrylic}
+                            solidPieces={materialPieces.solid}
                             placedPathsByIndex={placedClipByIndex}
                             pathGroupColors={pathGroupColors}
                             pendingPaths={pendingPathsSet}
@@ -861,6 +887,7 @@ export function VisualiserClient({
                             reference={reference}
                             vinylPieces={materialPieces.vinyl}
                             acrylicPieces={materialPieces.acrylic}
+                            solidPieces={materialPieces.solid}
                             standoffPieces={standoffPieces}
                             placedPathsByIndex={placedClipByIndex}
                             pathGroupColors={pathGroupColors}
@@ -961,6 +988,7 @@ export function VisualiserClient({
                             referenceBySection={referenceBySection}
                             vinylPieces={materialPieces.vinyl}
                             acrylicPieces={materialPieces.acrylic}
+                            solidPieces={materialPieces.solid}
                             standoffPieces={standoffPieces}
                             warnings={exportWarnings}
                         />

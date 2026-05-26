@@ -36,6 +36,7 @@ export function ExportBar({
     referenceBySection,
     vinylPieces,
     acrylicPieces,
+    solidPieces,
     standoffPieces,
     warnings = [],
 }: {
@@ -46,6 +47,7 @@ export function ExportBar({
     referenceBySection: FlatPath[][];
     vinylPieces: MaterialPiece[];
     acrylicPieces: MaterialPiece[];
+    solidPieces: MaterialPiece[];
     standoffPieces: StandoffPiece[];
     warnings?: ExportWarning[];
 }) {
@@ -74,6 +76,7 @@ export function ExportBar({
             referenceBySection,
             vinylPieces,
             acrylicPieces,
+            solidPieces,
             standoffPieces,
             thumbnailDataUrl: thumb || undefined,
         });

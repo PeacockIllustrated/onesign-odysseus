@@ -67,6 +67,7 @@ interface PdfOptions {
      */
     vinylPieces?: MaterialPiece[];
     acrylicPieces?: MaterialPiece[];
+    solidPieces?: MaterialPiece[];
     standoffPieces?: StandoffPiece[];
     /** PNG/JPEG data URL of the 3D preview, optional. */
     thumbnailDataUrl?: string;
@@ -379,7 +380,7 @@ function drawMaterialPiece(
 }
 
 interface MaterialPageSpec {
-    kind: 'cut' | 'vinyl' | 'acrylic' | 'standoff';
+    kind: 'cut' | 'vinyl' | 'acrylic' | 'solid' | 'standoff';
     label: string;
     color: [number, number, number];
     /** Brief specs for the right-side info strip. */
@@ -475,6 +476,31 @@ function buildMaterialPages(opts: PdfOptions): MaterialPageSpec[] {
                 ...(p.holes ?? []),
             ]),
             pieces: acrylicPieces,
+        });
+    }
+
+    const solidPieces = opts.solidPieces ?? [];
+    if (solidPieces.length > 0) {
+        const colours = solidPieces.map((p) => p.color.toUpperCase());
+        const accent = hexToRgb(solidPieces[0].color);
+        pages.push({
+            kind: 'solid',
+            label: 'Solid panel pieces',
+            color: accent,
+            specs: [
+                ['Type', 'Solid — kept as part of the panel'],
+                [
+                    'Pieces',
+                    `${solidPieces.length} piece${solidPieces.length === 1 ? '' : 's'}`,
+                ],
+                ['Colour', summariseVariants(colours)],
+                [
+                    'Note',
+                    'Counter / floating areas left uncut — sit flush with the panel face',
+                ],
+            ],
+            paths: solidPieces.flatMap((p) => [p.path, ...(p.holes ?? [])]),
+            pieces: solidPieces,
         });
     }
 
@@ -652,6 +678,12 @@ function drawOverviewPage(ctx: PageContext): void {
             `${(a.thicknessMm ?? 5)} mm ${a.color.toUpperCase()}`,
             'Face-stuck',
         ]);
+    for (const sol of opts.solidPieces ?? [])
+        rows.push([
+            'Solid',
+            sol.color.toUpperCase(),
+            'Kept as part of the panel face',
+        ]);
     for (const s of opts.standoffPieces ?? [])
         rows.push([
             'Stood off',
@@ -744,6 +776,22 @@ function drawFlatLayoutPage(ctx: PageContext): void {
             hexToRgb(p.color),
             [20, 20, 20],
             0.4,
+            'FD',
+        );
+    }
+    // Solid pieces — floating bits of letters / panel that stay as
+    // panel material. Drawn filled in the (panel-matching) colour, with
+    // a light stroke so the operator can still see them on the layout.
+    for (const p of opts.solidPieces ?? []) {
+        drawMaterialPiece(
+            doc,
+            p,
+            px,
+            py,
+            scale,
+            hexToRgb(p.color),
+            [60, 60, 60],
+            0.15,
             'FD',
         );
     }
@@ -910,6 +958,20 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
     }
     if (spec.kind !== 'acrylic') {
         for (const p of opts.acrylicPieces ?? []) {
+            const pl = pathDPolyline(p.path.points, p.path.closed);
+            if (pl)
+                doc.lines(
+                    pl.deltas,
+                    px(pl.start[0]),
+                    py(pl.start[1]),
+                    [scale, scale],
+                    'S',
+                    p.path.closed,
+                );
+        }
+    }
+    if (spec.kind !== 'solid') {
+        for (const p of opts.solidPieces ?? []) {
             const pl = pathDPolyline(p.path.points, p.path.closed);
             if (pl)
                 doc.lines(

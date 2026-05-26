@@ -763,11 +763,13 @@ function MaterialPieces({
     face,
     vinyl,
     acrylic,
+    solid,
     outlines = true,
 }: {
     face: { xMm: number; yMm: number; wMm: number; hMm: number };
     vinyl: MaterialPiece[];
     acrylic: MaterialPiece[];
+    solid: MaterialPiece[];
     outlines?: boolean;
 }) {
     const toLocal = (q: [number, number]): [number, number] => [
@@ -799,6 +801,30 @@ function MaterialPieces({
 
     return (
         <group>
+            {/* Solid (floating inner counters): paper-thin coloured fill
+                that SITS ON the face, painted in the group's colour
+                (defaults to the panel colour). These are the "donut
+                centres" — the floating bits of letters that aren't
+                cut away. Drawn first / lowest so vinyl and acrylic
+                pieces layer on top. */}
+            {solid.map((piece, i) => (
+                <mesh
+                    key={`solid-${piece.pathIndex}-${i}`}
+                    position={[0, 0, 0.5 * S]}>
+                    <shapeGeometry args={[compoundShape(piece), 48]} />
+                    <meshBasicMaterial
+                        color={piece.color}
+                        side={THREE.DoubleSide}
+                        polygonOffset
+                        polygonOffsetFactor={1}
+                        polygonOffsetUnits={1}
+                    />
+                    {outlines && (
+                        <Edges color={EDGE_COLOR} lineWidth={1} />
+                    )}
+                </mesh>
+            ))}
+
             {/* Vinyl: paper-thin coloured fill ~1 mm in front of the face
                 (avoids z-fighting with the panel surface). */}
             {vinyl.map((piece, i) => (
@@ -919,6 +945,7 @@ function Panel({
     reference,
     vinylPieces,
     acrylicPieces,
+    solidPieces,
     standoffPieces,
     placedPathsByIndex,
     pathGroupColors,
@@ -942,6 +969,7 @@ function Panel({
     reference: FlatPath[];
     vinylPieces: MaterialPiece[];
     acrylicPieces: MaterialPiece[];
+    solidPieces: MaterialPiece[];
     standoffPieces: StandoffPiece[];
     placedPathsByIndex?: Array<FlatPath | null> | null;
     pathGroupColors?: Array<string | null> | null;
@@ -1040,14 +1068,18 @@ function Panel({
             {/* Vinyl + acrylic pieces sit on the face front. They render
                 in aperture mode only — VisualiserClient passes empty
                 arrays in standoff mode. */}
-            {face && (vinylPieces.length > 0 || acrylicPieces.length > 0) && (
-                <MaterialPieces
-                    face={face}
-                    vinyl={vinylPieces}
-                    acrylic={acrylicPieces}
-                    outlines={showOutlines}
-                />
-            )}
+            {face &&
+                (vinylPieces.length > 0 ||
+                    acrylicPieces.length > 0 ||
+                    solidPieces.length > 0) && (
+                    <MaterialPieces
+                        face={face}
+                        vinyl={vinylPieces}
+                        acrylic={acrylicPieces}
+                        solid={solidPieces}
+                        outlines={showOutlines}
+                    />
+                )}
 
             {/* Click-to-select hit targets — one transparent mesh per
                 imported path. Outside edit mode they only contribute
@@ -1210,6 +1242,7 @@ export default function Scene3D(props: {
     reference?: FlatPath[];
     vinylPieces?: MaterialPiece[];
     acrylicPieces?: MaterialPiece[];
+    solidPieces?: MaterialPiece[];
     standoffPieces?: StandoffPiece[];
     placedPathsByIndex?: Array<FlatPath | null> | null;
     pathGroupColors?: Array<string | null> | null;
@@ -1231,6 +1264,7 @@ export default function Scene3D(props: {
     const reference = props.reference ?? [];
     const vinylPieces = props.vinylPieces ?? [];
     const acrylicPieces = props.acrylicPieces ?? [];
+    const solidPieces = props.solidPieces ?? [];
     const standoffPieces = props.standoffPieces ?? [];
     const showOutlines = props.showOutlines ?? true;
     const showStandoffLetters = props.showStandoffLetters ?? true;
@@ -1264,6 +1298,7 @@ export default function Scene3D(props: {
                 reference={reference}
                 vinylPieces={vinylPieces}
                 acrylicPieces={acrylicPieces}
+                solidPieces={solidPieces}
                 standoffPieces={standoffPieces}
                 placedPathsByIndex={props.placedPathsByIndex ?? null}
                 pathGroupColors={props.pathGroupColors ?? null}

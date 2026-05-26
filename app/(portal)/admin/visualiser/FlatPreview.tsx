@@ -98,6 +98,7 @@ export function FlatPreview({
     reference = [],
     vinylPieces = [],
     acrylicPieces = [],
+    solidPieces = [],
     placedPathsByIndex = null,
     pathGroupColors = null,
     pendingPaths,
@@ -115,6 +116,13 @@ export function FlatPreview({
     reference?: FlatPath[];
     vinylPieces?: MaterialPiece[];
     acrylicPieces?: MaterialPiece[];
+    /**
+     * Pieces in the panel colour — typically inner counters that
+     * stay as solid panel material. Rendered as filled shapes on top
+     * of the face so they visibly fill in the donut hole of their
+     * parent aperture.
+     */
+    solidPieces?: MaterialPiece[];
     /**
      * Per-original-path placed+clipped data — one entry per imported
      * path, null if it was clipped away. Drives the click overlays and
@@ -259,6 +267,31 @@ export function FlatPreview({
                         </text>
                     </g>
                 )}
+
+                {/* Solid pieces — drawn FIRST so vinyl / acrylic sit
+                    on top of them visually. Solid pieces fill with the
+                    panel colour (or a group-customised colour), making
+                    floating inner counters (the hole in O, e, g) read
+                    as real panel material rather than as cuts. */}
+                {solidPieces.map((piece, i) => {
+                    const d =
+                        pathD(piece.path) +
+                        ' ' +
+                        (piece.holes ?? [])
+                            .map((h) => pathD(h))
+                            .join(' ');
+                    return (
+                        <path
+                            key={`solid-${i}`}
+                            d={d}
+                            fill={piece.color}
+                            fillRule="evenodd"
+                            stroke="#1a1f23"
+                            strokeWidth={stroke * 0.25}
+                            strokeOpacity={0.4}
+                        />
+                    );
+                })}
 
                 {/* Vinyl appliqués — flat coloured fills sitting on the
                     face. Nested paths become evenodd holes so an outer

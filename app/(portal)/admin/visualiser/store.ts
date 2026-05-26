@@ -8,6 +8,7 @@ import {
     type ImportedSvg,
     type VisualiserDesignRow,
 } from '@/lib/visualiser/types';
+import { detectInnerCounters } from '@/lib/visualiser/svg-import';
 
 export const DEFAULT_PARAMS: PanelParams = {
     name: 'Untitled panel',
@@ -184,25 +185,40 @@ export const useVisualiser = create<VisualiserState>((set) => ({
         })),
 
     setSvg: (source, imported) =>
-        set((s) => ({
-            // Inner counters used to seed a "Counters (auto)" solid group
-            // so they wouldn't be cut from the panel, but the new compound
-            // rendering handles this automatically — a path nested inside
-            // another is rendered as an even-odd hole in the parent's
-            // material. So we start clean with no groups; the user picks
-            // assignments and the donuts appear by themselves.
-            svgSource: source,
-            imported,
-            params: {
-                ...s.params,
-                aperturePlacement:
-                    s.params.aperturePlacement ?? DEFAULT_PLACEMENT,
-                materialGroups: [],
-            },
-            editingGroupId: null,
-            pendingPaths: [],
-            dirty: true,
-        })),
+        set((s) => {
+            // Auto-detect inner counters (the floating bits of letters like
+            // the centre of an O, A, e) and seed a "Counters (auto)" solid
+            // group. These need to be visualised in the panel colour on
+            // both 3D and the cut-file PDF so the operator can see they're
+            // kept as solid material — not cut out. The user can edit /
+            // reassign / delete the group like any other.
+            const counters = detectInnerCounters(imported.paths);
+            const panelColor = s.params.panelColor ?? '#d6d6d6';
+            const groups = counters.length > 0
+                ? [
+                      {
+                          id: nextGroupId(),
+                          label: 'Counters (auto)',
+                          material: 'solid' as const,
+                          color: panelColor,
+                          pathIndices: counters,
+                      },
+                  ]
+                : [];
+            return {
+                svgSource: source,
+                imported,
+                params: {
+                    ...s.params,
+                    aperturePlacement:
+                        s.params.aperturePlacement ?? DEFAULT_PLACEMENT,
+                    materialGroups: groups,
+                },
+                editingGroupId: null,
+                pendingPaths: [],
+                dirty: true,
+            };
+        }),
 
     clearSvg: () =>
         set((s) => ({
