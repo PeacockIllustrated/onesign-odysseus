@@ -31,7 +31,7 @@ export const DEFAULT_PARAMS: PanelParams = {
     manualFixings: [],
 };
 
-type GroupMaterial = 'solid' | 'vinyl' | 'acrylic';
+type GroupMaterial = 'cut' | 'solid' | 'vinyl' | 'acrylic' | 'standoff';
 
 type MaterialGroup = NonNullable<PanelParams['materialGroups']>[number];
 
@@ -47,7 +47,20 @@ function defaultGroupColor(
 ): string {
     if (material === 'solid') return panelColor ?? '#d6d6d6';
     if (material === 'vinyl') return '#ffffff';
+    // acrylic, standoff, cut — dark default. 'cut' colour is unused
+    // visually (the path is a hole) but the field needs a value.
     return '#1a1f23';
+}
+
+function defaultGroupThickness(material: GroupMaterial): number | undefined {
+    if (material === 'acrylic') return 5;
+    if (material === 'standoff') return 5;
+    return undefined;
+}
+
+function defaultGroupStandoff(material: GroupMaterial): number | undefined {
+    if (material === 'standoff') return 25;
+    return undefined;
 }
 
 interface VisualiserState {
@@ -97,16 +110,27 @@ interface VisualiserState {
     /**
      * Commit the current edit. `material === 'cut'` removes the pending
      * paths from any group they're in (and deletes the group being
-     * edited if applicable). Non-cut materials create or update a group
-     * with the pending paths as its members.
+     * edited if applicable) — effectively reverting them to the
+     * default-for-ungrouped behaviour driven by apertureMode. Any
+     * other material creates or updates a group with the pending
+     * paths as its members.
      */
     applyEditMaterial: (
-        material: 'cut' | GroupMaterial,
-        options?: { color?: string; thicknessMm?: number },
+        material: GroupMaterial,
+        options?: {
+            color?: string;
+            thicknessMm?: number;
+            standoffDistanceMm?: number;
+        },
     ) => void;
     updateGroupProps: (
         groupId: string,
-        patch: { color?: string; thicknessMm?: number; label?: string },
+        patch: {
+            color?: string;
+            thicknessMm?: number;
+            standoffDistanceMm?: number;
+            label?: string;
+        },
     ) => void;
     deleteGroup: (groupId: string) => void;
 
@@ -326,7 +350,7 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                 };
             }
 
-            // Solid / vinyl / acrylic — create or update.
+            // Solid / vinyl / acrylic / standoff — create or update.
             const existing =
                 editingId && editingId !== 'new'
                     ? list.find((g) => g.id === editingId)
@@ -338,7 +362,11 @@ export const useVisualiser = create<VisualiserState>((set) => ({
             const thicknessMm =
                 options?.thicknessMm ??
                 existing?.thicknessMm ??
-                (material === 'acrylic' ? 5 : undefined);
+                defaultGroupThickness(material);
+            const standoffDistanceMm =
+                options?.standoffDistanceMm ??
+                existing?.standoffDistanceMm ??
+                defaultGroupStandoff(material);
 
             const updated: MaterialGroup = {
                 id: existing?.id ?? nextGroupId(),
@@ -346,6 +374,7 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                 material,
                 color,
                 thicknessMm,
+                standoffDistanceMm,
                 pathIndices: [...pending].sort((a, b) => a - b),
             };
 
@@ -371,6 +400,9 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                           color: patch.color ?? g.color,
                           thicknessMm:
                               patch.thicknessMm ?? g.thicknessMm,
+                          standoffDistanceMm:
+                              patch.standoffDistanceMm ??
+                              g.standoffDistanceMm,
                           label: patch.label ?? g.label,
                       }
                     : g,

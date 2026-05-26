@@ -163,30 +163,45 @@ export const PanelParamsSchema = z.object({
      */
     manualFixings: z.array(z.tuple([z.number(), z.number()])).optional(),
     /**
-     * Aperture-mode material groups. Each group bundles a set of imported
-     * SVG paths under a shared material (solid / vinyl / acrylic). Paths
-     * not in any group default to "cut" and end up in the production
-     * aperture as cut-outs. Indices are positions into `imported.paths`,
-     * so the list is cleared whenever a new SVG is loaded.
+     * Material groups — the heart of the mixed-material model. Each
+     * group bundles a set of imported SVG paths under a shared
+     * material. A single sign can mix any combination of materials
+     * (e.g. aperture cuts + face-stuck acrylic detail + stood-off
+     * lettering + vinyl tagline). Paths not in any group fall back to
+     * the default behaviour driven by `apertureMode`.
      *
-     *   - 'solid'   — drop from the cut, leave as panel material. Used
-     *                 for inner counters (the hole in an O, e, g) that
-     *                 the SVG exports as a separate closed path. Colour
-     *                 / thickness ignored visually but stored.
-     *   - 'vinyl'   — drop from the cut, draw as a flat colour appliqué.
-     *   - 'acrylic' — drop from the cut, draw as a coloured sheet
-     *                 extruded by thicknessMm in 3D.
+     *   - 'cut'      — explicit "cut from the panel" (face hole). Same
+     *                  as ungrouped when apertureMode = 'aperture'.
+     *   - 'solid'    — leave as panel material. Used for inner counters
+     *                  that the SVG exports as a separate closed path.
+     *   - 'vinyl'    — flat colour appliqué on the panel face.
+     *   - 'acrylic'  — coloured sheet extruded by thicknessMm,
+     *                  face-stuck (no standoff).
+     *   - 'standoff' — extruded letter mounted via studs at
+     *                  standoffDistanceMm in front of the face.
+     *
+     * Indices are positions into `imported.paths`, so the list is
+     * cleared whenever a new SVG is loaded.
      */
     materialGroups: z
         .array(
             z.object({
                 id: z.string().min(1),
                 label: z.string().optional(),
-                material: z.enum(['solid', 'vinyl', 'acrylic']),
+                material: z.enum([
+                    'cut',
+                    'solid',
+                    'vinyl',
+                    'acrylic',
+                    'standoff',
+                ]),
                 color: z
                     .string()
                     .regex(/^#[0-9a-fA-F]{6}$/, 'colour must be 6-digit hex'),
+                /** Acrylic + standoff only. */
                 thicknessMm: z.number().positive().max(50).optional(),
+                /** Standoff only — gap between panel face and letter back. */
+                standoffDistanceMm: z.number().min(0).max(300).optional(),
                 pathIndices: z.array(z.number().int().min(0)),
             }),
         )
@@ -373,6 +388,21 @@ export interface MaterialPiece {
     color: string;
     /** Only set for acrylic. */
     thicknessMm?: number;
+}
+
+/**
+ * Standoff piece — a path rendered as an extruded letter mounted with
+ * studs at `standoffDistanceMm` in front of the panel face. Pieces
+ * carry their own settings so a single sign can mix standoff groups
+ * with different thicknesses, distances and colours.
+ */
+export interface StandoffPiece {
+    pathIndex: number;
+    path: FlatPath;
+    holes?: FlatPath[];
+    color: string;
+    thicknessMm: number;
+    standoffDistanceMm: number;
 }
 
 /**

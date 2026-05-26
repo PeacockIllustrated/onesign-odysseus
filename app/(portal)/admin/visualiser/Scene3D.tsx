@@ -11,6 +11,7 @@ import type {
     FlatPath,
     PanelEdge,
     MaterialPiece,
+    StandoffPiece,
 } from '@/lib/visualiser/types';
 
 /** Set by the scene on mount so ExportBar can grab a PDF thumbnail. */
@@ -274,6 +275,34 @@ function Flap({
             )}
         </group>
     );
+}
+
+/**
+ * Keep only the fixings whose centroid sits inside `path`. Used to
+ * partition global fixings across multiple standoff pieces so the
+ * locator stroke / cylinder for each fixing renders on the right
+ * letter at the right z.
+ */
+function filterFixingsInside(
+    fixings: FlatPath[],
+    path: FlatPath,
+): FlatPath[] {
+    if (!path.closed || path.points.length < 3) return [];
+    const ring = path.points.slice(0, -1) as Array<[number, number]>;
+    const out: FlatPath[] = [];
+    for (const f of fixings) {
+        if (f.points.length < 3) continue;
+        let cx = 0;
+        let cy = 0;
+        for (const [x, y] of f.points) {
+            cx += x;
+            cy += y;
+        }
+        cx /= f.points.length;
+        cy /= f.points.length;
+        if (pointInRing([cx, cy], ring)) out.push(f);
+    }
+    return out;
 }
 
 /** Even-odd ray cast — same as the placement-side helper, inlined. */
@@ -890,6 +919,7 @@ function Panel({
     reference,
     vinylPieces,
     acrylicPieces,
+    standoffPieces,
     placedPathsByIndex,
     pathGroupColors,
     pendingPaths,
@@ -912,6 +942,7 @@ function Panel({
     reference: FlatPath[];
     vinylPieces: MaterialPiece[];
     acrylicPieces: MaterialPiece[];
+    standoffPieces: StandoffPiece[];
     placedPathsByIndex?: Array<FlatPath | null> | null;
     pathGroupColors?: Array<string | null> | null;
     pendingPaths?: Set<number>;
@@ -1057,44 +1088,67 @@ function Panel({
                 }
             />
 
-            {/* Stand-off lettering — when in standoff mode, the reference
-                paths become 3D extruded letter pieces mounted in front of
-                the panel by `standoffDistanceMm`, with their own thickness
-                and colour. Locator studs bridge the gap so the connection
-                between panel and lettering reads physically. */}
-            {(params.apertureMode ?? 'aperture') === 'standoff' &&
-                reference.length > 0 &&
-                face && (
-                    <>
-                        {showStandoffLocators && (
-                            <StandoffLocators
-                                face={face}
-                                fixings={fixings}
-                                fixingDiameterMm={
-                                    params.fixingDiameterMm ?? 10
-                                }
-                                faceThicknessMm={T}
-                                standoffMm={params.standoffDistanceMm ?? 25}
-                                outlines={showOutlines}
-                            />
-                        )}
-                        {showStandoffLetters && (
-                            <StandoffLettering
-                                face={face}
-                                reference={reference}
-                                autoFixings={autoFixings}
-                                manualFixings={manualFixings}
-                                thicknessMm={params.letterThicknessMm ?? 5}
-                                standoffMm={params.standoffDistanceMm ?? 25}
-                                faceThicknessMm={T}
-                                color={params.letterColor ?? '#1a1f23'}
-                                outlines={showOutlines}
-                                fixingMode={fixingMode}
-                                onFixingClick={onFixingClick}
-                            />
-                        )}
-                    </>
-                )}
+            {/* Stand-off pieces — each material group with material =
+                'standoff' renders as its own batch of extruded letters
+                mounted with studs at the group's own distance, thickness
+                and colour. A sign can mix multiple standoff groups, and
+                even mix standoff with vinyl / acrylic / cut on the same
+                panel. */}
+            {face && standoffPieces.length > 0 && (
+                <>
+                    {showStandoffLocators &&
+                        standoffPieces.map((piece) => {
+                            const pieceFixings = filterFixingsInside(
+                                fixings,
+                                piece.path,
+                            );
+                            return (
+                                <StandoffLocators
+                                    key={`loc-${piece.pathIndex}`}
+                                    face={face}
+                                    fixings={pieceFixings}
+                                    fixingDiameterMm={
+                                        params.fixingDiameterMm ?? 10
+                                    }
+                                    faceThicknessMm={T}
+                                    standoffMm={piece.standoffDistanceMm}
+                                    outlines={showOutlines}
+                                />
+                            );
+                        })}
+                    {showStandoffLetters &&
+                        standoffPieces.map((piece) => {
+                            const pieceAuto = filterFixingsInside(
+                                autoFixings,
+                                piece.path,
+                            );
+                            const pieceManual = filterFixingsInside(
+                                manualFixings,
+                                piece.path,
+                            );
+                            const refPaths = [
+                                piece.path,
+                                ...(piece.holes ?? []),
+                            ];
+                            return (
+                                <StandoffLettering
+                                    key={`letter-${piece.pathIndex}`}
+                                    face={face}
+                                    reference={refPaths}
+                                    autoFixings={pieceAuto}
+                                    manualFixings={pieceManual}
+                                    thicknessMm={piece.thicknessMm}
+                                    standoffMm={piece.standoffDistanceMm}
+                                    faceThicknessMm={T}
+                                    color={piece.color}
+                                    outlines={showOutlines}
+                                    fixingMode={fixingMode}
+                                    onFixingClick={onFixingClick}
+                                />
+                            );
+                        })}
+                </>
+            )}
 
             {/* Hinged return flaps (+ optional shadow-gap lips) */}
             {edges.map((e) =>
@@ -1156,6 +1210,7 @@ export default function Scene3D(props: {
     reference?: FlatPath[];
     vinylPieces?: MaterialPiece[];
     acrylicPieces?: MaterialPiece[];
+    standoffPieces?: StandoffPiece[];
     placedPathsByIndex?: Array<FlatPath | null> | null;
     pathGroupColors?: Array<string | null> | null;
     pendingPaths?: Set<number>;
@@ -1176,6 +1231,7 @@ export default function Scene3D(props: {
     const reference = props.reference ?? [];
     const vinylPieces = props.vinylPieces ?? [];
     const acrylicPieces = props.acrylicPieces ?? [];
+    const standoffPieces = props.standoffPieces ?? [];
     const showOutlines = props.showOutlines ?? true;
     const showStandoffLetters = props.showStandoffLetters ?? true;
     const showStandoffLocators = props.showStandoffLocators ?? true;
@@ -1208,6 +1264,7 @@ export default function Scene3D(props: {
                 reference={reference}
                 vinylPieces={vinylPieces}
                 acrylicPieces={acrylicPieces}
+                standoffPieces={standoffPieces}
                 placedPathsByIndex={props.placedPathsByIndex ?? null}
                 pathGroupColors={props.pathGroupColors ?? null}
                 pendingPaths={props.pendingPaths}

@@ -58,38 +58,50 @@ function GroupEditControls({
     initialMaterial,
     initialColor,
     initialThickness,
+    initialStandoff,
     pendingCount,
     isExistingGroup,
     panelColor,
     onApply,
     onCancel,
 }: {
-    initialMaterial: GroupMaterial;
+    initialMaterial: Exclude<GroupMaterial, 'cut'>;
     initialColor: string;
     initialThickness: number;
+    initialStandoff: number;
     pendingCount: number;
     isExistingGroup: boolean;
     panelColor: string;
     onApply: (
-        material: 'cut' | GroupMaterial,
-        opts?: { color?: string; thicknessMm?: number },
+        material: GroupMaterial,
+        opts?: {
+            color?: string;
+            thicknessMm?: number;
+            standoffDistanceMm?: number;
+        },
     ) => void;
     onCancel: () => void;
 }) {
-    const [material, setMaterial] = useState<GroupMaterial>(initialMaterial);
+    const [material, setMaterial] =
+        useState<Exclude<GroupMaterial, 'cut'>>(initialMaterial);
     const [color, setColor] = useState<string>(initialColor);
     const [thickness, setThickness] = useState<number>(initialThickness);
+    const [standoff, setStandoff] = useState<number>(initialStandoff);
 
     // Smart colour default when the operator switches material — only
     // snap if the colour is still the previous material's default; if
     // they've picked a custom colour keep it.
-    const pickMaterial = (next: GroupMaterial) => {
+    const pickMaterial = (next: Exclude<GroupMaterial, 'cut'>) => {
         const previousDefault = defaultColorFor(material, panelColor);
         if (color.toLowerCase() === previousDefault.toLowerCase()) {
             setColor(defaultColorFor(next, panelColor));
         }
         setMaterial(next);
     };
+
+    const hasColor = material !== 'solid';
+    const hasThickness = material === 'acrylic' || material === 'standoff';
+    const hasStandoff = material === 'standoff';
 
     return (
         <div className="rounded-md border border-orange-300 bg-orange-50 p-2.5 space-y-2">
@@ -99,17 +111,18 @@ function GroupEditControls({
                     : `Building new group · ${pendingCount} path${pendingCount === 1 ? '' : 's'}`}
             </p>
             <p className="text-[10px] text-orange-800">
-                Click paths on the flat preview to add or remove them,
-                then pick the material below.
+                Click paths on the canvas to add or remove them, then
+                pick the material below.
             </p>
 
-            <div className="flex overflow-hidden rounded-md border border-orange-300">
+            <div className="grid grid-cols-5 overflow-hidden rounded-md border border-orange-300 text-[10px] font-medium">
                 {(
                     [
                         ['cut', 'Cut'],
                         ['solid', 'Solid'],
                         ['vinyl', 'Vinyl'],
                         ['acrylic', 'Acrylic'],
+                        ['standoff', 'Stood off'],
                     ] as const
                 ).map(([v, label], k) => (
                     <button
@@ -119,7 +132,7 @@ function GroupEditControls({
                             if (v === 'cut') onApply('cut');
                             else pickMaterial(v);
                         }}
-                        className={`flex-1 py-1.5 text-[11px] font-medium ${
+                        className={`py-1.5 ${
                             k > 0 ? 'border-l border-orange-300' : ''
                         } ${
                             v === 'cut'
@@ -130,10 +143,12 @@ function GroupEditControls({
                         }`}
                         title={
                             v === 'cut'
-                                ? 'Remove the selected paths from any group (revert to cut).'
+                                ? 'Revert the selected paths to the default-for-ungrouped behaviour.'
                                 : v === 'solid'
                                   ? 'Leave as panel material — no cut. Used for inner letter counters.'
-                                  : undefined
+                                  : v === 'standoff'
+                                    ? 'Extruded letter mounted with studs at a distance from the panel face.'
+                                    : undefined
                         }
                     >
                         {label}
@@ -141,7 +156,7 @@ function GroupEditControls({
                 ))}
             </div>
 
-            {material !== 'solid' && (
+            {hasColor && (
                 <label className="block">
                     <span className="text-[10px] text-orange-900">
                         Colour
@@ -160,18 +175,27 @@ function GroupEditControls({
                                 const v = e.target.value.trim();
                                 if (/^#[0-9a-fA-F]{6}$/.test(v)) setColor(v);
                             }}
-                            className="flex-1 rounded border border-orange-300 px-1.5 py-1 font-mono text-[10px] uppercase focus:border-black focus:outline-none"
+                            className="flex-1 rounded border border-orange-300 px-2 py-1 font-mono text-[11px] uppercase focus:border-black focus:outline-none"
                         />
                     </div>
                 </label>
             )}
 
-            {material === 'acrylic' && (
+            {hasThickness && (
                 <NumField
                     label="Thickness (mm)"
                     step={0.5}
                     value={thickness}
                     onChange={(n) => setThickness(n > 0 ? n : 0.5)}
+                />
+            )}
+
+            {hasStandoff && (
+                <NumField
+                    label="Standoff distance (mm)"
+                    step={1}
+                    value={standoff}
+                    onChange={(n) => setStandoff(n >= 0 ? n : 0)}
                 />
             )}
 
@@ -181,15 +205,20 @@ function GroupEditControls({
                     onClick={() =>
                         onApply(material, {
                             color,
-                            thicknessMm:
-                                material === 'acrylic' ? thickness : undefined,
+                            thicknessMm: hasThickness ? thickness : undefined,
+                            standoffDistanceMm: hasStandoff
+                                ? standoff
+                                : undefined,
                         })
                     }
                     disabled={pendingCount === 0}
                     className="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-black px-3 py-1.5 text-[11px] font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                     <Check size={12} /> Apply{' '}
-                    {material.charAt(0).toUpperCase() + material.slice(1)}
+                    {material === 'standoff'
+                        ? 'Stood off'
+                        : material.charAt(0).toUpperCase() +
+                          material.slice(1)}
                 </button>
                 <button
                     type="button"
@@ -223,12 +252,21 @@ function MaterialGroupsPanel({
     startEditingGroup: (id: string) => void;
     cancelGroupEdit: () => void;
     applyEditMaterial: (
-        material: 'cut' | GroupMaterial,
-        options?: { color?: string; thicknessMm?: number },
+        material: GroupMaterial,
+        options?: {
+            color?: string;
+            thicknessMm?: number;
+            standoffDistanceMm?: number;
+        },
     ) => void;
     updateGroupProps: (
         id: string,
-        patch: { color?: string; thicknessMm?: number; label?: string },
+        patch: {
+            color?: string;
+            thicknessMm?: number;
+            standoffDistanceMm?: number;
+            label?: string;
+        },
     ) => void;
     deleteGroup: (id: string) => void;
 }) {
@@ -261,12 +299,20 @@ function MaterialGroupsPanel({
                     // Key on the editing target so seeding happens via
                     // mount, not via setState-during-render.
                     key={editingGroupId}
-                    initialMaterial={editingExisting?.material ?? 'solid'}
+                    initialMaterial={
+                        // 'cut' isn't a real picker option — fall back to
+                        // 'solid' so the apply form has a valid starting
+                        // material to render its fields against.
+                        (editingExisting?.material === 'cut'
+                            ? 'solid'
+                            : editingExisting?.material) ?? 'solid'
+                    }
                     initialColor={
                         editingExisting?.color ??
                         defaultColorFor('solid', panelColor)
                     }
                     initialThickness={editingExisting?.thicknessMm ?? 5}
+                    initialStandoff={editingExisting?.standoffDistanceMm ?? 25}
                     pendingCount={pendingPaths.length}
                     isExistingGroup={!!editingExisting}
                     panelColor={panelColor}
@@ -378,7 +424,8 @@ function MaterialGroupsPanel({
                                             />
                                         </div>
                                     </label>
-                                    {g.material === 'acrylic' && (
+                                    {(g.material === 'acrylic' ||
+                                        g.material === 'standoff') && (
                                         <NumField
                                             label="Thickness (mm)"
                                             step={0.5}
@@ -387,6 +434,21 @@ function MaterialGroupsPanel({
                                                 updateGroupProps(g.id, {
                                                     thicknessMm:
                                                         n > 0 ? n : 0.5,
+                                                })
+                                            }
+                                        />
+                                    )}
+                                    {g.material === 'standoff' && (
+                                        <NumField
+                                            label="Standoff (mm)"
+                                            step={1}
+                                            value={
+                                                g.standoffDistanceMm ?? 25
+                                            }
+                                            onChange={(n) =>
+                                                updateGroupProps(g.id, {
+                                                    standoffDistanceMm:
+                                                        n >= 0 ? n : 0,
                                                 })
                                             }
                                         />
@@ -662,18 +724,21 @@ export function SvgDropzone() {
                         Anchored to the artwork centre; default is dead centre.
                     </p>
 
-                    {/* Cut mode: aperture (cut out of panel) vs stand-off
-                        (lettering mounts on studs; the panel gets fixing
-                        holes inside each letter instead). */}
+                    {/* Default material — the fallback for SVG paths the
+                        operator hasn't put in a group. Any path can be
+                        independently set to cut / solid / vinyl / acrylic /
+                        standoff via the Material Groups panel below; this
+                        toggle just says "if I don't say otherwise, treat
+                        every path as a cut" or "as a stood-off letter". */}
                     <div className="pt-2 border-t border-neutral-100 space-y-2">
                         <div>
                             <span className="text-[10px] text-neutral-500">
-                                Cut mode
+                                Default for ungrouped paths
                             </span>
                             <div className="mt-0.5">
                                 <Segmented<ApertureMode>
                                     options={[
-                                        ['aperture', 'Aperture'],
+                                        ['aperture', 'Cut'],
                                         ['standoff', 'Stood off'],
                                     ]}
                                     value={params.apertureMode ?? 'aperture'}
@@ -683,23 +748,20 @@ export function SvgDropzone() {
                                 />
                             </div>
                         </div>
-                        {(params.apertureMode ?? 'aperture') === 'aperture' &&
-                            imported && (
-                                <MaterialGroupsPanel
-                                    groups={params.materialGroups ?? []}
-                                    editingGroupId={editingGroupId}
-                                    pendingPaths={pendingPaths}
-                                    panelColor={
-                                        params.panelColor ?? '#d6d6d6'
-                                    }
-                                    startNewGroupEdit={startNewGroupEdit}
-                                    startEditingGroup={startEditingGroup}
-                                    cancelGroupEdit={cancelGroupEdit}
-                                    applyEditMaterial={applyEditMaterial}
-                                    updateGroupProps={updateGroupProps}
-                                    deleteGroup={deleteGroup}
-                                />
-                            )}
+                        {imported && (
+                            <MaterialGroupsPanel
+                                groups={params.materialGroups ?? []}
+                                editingGroupId={editingGroupId}
+                                pendingPaths={pendingPaths}
+                                panelColor={params.panelColor ?? '#d6d6d6'}
+                                startNewGroupEdit={startNewGroupEdit}
+                                startEditingGroup={startEditingGroup}
+                                cancelGroupEdit={cancelGroupEdit}
+                                applyEditMaterial={applyEditMaterial}
+                                updateGroupProps={updateGroupProps}
+                                deleteGroup={deleteGroup}
+                            />
+                        )}
                         {(params.apertureMode ?? 'aperture') === 'standoff' && (
                             <>
                                 {/* Lettering — physical letter material */}

@@ -28,6 +28,7 @@ import {
     type VisualiserDesignRow,
     type PanelParams,
     type MaterialPiece,
+    type StandoffPiece,
 } from '@/lib/visualiser/types';
 
 const Scene3D = dynamic(() => import('./Scene3D'), {
@@ -353,73 +354,180 @@ export function VisualiserClient({
         params.fixingDiameterMm ??
         (params.fixingRadiusMm ? params.fixingRadiusMm * 2 : 10);
 
-    // Aperture-mode cuts. A path is included as a face cut iff:
-    //   - its own material is cut / unassigned (not vinyl, acrylic, or solid)
-    //   - it isn't nested inside a vinyl / acrylic outer (those own the
-    //     path as a hole in their compound, no need to cut the face)
-    // Nested cuts inside a top-level cut still go in — face fill uses
-    // evenodd so a counter inside a cut letter naturally becomes an
-    // island of panel material.
-    const aperture = useMemo(() => {
-        if (mode !== 'aperture') return [];
-        const out: typeof placedClip.paths = [];
-        for (let i = 0; i < placedClipByIndex.length; i++) {
-            const p = placedClipByIndex[i];
-            if (!p) continue;
-            const own = groupByPath.get(i)?.material;
-            if (own === 'vinyl' || own === 'acrylic' || own === 'solid')
-                continue;
-            if (nestedInsideMaterial(i)) continue;
-            out.push(p);
-        }
-        return out;
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [mode, placedClipByIndex, groupByPath, parentByIndex]);
+    // Effective material for every imported path: the path's own group
+    // assignment wins; otherwise the default-for-ungrouped is driven by
+    // `apertureMode` (the operator's "what most of this sign is made of"
+    // hint). Nested paths are owned by their material ancestor —
+    // they're rendered as evenodd holes in the ancestor's compound, so
+    // they're treated as 'inherited' and contribute nothing on their own.
+    type Effective =
+        | { kind: 'cut' }
+        | { kind: 'solid' }
+        | { kind: 'vinyl'; color: string }
+        | { kind: 'acrylic'; color: string; thicknessMm: number }
+        | {
+              kind: 'standoff';
+              color: string;
+              thicknessMm: number;
+              standoffDistanceMm: number;
+          }
+        | { kind: 'inherited' };
 
-    // Compound material pieces. Each vinyl / acrylic outer gathers ALL
-    // its descendant paths (any depth, any assignment) as evenodd holes
-    // — so an outer letter assigned to vinyl renders as a proper donut
-    // with the inner counter punched through. Standalone vinyl /
-    // acrylic paths with no nested counters just get an empty holes
-    // array.
-    const materialPieces = useMemo(() => {
-        if (mode !== 'aperture')
-            return { vinyl: [] as MaterialPiece[], acrylic: [] as MaterialPiece[] };
-        const vinyl: MaterialPiece[] = [];
-        const acrylic: MaterialPiece[] = [];
-        for (let i = 0; i < placedClipByIndex.length; i++) {
-            const path = placedClipByIndex[i];
-            const entry = groupByPath.get(i);
-            if (!path || !entry) continue;
-            if (entry.material !== 'vinyl' && entry.material !== 'acrylic')
-                continue;
-            const holes: typeof placedClip.paths = [];
+    const defaultUngroupedKind: 'cut' | 'standoff' =
+        mode === 'standoff' ? 'standoff' : 'cut';
+
+    const globalLetterThickness = params.letterThicknessMm ?? 5;
+    const globalStandoffDistance = params.standoffDistanceMm ?? 25;
+    const globalLetterColor = params.letterColor ?? '#1a1f23';
+
+    const effectiveMaterials = useMemo<Effective[]>(() => {
+        return placedClipByIndex.map((_, i) => {
+            const own = groupByPath.get(i);
+            // Nested paths are holes in their ancestor's compound, not
+            // their own render. Treat as inherited regardless of any
+            // group assignment they happen to carry.
+            if (own && nestedInsideMaterial(i)) return { kind: 'inherited' };
+            if (!own && nestedInsideMaterial(i)) return { kind: 'inherited' };
+            if (own) {
+                if (own.material === 'cut') return { kind: 'cut' };
+                if (own.material === 'solid') return { kind: 'solid' };
+                if (own.material === 'vinyl')
+                    return { kind: 'vinyl', color: own.color };
+                if (own.material === 'acrylic')
+                    return {
+                        kind: 'acrylic',
+                        color: own.color,
+                        thicknessMm: own.thicknessMm ?? 5,
+                    };
+                if (own.material === 'standoff')
+                    return {
+                        kind: 'standoff',
+                        color: own.color,
+                        thicknessMm: own.thicknessMm ?? globalLetterThickness,
+                        standoffDistanceMm:
+                            own.standoffDistanceMm ?? globalStandoffDistance,
+                    };
+            }
+            // Ungrouped — fall back to the apertureMode default.
+            if (defaultUngroupedKind === 'standoff') {
+                return {
+                    kind: 'standoff',
+                    color: globalLetterColor,
+                    thicknessMm: globalLetterThickness,
+                    standoffDistanceMm: globalStandoffDistance,
+                };
+            }
+            return { kind: 'cut' };
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+        placedClipByIndex,
+        groupByPath,
+        parentByIndex,
+        defaultUngroupedKind,
+        globalLetterColor,
+        globalLetterThickness,
+        globalStandoffDistance,
+    ]);
+
+    // Build the holes array (placed-and-clipped descendants of `i`) once
+    // per path — vinyl, acrylic, and standoff pieces all need this so
+    // their compound renders punch through nested counters.
+    const holesByIndex = useMemo(() => {
+        return placedClipByIndex.map((path, i) => {
+            if (!path) return [] as typeof placedClip.paths;
+            const out: typeof placedClip.paths = [];
             for (let j = 0; j < placedClipByIndex.length; j++) {
                 if (j === i) continue;
                 const hp = placedClipByIndex[j];
                 if (!hp || !hp.closed) continue;
-                if (isDescendantOf(j, i)) holes.push(hp);
+                if (isDescendantOf(j, i)) out.push(hp);
             }
-            const piece: MaterialPiece = {
-                pathIndex: i,
-                path,
-                holes,
-                color: entry.color,
-                thicknessMm: entry.thicknessMm,
-            };
-            if (entry.material === 'vinyl') vinyl.push(piece);
-            else acrylic.push(piece);
+            return out;
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [placedClipByIndex, parentByIndex]);
+
+    // Aperture = paths with effective material 'cut' (own or via default).
+    const aperture = useMemo(() => {
+        const out: typeof placedClip.paths = [];
+        for (let i = 0; i < placedClipByIndex.length; i++) {
+            const p = placedClipByIndex[i];
+            if (!p) continue;
+            if (effectiveMaterials[i]?.kind !== 'cut') continue;
+            out.push(p);
+        }
+        return out;
+    }, [placedClipByIndex, effectiveMaterials]);
+
+    // Vinyl + acrylic compound pieces (face-stuck materials). Each
+    // top-level piece gathers its descendants as evenodd holes so a
+    // letter outline with an inner counter renders as a donut.
+    const materialPieces = useMemo(() => {
+        const vinyl: MaterialPiece[] = [];
+        const acrylic: MaterialPiece[] = [];
+        for (let i = 0; i < placedClipByIndex.length; i++) {
+            const path = placedClipByIndex[i];
+            if (!path) continue;
+            const eff = effectiveMaterials[i];
+            if (!eff) continue;
+            if (eff.kind === 'vinyl') {
+                vinyl.push({
+                    pathIndex: i,
+                    path,
+                    holes: holesByIndex[i],
+                    color: eff.color,
+                });
+            } else if (eff.kind === 'acrylic') {
+                acrylic.push({
+                    pathIndex: i,
+                    path,
+                    holes: holesByIndex[i],
+                    color: eff.color,
+                    thicknessMm: eff.thicknessMm,
+                });
+            }
         }
         return { vinyl, acrylic };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [mode, placedClipByIndex, groupByPath, parentByIndex]);
+    }, [placedClipByIndex, effectiveMaterials, holesByIndex]);
 
-    // Standoff-mode features: lettering outline shown as a reference, with
-    // fixing holes placed inside each letter shape.
-    const reference = useMemo(
-        () => (mode === 'standoff' ? placedClip.paths : []),
-        [mode, placedClip.paths],
-    );
+    // Standoff pieces — extruded 3D letters mounted with studs at
+    // standoffDistanceMm. Each piece carries its own settings so a
+    // sign can have, say, 5 mm acrylic letters at 25 mm offset AND
+    // 10 mm letters at 40 mm offset side-by-side.
+    const standoffPieces = useMemo<StandoffPiece[]>(() => {
+        const out: StandoffPiece[] = [];
+        for (let i = 0; i < placedClipByIndex.length; i++) {
+            const path = placedClipByIndex[i];
+            if (!path) continue;
+            const eff = effectiveMaterials[i];
+            if (eff?.kind !== 'standoff') continue;
+            out.push({
+                pathIndex: i,
+                path,
+                holes: holesByIndex[i],
+                color: eff.color,
+                thicknessMm: eff.thicknessMm,
+                standoffDistanceMm: eff.standoffDistanceMm,
+            });
+        }
+        return out;
+    }, [placedClipByIndex, effectiveMaterials, holesByIndex]);
+
+    // Standoff fixing-hole layout still operates on a flat list of
+    // path outlines — preserved for back-compat with the old "all
+    // ungrouped paths in standoff mode" workflow. Includes any path
+    // whose effective kind is 'standoff' (groups + default-ungrouped).
+    const reference = useMemo(() => {
+        const out: typeof placedClip.paths = [];
+        for (let i = 0; i < placedClipByIndex.length; i++) {
+            const p = placedClipByIndex[i];
+            if (!p) continue;
+            if (effectiveMaterials[i]?.kind !== 'standoff') continue;
+            out.push(p);
+        }
+        return out;
+    }, [placedClipByIndex, effectiveMaterials]);
 
     const fixingDensity = params.fixingDensity ?? 1;
 
@@ -717,11 +825,7 @@ export function VisualiserClient({
                             reference={reference}
                             vinylPieces={materialPieces.vinyl}
                             acrylicPieces={materialPieces.acrylic}
-                            placedPathsByIndex={
-                                mode === 'aperture'
-                                    ? placedClipByIndex
-                                    : null
-                            }
+                            placedPathsByIndex={placedClipByIndex}
                             pathGroupColors={pathGroupColors}
                             pendingPaths={pendingPathsSet}
                             isEditingGroup={isEditingGroup}
@@ -744,11 +848,8 @@ export function VisualiserClient({
                             reference={reference}
                             vinylPieces={materialPieces.vinyl}
                             acrylicPieces={materialPieces.acrylic}
-                            placedPathsByIndex={
-                                mode === 'aperture'
-                                    ? placedClipByIndex
-                                    : null
-                            }
+                            standoffPieces={standoffPieces}
+                            placedPathsByIndex={placedClipByIndex}
                             pathGroupColors={pathGroupColors}
                             pendingPaths={pendingPathsSet}
                             isEditingGroup={isEditingGroup}
