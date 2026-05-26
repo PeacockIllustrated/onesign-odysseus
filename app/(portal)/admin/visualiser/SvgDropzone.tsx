@@ -547,6 +547,16 @@ export function SvgDropzone() {
     const inputRef = useRef<HTMLInputElement>(null);
     const [error, setError] = useState<string | null>(null);
 
+    // Any path rendered as stood off — either the quick default is set
+    // to standoff (so ungrouped paths land there) or at least one
+    // explicit group's material is standoff. Drives whether the
+    // shared lettering defaults + fixings panel is visible.
+    const anyStandoffPath =
+        (params.apertureMode ?? 'aperture') === 'standoff' ||
+        (params.materialGroups ?? []).some(
+            (g) => g.material === 'standoff',
+        );
+
     const handleFile = async (file: File) => {
         setError(null);
         try {
@@ -724,16 +734,17 @@ export function SvgDropzone() {
                         Anchored to the artwork centre; default is dead centre.
                     </p>
 
-                    {/* Default material — the fallback for SVG paths the
-                        operator hasn't put in a group. Any path can be
-                        independently set to cut / solid / vinyl / acrylic /
-                        standoff via the Material Groups panel below; this
-                        toggle just says "if I don't say otherwise, treat
-                        every path as a cut" or "as a stood-off letter". */}
+                    {/* Quick default — sets the material every ungrouped
+                        SVG path falls back to. Groups override on a
+                        per-path basis, so the typical flow is "pick the
+                        one material most of the sign is, then group the
+                        exceptions". Without a quick default, everything
+                        in an all-standoff sign would need an explicit
+                        group, which adds clicks for the common case. */}
                     <div className="pt-2 border-t border-neutral-100 space-y-2">
                         <div>
                             <span className="text-[10px] text-neutral-500">
-                                Default for ungrouped paths
+                                Quick default
                             </span>
                             <div className="mt-0.5">
                                 <Segmented<ApertureMode>
@@ -747,6 +758,11 @@ export function SvgDropzone() {
                                     }
                                 />
                             </div>
+                            <p className="mt-1 text-[10px] text-neutral-400">
+                                Any path not put into a Material Group below
+                                renders as this. Override individual paths
+                                with their own material in the group editor.
+                            </p>
                         </div>
                         {imported && (
                             <MaterialGroupsPanel
@@ -762,13 +778,31 @@ export function SvgDropzone() {
                                 deleteGroup={deleteGroup}
                             />
                         )}
-                        {(params.apertureMode ?? 'aperture') === 'standoff' && (
+                        {/* Standoff defaults + fixings — shown whenever any
+                            path is rendered as stood off, regardless of
+                            whether that's via the quick default or via an
+                            explicit group. Fixings are a single global
+                            set applied across every standoff path so the
+                            shop only configures the diameter / density
+                            once per sign. */}
+                        {anyStandoffPath && (
                             <>
-                                {/* Lettering — physical letter material */}
+                                {/* Lettering defaults — applied to standoff
+                                    paths that are NOT in an explicit group
+                                    (i.e. the quick default = Stood off
+                                    case). Explicit standoff groups carry
+                                    their own thickness / distance / colour
+                                    and ignore these. */}
                                 <div className="space-y-2 pt-1">
                                     <h4 className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
-                                        Lettering
+                                        Standoff defaults
                                     </h4>
+                                    <p className="text-[10px] text-neutral-400">
+                                        Used for paths set to stood-off via
+                                        the quick default. Group-specific
+                                        standoff has its own thickness +
+                                        distance.
+                                    </p>
                                     <div className="grid grid-cols-2 gap-2">
                                         <NumField
                                             label="Thickness (mm)"
@@ -800,7 +834,7 @@ export function SvgDropzone() {
                                     </div>
                                     <label className="block">
                                         <span className="text-[10px] text-neutral-500">
-                                            Letter colour
+                                            Default letter colour
                                         </span>
                                         <div className="mt-0.5 flex items-center gap-2">
                                             <input
@@ -816,7 +850,7 @@ export function SvgDropzone() {
                                                     )
                                                 }
                                                 className="h-7 w-10 cursor-pointer rounded border border-neutral-300 bg-white p-0.5"
-                                                aria-label="Letter colour"
+                                                aria-label="Default letter colour"
                                             />
                                             <input
                                                 type="text"
@@ -1001,11 +1035,6 @@ export function SvgDropzone() {
                                 </div>
                             </>
                         )}
-                        <p className="text-[10px] text-neutral-400">
-                            {(params.apertureMode ?? 'aperture') === 'standoff'
-                                ? 'Lettering is fabricated separately; the panel gets fixing holes placed inside each letter, offset so they never line up vertically or horizontally.'
-                                : 'The artwork is cut out of the panel as one or more holes.'}
-                        </p>
                     </div>
                 </div>
             )}
