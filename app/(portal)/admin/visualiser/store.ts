@@ -8,6 +8,7 @@ import {
     type ImportedSvg,
     type VisualiserDesignRow,
 } from '@/lib/visualiser/types';
+import { detectInnerCounters } from '@/lib/visualiser/svg-import';
 
 export const DEFAULT_PARAMS: PanelParams = {
     name: 'Untitled panel',
@@ -74,7 +75,7 @@ interface VisualiserState {
         patch:
             | null
             | {
-                  material: 'vinyl' | 'acrylic';
+                  material: 'solid' | 'vinyl' | 'acrylic';
                   color?: string;
                   thicknessMm?: number;
               },
@@ -128,20 +129,30 @@ export const useVisualiser = create<VisualiserState>((set) => ({
         })),
 
     setSvg: (source, imported) =>
-        set((s) => ({
-            svgSource: source,
-            imported,
-            params: {
-                ...s.params,
-                aperturePlacement:
-                    s.params.aperturePlacement ?? DEFAULT_PLACEMENT,
-                // Path indices change with the new artwork, so any prior
-                // material assignments would point at the wrong shapes.
-                nonCutPaths: [],
-            },
-            selectedPathIndex: null,
-            dirty: true,
-        })),
+        set((s) => {
+            // Pre-populate inner counters as "solid". Most SVGs export
+            // letter holes (O, e, g) as separate closed paths that should
+            // stay as panel material rather than become their own cut.
+            // The operator can still flip them to cut/vinyl/acrylic.
+            const counters = detectInnerCounters(imported.paths);
+            const seeded = counters.map((pathIndex) => ({
+                pathIndex,
+                material: 'solid' as const,
+                color: s.params.panelColor ?? '#d6d6d6',
+            }));
+            return {
+                svgSource: source,
+                imported,
+                params: {
+                    ...s.params,
+                    aperturePlacement:
+                        s.params.aperturePlacement ?? DEFAULT_PLACEMENT,
+                    nonCutPaths: seeded,
+                },
+                selectedPathIndex: null,
+                dirty: true,
+            };
+        }),
 
     clearSvg: () =>
         set((s) => ({
@@ -230,13 +241,16 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                 };
             }
             const existing = idx >= 0 ? list[idx] : undefined;
+            const defaultColor =
+                patch.material === 'solid'
+                    ? s.params.panelColor ?? '#d6d6d6'
+                    : patch.material === 'vinyl'
+                      ? '#ffffff'
+                      : '#1a1f23';
             const merged = {
                 pathIndex,
                 material: patch.material,
-                color:
-                    patch.color ??
-                    existing?.color ??
-                    (patch.material === 'vinyl' ? '#ffffff' : '#1a1f23'),
+                color: patch.color ?? existing?.color ?? defaultColor,
                 thicknessMm:
                     patch.thicknessMm ??
                     existing?.thicknessMm ??

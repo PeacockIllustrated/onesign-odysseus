@@ -222,6 +222,9 @@ export function VisualiserClient({
 
     // Mixed-material pieces — only meaningful in aperture mode. Each
     // entry pairs a placed+clipped path with the material picked for it.
+    // 'solid' paths are excluded from BOTH the cut and the render — they
+    // just leave the panel material untouched (used for inner letter
+    // counters that the SVG exports as separate closed paths).
     const materialPieces = useMemo(() => {
         if (mode !== 'aperture')
             return { vinyl: [] as MaterialPiece[], acrylic: [] as MaterialPiece[] };
@@ -231,6 +234,7 @@ export function VisualiserClient({
             const path = placedClipByIndex[i];
             const entry = materialByIndex.get(i);
             if (!path || !entry) continue;
+            if (entry.material === 'solid') continue; // no render
             const piece: MaterialPiece = {
                 pathIndex: i,
                 path,
@@ -238,7 +242,7 @@ export function VisualiserClient({
                 thicknessMm: entry.thicknessMm,
             };
             if (entry.material === 'vinyl') vinyl.push(piece);
-            else acrylic.push(piece);
+            else if (entry.material === 'acrylic') acrylic.push(piece);
         }
         return { vinyl, acrylic };
     }, [mode, placedClipByIndex, materialByIndex]);

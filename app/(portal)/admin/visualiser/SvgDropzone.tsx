@@ -34,7 +34,7 @@ function MaterialsPanel({
         patch:
             | null
             | {
-                  material: 'vinyl' | 'acrylic';
+                  material: 'solid' | 'vinyl' | 'acrylic';
                   color?: string;
                   thicknessMm?: number;
               },
@@ -108,6 +108,7 @@ function MaterialsPanel({
                                     {(
                                         [
                                             ['cut', 'Cut'],
+                                            ['solid', 'Solid'],
                                             ['vinyl', 'Vinyl'],
                                             ['acrylic', 'Acrylic'],
                                         ] as const
@@ -132,13 +133,18 @@ function MaterialsPanel({
                                                     ? 'bg-black text-white'
                                                     : 'bg-white text-neutral-500 hover:bg-neutral-100'
                                             }`}
+                                            title={
+                                                v === 'solid'
+                                                    ? 'Leave as panel material (no cut). Use for inner letter counters.'
+                                                    : undefined
+                                            }
                                         >
                                             {label}
                                         </button>
                                     ))}
                                 </div>
                             </div>
-                            {entry && (
+                            {entry && entry.material !== 'solid' && (
                                 <div className="mt-2 grid grid-cols-2 gap-2">
                                     <label className="block">
                                         <span className="text-[10px] text-neutral-500">

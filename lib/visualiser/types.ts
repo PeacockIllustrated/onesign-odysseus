@@ -164,17 +164,22 @@ export const PanelParamsSchema = z.object({
     manualFixings: z.array(z.tuple([z.number(), z.number()])).optional(),
     /**
      * Aperture-mode mixed materials. By default every imported SVG path
-     * becomes a cut-out; entries here override that — the path is
-     * removed from the cut and drawn as vinyl (flat colour) or acrylic
-     * (coloured + extruded by thicknessMm). Indices are positions into
-     * `imported.paths`, so the list is cleared whenever a new SVG is
-     * loaded.
+     * becomes a cut-out; entries here override that:
+     *   - 'solid'   — drop from the cut, leave as panel material. Used
+     *                 for inner counters (the hole in an O, e, g) that
+     *                 the SVG exports as a separate closed path. Colour
+     *                 / thickness ignored.
+     *   - 'vinyl'   — drop from the cut, draw as a flat colour appliqué.
+     *   - 'acrylic' — drop from the cut, draw as a coloured sheet
+     *                 extruded by thicknessMm in 3D.
+     * Indices are positions into `imported.paths`, so the list is cleared
+     * whenever a new SVG is loaded.
      */
     nonCutPaths: z
         .array(
             z.object({
                 pathIndex: z.number().int().min(0),
-                material: z.enum(['vinyl', 'acrylic']),
+                material: z.enum(['solid', 'vinyl', 'acrylic']),
                 color: z
                     .string()
                     .regex(/^#[0-9a-fA-F]{6}$/, 'colour must be 6-digit hex'),

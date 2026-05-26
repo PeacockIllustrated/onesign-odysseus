@@ -518,6 +518,63 @@ export function importSvg(svgText: string): ImportedSvg {
     return { paths, bbox, warnings };
 }
 
+/**
+ * Auto-detect inner counters — closed paths that visually sit inside
+ * another closed path (the hole in an O, e, g, etc.). Same rule SVG
+ * already uses with fillRule="evenodd": nest depth determines fill
+ * state. Returns indices that should default to "solid" (panel
+ * material, not cut). Caller pre-populates `nonCutPaths` from this.
+ */
+export function detectInnerCounters(paths: FlatPath[]): number[] {
+    const closed = paths.map((p, i) => ({ p, i })).filter((e) => e.p.closed);
+    if (closed.length < 2) return [];
+
+    const centroid = (p: FlatPath): [number, number] => {
+        let sx = 0;
+        let sy = 0;
+        const pts = p.points;
+        for (const [x, y] of pts) {
+            sx += x;
+            sy += y;
+        }
+        return [sx / pts.length, sy / pts.length];
+    };
+
+    const contains = (ring: FlatPath, pt: [number, number]): boolean => {
+        // Standard even-odd ray cast.
+        let inside = false;
+        const r = ring.points;
+        let j = r.length - 1;
+        for (let i = 0; i < r.length; i++) {
+            const xi = r[i][0];
+            const yi = r[i][1];
+            const xj = r[j][0];
+            const yj = r[j][1];
+            if (
+                yi > pt[1] !== yj > pt[1] &&
+                pt[0] <
+                    ((xj - xi) * (pt[1] - yi)) / (yj - yi || 1e-12) + xi
+            ) {
+                inside = !inside;
+            }
+            j = i;
+        }
+        return inside;
+    };
+
+    const out: number[] = [];
+    for (const { p, i } of closed) {
+        const c = centroid(p);
+        let depth = 0;
+        for (const other of closed) {
+            if (other.i === i) continue;
+            if (contains(other.p, c)) depth++;
+        }
+        if (depth % 2 === 1) out.push(i);
+    }
+    return out;
+}
+
 function boundingBox(paths: FlatPath[]): ImportedSvg['bbox'] {
     let minX = Infinity;
     let minY = Infinity;
