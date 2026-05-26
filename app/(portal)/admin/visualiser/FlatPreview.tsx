@@ -29,6 +29,9 @@ export function FlatPreview({
     reference = [],
     vinylPieces = [],
     acrylicPieces = [],
+    placedPathsByIndex = null,
+    selectedPathIndex = null,
+    onPathSelect,
     panelColor = DEFAULT_PANEL_COLOR,
     fixingMode = 'off',
     onFixingClick,
@@ -41,6 +44,14 @@ export function FlatPreview({
     reference?: FlatPath[];
     vinylPieces?: MaterialPiece[];
     acrylicPieces?: MaterialPiece[];
+    /**
+     * Per-original-path placed+clipped data so the operator can click on
+     * any imported shape (cut / vinyl / acrylic) to select it. Null
+     * disables selection entirely (standoff mode, or no SVG loaded).
+     */
+    placedPathsByIndex?: Array<FlatPath | null> | null;
+    selectedPathIndex?: number | null;
+    onPathSelect?: (index: number | null) => void;
     panelColor?: string;
     fixingMode?: 'off' | 'place' | 'delete';
     /** Called with the click point in flat-development mm coords. */
@@ -49,7 +60,15 @@ export function FlatPreview({
     const svgRef = useRef<SVGSVGElement | null>(null);
 
     const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
-        if (fixingMode === 'off' || !onFixingClick || !svgRef.current) return;
+        // Path overlays handle their own click and stopPropagation, so any
+        // click that reaches the root is background → deselect.
+        if (fixingMode === 'off') {
+            if (onPathSelect && selectedPathIndex !== null) {
+                onPathSelect(null);
+            }
+            return;
+        }
+        if (!onFixingClick || !svgRef.current) return;
         const ctm = svgRef.current.getScreenCTM();
         if (!ctm) return;
         const pt = svgRef.current.createSVGPoint();
@@ -253,6 +272,56 @@ export function FlatPreview({
                         strokeDasharray={`${stroke * 2} ${stroke * 2}`}
                     />
                 ))}
+
+                {/* Click-to-select overlays — one transparent hit shape per
+                    imported path, regardless of whether it's a cut, vinyl
+                    or acrylic. Lets the operator click a hole in the panel
+                    (a cut) just as easily as a filled vinyl/acrylic piece.
+                    The selected path gets an orange dashed highlight on
+                    top so it's obvious which row the side panel is for. */}
+                {placedPathsByIndex && onPathSelect && (
+                    <g>
+                        {placedPathsByIndex.map((p, i) => {
+                            if (!p) return null;
+                            const isSelected = selectedPathIndex === i;
+                            const cursor =
+                                fixingMode === 'off'
+                                    ? 'pointer'
+                                    : 'crosshair';
+                            return (
+                                <g key={`pick-${i}`}>
+                                    <path
+                                        d={pathD(p)}
+                                        fill="rgba(0,0,0,0.001)"
+                                        stroke="rgba(0,0,0,0)"
+                                        strokeWidth={Math.max(
+                                            stroke * 4,
+                                            2,
+                                        )}
+                                        style={{ cursor }}
+                                        pointerEvents="all"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onPathSelect(
+                                                isSelected ? null : i,
+                                            );
+                                        }}
+                                    />
+                                    {isSelected && (
+                                        <path
+                                            d={pathD(p)}
+                                            fill="none"
+                                            stroke="#f97316"
+                                            strokeWidth={stroke * 2}
+                                            strokeDasharray={`${stroke * 3} ${stroke * 2}`}
+                                            pointerEvents="none"
+                                        />
+                                    )}
+                                </g>
+                            );
+                        })}
+                    </g>
+                )}
 
                 {/* Overall dimensions */}
                 <text

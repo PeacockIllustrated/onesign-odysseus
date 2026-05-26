@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useVisualiser } from './store';
 import { importSvg } from '@/lib/visualiser/svg-import';
 import type {
@@ -24,6 +24,8 @@ function MaterialsPanel({
     paths,
     nonCut,
     setPathMaterial,
+    selectedPathIndex,
+    setSelectedPathIndex,
 }: {
     paths: FlatPath[];
     nonCut: NonCutEntry[];
@@ -37,12 +39,24 @@ function MaterialsPanel({
                   thicknessMm?: number;
               },
     ) => void;
+    selectedPathIndex: number | null;
+    setSelectedPathIndex: (i: number | null) => void;
 }) {
     const byIndex = useMemo(() => {
         const m = new Map<number, NonCutEntry>();
         for (const e of nonCut) m.set(e.pathIndex, e);
         return m;
     }, [nonCut]);
+
+    // Scroll the selected row into view when the operator picks a path
+    // on the canvas — otherwise it can sit off-screen on a long list.
+    const rowRefs = useRef<Array<HTMLLIElement | null>>([]);
+    useEffect(() => {
+        if (selectedPathIndex == null) return;
+        const el = rowRefs.current[selectedPathIndex];
+        if (el)
+            el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }, [selectedPathIndex]);
 
     if (paths.length === 0) return null;
 
@@ -60,15 +74,36 @@ function MaterialsPanel({
                 {paths.map((_, i) => {
                     const entry = byIndex.get(i);
                     const material = entry?.material ?? 'cut';
+                    const isSelected = selectedPathIndex === i;
                     return (
                         <li
                             key={i}
-                            className="rounded-md border border-neutral-200 bg-neutral-50 p-2"
+                            ref={(el) => {
+                                rowRefs.current[i] = el;
+                            }}
+                            className={`rounded-md border bg-neutral-50 p-2 transition-colors ${
+                                isSelected
+                                    ? 'border-orange-400 ring-1 ring-orange-300'
+                                    : 'border-neutral-200'
+                            }`}
                         >
                             <div className="flex items-center justify-between gap-2">
-                                <span className="text-[11px] font-medium text-neutral-600">
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        setSelectedPathIndex(
+                                            isSelected ? null : i,
+                                        )
+                                    }
+                                    className="text-[11px] font-medium text-neutral-600 hover:text-black"
+                                >
                                     Path {i + 1}
-                                </span>
+                                    {isSelected && (
+                                        <span className="ml-1 text-orange-500">
+                                            • selected
+                                        </span>
+                                    )}
+                                </button>
                                 <div className="flex overflow-hidden rounded border border-neutral-300">
                                     {(
                                         [
@@ -241,6 +276,8 @@ export function SvgDropzone() {
         setFixingMode,
         clearManualFixings,
         setPathMaterial,
+        selectedPathIndex,
+        setSelectedPathIndex,
     } = useVisualiser();
     const inputRef = useRef<HTMLInputElement>(null);
     const [error, setError] = useState<string | null>(null);
@@ -449,6 +486,10 @@ export function SvgDropzone() {
                                     paths={imported.paths}
                                     nonCut={params.nonCutPaths ?? []}
                                     setPathMaterial={setPathMaterial}
+                                    selectedPathIndex={selectedPathIndex}
+                                    setSelectedPathIndex={
+                                        setSelectedPathIndex
+                                    }
                                 />
                             )}
                         {(params.apertureMode ?? 'aperture') === 'standoff' && (

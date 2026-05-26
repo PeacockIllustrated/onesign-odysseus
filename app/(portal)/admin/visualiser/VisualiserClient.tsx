@@ -92,6 +92,8 @@ export function VisualiserClient({
         fixingMode,
         addManualFixing,
         removeManualFixing,
+        selectedPathIndex,
+        setSelectedPathIndex,
     } = useVisualiser();
     const [tab, setTab] = useState<Tab>('folded');
     const [mobilePane, setMobilePane] = useState<MobilePane>('preview');
@@ -536,6 +538,13 @@ export function VisualiserClient({
                             reference={reference}
                             vinylPieces={materialPieces.vinyl}
                             acrylicPieces={materialPieces.acrylic}
+                            placedPathsByIndex={
+                                mode === 'aperture'
+                                    ? placedClipByIndex
+                                    : null
+                            }
+                            selectedPathIndex={selectedPathIndex}
+                            onPathSelect={setSelectedPathIndex}
                             panelColor={params.panelColor ?? '#d6d6d6'}
                             fixingMode={fixingMode}
                             onFixingClick={handleFixingClick}

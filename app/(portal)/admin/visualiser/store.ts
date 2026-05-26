@@ -47,6 +47,12 @@ interface VisualiserState {
      * changes (re-aligning the SVG drags the fixings with it).
      */
     fixingMode: 'off' | 'place' | 'delete';
+    /**
+     * Imported SVG path index currently selected for material editing.
+     * Set by clicks on the flat preview; reset to null on background
+     * clicks or when a new SVG is loaded.
+     */
+    selectedPathIndex: number | null;
 
     setParam: <K extends keyof PanelParams>(k: K, v: PanelParams[K]) => void;
     setReturn: (edge: PanelEdge, on: boolean) => void;
@@ -62,6 +68,7 @@ interface VisualiserState {
     removeManualFixing: (index: number) => void;
     clearManualFixings: () => void;
     setFixingMode: (m: 'off' | 'place' | 'delete') => void;
+    setSelectedPathIndex: (i: number | null) => void;
     setPathMaterial: (
         pathIndex: number,
         patch:
@@ -84,6 +91,7 @@ export const useVisualiser = create<VisualiserState>((set) => ({
     quoteItemId: null,
     dirty: false,
     fixingMode: 'off',
+    selectedPathIndex: null,
 
     setParam: (k, v) =>
         set((s) => ({ params: { ...s.params, [k]: v }, dirty: true })),
@@ -131,6 +139,7 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                 // material assignments would point at the wrong shapes.
                 nonCutPaths: [],
             },
+            selectedPathIndex: null,
             dirty: true,
         })),
 
@@ -143,6 +152,7 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                 aperturePlacement: null,
                 nonCutPaths: [],
             },
+            selectedPathIndex: null,
             dirty: true,
         })),
 
@@ -203,6 +213,8 @@ export const useVisualiser = create<VisualiserState>((set) => ({
         })),
 
     setFixingMode: (m) => set({ fixingMode: m }),
+
+    setSelectedPathIndex: (i) => set({ selectedPathIndex: i }),
 
     setPathMaterial: (pathIndex, patch) =>
         set((s) => {
