@@ -240,20 +240,32 @@ export function VisualiserClient({
             }
             return inside;
         };
-        for (let i = 0; i < placedClipByIndex.length; i++) {
-            const p = placedClipByIndex[i];
+        // Pre-compute areas + centroids once — saves an O(n²)*pts
+        // recomputation when scanning candidate parents.
+        const areas: number[] = [];
+        const centroids: Array<[number, number] | null> = [];
+        for (const p of placedClipByIndex) {
             if (!p || !p.closed || p.points.length < 3) {
-                result.push(null);
+                areas.push(0);
+                centroids.push(null);
                 continue;
             }
+            areas.push(polyArea(p.points));
             let cx = 0;
             let cy = 0;
             for (const [x, y] of p.points) {
                 cx += x;
                 cy += y;
             }
-            cx /= p.points.length;
-            cy /= p.points.length;
+            centroids.push([cx / p.points.length, cy / p.points.length]);
+        }
+        for (let i = 0; i < placedClipByIndex.length; i++) {
+            const c = centroids[i];
+            if (!c) {
+                result.push(null);
+                continue;
+            }
+            const myArea = areas[i];
             let parent: number | null = null;
             let parentArea = Infinity;
             for (let j = 0; j < placedClipByIndex.length; j++) {
@@ -261,11 +273,15 @@ export function VisualiserClient({
                 const other = placedClipByIndex[j];
                 if (!other || !other.closed || other.points.length < 3)
                     continue;
-                if (!containsPoint(other.points, [cx, cy])) continue;
-                const a = polyArea(other.points);
-                if (a < parentArea) {
+                // Strict area inequality — a parent must be larger than
+                // its child. Stops two overlapping paths from picking
+                // each other as parent and creating a cycle (which made
+                // the walker functions loop forever and hung the app).
+                if (areas[j] <= myArea) continue;
+                if (!containsPoint(other.points, c)) continue;
+                if (areas[j] < parentArea) {
                     parent = j;
-                    parentArea = a;
+                    parentArea = areas[j];
                 }
             }
             result.push(parent);
@@ -275,12 +291,17 @@ export function VisualiserClient({
 
     // Returns true iff `i` is in the subtree of `root` — used to gather
     // every descendant of a vinyl / acrylic outer so they can be drawn
-    // as evenodd holes in that outer's compound shape.
+    // as evenodd holes in that outer's compound shape. Depth cap is a
+    // belt for the bracing in parent-map computation: parents are area-
+    // strict so cycles shouldn't happen, but if one ever slips through
+    // the helper still terminates.
     const isDescendantOf = (i: number, root: number): boolean => {
         let cursor = parentByIndex[i];
-        while (cursor !== null) {
+        let depth = 0;
+        while (cursor !== null && depth < 256) {
             if (cursor === root) return true;
             cursor = parentByIndex[cursor];
+            depth++;
         }
         return false;
     };
@@ -289,10 +310,12 @@ export function VisualiserClient({
     // must not double-render as their own face cut.
     const nestedInsideMaterial = (i: number): boolean => {
         let cursor = parentByIndex[i];
-        while (cursor !== null) {
+        let depth = 0;
+        while (cursor !== null && depth < 256) {
             const m = groupByPath.get(cursor)?.material;
             if (m === 'vinyl' || m === 'acrylic') return true;
             cursor = parentByIndex[cursor];
+            depth++;
         }
         return false;
     };

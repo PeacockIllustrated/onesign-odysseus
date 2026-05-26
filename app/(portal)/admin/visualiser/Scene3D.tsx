@@ -649,18 +649,15 @@ function PathHitTarget({
     groupColor: string | null;
     onToggle?: (i: number) => void;
 }) {
+    // ALL hooks must run unconditionally — early-returning before
+    // useMemo below changed hook count between renders and crashed the
+    // app on next mount of the canvas. Keep hooks at the top.
     const [hovered, setHovered] = useState(false);
-    if (!shape || !outlinePoints) return null;
-    const hitListens = isEditing && !!onToggle;
-    // Draw the visible outline a hair above the face front so it never
-    // z-fights with the face mesh or the material pieces.
+    // Sits a hair above the face front so the outline never z-fights
+    // with the face mesh or the material pieces.
     const z = 0.7 * S;
-    const outlineColor = inPending
-        ? '#f97316'
-        : hovered && hitListens
-          ? '#f97316'
-          : groupColor;
     const outlineGeom = useMemo(() => {
+        if (!outlinePoints) return null;
         const positions: number[] = [];
         for (let i = 0; i + 5 < outlinePoints.length; i += 3) {
             positions.push(
@@ -681,6 +678,13 @@ function PathHitTarget({
         );
         return g;
     }, [outlinePoints, z]);
+    if (!shape || !outlineGeom) return null;
+    const hitListens = isEditing && !!onToggle;
+    const outlineColor = inPending
+        ? '#f97316'
+        : hovered && hitListens
+          ? '#f97316'
+          : groupColor;
     return (
         <group>
             {outlineColor && (
