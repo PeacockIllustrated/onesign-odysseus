@@ -170,15 +170,24 @@ export const PanelParamsSchema = z.object({
      * lettering + vinyl tagline). Paths not in any group fall back to
      * the default behaviour driven by `apertureMode`.
      *
-     *   - 'cut'      — explicit "cut from the panel" (face hole). Same
-     *                  as ungrouped when apertureMode = 'aperture'.
-     *   - 'solid'    — leave as panel material. Used for inner counters
-     *                  that the SVG exports as a separate closed path.
-     *   - 'vinyl'    — flat colour appliqué on the panel face.
-     *   - 'acrylic'  — coloured sheet extruded by thicknessMm,
-     *                  face-stuck (no standoff).
-     *   - 'standoff' — extruded letter mounted via studs at
-     *                  standoffDistanceMm in front of the face.
+     *   - 'cut'         — explicit "cut from the panel" (face hole).
+     *                     Same as ungrouped when apertureMode = 'aperture'.
+     *   - 'solid'       — leave as panel material. Used for inner counters
+     *                     that the SVG exports as a separate closed path.
+     *   - 'vinyl'       — flat colour appliqué on the panel face.
+     *   - 'acrylic'     — coloured sheet extruded by thicknessMm,
+     *                     face-stuck (no standoff).
+     *   - 'standoff'    — extruded letter mounted via studs at
+     *                     standoffDistanceMm in front of the face.
+     *   - 'pushthrough' — acrylic letter pressed through the panel face
+     *                     from behind: panel has a keyline-shaped hole,
+     *                     outer letter + counter cut as two separate
+     *                     small acrylic pieces and mounted on a backing
+     *                     board behind the panel. Counter is visible
+     *                     through the panel hole because the hole sits
+     *                     at the keyline (larger than the letter), so the
+     *                     counter piece fits inside the hole next to the
+     *                     outer piece.
      *
      * Indices are positions into `imported.paths`, so the list is
      * cleared whenever a new SVG is loaded.
@@ -194,14 +203,29 @@ export const PanelParamsSchema = z.object({
                     'vinyl',
                     'acrylic',
                     'standoff',
+                    'pushthrough',
                 ]),
                 color: z
                     .string()
                     .regex(/^#[0-9a-fA-F]{6}$/, 'colour must be 6-digit hex'),
-                /** Acrylic + standoff only. */
+                /** Acrylic, standoff + pushthrough. */
                 thicknessMm: z.number().positive().max(50).optional(),
                 /** Standoff only — gap between panel face and letter back. */
                 standoffDistanceMm: z.number().min(0).max(300).optional(),
+                /**
+                 * Push-through only — outward offset between the original
+                 * letter outline and the panel cut. Drives the keyline that
+                 * becomes the panel's letter-shaped hole. Supersedes the
+                 * global `keylineMm` for paths in this group. Default 1.5 mm
+                 * (a typical press-fit shoulder for ~3 mm acrylic).
+                 */
+                keylineOffsetMm: z.number().min(0).max(50).optional(),
+                /**
+                 * Push-through only — how far the acrylic piece protrudes
+                 * proud of the panel face from behind. Visual only on the
+                 * 3D scene; cutter doesn't care. Default 5 mm.
+                 */
+                protrusionMm: z.number().min(0).max(100).optional(),
                 pathIndices: z.array(z.number().int().min(0)),
             }),
         )
@@ -403,6 +427,38 @@ export interface StandoffPiece {
     color: string;
     thicknessMm: number;
     standoffDistanceMm: number;
+}
+
+/**
+ * Push-through piece — an acrylic letter pressed through the panel
+ * face from behind. Production reality:
+ *   1. Panel face is cut at the OUTWARD keyline (a simple letter-
+ *      shaped hole, no counter), `keylineOffsetMm` larger than the
+ *      letter outline. This gives the press-fit shoulder.
+ *   2. The acrylic itself is cut as TWO separate pieces per letter:
+ *      the outer outline, AND each inner counter (R / O / A counter).
+ *      Both go on the insert page of the production PDF as separate
+ *      closed contours.
+ *   3. Both pieces are bonded to a backing board in their original
+ *      positions (the counter sits inside the outer ring with zero
+ *      gap), the backing assembly is pressed into the panel from
+ *      behind. Outside the panel hole, both pieces are visible — the
+ *      letter optically reads correctly because the counter sits in
+ *      the hole next to the outer piece.
+ *
+ * `holes` is a list of counter paths (in flat-development coords).
+ * Carrying them separately from `path` is what lets the renderer
+ * draw two SEPARATE extruded shapes (outer + counter) rather than
+ * a compound-with-hole, which is the correct production semantics.
+ */
+export interface PushThroughPiece {
+    pathIndex: number;
+    path: FlatPath;
+    holes?: FlatPath[];
+    color: string;
+    thicknessMm: number;
+    keylineOffsetMm: number;
+    protrusionMm: number;
 }
 
 /**

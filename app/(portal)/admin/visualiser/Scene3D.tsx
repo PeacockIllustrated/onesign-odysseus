@@ -12,6 +12,7 @@ import type {
     PanelEdge,
     MaterialPiece,
     StandoffPiece,
+    PushThroughPiece,
 } from '@/lib/visualiser/types';
 
 /** Set by the scene on mount so ExportBar can grab a PDF thumbnail. */
@@ -879,6 +880,151 @@ function MaterialPieces({
     );
 }
 
+/**
+ * Push-through inserts — letters pressed through the panel face from
+ * behind. The panel already has the press-fit hole cut at the keyline
+ * (slightly larger than the letter outline). Each push-through letter
+ * is rendered as TWO acrylic shapes that fit together inside the panel
+ * hole:
+ *   1. The OUTER piece — a donut. Letter outline with counter regions
+ *      cut out (compound shape via THREE.Path holes).
+ *   2. The COUNTER piece(s) — separate solid blobs that fit exactly
+ *      into the donut's hole(s).
+ *
+ * From the front the operator sees both: the donut outline AND the
+ * counter, both as illuminated acrylic, with the panel surrounding
+ * them at the keyline. This matches production: cutter produces N+1
+ * pieces per letter (one donut + one piece per counter), operator
+ * glues them to the backing board in their original positions, the
+ * backing assembly is pressed into the panel from behind.
+ *
+ * The extrusion runs FROM the panel face outward, `protrusionMm`
+ * proud of the face. (In production the pieces extend back to the
+ * backing board too, but only the proud-of-face part is visible from
+ * the front, so we render just that.)
+ */
+function PushThroughPieces({
+    face,
+    pieces,
+    outlines = true,
+}: {
+    face: { xMm: number; yMm: number; wMm: number; hMm: number };
+    pieces: PushThroughPiece[];
+    outlines?: boolean;
+}) {
+    const builtShapes = useMemo(() => {
+        const toLocal = (q: [number, number]): [number, number] => [
+            (q[0] - face.xMm - face.wMm / 2) * S,
+            (face.yMm + face.hMm / 2 - q[1]) * S,
+        ];
+        return pieces.map((piece) => {
+            // Outer = compound (letter outline + counter holes).
+            // Renders as a donut so the counter pieces below sit in
+            // the holes and are visible alongside the outer ring.
+            const outerLocal = piece.path.points.map(toLocal);
+            const outer = new THREE.Shape();
+            if (outerLocal.length >= 3) {
+                outer.moveTo(outerLocal[0][0], outerLocal[0][1]);
+                for (let i = 1; i < outerLocal.length; i++) {
+                    outer.lineTo(outerLocal[i][0], outerLocal[i][1]);
+                }
+                outer.closePath();
+                for (const hole of piece.holes ?? []) {
+                    const hp = hole.points.map(toLocal);
+                    if (hp.length < 3) continue;
+                    const path = new THREE.Path();
+                    path.moveTo(hp[0][0], hp[0][1]);
+                    for (let i = 1; i < hp.length; i++) {
+                        path.lineTo(hp[i][0], hp[i][1]);
+                    }
+                    path.closePath();
+                    outer.holes.push(path);
+                }
+            }
+            // Counters = separate solid blobs, one per hole. They sit
+            // exactly inside the donut's holes at the same z.
+            const counters: THREE.Shape[] = [];
+            for (const hole of piece.holes ?? []) {
+                const hp = hole.points.map(toLocal);
+                if (hp.length < 3) continue;
+                const c = new THREE.Shape();
+                c.moveTo(hp[0][0], hp[0][1]);
+                for (let i = 1; i < hp.length; i++) {
+                    c.lineTo(hp[i][0], hp[i][1]);
+                }
+                c.closePath();
+                counters.push(c);
+            }
+            return { outer, counters, hasOuter: outerLocal.length >= 3 };
+        });
+    }, [pieces, face.xMm, face.yMm, face.wMm, face.hMm]);
+
+    if (pieces.length === 0) return null;
+
+    return (
+        <group>
+            {pieces.map((piece, pi) => {
+                const built = builtShapes[pi];
+                if (!built.hasOuter) return null;
+                // Extrude forward FROM the panel face (z = 0) by the
+                // protrusion — visibly sticking proud of the panel.
+                const depthScene = Math.max(0.1, piece.protrusionMm) * S;
+                return (
+                    <group key={`pt-${piece.pathIndex}-${pi}`}>
+                        <mesh>
+                            <extrudeGeometry
+                                args={[
+                                    built.outer,
+                                    {
+                                        depth: depthScene,
+                                        bevelEnabled: false,
+                                        curveSegments: 48,
+                                    },
+                                ]}
+                            />
+                            <meshBasicMaterial
+                                color={piece.color}
+                                polygonOffset
+                                polygonOffsetFactor={1}
+                                polygonOffsetUnits={1}
+                            />
+                            {outlines && (
+                                <Edges color={EDGE_COLOR} lineWidth={1.5} />
+                            )}
+                        </mesh>
+                        {built.counters.map((counterShape, ci) => (
+                            <mesh key={`ctr-${ci}`}>
+                                <extrudeGeometry
+                                    args={[
+                                        counterShape,
+                                        {
+                                            depth: depthScene,
+                                            bevelEnabled: false,
+                                            curveSegments: 48,
+                                        },
+                                    ]}
+                                />
+                                <meshBasicMaterial
+                                    color={piece.color}
+                                    polygonOffset
+                                    polygonOffsetFactor={1}
+                                    polygonOffsetUnits={1}
+                                />
+                                {outlines && (
+                                    <Edges
+                                        color={EDGE_COLOR}
+                                        lineWidth={1.5}
+                                    />
+                                )}
+                            </mesh>
+                        ))}
+                    </group>
+                );
+            })}
+        </group>
+    );
+}
+
 function Path3DHitTargets({
     face,
     placedPathsByIndex,
@@ -940,6 +1086,7 @@ function Panel({
     split,
     aperture,
     keyline,
+    pushThroughKeyline,
     autoFixings,
     manualFixings,
     reference,
@@ -947,6 +1094,7 @@ function Panel({
     acrylicPieces,
     solidPieces,
     standoffPieces,
+    pushThroughPieces,
     placedPathsByIndex,
     pathGroupColors,
     pendingPaths,
@@ -964,6 +1112,7 @@ function Panel({
     split: PanelSplit;
     aperture: FlatPath[];
     keyline: FlatPath[];
+    pushThroughKeyline: FlatPath[];
     autoFixings: FlatPath[];
     manualFixings: FlatPath[];
     reference: FlatPath[];
@@ -971,6 +1120,7 @@ function Panel({
     acrylicPieces: MaterialPiece[];
     solidPieces: MaterialPiece[];
     standoffPieces: StandoffPiece[];
+    pushThroughPieces: PushThroughPiece[];
     placedPathsByIndex?: Array<FlatPath | null> | null;
     pathGroupColors?: Array<string | null> | null;
     pendingPaths?: Set<number>;
@@ -1013,8 +1163,11 @@ function Panel({
     );
 
     // Convert every "cut" path from flat-development coords (y-down) into
-    // face-local mm × S (face centred at the world origin, y-up). Apertures
-    // and stand-off fixings become real holes in the face geometry below.
+    // face-local mm × S (face centred at the world origin, y-up). Apertures,
+    // stand-off fixings, and push-through keylines all become real holes
+    // in the face geometry below — the push-through inserts visibly sit
+    // INSIDE the keyline hole, so the hole has to actually be there in the
+    // 3D face.
     const holesLocal = useMemo(() => {
         if (!face) return [];
         const toLocal = (p: [number, number]): [number, number] => [
@@ -1022,12 +1175,12 @@ function Panel({
             (face.yMm + face.hMm / 2 - p[1]) * S,
         ];
         const out: Array<Array<[number, number]>> = [];
-        for (const cut of [...aperture, ...fixings]) {
+        for (const cut of [...aperture, ...pushThroughKeyline, ...fixings]) {
             const pts = cut.points.map(toLocal);
             if (pts.length >= 3) out.push(pts);
         }
         return out;
-    }, [face, aperture, fixings]);
+    }, [face, aperture, pushThroughKeyline, fixings]);
 
     // Reference (lettering outline, NOT cut) and keyline (register line, NOT
     // cut) ride on top of the face as thin line overlays.
@@ -1119,6 +1272,18 @@ function Panel({
                         : undefined
                 }
             />
+
+            {/* Push-through inserts — letters pressed through the
+                panel from behind. Renders after the face so they sit
+                visibly inside the keyline holes that the face already
+                lost. */}
+            {face && pushThroughPieces.length > 0 && (
+                <PushThroughPieces
+                    face={face}
+                    pieces={pushThroughPieces}
+                    outlines={showOutlines}
+                />
+            )}
 
             {/* Stand-off pieces — each material group with material =
                 'standoff' renders as its own batch of extruded letters
@@ -1237,6 +1402,7 @@ export default function Scene3D(props: {
     split: PanelSplit;
     aperture: FlatPath[];
     keyline: FlatPath[];
+    pushThroughKeyline?: FlatPath[];
     autoFixings?: FlatPath[];
     manualFixings?: FlatPath[];
     reference?: FlatPath[];
@@ -1244,6 +1410,7 @@ export default function Scene3D(props: {
     acrylicPieces?: MaterialPiece[];
     solidPieces?: MaterialPiece[];
     standoffPieces?: StandoffPiece[];
+    pushThroughPieces?: PushThroughPiece[];
     placedPathsByIndex?: Array<FlatPath | null> | null;
     pathGroupColors?: Array<string | null> | null;
     pendingPaths?: Set<number>;
@@ -1266,6 +1433,8 @@ export default function Scene3D(props: {
     const acrylicPieces = props.acrylicPieces ?? [];
     const solidPieces = props.solidPieces ?? [];
     const standoffPieces = props.standoffPieces ?? [];
+    const pushThroughKeyline = props.pushThroughKeyline ?? [];
+    const pushThroughPieces = props.pushThroughPieces ?? [];
     const showOutlines = props.showOutlines ?? true;
     const showStandoffLetters = props.showStandoffLetters ?? true;
     const showStandoffLocators = props.showStandoffLocators ?? true;
@@ -1300,6 +1469,8 @@ export default function Scene3D(props: {
                 acrylicPieces={acrylicPieces}
                 solidPieces={solidPieces}
                 standoffPieces={standoffPieces}
+                pushThroughKeyline={pushThroughKeyline}
+                pushThroughPieces={pushThroughPieces}
                 placedPathsByIndex={props.placedPathsByIndex ?? null}
                 pathGroupColors={props.pathGroupColors ?? null}
                 pendingPaths={props.pendingPaths}

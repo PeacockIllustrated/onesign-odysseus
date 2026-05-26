@@ -33,6 +33,7 @@ import {
     type SectionedExport,
     type MaterialPiece,
     type StandoffPiece,
+    type PushThroughPiece,
 } from './types';
 import { outlinePerimeter } from './geometry';
 import { registerVisualiserFonts } from './pdf-fonts';
@@ -82,6 +83,14 @@ interface PdfOptions {
     /** Per-section path arrays, already in export-sheet coords. */
     apertureBySection?: FlatPath[][];
     keylineBySection?: FlatPath[][];
+    /**
+     * Per-section push-through keylines — the letter-shaped panel
+     * holes that pushthrough-grouped paths cut into the face. These
+     * are real panel cuts alongside the aperture cuts (each group can
+     * set its own outward offset, so this is built per-piece rather
+     * than via the global keylineMm).
+     */
+    pushThroughKeylineBySection?: FlatPath[][];
     fixingsBySection?: FlatPath[][];
     referenceBySection?: FlatPath[][];
     /**
@@ -93,6 +102,15 @@ interface PdfOptions {
     acrylicPieces?: MaterialPiece[];
     solidPieces?: MaterialPiece[];
     standoffPieces?: StandoffPiece[];
+    /**
+     * Push-through inserts. Each piece carries an outer letter outline
+     * + counters in `holes`. Production PDF emits these on the push-
+     * through insert page as outer + each counter as SEPARATE closed
+     * contours — the cutter produces N pieces per letter (outer + one
+     * per counter), all in the same acrylic, mounted to a backing
+     * board behind the panel.
+     */
+    pushThroughPieces?: PushThroughPiece[];
     /**
      * Inner-counter outlines of aperture letters (the holes in R, O,
      * A, e, etc.), clipped per section in export-sheet coords.
@@ -653,7 +671,13 @@ function drawMaterialPiece(
 }
 
 interface MaterialPageSpec {
-    kind: 'cut' | 'vinyl' | 'acrylic' | 'solid' | 'standoff';
+    kind:
+        | 'cut'
+        | 'vinyl'
+        | 'acrylic'
+        | 'solid'
+        | 'standoff'
+        | 'pushthrough';
     label: string;
     color: [number, number, number];
     /** Brief specs for the right-side info strip. */
@@ -661,7 +685,7 @@ interface MaterialPageSpec {
     /** Per-section paths that belong to this material. */
     paths: FlatPath[];
     /** When true, this is a per-piece material — drawn as filled shapes. */
-    pieces?: Array<MaterialPiece | StandoffPiece>;
+    pieces?: Array<MaterialPiece | StandoffPiece | PushThroughPiece>;
 }
 
 function buildMaterialPages(opts: PdfOptions): MaterialPageSpec[] {
@@ -774,6 +798,48 @@ function buildMaterialPages(opts: PdfOptions): MaterialPageSpec[] {
             ],
             paths: solidPieces.flatMap((p) => [p.path, ...(p.holes ?? [])]),
             pieces: solidPieces,
+        });
+    }
+
+    const pushThroughPieces = opts.pushThroughPieces ?? [];
+    if (pushThroughPieces.length > 0) {
+        const accent = hexToRgb(pushThroughPieces[0].color);
+        const colours = pushThroughPieces.map((p) =>
+            p.color.toUpperCase(),
+        );
+        const thicknesses = pushThroughPieces.map(
+            (p) => `${p.thicknessMm} mm`,
+        );
+        const offsets = pushThroughPieces.map(
+            (p) => `${p.keylineOffsetMm} mm`,
+        );
+        const counterCount = pushThroughPieces.reduce(
+            (n, p) => n + (p.holes?.length ?? 0),
+            0,
+        );
+        pages.push({
+            kind: 'pushthrough',
+            label: 'Push-through inserts',
+            color: accent,
+            specs: [
+                ['Type', 'Push-through — acrylic pressed through panel'],
+                [
+                    'Pieces',
+                    `${pushThroughPieces.length} letter${pushThroughPieces.length === 1 ? '' : 's'} + ${counterCount} counter${counterCount === 1 ? '' : 's'}`,
+                ],
+                ['Colour', summariseVariants(colours)],
+                ['Thickness', summariseVariants(thicknesses)],
+                ['Keyline offset', summariseVariants(offsets)],
+                [
+                    'Note',
+                    'Outer letter + each counter cut as SEPARATE pieces; both glued to backing board behind panel',
+                ],
+            ],
+            paths: pushThroughPieces.flatMap((p) => [
+                p.path,
+                ...(p.holes ?? []),
+            ]),
+            pieces: pushThroughPieces,
         });
     }
 
@@ -953,6 +1019,12 @@ function drawOverviewPage(ctx: PageContext): void {
             'Stood off',
             `${s.thicknessMm} mm ${s.color.toUpperCase()}`,
             `${s.standoffDistanceMm} mm offset`,
+        ]);
+    for (const pt of opts.pushThroughPieces ?? [])
+        rows.push([
+            'Push through',
+            `${pt.thicknessMm} mm ${pt.color.toUpperCase()}`,
+            `${pt.keylineOffsetMm} mm keyline · ${(pt.holes?.length ?? 0)} counter${(pt.holes?.length ?? 0) === 1 ? '' : 's'}`,
         ]);
 
     if (rows.length === 0) {
@@ -1159,6 +1231,35 @@ function drawFlatLayoutPage(ctx: PageContext): void {
             'FD',
         );
     }
+    // Push-through inserts — outer + each counter drawn as separate
+    // filled shapes (production reality is two acrylic pieces glued to
+    // a backing board behind the panel, NOT one compound piece with a
+    // hole). Drawn before standoff so any dashed standoff outlines
+    // overlay cleanly.
+    for (const p of opts.pushThroughPieces ?? []) {
+        const fillRgb = hexToRgb(p.color);
+        const drawShape = (ring: FlatPath) => {
+            if (!ring.closed || ring.points.length < 3) return;
+            drawMaterialPiece(
+                doc,
+                {
+                    pathIndex: -1,
+                    path: ring,
+                    color: p.color,
+                },
+                px,
+                py,
+                scale,
+                fillRgb,
+                [20, 20, 20],
+                0.3,
+                'FD',
+            );
+        };
+        drawShape(p.path);
+        for (const h of p.holes ?? []) drawShape(h);
+    }
+
     // Standoff pieces — outlined dashed, not filled (they sit OFF the panel)
     for (const p of opts.standoffPieces ?? []) {
         doc.setDrawColor(...hexToRgb(p.color));
@@ -1369,6 +1470,22 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
                 );
         }
     }
+    if (spec.kind !== 'pushthrough') {
+        for (const p of opts.pushThroughPieces ?? []) {
+            for (const ring of [p.path, ...(p.holes ?? [])]) {
+                const pl = pathDPolyline(ring.points, ring.closed);
+                if (pl)
+                    doc.lines(
+                        pl.deltas,
+                        px(pl.start[0]),
+                        py(pl.start[1]),
+                        [scale, scale],
+                        'S',
+                        ring.closed,
+                    );
+            }
+        }
+    }
 
     // THIS material — drawn boldly. Multiple pieces of the same
     // material share one page, each drawn with its own colour /
@@ -1449,6 +1566,47 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
                             h.closed,
                         );
                 }
+            } else if (spec.kind === 'pushthrough') {
+                // Outer letter + each counter as SEPARATE filled
+                // shapes — never compound-with-hole. Production
+                // reality: counters are real pieces of acrylic
+                // sitting beside the outer piece on the backing
+                // board.
+                doc.setFillColor(
+                    fillForPiece[0],
+                    fillForPiece[1],
+                    fillForPiece[2],
+                );
+                doc.setDrawColor(strokeRgb[0], strokeRgb[1], strokeRgb[2]);
+                doc.setLineWidth(0.35);
+                const drawShape = (ring: FlatPath) => {
+                    if (!ring.closed || ring.points.length < 3) return;
+                    const head = ring.points[0];
+                    const tail = ring.points[ring.points.length - 1];
+                    const pts =
+                        Math.abs(tail[0] - head[0]) < 1e-6 &&
+                            Math.abs(tail[1] - head[1]) < 1e-6
+                            ? ring.points.slice(0, -1)
+                            : ring.points;
+                    if (pts.length < 2) return;
+                    const deltas: number[][] = [];
+                    for (let k = 1; k < pts.length; k++) {
+                        deltas.push([
+                            pts[k][0] - pts[k - 1][0],
+                            pts[k][1] - pts[k - 1][1],
+                        ]);
+                    }
+                    doc.lines(
+                        deltas,
+                        px(pts[0][0]),
+                        py(pts[0][1]),
+                        [scale, scale],
+                        'FD',
+                        true,
+                    );
+                };
+                drawShape(piece.path);
+                for (const h of piece.holes ?? []) drawShape(h);
             } else {
                 drawMaterialPiece(
                     doc,
@@ -1629,8 +1787,17 @@ export async function generateProductionPdfBlob(
                 const ox = section.layoutOriginXMm;
                 const sectionAp = opts.apertureBySection?.[i] ?? [];
                 const sectionKl = opts.keylineBySection?.[i] ?? [];
-                const panelCuts =
-                    sectionKl.length > 0 ? sectionKl : sectionAp;
+                const sectionPtKl =
+                    opts.pushThroughKeylineBySection?.[i] ?? [];
+                // Aperture-cut paths: keyline-when-present supersedes the
+                // raw aperture (legacy global-keyline push-through flow).
+                // Push-through-group paths emit their per-group keyline
+                // alongside — these are real face holes regardless of the
+                // global keyline setting.
+                const panelCuts = [
+                    ...(sectionKl.length > 0 ? sectionKl : sectionAp),
+                    ...sectionPtKl,
+                ];
                 const sectionFx = opts.fixingsBySection?.[i] ?? [];
 
                 // Outer perimeter — one continuous welded contour.
@@ -1710,30 +1877,58 @@ export async function generateProductionPdfBlob(
         },
     });
 
-    // ---- Page 2: push-through inserts (when keyline) ---------------
-    const hasKeyline =
+    // ---- Page 2: push-through inserts ------------------------------
+    //
+    // Inserts come from two sources, both end up on this single page:
+    //
+    //   1. Explicit push-through groups (PushThroughPiece) — outer
+    //      letter outline + each counter as a separate closed contour.
+    //      Production: each letter is N pieces of acrylic (outer + one
+    //      per counter), all in the SAME material, mounted to a backing
+    //      board behind the panel in their original positions. Counter
+    //      shows through the panel hole next to the outer piece.
+    //
+    //   2. Legacy: aperture-cut paths with a global keyline (the
+    //      original "Enable keyline" flow). Outer aperture outline +
+    //      counter outlines as separate contours, same idea.
+    //
+    // Either way, every contour on this page is a CUT — never
+    // compound-with-hole. That keeps the production assembly honest:
+    // the cutter produces individual pieces, the operator glues them
+    // to the backing board in their proper positions.
+    const hasGlobalKeyline =
         (opts.keylineBySection ?? []).some((arr) => arr.length > 0);
     const allApertures: FlatPath[] = (opts.apertureBySection ?? []).flatMap(
         (a) => a,
     );
-    // Inner counters of aperture letters, flat list. These ride along
-    // with the aperture outlines on the push-through page so the
-    // acrylic insert is cut as a compound shape — outer letter + the
-    // counter as a real hole through the insert. (Compare to page 1
-    // where these are NOT emitted, because without bridges they can't
-    // survive a panel cut.)
     const apertureHolesFlat: FlatPath[] = (
         opts.apertureHolesBySection ?? []
     )
         .flatMap((a) => a)
         .filter((p) => p.closed && p.points.length >= 3);
-    if (hasKeyline && allApertures.length > 0) {
-        // BBox over apertures + their inner counters in flat-dev coords.
+    const pushThroughPiecesAll = opts.pushThroughPieces ?? [];
+
+    // Outer outlines + counter outlines (separate pieces) coming from
+    // either source. The bbox + page draw use them as a single flat
+    // list of contours.
+    const insertOuters: FlatPath[] = [
+        ...(hasGlobalKeyline ? allApertures : []),
+        ...pushThroughPiecesAll.map((p) => p.path),
+    ];
+    const insertCounters: FlatPath[] = [
+        ...(hasGlobalKeyline ? apertureHolesFlat : []),
+        ...pushThroughPiecesAll.flatMap((p) =>
+            (p.holes ?? []).filter(
+                (h) => h.closed && h.points.length >= 3,
+            ),
+        ),
+    ];
+    if (insertOuters.length > 0) {
         let minX = Infinity,
             minY = Infinity,
             maxX = -Infinity,
             maxY = -Infinity;
-        for (const p of [...allApertures, ...apertureHolesFlat]) {
+        for (const p of [...insertOuters, ...insertCounters]) {
             for (const [x, y] of p.points) {
                 if (x < minX) minX = x;
                 if (y < minY) minY = y;
@@ -1743,20 +1938,53 @@ export async function generateProductionPdfBlob(
         }
         const insertW = Math.max(1, maxX - minX);
         const insertH = Math.max(1, maxY - minY);
+        // Material specs vary across push-through groups (different
+        // thicknesses / colours). Summarise distinct values so the
+        // operator can pick the right sheet stock.
+        const ptColours = Array.from(
+            new Set(
+                pushThroughPiecesAll.map((p) => p.color.toUpperCase()),
+            ),
+        );
+        const ptThicknesses = Array.from(
+            new Set(
+                pushThroughPiecesAll.map((p) => `${p.thicknessMm} mm`),
+            ),
+        );
+        const specsTrailer =
+            pushThroughPiecesAll.length > 0
+                ? [
+                      ptColours.length > 0
+                          ? `acrylic ${ptColours.join(' / ')}`
+                          : '',
+                      ptThicknesses.length > 0
+                          ? `thickness ${ptThicknesses.join(' / ')}`
+                          : '',
+                  ]
+                      .filter(Boolean)
+                      .join('  ·  ')
+                : '';
         jobs.push({
-            subtitle: 'Push-through inserts — letter shapes for insert material',
+            subtitle:
+                'Push-through inserts — outer letter + each counter as a SEPARATE piece, mount on backing board behind panel',
             partW: insertW,
             partH: insertH,
             footerInfo: [
-                `${allApertures.length} insert${allApertures.length === 1 ? '' : 's'}  ·  ${apertureHolesFlat.length} counter${apertureHolesFlat.length === 1 ? '' : 's'}`,
-                `bbox ${Math.round(insertW)} × ${Math.round(insertH)} mm  ·  ${today}`,
+                `${insertOuters.length} outer${insertOuters.length === 1 ? '' : 's'}  ·  ${insertCounters.length} counter${insertCounters.length === 1 ? '' : 's'}`,
+                [
+                    `bbox ${Math.round(insertW)} × ${Math.round(insertH)} mm`,
+                    specsTrailer,
+                    today,
+                ]
+                    .filter(Boolean)
+                    .join('  ·  '),
             ],
             draw: (dX, dY) => {
                 const ipx = (x: number) => dX + (x - minX);
                 const ipy = (y: number) => dY + (y - minY);
                 doc.setDrawColor(0);
                 doc.setLineWidth(productionStroke);
-                for (const ap of allApertures) {
+                for (const ap of insertOuters) {
                     const pts = ap.points.map(
                         ([x, y]) =>
                             [ipx(x), ipy(y)] as [number, number],
@@ -1780,10 +2008,11 @@ export async function generateProductionPdfBlob(
                         );
                     }
                 }
-                // Inner counters — compound parts of each letter
-                // insert, drawn as closed contours. CAM reads outer
-                // ring + inner ring(s) as one compound piece.
-                for (const sp of apertureHolesFlat) {
+                // Counters — emitted as SEPARATE closed contours
+                // (NOT compound holes in the outer). The cutter
+                // produces each as its own piece, the operator glues
+                // it next to the outer piece on the backing board.
+                for (const sp of insertCounters) {
                     const pts = sp.points.map(
                         ([x, y]) =>
                             [ipx(x), ipy(y)] as [number, number],

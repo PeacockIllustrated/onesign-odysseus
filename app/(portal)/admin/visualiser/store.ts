@@ -31,7 +31,13 @@ export const DEFAULT_PARAMS: PanelParams = {
     manualFixings: [],
 };
 
-type GroupMaterial = 'cut' | 'solid' | 'vinyl' | 'acrylic' | 'standoff';
+type GroupMaterial =
+    | 'cut'
+    | 'solid'
+    | 'vinyl'
+    | 'acrylic'
+    | 'standoff'
+    | 'pushthrough';
 
 type MaterialGroup = NonNullable<PanelParams['materialGroups']>[number];
 
@@ -47,6 +53,9 @@ function defaultGroupColor(
 ): string {
     if (material === 'solid') return panelColor ?? '#d6d6d6';
     if (material === 'vinyl') return '#ffffff';
+    // Push-through inserts default to a bright opal-white acrylic; the
+    // most common production case is illuminated lettering.
+    if (material === 'pushthrough') return '#f5f5f0';
     // acrylic, standoff, cut — dark default. 'cut' colour is unused
     // visually (the path is a hole) but the field needs a value.
     return '#1a1f23';
@@ -55,11 +64,28 @@ function defaultGroupColor(
 function defaultGroupThickness(material: GroupMaterial): number | undefined {
     if (material === 'acrylic') return 5;
     if (material === 'standoff') return 5;
+    if (material === 'pushthrough') return 5;
     return undefined;
 }
 
 function defaultGroupStandoff(material: GroupMaterial): number | undefined {
     if (material === 'standoff') return 25;
+    return undefined;
+}
+
+function defaultGroupKeylineOffset(
+    material: GroupMaterial,
+): number | undefined {
+    // 1.5 mm shoulder for a typical 3 mm acrylic press-fit. The
+    // operator can tighten / slacken per group when needed.
+    if (material === 'pushthrough') return 1.5;
+    return undefined;
+}
+
+function defaultGroupProtrusion(material: GroupMaterial): number | undefined {
+    // 5 mm proud-of-face protrusion reads clearly in the 3D preview
+    // without being unrealistically tall.
+    if (material === 'pushthrough') return 5;
     return undefined;
 }
 
@@ -121,6 +147,8 @@ interface VisualiserState {
             color?: string;
             thicknessMm?: number;
             standoffDistanceMm?: number;
+            keylineOffsetMm?: number;
+            protrusionMm?: number;
         },
     ) => void;
     updateGroupProps: (
@@ -129,6 +157,8 @@ interface VisualiserState {
             color?: string;
             thicknessMm?: number;
             standoffDistanceMm?: number;
+            keylineOffsetMm?: number;
+            protrusionMm?: number;
             label?: string;
         },
     ) => void;
@@ -377,6 +407,14 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                 options?.standoffDistanceMm ??
                 existing?.standoffDistanceMm ??
                 defaultGroupStandoff(material);
+            const keylineOffsetMm =
+                options?.keylineOffsetMm ??
+                existing?.keylineOffsetMm ??
+                defaultGroupKeylineOffset(material);
+            const protrusionMm =
+                options?.protrusionMm ??
+                existing?.protrusionMm ??
+                defaultGroupProtrusion(material);
 
             const updated: MaterialGroup = {
                 id: existing?.id ?? nextGroupId(),
@@ -385,6 +423,8 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                 color,
                 thicknessMm,
                 standoffDistanceMm,
+                keylineOffsetMm,
+                protrusionMm,
                 pathIndices: [...pending].sort((a, b) => a - b),
             };
 
@@ -413,6 +453,10 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                           standoffDistanceMm:
                               patch.standoffDistanceMm ??
                               g.standoffDistanceMm,
+                          keylineOffsetMm:
+                              patch.keylineOffsetMm ?? g.keylineOffsetMm,
+                          protrusionMm:
+                              patch.protrusionMm ?? g.protrusionMm,
                           label: patch.label ?? g.label,
                       }
                     : g,

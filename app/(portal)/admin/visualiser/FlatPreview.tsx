@@ -6,6 +6,7 @@ import type {
     PanelSplit,
     FlatPath,
     MaterialPiece,
+    PushThroughPiece,
 } from '@/lib/visualiser/types';
 
 const DEFAULT_PANEL_COLOR = '#d6d6d6';
@@ -94,6 +95,8 @@ export function FlatPreview({
     split,
     aperture,
     keyline,
+    pushThroughKeyline = [],
+    pushThroughPieces = [],
     fixings = [],
     reference = [],
     vinylPieces = [],
@@ -112,6 +115,18 @@ export function FlatPreview({
     split: PanelSplit;
     aperture: FlatPath[];
     keyline: FlatPath[];
+    /**
+     * Per-pushthrough-path outward keyline — what's actually cut into
+     * the panel face for press-fit assembly. Drawn as real face holes
+     * so the operator sees the panel-with-letter-shaped-windows.
+     */
+    pushThroughKeyline?: FlatPath[];
+    /**
+     * Push-through inserts — letters mounted from behind. Drawn as
+     * filled acrylic shapes (outer + each counter as a SEPARATE piece)
+     * sitting inside the panel hole, matching the production assembly.
+     */
+    pushThroughPieces?: PushThroughPiece[];
     fixings?: FlatPath[];
     reference?: FlatPath[];
     vinylPieces?: MaterialPiece[];
@@ -182,8 +197,12 @@ export function FlatPreview({
     const k = face ? face.wMm / dev.faceNominalWMm : 1;
 
     // Build the face as a single path with the cuts as holes (even-odd
-    // fill rule). Apertures and stand-off fixings genuinely show through
-    // the panel so the operator can see what the cutter will remove.
+    // fill rule). Apertures, stand-off fixings, and push-through
+    // keylines genuinely show through the panel so the operator can
+    // see what the cutter will remove. (Push-through keylines are the
+    // letter-shaped panel openings the inserts press through from
+    // behind — drawn as holes so the acrylic insert pieces drawn over
+    // them read as sitting INSIDE the panel hole.)
     const faceD = useMemo(() => {
         if (!face) return '';
         const out: string[] = [
@@ -192,7 +211,7 @@ export function FlatPreview({
                 `V ${face.yMm + face.hMm} ` +
                 `H ${face.xMm} Z`,
         ];
-        for (const cut of [...aperture, ...fixings]) {
+        for (const cut of [...aperture, ...pushThroughKeyline, ...fixings]) {
             if (cut.points.length < 3) continue;
             const [first, ...rest] = cut.points;
             out.push(
@@ -202,7 +221,7 @@ export function FlatPreview({
             );
         }
         return out.join(' ');
-    }, [face, aperture, fixings]);
+    }, [face, aperture, pushThroughKeyline, fixings]);
 
     return (
         <div className="h-full w-full bg-neutral-50">
@@ -316,6 +335,35 @@ export function FlatPreview({
                     );
                 })}
 
+                {/* Push-through inserts — outer letter outline AND
+                    each counter rendered as SEPARATE filled shapes (no
+                    compound-with-hole). This matches production: each
+                    letter is two pieces of acrylic glued to a backing
+                    board behind the panel, and both press through the
+                    keyline hole in the panel face. The keyline hole is
+                    already cut out of the face above. */}
+                {pushThroughPieces.map((piece, i) => (
+                    <g key={`pt-${i}`}>
+                        <path
+                            d={pathD(piece.path)}
+                            fill={piece.color}
+                            fillRule="evenodd"
+                            stroke="#1a1f23"
+                            strokeWidth={stroke * 0.8}
+                        />
+                        {(piece.holes ?? []).map((h, k) => (
+                            <path
+                                key={`pt-${i}-c-${k}`}
+                                d={pathD(h)}
+                                fill={piece.color}
+                                fillRule="evenodd"
+                                stroke="#1a1f23"
+                                strokeWidth={stroke * 0.8}
+                            />
+                        ))}
+                    </g>
+                ))}
+
                 {/* Acrylic pieces — coloured fills with a stronger edge
                     stroke so they read as a sheet sitting proud of the
                     panel rather than vinyl. Thickness shows up properly
@@ -392,6 +440,21 @@ export function FlatPreview({
                         d={pathD(p)}
                         fill="none"
                         stroke="#00aabe"
+                        strokeWidth={stroke}
+                        strokeDasharray={`${stroke * 2} ${stroke * 2}`}
+                    />
+                ))}
+
+                {/* Push-through keyline traces — the press-fit shoulder
+                    drawn as a register line. The hole itself is already
+                    cut into the face above; this just makes the shoulder
+                    visible so the operator can sanity-check the offset. */}
+                {pushThroughKeyline.map((p, i) => (
+                    <path
+                        key={`ptkl-${i}`}
+                        d={pathD(p)}
+                        fill="none"
+                        stroke="#f59e0b"
                         strokeWidth={stroke}
                         strokeDasharray={`${stroke * 2} ${stroke * 2}`}
                     />

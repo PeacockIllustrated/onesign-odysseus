@@ -40,6 +40,7 @@ import {
     type PanelParams,
     type MaterialPiece,
     type StandoffPiece,
+    type PushThroughPiece,
 } from '@/lib/visualiser/types';
 
 const ACCENT = '#4e7e8c';
@@ -401,6 +402,13 @@ export function VisualiserClient({
               thicknessMm: number;
               standoffDistanceMm: number;
           }
+        | {
+              kind: 'pushthrough';
+              color: string;
+              thicknessMm: number;
+              keylineOffsetMm: number;
+              protrusionMm: number;
+          }
         | { kind: 'inherited' };
 
     const defaultUngroupedKind: 'cut' | 'standoff' =
@@ -440,6 +448,18 @@ export function VisualiserClient({
                         thicknessMm: own.thicknessMm ?? globalLetterThickness,
                         standoffDistanceMm:
                             own.standoffDistanceMm ?? globalStandoffDistance,
+                    };
+                if (own.material === 'pushthrough')
+                    return {
+                        kind: 'pushthrough',
+                        color: own.color,
+                        thicknessMm: own.thicknessMm ?? 5,
+                        // Per-group offset supersedes the global
+                        // keylineMm for paths in this group; the
+                        // group's own value falls back to a tidy
+                        // 1.5 mm press-fit shoulder if missing.
+                        keylineOffsetMm: own.keylineOffsetMm ?? 1.5,
+                        protrusionMm: own.protrusionMm ?? 5,
                     };
             }
             // Ungrouped — fall back to the apertureMode default.
@@ -549,6 +569,33 @@ export function VisualiserClient({
         groupByPath,
         params.panelColor,
     ]);
+
+    // Push-through pieces — acrylic letters pressed through panel
+    // holes from behind. Each piece carries its own thickness, colour,
+    // keyline-offset and protrusion so a sign can mix push-through
+    // groups with different press fits. Counter pieces ride along in
+    // `holes` so the 3D renderer and PDF can emit them as separate
+    // small acrylic pieces (NOT compound-with-hole — production
+    // reality is two pieces glued to a backing board).
+    const pushThroughPieces = useMemo<PushThroughPiece[]>(() => {
+        const out: PushThroughPiece[] = [];
+        for (let i = 0; i < placedClipByIndex.length; i++) {
+            const path = placedClipByIndex[i];
+            if (!path) continue;
+            const eff = effectiveMaterials[i];
+            if (eff?.kind !== 'pushthrough') continue;
+            out.push({
+                pathIndex: i,
+                path,
+                holes: holesByIndex[i],
+                color: eff.color,
+                thicknessMm: eff.thicknessMm,
+                keylineOffsetMm: eff.keylineOffsetMm,
+                protrusionMm: eff.protrusionMm,
+            });
+        }
+        return out;
+    }, [placedClipByIndex, effectiveMaterials, holesByIndex]);
 
     // Standoff pieces — extruded 3D letters mounted with studs at
     // standoffDistanceMm. Each piece carries its own settings so a
@@ -713,6 +760,28 @@ export function VisualiserClient({
     }, [development, aperture, params.keylineMm]);
     const keyline = keylineClip.paths;
 
+    // Per-pushthrough-path keyline — outward offset of each push-
+    // through outer outline using THAT group's keylineOffsetMm. This
+    // is what actually becomes the letter-shaped hole in the panel
+    // face for press-fit assembly. Built per-piece so different
+    // push-through groups can carry different press fits.
+    const pushThroughKeyline = useMemo<typeof placedClip.paths>(() => {
+        if (!development || pushThroughPieces.length === 0) return [];
+        const out: typeof placedClip.paths = [];
+        for (const piece of pushThroughPieces) {
+            if (piece.keylineOffsetMm <= 0) {
+                // Operator zeroed the offset — the press fit is the
+                // outline itself. Fine for laser-tight tolerances.
+                out.push(piece.path);
+                continue;
+            }
+            const raw = buildKeyline([piece.path], piece.keylineOffsetMm);
+            const clipped = clipApertureToFace(development, raw).paths;
+            out.push(...clipped);
+        }
+        return out;
+    }, [development, pushThroughPieces]);
+
     const apertureClipNotice =
         placedClip.anyOutside || keylineClip.anyOutside
             ? 'Some artwork (or its keyline) extended past the face and was clipped at the edge — reposition or reduce the size so every cut stays inside the face.'
@@ -749,6 +818,17 @@ export function VisualiserClient({
             clipApertureToSection(development, s, keyline),
         );
     }, [development, sectionExport, keyline]);
+
+    // Per-section push-through keylines — these are real panel holes,
+    // alongside the aperture cuts. Routed through the same clipper so
+    // sections that don't contain a particular letter don't double-
+    // up on it.
+    const pushThroughKeylineBySection = useMemo(() => {
+        if (!development || !sectionExport) return [];
+        return sectionExport.sections.map((s) =>
+            clipApertureToSection(development, s, pushThroughKeyline),
+        );
+    }, [development, sectionExport, pushThroughKeyline]);
 
     const fixingsBySection = useMemo(() => {
         if (!development || !sectionExport) return [];
@@ -1105,6 +1185,8 @@ export function VisualiserClient({
                             split={split}
                             aperture={aperture}
                             keyline={keyline}
+                            pushThroughKeyline={pushThroughKeyline}
+                            pushThroughPieces={pushThroughPieces}
                             fixings={fixings}
                             reference={reference}
                             vinylPieces={materialPieces.vinyl}
@@ -1128,6 +1210,7 @@ export function VisualiserClient({
                             split={split}
                             aperture={aperture}
                             keyline={keyline}
+                            pushThroughKeyline={pushThroughKeyline}
                             autoFixings={autoFixings}
                             manualFixings={manualFixings}
                             reference={reference}
@@ -1135,6 +1218,7 @@ export function VisualiserClient({
                             acrylicPieces={materialPieces.acrylic}
                             solidPieces={materialPieces.solid}
                             standoffPieces={standoffPieces}
+                            pushThroughPieces={pushThroughPieces}
                             placedPathsByIndex={placedClipByIndex}
                             pathGroupColors={pathGroupColors}
                             pendingPaths={pendingPathsSet}
@@ -1230,6 +1314,9 @@ export function VisualiserClient({
                             sectionExport={sectionExport}
                             apertureBySection={apertureBySection}
                             keylineBySection={keylineBySection}
+                            pushThroughKeylineBySection={
+                                pushThroughKeylineBySection
+                            }
                             fixingsBySection={fixingsBySection}
                             apertureHolesBySection={apertureHolesBySection}
                             referenceBySection={referenceBySection}
@@ -1237,6 +1324,7 @@ export function VisualiserClient({
                             acrylicPieces={materialPieces.acrylic}
                             solidPieces={materialPieces.solid}
                             standoffPieces={standoffPieces}
+                            pushThroughPieces={pushThroughPieces}
                             warnings={exportWarnings}
                             pathCount={imported?.paths.length ?? 0}
                         />

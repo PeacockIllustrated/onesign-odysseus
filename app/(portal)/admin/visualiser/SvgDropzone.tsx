@@ -50,6 +50,7 @@ function defaultColorFor(
 ): string {
     if (material === 'solid') return panelColor;
     if (material === 'vinyl') return '#ffffff';
+    if (material === 'pushthrough') return '#f5f5f0';
     return '#1a1f23';
 }
 
@@ -64,6 +65,8 @@ function GroupEditControls({
     initialColor,
     initialThickness,
     initialStandoff,
+    initialKeylineOffset,
+    initialProtrusion,
     pendingCount,
     isExistingGroup,
     panelColor,
@@ -74,6 +77,8 @@ function GroupEditControls({
     initialColor: string;
     initialThickness: number;
     initialStandoff: number;
+    initialKeylineOffset: number;
+    initialProtrusion: number;
     pendingCount: number;
     isExistingGroup: boolean;
     panelColor: string;
@@ -83,6 +88,8 @@ function GroupEditControls({
             color?: string;
             thicknessMm?: number;
             standoffDistanceMm?: number;
+            keylineOffsetMm?: number;
+            protrusionMm?: number;
         },
     ) => void;
     onCancel: () => void;
@@ -92,6 +99,10 @@ function GroupEditControls({
     const [color, setColor] = useState<string>(initialColor);
     const [thickness, setThickness] = useState<number>(initialThickness);
     const [standoff, setStandoff] = useState<number>(initialStandoff);
+    const [keylineOffset, setKeylineOffset] = useState<number>(
+        initialKeylineOffset,
+    );
+    const [protrusion, setProtrusion] = useState<number>(initialProtrusion);
 
     // Smart colour default when the operator switches material — only
     // snap if the colour is still the previous material's default; if
@@ -105,8 +116,12 @@ function GroupEditControls({
     };
 
     const hasColor = material !== 'solid';
-    const hasThickness = material === 'acrylic' || material === 'standoff';
+    const hasThickness =
+        material === 'acrylic' ||
+        material === 'standoff' ||
+        material === 'pushthrough';
     const hasStandoff = material === 'standoff';
+    const hasPushThrough = material === 'pushthrough';
 
     const materialHelp: Record<Exclude<GroupMaterial, 'cut'>, string> = {
         solid: 'Kept as panel material — not cut. Use for inner counters of letters.',
@@ -114,6 +129,8 @@ function GroupEditControls({
         acrylic: 'Acrylic sheet face-stuck to the panel.',
         standoff:
             'Extruded letter mounted with studs at a distance from the face.',
+        pushthrough:
+            'Acrylic letter pressed through the panel from behind. Outer letter + each counter are cut as separate pieces, mounted to a backing board, and pressed through a keyline hole in the panel face.',
     };
     return (
         <div
@@ -134,7 +151,7 @@ function GroupEditControls({
             </p>
 
             <div
-                className="grid grid-cols-5 overflow-hidden rounded-md border text-[10px] font-medium"
+                className="grid grid-cols-3 overflow-hidden rounded-md border text-[10px] font-medium"
                 style={{ borderColor: ACCENT_TINT_BORDER }}
             >
                 {(
@@ -144,37 +161,44 @@ function GroupEditControls({
                         ['vinyl', 'Vinyl'],
                         ['acrylic', 'Acrylic'],
                         ['standoff', 'Stood off'],
+                        ['pushthrough', 'Push through'],
                     ] as const
-                ).map(([v, label], k) => (
-                    <button
-                        key={v}
-                        type="button"
-                        onClick={() => {
-                            if (v === 'cut') onApply('cut');
-                            else pickMaterial(v);
-                        }}
-                        aria-pressed={v !== 'cut' && material === v}
-                        className={`min-h-[32px] py-1.5 ${
-                            k > 0 ? 'border-l' : ''
-                        } ${
-                            v === 'cut'
-                                ? 'bg-white text-red-600 hover:bg-red-50'
-                                : material === v
-                                  ? 'text-white'
-                                  : 'bg-white text-neutral-700 hover:bg-neutral-100'
-                        }`}
-                        style={{
-                            borderColor:
-                                k > 0 ? ACCENT_TINT_BORDER : undefined,
-                            background:
-                                v !== 'cut' && material === v
-                                    ? ACCENT
-                                    : undefined,
-                        }}
-                    >
-                        {label}
-                    </button>
-                ))}
+                ).map(([v, label], k) => {
+                    const inSecondRow = k >= 3;
+                    const inFirstCol = k % 3 === 0;
+                    return (
+                        <button
+                            key={v}
+                            type="button"
+                            onClick={() => {
+                                if (v === 'cut') onApply('cut');
+                                else pickMaterial(v);
+                            }}
+                            aria-pressed={v !== 'cut' && material === v}
+                            className={`min-h-[32px] py-1.5 ${
+                                !inFirstCol ? 'border-l' : ''
+                            } ${inSecondRow ? 'border-t' : ''} ${
+                                v === 'cut'
+                                    ? 'bg-white text-red-600 hover:bg-red-50'
+                                    : material === v
+                                      ? 'text-white'
+                                      : 'bg-white text-neutral-700 hover:bg-neutral-100'
+                            }`}
+                            style={{
+                                borderColor:
+                                    !inFirstCol || inSecondRow
+                                        ? ACCENT_TINT_BORDER
+                                        : undefined,
+                                background:
+                                    v !== 'cut' && material === v
+                                        ? ACCENT
+                                        : undefined,
+                            }}
+                        >
+                            {label}
+                        </button>
+                    );
+                })}
             </div>
 
             <p className="text-[10px] text-neutral-600">
@@ -230,6 +254,30 @@ function GroupEditControls({
                 />
             )}
 
+            {hasPushThrough && (
+                <>
+                    <NumField
+                        label="Keyline offset (mm)"
+                        step={0.5}
+                        value={keylineOffset}
+                        onChange={(n) =>
+                            setKeylineOffset(n >= 0 ? n : 0)
+                        }
+                    />
+                    <NumField
+                        label="Protrusion (mm)"
+                        step={1}
+                        value={protrusion}
+                        onChange={(n) => setProtrusion(n >= 0 ? n : 0)}
+                    />
+                    <p className="text-[10px] text-neutral-500">
+                        Outer letter + each counter are cut as separate
+                        pieces. Mount both on a backing board behind the
+                        panel.
+                    </p>
+                </>
+            )}
+
             <div className="flex items-center gap-2 pt-1">
                 <button
                     type="button"
@@ -239,6 +287,12 @@ function GroupEditControls({
                             thicknessMm: hasThickness ? thickness : undefined,
                             standoffDistanceMm: hasStandoff
                                 ? standoff
+                                : undefined,
+                            keylineOffsetMm: hasPushThrough
+                                ? keylineOffset
+                                : undefined,
+                            protrusionMm: hasPushThrough
+                                ? protrusion
                                 : undefined,
                         })
                     }
@@ -256,8 +310,10 @@ function GroupEditControls({
                     <Check size={14} aria-hidden /> Apply{' '}
                     {material === 'standoff'
                         ? 'Stood off'
-                        : material.charAt(0).toUpperCase() +
-                          material.slice(1)}
+                        : material === 'pushthrough'
+                          ? 'Push through'
+                          : material.charAt(0).toUpperCase() +
+                            material.slice(1)}
                 </button>
                 <button
                     type="button"
@@ -300,6 +356,8 @@ function MaterialGroupsPanel({
             color?: string;
             thicknessMm?: number;
             standoffDistanceMm?: number;
+            keylineOffsetMm?: number;
+            protrusionMm?: number;
         },
     ) => void;
     updateGroupProps: (
@@ -308,6 +366,8 @@ function MaterialGroupsPanel({
             color?: string;
             thicknessMm?: number;
             standoffDistanceMm?: number;
+            keylineOffsetMm?: number;
+            protrusionMm?: number;
             label?: string;
         },
     ) => void;
@@ -367,6 +427,10 @@ function MaterialGroupsPanel({
                     }
                     initialThickness={editingExisting?.thicknessMm ?? 5}
                     initialStandoff={editingExisting?.standoffDistanceMm ?? 25}
+                    initialKeylineOffset={
+                        editingExisting?.keylineOffsetMm ?? 1.5
+                    }
+                    initialProtrusion={editingExisting?.protrusionMm ?? 5}
                     pendingCount={pendingPaths.length}
                     isExistingGroup={!!editingExisting}
                     panelColor={panelColor}
@@ -499,7 +563,8 @@ function MaterialGroupsPanel({
                                         </div>
                                     </label>
                                     {(g.material === 'acrylic' ||
-                                        g.material === 'standoff') && (
+                                        g.material === 'standoff' ||
+                                        g.material === 'pushthrough') && (
                                         <NumField
                                             label="Thickness (mm)"
                                             step={0.5}
@@ -526,6 +591,34 @@ function MaterialGroupsPanel({
                                                 })
                                             }
                                         />
+                                    )}
+                                    {g.material === 'pushthrough' && (
+                                        <>
+                                            <NumField
+                                                label="Keyline offset (mm)"
+                                                step={0.5}
+                                                value={
+                                                    g.keylineOffsetMm ?? 1.5
+                                                }
+                                                onChange={(n) =>
+                                                    updateGroupProps(g.id, {
+                                                        keylineOffsetMm:
+                                                            n >= 0 ? n : 0,
+                                                    })
+                                                }
+                                            />
+                                            <NumField
+                                                label="Protrusion (mm)"
+                                                step={1}
+                                                value={g.protrusionMm ?? 5}
+                                                onChange={(n) =>
+                                                    updateGroupProps(g.id, {
+                                                        protrusionMm:
+                                                            n >= 0 ? n : 0,
+                                                    })
+                                                }
+                                            />
+                                        </>
                                     )}
                                 </div>
                             )}

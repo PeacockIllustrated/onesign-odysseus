@@ -25,6 +25,7 @@ import {
     type ExportWarning,
     type MaterialPiece,
     type StandoffPiece,
+    type PushThroughPiece,
 } from '@/lib/visualiser/types';
 
 const ACCENT = '#4e7e8c';
@@ -105,6 +106,7 @@ export function ExportBar({
     sectionExport,
     apertureBySection,
     keylineBySection,
+    pushThroughKeylineBySection,
     fixingsBySection,
     referenceBySection,
     apertureHolesBySection,
@@ -112,12 +114,14 @@ export function ExportBar({
     acrylicPieces,
     solidPieces,
     standoffPieces,
+    pushThroughPieces,
     warnings = [],
     pathCount = 0,
 }: {
     sectionExport: SectionedExport;
     apertureBySection: FlatPath[][];
     keylineBySection: FlatPath[][];
+    pushThroughKeylineBySection: FlatPath[][];
     fixingsBySection: FlatPath[][];
     referenceBySection: FlatPath[][];
     apertureHolesBySection: FlatPath[][];
@@ -125,6 +129,7 @@ export function ExportBar({
     acrylicPieces: MaterialPiece[];
     solidPieces: MaterialPiece[];
     standoffPieces: StandoffPiece[];
+    pushThroughPieces: PushThroughPiece[];
     warnings?: ExportWarning[];
     /** Total imported artwork paths (used for the ready checklist). */
     pathCount?: number;
@@ -164,12 +169,14 @@ export function ExportBar({
                 designId: designId ?? null,
                 apertureBySection,
                 keylineBySection,
+                pushThroughKeylineBySection,
                 fixingsBySection,
                 referenceBySection,
                 vinylPieces,
                 acrylicPieces,
                 solidPieces,
                 standoffPieces,
+                pushThroughPieces,
                 thumbnailDataUrl: thumb || undefined,
             });
             const fname = pdfFilename(params, 'reference');
@@ -196,6 +203,7 @@ export function ExportBar({
                 designId: designId ?? null,
                 apertureBySection,
                 keylineBySection,
+                pushThroughKeylineBySection,
                 fixingsBySection,
                 referenceBySection,
                 apertureHolesBySection,
@@ -203,6 +211,7 @@ export function ExportBar({
                 acrylicPieces,
                 solidPieces,
                 standoffPieces,
+                pushThroughPieces,
             });
             const fname = pdfFilename(params, 'production');
             download(blob, fname);
