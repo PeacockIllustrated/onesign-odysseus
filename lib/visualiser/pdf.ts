@@ -94,13 +94,24 @@ interface PdfOptions {
     solidPieces?: MaterialPiece[];
     standoffPieces?: StandoffPiece[];
     /**
-     * Solid piece OUTLINES (just the .path of each piece) clipped to
-     * each export section, in export-sheet coords. Used by the
-     * production PDF to emit them as compound-shape islands inside
-     * the panel cut so the cutter leaves the inner counter as panel
-     * material (e.g. the triangle inside the letter R).
+     * Inner-counter outlines of aperture letters (the holes in R, O,
+     * A, e, etc.), clipped per section in export-sheet coords.
+     *
+     * NEVER emitted on the panel cut: in a non-keyline aperture cut
+     * the counter cannot be mechanically held without bridges, so
+     * cutting its outline just adds a doomed waste piece. The counter
+     * falls away with the letter-piece during fabrication either way.
+     *
+     * In KEYLINE mode (push-through), the panel cut uses the
+     * outward-offset keyline (a simple letter-shaped hole, no
+     * counter). The acrylic insert is then cut as the original
+     * letter compound shape — outer outline + these counter outlines
+     * as inner compound contours. The CAM cutter pierces both rings
+     * and the insert pops out as a proper letter shape with a hole
+     * through it. Counter on the assembled sign reads as "panel /
+     * light-box visible behind the insert".
      */
-    solidPathsBySection?: FlatPath[][];
+    apertureHolesBySection?: FlatPath[][];
     /** PNG/JPEG data URL of the 3D preview, optional. */
     thumbnailDataUrl?: string;
 }
@@ -1621,7 +1632,6 @@ export async function generateProductionPdfBlob(
                 const panelCuts =
                     sectionKl.length > 0 ? sectionKl : sectionAp;
                 const sectionFx = opts.fixingsBySection?.[i] ?? [];
-                const sectionSolid = opts.solidPathsBySection?.[i] ?? [];
 
                 // Outer perimeter — one continuous welded contour.
                 const perimeter = outlinePerimeter(section.development);
@@ -1670,16 +1680,15 @@ export async function generateProductionPdfBlob(
                     }
                 }
 
-                // Solid-piece compound islands inside the panel cut so
-                // the cutter leaves the inner counters as panel material.
-                for (const sp of sectionSolid) {
-                    if (!sp.closed || sp.points.length < 3) continue;
-                    const pts = sp.points.map(
-                        ([x, y]) =>
-                            [px(x), py(y)] as [number, number],
-                    );
-                    drawClosedPolyline(doc, pts, 'S');
-                }
+                // NOTE: inner counters (R / O / A counters etc.) are
+                // deliberately NOT emitted here. Without bridges the
+                // counter cannot survive a panel cut — the letter-
+                // piece falls out of the panel and the counter falls
+                // out of the letter-piece. Emitting the counter
+                // contour just makes the cutter destroy a doomed
+                // piece for nothing. Counters reach the cutter only
+                // on the push-through insert page (keyline mode) or
+                // via the per-material pages (face-stuck inserts).
 
                 // Stand-off fixings — naturally welded single circles.
                 for (const f of sectionFx) {
@@ -1707,16 +1716,24 @@ export async function generateProductionPdfBlob(
     const allApertures: FlatPath[] = (opts.apertureBySection ?? []).flatMap(
         (a) => a,
     );
-    const allSolidsFlat: FlatPath[] = (opts.solidPieces ?? [])
-        .map((s) => s.path)
+    // Inner counters of aperture letters, flat list. These ride along
+    // with the aperture outlines on the push-through page so the
+    // acrylic insert is cut as a compound shape — outer letter + the
+    // counter as a real hole through the insert. (Compare to page 1
+    // where these are NOT emitted, because without bridges they can't
+    // survive a panel cut.)
+    const apertureHolesFlat: FlatPath[] = (
+        opts.apertureHolesBySection ?? []
+    )
+        .flatMap((a) => a)
         .filter((p) => p.closed && p.points.length >= 3);
     if (hasKeyline && allApertures.length > 0) {
-        // BBox over apertures + solids in flat-dev coords.
+        // BBox over apertures + their inner counters in flat-dev coords.
         let minX = Infinity,
             minY = Infinity,
             maxX = -Infinity,
             maxY = -Infinity;
-        for (const p of [...allApertures, ...allSolidsFlat]) {
+        for (const p of [...allApertures, ...apertureHolesFlat]) {
             for (const [x, y] of p.points) {
                 if (x < minX) minX = x;
                 if (y < minY) minY = y;
@@ -1731,7 +1748,7 @@ export async function generateProductionPdfBlob(
             partW: insertW,
             partH: insertH,
             footerInfo: [
-                `${allApertures.length} insert${allApertures.length === 1 ? '' : 's'}  ·  ${allSolidsFlat.length} counter island${allSolidsFlat.length === 1 ? '' : 's'}`,
+                `${allApertures.length} insert${allApertures.length === 1 ? '' : 's'}  ·  ${apertureHolesFlat.length} counter${apertureHolesFlat.length === 1 ? '' : 's'}`,
                 `bbox ${Math.round(insertW)} × ${Math.round(insertH)} mm  ·  ${today}`,
             ],
             draw: (dX, dY) => {
@@ -1763,7 +1780,10 @@ export async function generateProductionPdfBlob(
                         );
                     }
                 }
-                for (const sp of allSolidsFlat) {
+                // Inner counters — compound parts of each letter
+                // insert, drawn as closed contours. CAM reads outer
+                // ring + inner ring(s) as one compound piece.
+                for (const sp of apertureHolesFlat) {
                     const pts = sp.points.map(
                         ([x, y]) =>
                             [ipx(x), ipy(y)] as [number, number],

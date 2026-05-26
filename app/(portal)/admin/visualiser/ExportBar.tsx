@@ -107,7 +107,7 @@ export function ExportBar({
     keylineBySection,
     fixingsBySection,
     referenceBySection,
-    solidPathsBySection,
+    apertureHolesBySection,
     vinylPieces,
     acrylicPieces,
     solidPieces,
@@ -120,7 +120,7 @@ export function ExportBar({
     keylineBySection: FlatPath[][];
     fixingsBySection: FlatPath[][];
     referenceBySection: FlatPath[][];
-    solidPathsBySection: FlatPath[][];
+    apertureHolesBySection: FlatPath[][];
     vinylPieces: MaterialPiece[];
     acrylicPieces: MaterialPiece[];
     solidPieces: MaterialPiece[];
@@ -198,7 +198,7 @@ export function ExportBar({
                 keylineBySection,
                 fixingsBySection,
                 referenceBySection,
-                solidPathsBySection,
+                apertureHolesBySection,
                 vinylPieces,
                 acrylicPieces,
                 solidPieces,

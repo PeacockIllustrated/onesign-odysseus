@@ -112,6 +112,7 @@ export function VisualiserClient({
         pendingPaths,
         togglePendingPath,
         cancelGroupEdit,
+        setParam,
     } = useVisualiser();
     const [tab, setTab] = useState<Tab>('folded');
     const [mobilePane, setMobilePane] = useState<MobilePane>('preview');
@@ -337,20 +338,18 @@ export function VisualiserClient({
         }
         return false;
     };
-    // Checks whether the path at `i` is nested inside any vinyl/acrylic
-    // ancestor — those paths are owned by the ancestor's compound and
-    // must not double-render as their own face cut.
-    const nestedInsideMaterial = (i: number): boolean => {
-        let cursor = parentByIndex[i];
-        let depth = 0;
-        while (cursor !== null && depth < 256) {
-            const m = groupByPath.get(cursor)?.material;
-            if (m === 'vinyl' || m === 'acrylic') return true;
-            cursor = parentByIndex[cursor];
-            depth++;
-        }
-        return false;
-    };
+    // A path is "nested" iff any other path contains it. Per SVG
+    // compound-path semantics, nested paths are HOLES in their parent's
+    // compound shape — never separate pieces on their own. This
+    // applies regardless of the parent's material kind:
+    //   - inside a cut letter → counter (lost in production unless
+    //     keyline+push-through is enabled)
+    //   - inside a vinyl/acrylic/standoff outer → compound hole in the
+    //     material piece (visible as hole through the material)
+    // Either way the nested path is owned by the ancestor's compound
+    // and must not be rendered or emitted as its own thing.
+    const isNested = (i: number): boolean =>
+        parentByIndex[i] !== null && parentByIndex[i] !== undefined;
 
     // Set of paths in the active edit selection (multi-select).
     const pendingPathsSet = useMemo(
@@ -417,8 +416,12 @@ export function VisualiserClient({
             // Nested paths are holes in their ancestor's compound, not
             // their own render. Treat as inherited regardless of any
             // group assignment they happen to carry.
-            if (own && nestedInsideMaterial(i)) return { kind: 'inherited' };
-            if (!own && nestedInsideMaterial(i)) return { kind: 'inherited' };
+            // Any nested path is a compound-shape hole of its parent,
+            // never a separate piece. Same rule SVG already uses with
+            // fill-rule="evenodd"; we extend it to ALL material types
+            // (cut included) so a letter's counter never gets cut as
+            // its own contour in the production PDF.
+            if (isNested(i)) return { kind: 'inherited' };
             if (own) {
                 if (own.material === 'cut') return { kind: 'cut' };
                 if (own.material === 'solid') return { kind: 'solid' };
@@ -721,6 +724,7 @@ export function VisualiserClient({
             ? 'Return depth is smaller than half the material thickness — the flat size goes negative. Increase the return or reduce thickness.'
             : null;
 
+
     // Per-section export geometry. Single-panel signs get one section that
     // collapses back to today's behaviour; split signs get N sections laid
     // out side-by-side on the same export sheet, each with only the
@@ -760,18 +764,48 @@ export function VisualiserClient({
         );
     }, [development, sectionExport, reference]);
 
-    // Solid piece outlines (just the .path of each, holes are an edge
-    // case for solids) clipped per section in export-sheet coords —
-    // emitted on the production PDF panel cut page as inner compound
-    // islands inside the apertures so the cutter leaves them as panel
-    // material rather than removing them.
-    const solidPathsBySection = useMemo(() => {
+    // Inner counters of aperture letters — the holes inside an R, an
+    // O, an A, etc. — collected as a flat list. These are NEVER cut
+    // from the panel (no bridges, no mechanical support) but they DO
+    // appear on the push-through insert page in keyline mode, where
+    // the acrylic insert is a proper compound shape with the counter
+    // as a hole through it. Result: the counter on the insert lets
+    // panel/lightbox show through, giving the letter its proper
+    // optical shape without trying to do the impossible at the cutter.
+    const apertureHoles = useMemo(() => {
+        const out: typeof placedClip.paths = [];
+        for (let i = 0; i < placedClipByIndex.length; i++) {
+            if (effectiveMaterials[i]?.kind !== 'cut') continue;
+            const holes = holesByIndex[i] ?? [];
+            for (const h of holes) {
+                if (h && h.closed && h.points.length >= 3) out.push(h);
+            }
+        }
+        return out;
+    }, [placedClipByIndex, effectiveMaterials, holesByIndex]);
+
+    const apertureHolesBySection = useMemo(() => {
         if (!development || !sectionExport) return [];
-        const solidPaths = materialPieces.solid.map((p) => p.path);
         return sectionExport.sections.map((s) =>
-            clipApertureToSection(development, s, solidPaths),
+            clipApertureToSection(development, s, apertureHoles),
         );
-    }, [development, sectionExport, materialPieces.solid]);
+    }, [development, sectionExport, apertureHoles]);
+
+    // When aperture letters have inner counters (R / O / A / e etc.)
+    // AND the operator hasn't enabled a keyline, the counter cannot
+    // survive panel-only cutting — no bridges hold it in place, so
+    // the counter falls away with the letter-piece as it's cut loose.
+    // The honest answer is to either enable a keyline (push-through
+    // acrylic insert then carries the counter as a compound hole) or
+    // accept that the panel will have a simple letter-shaped hole.
+    // This warning surfaces the choice with a one-click "Enable
+    // keyline" fix in the canvas overlay.
+    const counterSurvivalWarning =
+        apertureHoles.length > 0 && params.keylineMm <= 0
+            ? `${apertureHoles.length} letter counter${
+                  apertureHoles.length === 1 ? '' : 's'
+              } detected. They won't survive a panel-only cut — the counter falls out with the letter-piece during fabrication. Enable a keyline to switch to push-through (counters become holes in the acrylic insert).`
+            : null;
 
     const exportWarnings = useMemo(() => {
         if (!development) return [];
@@ -936,8 +970,13 @@ export function VisualiserClient({
                     {/* Unified warnings tray — replaces the three
                         separately-floating banners. One row that the
                         operator can fold out. aria-live so a screen
-                        reader user gets told when geometry breaks. */}
-                    {(geometryWarning || apertureClipNotice) && (
+                        reader user gets told when geometry breaks.
+                        The counter-survival entry carries an inline
+                        "Enable keyline" action that switches the sign
+                        to push-through assembly. */}
+                    {(geometryWarning ||
+                        apertureClipNotice ||
+                        counterSurvivalWarning) && (
                         <div className="pointer-events-none absolute inset-x-3 top-14 z-10">
                             <details
                                 className="pointer-events-auto group rounded-md border border-amber-300 bg-amber-50/95 shadow-sm"
@@ -953,11 +992,19 @@ export function VisualiserClient({
                                         className="text-amber-600"
                                     />
                                     <span>
-                                        {[geometryWarning, apertureClipNotice]
-                                            .filter(Boolean).length}{' '}
+                                        {
+                                            [
+                                                geometryWarning,
+                                                apertureClipNotice,
+                                                counterSurvivalWarning,
+                                            ].filter(Boolean).length
+                                        }{' '}
                                         advisory warning
-                                        {[geometryWarning, apertureClipNotice]
-                                            .filter(Boolean).length === 1
+                                        {[
+                                            geometryWarning,
+                                            apertureClipNotice,
+                                            counterSurvivalWarning,
+                                        ].filter(Boolean).length === 1
                                             ? ''
                                             : 's'}
                                     </span>
@@ -967,12 +1014,52 @@ export function VisualiserClient({
                                         className="ml-auto text-amber-600 transition-transform group-open:rotate-180"
                                     />
                                 </summary>
-                                <ul className="space-y-1 border-t border-amber-200 px-3 py-2 text-[11px] text-amber-800">
+                                <ul className="space-y-1.5 border-t border-amber-200 px-3 py-2 text-[11px] text-amber-800">
                                     {geometryWarning && (
                                         <li>{geometryWarning}</li>
                                     )}
                                     {apertureClipNotice && (
                                         <li>{apertureClipNotice}</li>
+                                    )}
+                                    {counterSurvivalWarning && (
+                                        <li className="flex flex-col gap-1.5">
+                                            <span>
+                                                {counterSurvivalWarning}
+                                            </span>
+                                            <div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        // 1.5 mm
+                                                        // keyline gives
+                                                        // a tidy
+                                                        // press-fit
+                                                        // shoulder for
+                                                        // a typical
+                                                        // 3 mm acrylic
+                                                        // insert.
+                                                        setParam(
+                                                            'keylineMm',
+                                                            1.5,
+                                                        );
+                                                    }}
+                                                    className="inline-flex min-h-[28px] items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm transition-colors"
+                                                    style={{
+                                                        background: ACCENT,
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                        e.currentTarget.style.background =
+                                                            ACCENT_DARK;
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        e.currentTarget.style.background =
+                                                            ACCENT;
+                                                    }}
+                                                >
+                                                    Enable keyline (1.5 mm)
+                                                </button>
+                                            </div>
+                                        </li>
                                     )}
                                 </ul>
                             </details>
@@ -1144,7 +1231,7 @@ export function VisualiserClient({
                             apertureBySection={apertureBySection}
                             keylineBySection={keylineBySection}
                             fixingsBySection={fixingsBySection}
-                            solidPathsBySection={solidPathsBySection}
+                            apertureHolesBySection={apertureHolesBySection}
                             referenceBySection={referenceBySection}
                             vinylPieces={materialPieces.vinyl}
                             acrylicPieces={materialPieces.acrylic}

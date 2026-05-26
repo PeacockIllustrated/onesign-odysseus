@@ -8,7 +8,6 @@ import {
     type ImportedSvg,
     type VisualiserDesignRow,
 } from '@/lib/visualiser/types';
-import { detectInnerCounters } from '@/lib/visualiser/svg-import';
 
 export const DEFAULT_PARAMS: PanelParams = {
     name: 'Untitled panel',
@@ -185,40 +184,35 @@ export const useVisualiser = create<VisualiserState>((set) => ({
         })),
 
     setSvg: (source, imported) =>
-        set((s) => {
-            // Auto-detect inner counters (the floating bits of letters like
-            // the centre of an O, A, e) and seed a "Counters (auto)" solid
-            // group. These need to be visualised in the panel colour on
-            // both 3D and the cut-file PDF so the operator can see they're
-            // kept as solid material — not cut out. The user can edit /
-            // reassign / delete the group like any other.
-            const counters = detectInnerCounters(imported.paths);
-            const panelColor = s.params.panelColor ?? '#d6d6d6';
-            const groups = counters.length > 0
-                ? [
-                      {
-                          id: nextGroupId(),
-                          label: 'Counters (auto)',
-                          material: 'solid' as const,
-                          color: panelColor,
-                          pathIndices: counters,
-                      },
-                  ]
-                : [];
-            return {
-                svgSource: source,
-                imported,
-                params: {
-                    ...s.params,
-                    aperturePlacement:
-                        s.params.aperturePlacement ?? DEFAULT_PLACEMENT,
-                    materialGroups: groups,
-                },
-                editingGroupId: null,
-                pendingPaths: [],
-                dirty: true,
-            };
-        }),
+        set((s) => ({
+            // Nested paths (inner counters of letters) are now treated
+            // as HOLES in their parent's compound shape — not as
+            // separate "solid" pieces. The previous auto-seed of a
+            // "Counters (auto)" solid group was conceptually wrong:
+            // a counter is absence, not material, and emitting it as
+            // a closed contour in the production PDF made the cutter
+            // cut the counter loose (it would fall away with the
+            // letter-piece anyway during fabrication, so the extra
+            // cut was useless).
+            //
+            // Real CAM survival of inner counters requires either
+            // bridges/tabs (stencil style) or a keyline + push-through
+            // acrylic insert (the counter is then a hole in the insert,
+            // not panel material). The UI surfaces a warning when an
+            // aperture cut has counters but no keyline, with a one-
+            // click "Enable keyline" fix.
+            svgSource: source,
+            imported,
+            params: {
+                ...s.params,
+                aperturePlacement:
+                    s.params.aperturePlacement ?? DEFAULT_PLACEMENT,
+                materialGroups: [],
+            },
+            editingGroupId: null,
+            pendingPaths: [],
+            dirty: true,
+        })),
 
     clearSvg: () =>
         set((s) => ({
