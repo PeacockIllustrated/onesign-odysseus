@@ -16,6 +16,7 @@ export const DEFAULT_PARAMS: PanelParams = {
     returnDepthMm: 50,
     returns: { top: true, bottom: true, left: true, right: true },
     shadowGapMm: 0,
+    shadowGapEdges: { top: true, bottom: true },
     keylineMm: 0,
     materialThicknessMm: 5,
     materialLabel: 'Aluminium',
@@ -49,6 +50,7 @@ interface VisualiserState {
 
     setParam: <K extends keyof PanelParams>(k: K, v: PanelParams[K]) => void;
     setReturn: (edge: PanelEdge, on: boolean) => void;
+    setShadowGapEdge: (edge: 'top' | 'bottom', on: boolean) => void;
     setPlacement: (
         patch: Partial<NonNullable<PanelParams['aperturePlacement']>>,
     ) => void;
@@ -79,6 +81,18 @@ export const useVisualiser = create<VisualiserState>((set) => ({
     setReturn: (edge, on) =>
         set((s) => ({
             params: { ...s.params, returns: { ...s.params.returns, [edge]: on } },
+            dirty: true,
+        })),
+
+    setShadowGapEdge: (edge, on) =>
+        set((s) => ({
+            params: {
+                ...s.params,
+                shadowGapEdges: {
+                    ...(s.params.shadowGapEdges ?? { top: true, bottom: true }),
+                    [edge]: on,
+                },
+            },
             dirty: true,
         })),
 

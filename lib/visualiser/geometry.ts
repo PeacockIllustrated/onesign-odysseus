@@ -45,11 +45,21 @@ export function buildDevelopment(params: PanelParams): PanelDevelopment {
         returnDepthMm,
         returns,
         shadowGapMm,
+        shadowGapEdges,
         materialThicknessMm: T,
     } = params;
 
     const d = bendDeductionPerSide(T); // T/2 per side of every fold line
-    const hasLip = shadowGapMm > 0;
+    // Shadow-gap lips are only available on the top + bottom edges, and
+    // only when the operator toggles them on. Missing field defaults to
+    // both true (back-compat with designs saved before the toggle).
+    const lipEdges = shadowGapEdges ?? { top: true, bottom: true };
+    const lipOn: Record<PanelEdge, boolean> = {
+        top: shadowGapMm > 0 && !!returns.top && lipEdges.top,
+        bottom: shadowGapMm > 0 && !!returns.bottom && lipEdges.bottom,
+        left: false,
+        right: false,
+    };
 
     // Face flat size: subtract T/2 for each return on the relevant axis.
     const horizReturns = (returns.left ? 1 : 0) + (returns.right ? 1 : 0);
@@ -57,14 +67,20 @@ export function buildDevelopment(params: PanelParams): PanelDevelopment {
     const faceFlatW = mm(W - d * horizReturns);
     const faceFlatH = mm(H - d * vertReturns);
 
-    // A return spans one fold line at its root; a lip adds a second at its tip.
-    const returnFlatDepth = mm(returnDepthMm - d - (hasLip ? d : 0));
-    const lipFlatDepth = hasLip ? mm(shadowGapMm - d) : 0;
+    // A return spans one fold line at its root; a lip adds a second at
+    // its tip. Per-edge flat depth so a lip-bearing top can coexist with
+    // a no-lip bottom without one borrowing the other's deduction.
+    const returnDepthFor = (edge: PanelEdge): number =>
+        returns[edge] ? mm(returnDepthMm - d - (lipOn[edge] ? d : 0)) : 0;
+    const lipDepthFor = (edge: PanelEdge): number =>
+        lipOn[edge] ? mm(shadowGapMm - d) : 0;
+    const returnFlatDepth = returnDepthFor('top') || returnDepthFor('bottom') || returnDepthFor('left') || returnDepthFor('right');
+    const lipFlatDepth = lipDepthFor('top') || lipDepthFor('bottom');
 
-    const leftBand = returns.left ? returnFlatDepth + lipFlatDepth : 0;
-    const rightBand = returns.right ? returnFlatDepth + lipFlatDepth : 0;
-    const topBand = returns.top ? returnFlatDepth + lipFlatDepth : 0;
-    const bottomBand = returns.bottom ? returnFlatDepth + lipFlatDepth : 0;
+    const leftBand = returnDepthFor('left');
+    const rightBand = returnDepthFor('right');
+    const topBand = returnDepthFor('top') + lipDepthFor('top');
+    const bottomBand = returnDepthFor('bottom') + lipDepthFor('bottom');
 
     const faceX = mm(leftBand);
     const faceY = mm(topBand);
@@ -87,6 +103,9 @@ export function buildDevelopment(params: PanelParams): PanelDevelopment {
     const addReturn = (edge: PanelEdge) => {
         if (!returns[edge]) return;
 
+        const rDepth = returnDepthFor(edge);
+        const lDepth = lipDepthFor(edge);
+
         let rx = faceX;
         let ry = faceY;
         let rw = faceFlatW;
@@ -106,38 +125,38 @@ export function buildDevelopment(params: PanelParams): PanelDevelopment {
             rx = faceX;
             ry = mm(faceY + faceFlatH);
             rw = faceFlatW;
-            rh = returnFlatDepth;
+            rh = rDepth;
             f1 = [faceX, mm(faceY + faceFlatH)];
             f2 = [mm(faceX + faceFlatW), mm(faceY + faceFlatH)];
             lx = faceX;
-            ly = mm(ry + returnFlatDepth);
+            ly = mm(ry + rDepth);
             lw = faceFlatW;
-            lh = lipFlatDepth;
+            lh = lDepth;
             lf1 = [faceX, ly];
             lf2 = [mm(faceX + faceFlatW), ly];
         } else if (edge === 'top') {
             rx = faceX;
-            ry = mm(faceY - returnFlatDepth);
+            ry = mm(faceY - rDepth);
             rw = faceFlatW;
-            rh = returnFlatDepth;
+            rh = rDepth;
             f1 = [faceX, faceY];
             f2 = [mm(faceX + faceFlatW), faceY];
-            ly = mm(ry - lipFlatDepth);
+            ly = mm(ry - lDepth);
             lx = faceX;
             lw = faceFlatW;
-            lh = lipFlatDepth;
+            lh = lDepth;
             lf1 = [faceX, ry];
             lf2 = [mm(faceX + faceFlatW), ry];
         } else if (edge === 'left') {
-            rx = mm(faceX - returnFlatDepth);
+            rx = mm(faceX - rDepth);
             ry = faceY;
-            rw = returnFlatDepth;
+            rw = rDepth;
             rh = faceFlatH;
             f1 = [faceX, faceY];
             f2 = [faceX, mm(faceY + faceFlatH)];
-            lx = mm(rx - lipFlatDepth);
+            lx = mm(rx - lDepth);
             ly = faceY;
-            lw = lipFlatDepth;
+            lw = lDepth;
             lh = faceFlatH;
             lf1 = [rx, faceY];
             lf2 = [rx, mm(faceY + faceFlatH)];
@@ -145,13 +164,13 @@ export function buildDevelopment(params: PanelParams): PanelDevelopment {
             // right
             rx = mm(faceX + faceFlatW);
             ry = faceY;
-            rw = returnFlatDepth;
+            rw = rDepth;
             rh = faceFlatH;
             f1 = [mm(faceX + faceFlatW), faceY];
             f2 = [mm(faceX + faceFlatW), mm(faceY + faceFlatH)];
-            lx = mm(rx + returnFlatDepth);
+            lx = mm(rx + rDepth);
             ly = faceY;
-            lw = lipFlatDepth;
+            lw = lDepth;
             lh = faceFlatH;
             lf1 = [lx, faceY];
             lf2 = [lx, mm(faceY + faceFlatH)];
@@ -178,7 +197,7 @@ export function buildDevelopment(params: PanelParams): PanelDevelopment {
             note: 'fold 90° back',
         });
 
-        if (hasLip) {
+        if (lipOn[edge]) {
             segments.push({
                 id: `lip-${edge}`,
                 role: 'lip',

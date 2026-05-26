@@ -44,8 +44,9 @@ function NumberField({
 }
 
 export function ControlsPanel() {
-    const { params, setParam, setReturn } = useVisualiser();
+    const { params, setParam, setReturn, setShadowGapEdge } = useVisualiser();
     const edges: PanelEdge[] = ['top', 'bottom', 'left', 'right'];
+    const shadowGapEdges = params.shadowGapEdges ?? { top: true, bottom: true };
 
     return (
         <div className="space-y-4">
@@ -125,6 +126,49 @@ export function ControlsPanel() {
                     }
                 />
             </div>
+
+            {/* Per-edge shadow-gap lip. Only top + bottom can carry a
+                lip in practice (it's a mounting flange for hanging
+                hardware). Hidden when shadowGapMm = 0 — no toggles
+                matter without a gap to apply. */}
+            {params.shadowGapMm > 0 && (
+                <div>
+                    <span className="text-xs font-medium text-neutral-600">
+                        Shadow gap on edges
+                    </span>
+                    <div className="mt-1.5 grid grid-cols-2 gap-1">
+                        {(['top', 'bottom'] as const).map((e) => {
+                            const active = shadowGapEdges[e];
+                            const returnOn = params.returns[e];
+                            return (
+                                <button
+                                    key={e}
+                                    type="button"
+                                    disabled={!returnOn}
+                                    onClick={() =>
+                                        setShadowGapEdge(e, !active)
+                                    }
+                                    className={`rounded-md px-2 py-1.5 text-xs font-medium capitalize transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                                        active && returnOn
+                                            ? 'bg-black text-white'
+                                            : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'
+                                    }`}
+                                    title={
+                                        returnOn
+                                            ? undefined
+                                            : `Enable the ${e} return first`
+                                    }
+                                >
+                                    {e}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    <span className="mt-1 block text-[10px] text-neutral-400">
+                        Lips only fit on top + bottom returns.
+                    </span>
+                </div>
+            )}
 
             <NumberField
                 label="Material thickness"

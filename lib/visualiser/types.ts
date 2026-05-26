@@ -98,6 +98,16 @@ export const PanelParamsSchema = z.object({
     returns: ReturnsSchema,
     /** Inward lip folded at the return tip (0 = no shadow gap). */
     shadowGapMm: z.number().min(0).max(500),
+    /**
+     * Which edges actually get a shadow-gap lip when shadowGapMm > 0. In
+     * practice top + bottom are the only ones the fabricator uses — the
+     * lip is a mounting flange for hanging hardware on those edges. Left
+     * and right returns never get a lip. Optional for backward compat:
+     * missing → both true.
+     */
+    shadowGapEdges: z
+        .object({ top: z.boolean(), bottom: z.boolean() })
+        .optional(),
     /** Outward offset drawn around the aperture cut (0 = no keyline). */
     keylineMm: z.number().min(0).max(200),
     materialThicknessMm: z.number().positive('thickness must be > 0').max(50),

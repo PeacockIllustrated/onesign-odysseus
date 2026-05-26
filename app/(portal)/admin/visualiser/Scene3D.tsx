@@ -654,6 +654,16 @@ function Panel({
     const D = params.returnDepthMm;
     const Sg = params.shadowGapMm;
     const r = params.returns;
+    const lipEdges = params.shadowGapEdges ?? { top: true, bottom: true };
+    // Shadow-gap lips only sit on top + bottom — left/right never get
+    // one. Pass Sg per edge so Flap can render the lip exactly where the
+    // operator turned it on.
+    const sgFor = (edge: PanelEdge): number => {
+        if (Sg <= 0) return 0;
+        if (edge === 'top' && lipEdges.top) return Sg;
+        if (edge === 'bottom' && lipEdges.bottom) return Sg;
+        return 0;
+    };
     const panelColor = params.panelColor ?? DEFAULT_PANEL_COLOR;
     const edges: PanelEdge[] = ['top', 'bottom', 'left', 'right'];
 
@@ -791,7 +801,7 @@ function Panel({
                         W={W}
                         H={H}
                         D={D}
-                        Sg={Sg}
+                        Sg={sgFor(e)}
                         fold={fold}
                         color={panelColor}
                         outlines={showOutlines}

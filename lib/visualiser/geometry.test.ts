@@ -205,12 +205,12 @@ describe('outlinePerimeter — single merged cut contour', () => {
         const dev = buildDevelopment(
             base({
                 returns: { top: true, bottom: true, left: true, right: true },
-                shadowGapMm: 15, // adds 4 lip segments
+                shadowGapMm: 15, // top + bottom each get a lip (left/right never do)
             }),
         );
         const p = outlinePerimeter(dev)!;
-        expect(dev.segments.length).toBe(9); // face + 4 returns + 4 lips
-        // Still one clean rectilinear loop, not 9 stacked rectangles.
+        expect(dev.segments.length).toBe(7); // face + 4 returns + 2 lips (top/bottom only)
+        // Still one clean rectilinear loop, not stacked rectangles.
         const segArea = dev.segments.reduce((a, s) => a + s.wMm * s.hMm, 0);
         expect(polyArea(p.points)).toBeCloseTo(segArea, 2);
         expect(p.points.length).toBeLessThanOrEqual(21);
