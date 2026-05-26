@@ -80,6 +80,28 @@ export function ControlsPanel() {
                 />
             </div>
 
+            {/* Centre-panel override — only relevant when the sign actually
+                splits. Lets the shop use an oddball sheet for the centre;
+                sides rebalance automatically. 0 / blank = default (full
+                sheet). */}
+            {params.panelWidthMm > MAX_PANEL_WIDTH_MM && (
+                <NumberField
+                    label="Centre panel override"
+                    value={params.centrePanelOverrideMm ?? 0}
+                    onChange={(n) =>
+                        setParam(
+                            'centrePanelOverrideMm',
+                            n > 0 ? n : null,
+                        )
+                    }
+                    hint={
+                        params.centrePanelOverrideMm
+                            ? `Sides rebalance around ${params.centrePanelOverrideMm} mm centre`
+                            : `Default — centre uses the full ${MAX_PANEL_WIDTH_MM} mm sheet`
+                    }
+                />
+            )}
+
             <NumberField
                 label="Return depth"
                 value={params.returnDepthMm}

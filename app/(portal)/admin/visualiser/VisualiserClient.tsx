@@ -139,8 +139,13 @@ export function VisualiserClient({
     }, [JSON.stringify(params), valid.success]);
 
     const split = useMemo(
-        () => splitPanels(params.panelWidthMm),
-        [params.panelWidthMm],
+        () =>
+            splitPanels(
+                params.panelWidthMm,
+                undefined,
+                params.centrePanelOverrideMm ?? undefined,
+            ),
+        [params.panelWidthMm, params.centrePanelOverrideMm],
     );
 
     const placement = params.aperturePlacement ?? DEFAULT_PLACEMENT;

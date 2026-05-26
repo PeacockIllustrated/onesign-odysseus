@@ -50,4 +50,34 @@ describe('splitPanels — centred-full-panel rule', () => {
         expect(r.sections[r.centreIndex]).toBe(2990);
         expect(r.sections).toEqual([1005, 2990, 1005]);
     });
+
+    it('centre override: 4000 mm fascia + 2500 mm centre off-cut', () => {
+        const r = splitPanels(4000, 2990, 2500);
+        expect(r.wasSplit).toBe(true);
+        expect(r.sections).toEqual([750, 2500, 750]);
+        expect(r.sections[r.centreIndex]).toBe(2500);
+        expect(r.sections.reduce((a, b) => a + b, 0)).toBe(4000);
+    });
+
+    it('centre override grows side count when sides would exceed sheet', () => {
+        // 9000 mm fascia, 1000 mm centre — sides would be 4000 each at n=3.
+        // Bumps to n=5: sides = 2000 each.
+        const r = splitPanels(9000, 2990, 1000);
+        expect(r.sections.length).toBe(5);
+        expect(r.sections[r.centreIndex]).toBe(1000);
+        expect(Math.max(...r.sections)).toBeLessThanOrEqual(2990);
+        expect(r.sections.reduce((a, b) => a + b, 0)).toBeCloseTo(9000, 3);
+    });
+
+    it('centre override is ignored when larger than the sheet limit', () => {
+        const r = splitPanels(4000, 2990, 3500);
+        // Falls back to the default 2990 centre.
+        expect(r.sections).toEqual([505, 2990, 505]);
+    });
+
+    it('centre override is ignored when the sign fits one sheet', () => {
+        const r = splitPanels(2000, 2990, 1500);
+        expect(r.wasSplit).toBe(false);
+        expect(r.sections).toEqual([2000]);
+    });
 });

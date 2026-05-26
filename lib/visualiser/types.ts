@@ -94,6 +94,14 @@ export const PanelParamsSchema = z.object({
     name: z.string().min(1, 'name is required').max(120),
     panelWidthMm: z.number().positive('width must be > 0').max(20000),
     panelHeightMm: z.number().positive('height must be > 0').max(20000),
+    /**
+     * Optional override for the centre panel width when the sign is split
+     * across multiple sheets. Default is "use the max sheet width" — set
+     * this when the shop has an oddball off-cut to use up. Side panels
+     * automatically rebalance around the new centre. Ignored when the
+     * sign fits on one sheet.
+     */
+    centrePanelOverrideMm: z.number().positive().max(20000).nullable().optional(),
     returnDepthMm: z.number().min(0).max(2000),
     returns: ReturnsSchema,
     /** Inward lip folded at the return tip (0 = no shadow gap). */
