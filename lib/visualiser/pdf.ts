@@ -328,6 +328,7 @@ function drawMaterialPiece(
     piece: MaterialPiece | StandoffPiece,
     px: (x: number) => number,
     py: (y: number) => number,
+    scale: number,
     fill: [number, number, number],
     stroke: [number, number, number],
     weight: number,
@@ -337,11 +338,10 @@ function drawMaterialPiece(
     doc.setFillColor(fill[0], fill[1], fill[2]);
     doc.setDrawColor(stroke[0], stroke[1], stroke[2]);
     doc.setLineWidth(weight);
-    // Compound path: outer + holes via doc.lines() with multiple sub-paths.
-    // jsPDF's lines() doesn't natively support compound paths, so we
-    // approximate: draw the outer filled, then the holes filled with
-    // white (panel material colour) to "punch" through. Good enough for
-    // a reference document.
+    // Compound path: outer + holes via doc.lines() with the page-fit
+    // scale applied to the deltas. Without this the polyline is drawn
+    // at 1:1 mm regardless of the page scale, which is the bug that
+    // made standoff letters look huge on A4 material pages.
     const drawOne = (pts: Array<[number, number]>, sub: 'F' | 'FD' | 'S') => {
         if (pts.length < 2) return;
         const head = pts[0];
@@ -363,14 +363,12 @@ function drawMaterialPiece(
             deltas,
             px(ring[0][0]),
             py(ring[0][1]),
-            [1, 1],
+            [scale, scale],
             sub,
             true,
         );
     };
     drawOne(piece.path.points, style);
-    // Punch holes by re-filling with panel background. Reference-only —
-    // OK to be slightly inexact at compound corners.
     if (piece.holes && piece.holes.length > 0) {
         doc.setFillColor(255, 255, 255);
         for (const h of piece.holes) {
@@ -378,23 +376,6 @@ function drawMaterialPiece(
         }
         doc.setFillColor(fill[0], fill[1], fill[2]);
     }
-}
-
-function pieceBounds(
-    piece: MaterialPiece | StandoffPiece,
-): { w: number; h: number } {
-    if (piece.path.points.length === 0) return { w: 0, h: 0 };
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (const [x, y] of piece.path.points) {
-        if (x < minX) minX = x;
-        if (y < minY) minY = y;
-        if (x > maxX) maxX = x;
-        if (y > maxY) maxY = y;
-    }
-    return { w: Math.max(0, maxX - minX), h: Math.max(0, maxY - minY) };
 }
 
 interface MaterialPageSpec {
@@ -433,57 +414,102 @@ function buildMaterialPages(opts: PdfOptions): MaterialPageSpec[] {
             paths: allPaths,
         });
     }
-    for (const p of opts.vinylPieces ?? []) {
-        const b = pieceBounds(p);
+    // Group pieces by material so each material type gets ONE
+    // consolidated page (rather than one page per letter). All
+    // standoff pieces show on the standoff page, all vinyl pieces on
+    // the vinyl page, etc. Specs summarise across pieces — if every
+    // piece shares the same colour / thickness, show it once; if they
+    // vary, list the distinct values.
+    const summariseVariants = (values: string[]): string => {
+        const uniq = Array.from(new Set(values));
+        if (uniq.length === 0) return '-';
+        if (uniq.length === 1) return uniq[0];
+        return uniq.join(', ');
+    };
+
+    const vinylPieces = opts.vinylPieces ?? [];
+    if (vinylPieces.length > 0) {
+        const colours = vinylPieces.map((p) => p.color.toUpperCase());
+        // Use the first piece's colour as the page accent; per-piece
+        // colours still drive the drawing.
+        const accent = hexToRgb(vinylPieces[0].color);
         pages.push({
             kind: 'vinyl',
-            label: 'Vinyl appliqué',
-            color: hexToRgb(p.color),
+            label: 'Vinyl appliqués',
+            color: accent,
             specs: [
                 ['Type', 'Vinyl appliqué — flat'],
-                ['Colour', p.color.toUpperCase()],
-                ['Size', `${Math.round(b.w)} x ${Math.round(b.h)} mm`],
+                [
+                    'Pieces',
+                    `${vinylPieces.length} piece${vinylPieces.length === 1 ? '' : 's'}`,
+                ],
+                ['Colour', summariseVariants(colours)],
             ],
-            paths: [p.path, ...(p.holes ?? [])],
-            pieces: [p],
+            paths: vinylPieces.flatMap((p) => [p.path, ...(p.holes ?? [])]),
+            pieces: vinylPieces,
         });
     }
-    for (const p of opts.acrylicPieces ?? []) {
-        const b = pieceBounds(p);
+
+    const acrylicPieces = opts.acrylicPieces ?? [];
+    if (acrylicPieces.length > 0) {
+        const accent = hexToRgb(acrylicPieces[0].color);
+        const colours = acrylicPieces.map((p) => p.color.toUpperCase());
+        const thicknesses = acrylicPieces.map(
+            (p) => `${(p.thicknessMm ?? 5)} mm`,
+        );
         pages.push({
             kind: 'acrylic',
             label: 'Acrylic — face stuck',
-            color: hexToRgb(p.color),
+            color: accent,
             specs: [
                 ['Type', 'Acrylic — bonded to face'],
-                ['Colour', p.color.toUpperCase()],
                 [
-                    'Thickness',
-                    `${(p.thicknessMm ?? 5).toString()} mm`,
+                    'Pieces',
+                    `${acrylicPieces.length} piece${acrylicPieces.length === 1 ? '' : 's'}`,
                 ],
-                ['Size', `${Math.round(b.w)} x ${Math.round(b.h)} mm`],
+                ['Colour', summariseVariants(colours)],
+                ['Thickness', summariseVariants(thicknesses)],
             ],
-            paths: [p.path, ...(p.holes ?? [])],
-            pieces: [p],
+            paths: acrylicPieces.flatMap((p) => [
+                p.path,
+                ...(p.holes ?? []),
+            ]),
+            pieces: acrylicPieces,
         });
     }
-    for (const p of opts.standoffPieces ?? []) {
-        const b = pieceBounds(p);
+
+    const standoffPieces = opts.standoffPieces ?? [];
+    if (standoffPieces.length > 0) {
+        const accent = hexToRgb(standoffPieces[0].color);
+        const colours = standoffPieces.map((p) => p.color.toUpperCase());
+        const thicknesses = standoffPieces.map(
+            (p) => `${p.thicknessMm} mm`,
+        );
+        const distances = standoffPieces.map(
+            (p) => `${p.standoffDistanceMm} mm`,
+        );
         pages.push({
             kind: 'standoff',
-            label: 'Stood off lettering',
-            color: hexToRgb(p.color),
+            label: 'Stood-off lettering',
+            color: accent,
             specs: [
                 ['Type', 'Stood-off letterset'],
-                ['Colour', p.color.toUpperCase()],
-                ['Thickness', `${p.thicknessMm} mm`],
-                ['Standoff', `${p.standoffDistanceMm} mm`],
-                ['Size', `${Math.round(b.w)} x ${Math.round(b.h)} mm`],
+                [
+                    'Pieces',
+                    `${standoffPieces.length} letter${standoffPieces.length === 1 ? '' : 's'}`,
+                ],
+                ['Colour', summariseVariants(colours)],
+                ['Thickness', summariseVariants(thicknesses)],
+                ['Standoff', summariseVariants(distances)],
             ],
-            paths: [p.path, ...(p.holes ?? [])],
-            pieces: [p],
+            paths: standoffPieces.flatMap((p) => [
+                p.path,
+                ...(p.holes ?? []),
+            ]),
+            pieces: standoffPieces,
         });
     }
+
     return pages;
 }
 
@@ -701,6 +727,7 @@ function drawFlatLayoutPage(ctx: PageContext): void {
             p,
             px,
             py,
+            scale,
             hexToRgb(p.color),
             [40, 40, 40],
             0.15,
@@ -713,6 +740,7 @@ function drawFlatLayoutPage(ctx: PageContext): void {
             p,
             px,
             py,
+            scale,
             hexToRgb(p.color),
             [20, 20, 20],
             0.4,
@@ -730,7 +758,7 @@ function drawFlatLayoutPage(ctx: PageContext): void {
                 pl.deltas,
                 px(pl.start[0]),
                 py(pl.start[1]),
-                [1, 1],
+                [scale, scale],
                 'S',
                 p.path.closed,
             );
@@ -860,7 +888,7 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
                     pl.deltas,
                     px(pl.start[0]),
                     py(pl.start[1]),
-                    [1, 1],
+                    [scale, scale],
                     'S',
                     p.closed,
                 );
@@ -874,7 +902,7 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
                     pl.deltas,
                     px(pl.start[0]),
                     py(pl.start[1]),
-                    [1, 1],
+                    [scale, scale],
                     'S',
                     p.path.closed,
                 );
@@ -888,7 +916,7 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
                     pl.deltas,
                     px(pl.start[0]),
                     py(pl.start[1]),
-                    [1, 1],
+                    [scale, scale],
                     'S',
                     p.path.closed,
                 );
@@ -902,14 +930,16 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
                     pl.deltas,
                     px(pl.start[0]),
                     py(pl.start[1]),
-                    [1, 1],
+                    [scale, scale],
                     'S',
                     p.path.closed,
                 );
         }
     }
 
-    // THIS material — drawn boldly.
+    // THIS material — drawn boldly. Multiple pieces of the same
+    // material share one page, each drawn with its own colour /
+    // thickness if they differ.
     if (spec.kind === 'cut') {
         doc.setDrawColor(spec.color[0], spec.color[1], spec.color[2]);
         doc.setLineWidth(0.5);
@@ -925,12 +955,14 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
         }
     } else if (spec.pieces) {
         for (const piece of spec.pieces) {
-            const fill = spec.color;
+            const fillForPiece = hexToRgb(piece.color);
             const strokeRgb: [number, number, number] = [20, 20, 20];
             if (spec.kind === 'standoff') {
-                // Standoff: not filled — draw a solid heavy outline so the
-                // installer can see exactly which paths sit off the panel.
-                doc.setDrawColor(fill[0], fill[1], fill[2]);
+                doc.setDrawColor(
+                    fillForPiece[0],
+                    fillForPiece[1],
+                    fillForPiece[2],
+                );
                 doc.setLineWidth(0.6);
                 const pl = pathDPolyline(
                     piece.path.points,
@@ -941,7 +973,7 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
                         pl.deltas,
                         px(pl.start[0]),
                         py(pl.start[1]),
-                        [1, 1],
+                        [scale, scale],
                         'S',
                         piece.path.closed,
                     );
@@ -952,7 +984,7 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
                             pl2.deltas,
                             px(pl2.start[0]),
                             py(pl2.start[1]),
-                            [1, 1],
+                            [scale, scale],
                             'S',
                             h.closed,
                         );
@@ -963,7 +995,8 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
                     piece,
                     px,
                     py,
-                    fill,
+                    scale,
+                    fillForPiece,
                     strokeRgb,
                     0.3,
                     'FD',
