@@ -69,17 +69,19 @@ describe('buildDevelopment — user-specified bend rule', () => {
         expect(dev.foldLines).toHaveLength(0);
     });
 
-    it('shadow-gap lip adds a second fold and a further T/2 off the return', () => {
+    it('shadow-gap lip is an up-fold — no stretch deduction on its bend', () => {
         const dev = buildDevelopment(
             base({
                 shadowGapMm: 20,
                 returns: { top: false, bottom: true, left: false, right: false },
             }),
         );
-        // return: 80 − 2.5 (root) − 2.5 (tip lip fold) = 75
-        expect(dev.returnFlatDepthMm).toBe(75);
-        // lip: 20 − 2.5 = 17.5
-        expect(dev.lipFlatDepthMm).toBe(17.5);
+        // Up-fold at return tip doesn't stretch the material — return
+        // keeps the full D minus only the root back-fold deduction.
+        // 80 − 2.5 (root) = 77.5
+        expect(dev.returnFlatDepthMm).toBe(77.5);
+        // Lip is the full shadow gap, no root deduction.
+        expect(dev.lipFlatDepthMm).toBe(20);
         // one return fold + one lip fold
         expect(dev.foldLines.filter((f) => f.kind === 'return')).toHaveLength(1);
         expect(dev.foldLines.filter((f) => f.kind === 'lip')).toHaveLength(1);

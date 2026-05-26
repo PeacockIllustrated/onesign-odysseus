@@ -67,13 +67,17 @@ export function buildDevelopment(params: PanelParams): PanelDevelopment {
     const faceFlatW = mm(W - d * horizReturns);
     const faceFlatH = mm(H - d * vertReturns);
 
-    // A return spans one fold line at its root; a lip adds a second at
-    // its tip. Per-edge flat depth so a lip-bearing top can coexist with
-    // a no-lip bottom without one borrowing the other's deduction.
+    // A return spans one fold line at its root (a back-fold → T/2
+    // deduction on each side). The shadow-gap lip at the tip is an
+    // OUT-fold (lip goes up past the panel rather than tucking back
+    // toward the face), and the shop rule says up-folds don't stretch
+    // the material — so neither the return tip nor the lip root takes
+    // a deduction. Result: lip is full Sg, return is D − T/2 even when
+    // it carries a lip.
     const returnDepthFor = (edge: PanelEdge): number =>
-        returns[edge] ? mm(returnDepthMm - d - (lipOn[edge] ? d : 0)) : 0;
+        returns[edge] ? mm(returnDepthMm - d) : 0;
     const lipDepthFor = (edge: PanelEdge): number =>
-        lipOn[edge] ? mm(shadowGapMm - d) : 0;
+        lipOn[edge] ? mm(shadowGapMm) : 0;
     const returnFlatDepth = returnDepthFor('top') || returnDepthFor('bottom') || returnDepthFor('left') || returnDepthFor('right');
     const lipFlatDepth = lipDepthFor('top') || lipDepthFor('bottom');
 

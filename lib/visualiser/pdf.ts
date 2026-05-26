@@ -33,8 +33,10 @@ import {
 } from './types';
 import { outlinePerimeter } from './geometry';
 
-/** PDF media box limit is ~5080 mm; stay safely under it. */
-const MAX_PAGE_MM = 4800;
+/** PDF media box limit is ~14400 user units; stay well under it. */
+const MAX_PAGE_MM = 14000;
+/** Reference PDF cap — beyond this it scales down to A4 for readability. */
+const REFERENCE_PAGE_CAP_MM = 4800;
 
 function ascii(s: string): string {
     return s
@@ -122,7 +124,7 @@ export function generateReferencePdfBlob(opts: PdfOptions): Blob {
     const oneToOneW = drawX + partW + M + 18;
     const oneToOneH = Math.max(infoColH, drawY + partH + 26) + M;
     const oneToOne =
-        oneToOneW <= MAX_PAGE_MM && oneToOneH <= MAX_PAGE_MM;
+        oneToOneW <= REFERENCE_PAGE_CAP_MM && oneToOneH <= REFERENCE_PAGE_CAP_MM;
 
     let PAGE_W: number;
     let PAGE_H: number;
@@ -528,40 +530,25 @@ export function generateProductionPdfBlob(opts: PdfOptions): Blob {
     const partW = Math.max(1, sectionExport.totalLayoutWMm);
     const partH = Math.max(1, sectionExport.totalLayoutHMm);
 
-    // Try true 1:1; fall back to A4 if the part exceeds the PDF page limit.
-    const oneToOneW = partW + 2 * M;
-    const oneToOneH = partH + 2 * M;
-    const oneToOne =
-        oneToOneW <= MAX_PAGE_MM && oneToOneH <= MAX_PAGE_MM;
-
-    let PAGE_W: number;
-    let PAGE_H: number;
-    let scale: number;
-    let dX: number;
-    let dY: number;
-    let doc: jsPDF;
-
-    if (oneToOne) {
-        PAGE_W = oneToOneW;
-        PAGE_H = oneToOneH;
-        scale = 1;
-        dX = M;
-        dY = M;
-        doc = new jsPDF({
-            unit: 'mm',
-            format: [PAGE_W, PAGE_H],
-            orientation: PAGE_W >= PAGE_H ? 'landscape' : 'portrait',
-        });
-    } else {
-        PAGE_W = 297;
-        PAGE_H = 210;
-        doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
-        const drawW = PAGE_W - 2 * M;
-        const drawH = PAGE_H - 2 * M - 6;
-        scale = Math.min(drawW / partW, drawH / partH);
-        dX = M + (drawW - partW * scale) / 2;
-        dY = M + (drawH - partH * scale) / 2;
+    // Production is ALWAYS 1:1. CAM software reads the coordinates straight
+    // off the PDF, so 1 mm on paper must equal 1 mm of metal — no reduced
+    // fallback. If the panel is so large that the page would exceed PDF's
+    // user-space limit, we throw rather than silently scaling.
+    const PAGE_W = partW + 2 * M;
+    const PAGE_H = partH + 2 * M;
+    if (PAGE_W > MAX_PAGE_MM || PAGE_H > MAX_PAGE_MM) {
+        throw new Error(
+            `Production PDF would need a page ${Math.round(PAGE_W)}x${Math.round(PAGE_H)} mm, larger than the PDF user-space limit. Split the sign into smaller sections first.`,
+        );
     }
+    const scale = 1;
+    const dX = M;
+    const dY = M;
+    const doc = new jsPDF({
+        unit: 'mm',
+        format: [PAGE_W, PAGE_H],
+        orientation: PAGE_W >= PAGE_H ? 'landscape' : 'portrait',
+    });
 
     const px = (x: number) => dX + x * scale;
     const py = (y: number) => dY + y * scale;
@@ -659,7 +646,7 @@ export function generateProductionPdfBlob(opts: PdfOptions): Blob {
             ? `sections ${widthsLabel} mm`
             : `1 panel`,
         new Date().toLocaleDateString('en-GB'),
-        oneToOne ? '1:1' : `1:${Math.round(1 / scale)} (reduced to A4)`,
+        '1:1',
     ]
         .filter(Boolean)
         .join('  |  ');
@@ -668,10 +655,7 @@ export function generateProductionPdfBlob(opts: PdfOptions): Blob {
     doc.text(
         T(info),
         dX,
-        Math.min(
-            PAGE_H - 4,
-            dY + partH * scale + INFO_GAP + (oneToOne ? 0 : 0),
-        ),
+        Math.min(PAGE_H - 4, dY + partH * scale + INFO_GAP),
     );
     doc.setTextColor(0);
 

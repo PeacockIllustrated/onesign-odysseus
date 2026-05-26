@@ -214,7 +214,12 @@ function Flap({
         planeArgs = [W * S, D * S];
         planePos = [0, (-D / 2) * S, 0];
         lipPos = [0, -D * S, 0];
-        lipRot = [a, 0, 0];
+        // Up-fold: the lip rotates OPPOSITE to the return so when both
+        // are fully folded, the lip ends up parallel to the face plane
+        // again, extending past the panel's bottom edge (downward) at
+        // z = -D. Inward-fold would have been [a, 0, 0]; outward is
+        // [-a, 0, 0].
+        lipRot = [-a, 0, 0];
         lipArgs = [W * S, Sg * S];
         lipPlanePos = [0, (-Sg / 2) * S, 0];
     } else if (edge === 'top') {
@@ -223,7 +228,9 @@ function Flap({
         planeArgs = [W * S, D * S];
         planePos = [0, (D / 2) * S, 0];
         lipPos = [0, D * S, 0];
-        lipRot = [-a, 0, 0];
+        // Up-fold: opposite direction to the return so the lip ends up
+        // extending past the panel's top edge (upward) at z = -D.
+        lipRot = [a, 0, 0];
         lipArgs = [W * S, Sg * S];
         lipPlanePos = [0, (Sg / 2) * S, 0];
     } else if (edge === 'left') {
