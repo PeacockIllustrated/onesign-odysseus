@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type {
     PanelDevelopment,
     PanelSplit,
@@ -9,6 +9,75 @@ import type {
 } from '@/lib/visualiser/types';
 
 const DEFAULT_PANEL_COLOR = '#d6d6d6';
+
+/**
+ * Per-path clickable overlay. Stays invisible when the operator isn't
+ * editing a group; in edit mode it picks up hovers so the path about
+ * to be toggled lights up in orange, making the click target obvious.
+ */
+function PathHitOverlay({
+    d,
+    stroke,
+    groupStroke,
+    inPending,
+    hitListens,
+    onClick,
+}: {
+    d: string;
+    stroke: number;
+    groupStroke: string | null;
+    inPending: boolean;
+    hitListens: boolean;
+    onClick: () => void;
+}) {
+    const [hovered, setHovered] = useState(false);
+    return (
+        <g>
+            {/* Group-membership stroke — sits beneath the hover /
+                pending highlight so the active state always wins. */}
+            {groupStroke && !inPending && !hovered && (
+                <path
+                    d={d}
+                    fill="none"
+                    stroke={groupStroke}
+                    strokeWidth={stroke * 1.4}
+                    pointerEvents="none"
+                />
+            )}
+            {hitListens && (
+                <path
+                    d={d}
+                    fill="rgba(0,0,0,0.001)"
+                    stroke="rgba(0,0,0,0)"
+                    strokeWidth={Math.max(stroke * 4, 2)}
+                    style={{ cursor: 'pointer' }}
+                    pointerEvents="all"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onClick();
+                    }}
+                    onMouseEnter={() => setHovered(true)}
+                    onMouseLeave={() => setHovered(false)}
+                />
+            )}
+            {(inPending || (hitListens && hovered)) && (
+                <path
+                    d={d}
+                    fill="none"
+                    stroke="#f97316"
+                    strokeWidth={inPending ? stroke * 2.4 : stroke * 2}
+                    strokeDasharray={
+                        inPending
+                            ? `${stroke * 3} ${stroke * 2}`
+                            : undefined
+                    }
+                    opacity={inPending ? 1 : 0.7}
+                    pointerEvents="none"
+                />
+            )}
+        </g>
+    );
+}
 
 function pathD(p: FlatPath): string {
     if (p.points.length === 0) return '';
@@ -192,32 +261,50 @@ export function FlatPreview({
                 )}
 
                 {/* Vinyl appliqués — flat coloured fills sitting on the
-                    face. No cut, no extrusion: just a printed/cut vinyl
-                    sticker glued to the panel. */}
-                {vinylPieces.map((piece, i) => (
-                    <path
-                        key={`vinyl-${i}`}
-                        d={pathD(piece.path)}
-                        fill={piece.color}
-                        stroke="#1a1f23"
-                        strokeWidth={stroke * 0.4}
-                    />
-                ))}
+                    face. Nested paths become evenodd holes so an outer
+                    letter outline assigned to vinyl renders as a proper
+                    donut around its inner counters. */}
+                {vinylPieces.map((piece, i) => {
+                    const d =
+                        pathD(piece.path) +
+                        ' ' +
+                        (piece.holes ?? [])
+                            .map((h) => pathD(h))
+                            .join(' ');
+                    return (
+                        <path
+                            key={`vinyl-${i}`}
+                            d={d}
+                            fill={piece.color}
+                            fillRule="evenodd"
+                            stroke="#1a1f23"
+                            strokeWidth={stroke * 0.4}
+                        />
+                    );
+                })}
 
                 {/* Acrylic pieces — coloured fills with a stronger edge
                     stroke so they read as a sheet sitting proud of the
                     panel rather than vinyl. Thickness shows up properly
                     in the 3D view; the flat preview just hints at it. */}
-                {acrylicPieces.map((piece, i) => (
-                    <g key={`acrylic-${i}`}>
+                {acrylicPieces.map((piece, i) => {
+                    const d =
+                        pathD(piece.path) +
+                        ' ' +
+                        (piece.holes ?? [])
+                            .map((h) => pathD(h))
+                            .join(' ');
+                    return (
                         <path
-                            d={pathD(piece.path)}
+                            key={`acrylic-${i}`}
+                            d={d}
                             fill={piece.color}
+                            fillRule="evenodd"
                             stroke="#1a1f23"
                             strokeWidth={stroke * 1.1}
                         />
-                    </g>
-                ))}
+                    );
+                })}
 
                 {/* Fold lines */}
                 {dev.foldLines.map((f) => (
@@ -290,54 +377,18 @@ export function FlatPreview({
                             const groupStroke =
                                 pathGroupColors?.[i] ?? null;
                             const inPending = !!pendingPaths?.has(i);
-                            // The hit overlay only listens to clicks
-                            // while the operator is editing a group;
-                            // otherwise the canvas stays passive.
                             const hitListens =
                                 isEditingGroup && !!onPathToggle;
                             return (
-                                <g key={`pick-${i}`}>
-                                    {/* Solid group highlight underneath
-                                        so it sits below the pending /
-                                        select highlight without
-                                        fighting it. */}
-                                    {groupStroke && !inPending && (
-                                        <path
-                                            d={pathD(p)}
-                                            fill="none"
-                                            stroke={groupStroke}
-                                            strokeWidth={stroke * 1.4}
-                                            pointerEvents="none"
-                                        />
-                                    )}
-                                    {hitListens && (
-                                        <path
-                                            d={pathD(p)}
-                                            fill="rgba(0,0,0,0.001)"
-                                            stroke="rgba(0,0,0,0)"
-                                            strokeWidth={Math.max(
-                                                stroke * 4,
-                                                2,
-                                            )}
-                                            style={{ cursor: 'pointer' }}
-                                            pointerEvents="all"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                onPathToggle?.(i);
-                                            }}
-                                        />
-                                    )}
-                                    {inPending && (
-                                        <path
-                                            d={pathD(p)}
-                                            fill="none"
-                                            stroke="#f97316"
-                                            strokeWidth={stroke * 2.4}
-                                            strokeDasharray={`${stroke * 3} ${stroke * 2}`}
-                                            pointerEvents="none"
-                                        />
-                                    )}
-                                </g>
+                                <PathHitOverlay
+                                    key={`pick-${i}`}
+                                    d={pathD(p)}
+                                    stroke={stroke}
+                                    groupStroke={groupStroke}
+                                    inPending={inPending}
+                                    hitListens={hitListens}
+                                    onClick={() => onPathToggle?.(i)}
+                                />
                             );
                         })}
                     </g>

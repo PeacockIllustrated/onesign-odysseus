@@ -363,6 +363,13 @@ export interface MaterialPiece {
     /** Index back into the original imported.paths array. */
     pathIndex: number;
     path: FlatPath;
+    /**
+     * Nested paths fully contained inside `path`, regardless of their
+     * own material assignment. Rendered as even-odd subtractive holes
+     * so an outer letter outline (vinyl) with an inner counter
+     * (anything) renders as a proper donut.
+     */
+    holes?: FlatPath[];
     color: string;
     /** Only set for acrylic. */
     thicknessMm?: number;

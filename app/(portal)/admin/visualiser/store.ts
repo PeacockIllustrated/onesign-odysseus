@@ -8,7 +8,6 @@ import {
     type ImportedSvg,
     type VisualiserDesignRow,
 } from '@/lib/visualiser/types';
-import { detectInnerCounters } from '@/lib/visualiser/svg-import';
 
 export const DEFAULT_PARAMS: PanelParams = {
     name: 'Untitled panel',
@@ -161,37 +160,25 @@ export const useVisualiser = create<VisualiserState>((set) => ({
         })),
 
     setSvg: (source, imported) =>
-        set((s) => {
-            // Pre-populate one "Counters (auto)" group with all detected
-            // inner counters (the holes in O / e / g). Operator can edit
-            // it like any other group or break it apart.
-            const counters = detectInnerCounters(imported.paths);
-            const seedGroups: MaterialGroup[] =
-                counters.length > 0
-                    ? [
-                          {
-                              id: nextGroupId(),
-                              label: 'Counters (auto)',
-                              material: 'solid',
-                              color: s.params.panelColor ?? '#d6d6d6',
-                              pathIndices: counters,
-                          },
-                      ]
-                    : [];
-            return {
-                svgSource: source,
-                imported,
-                params: {
-                    ...s.params,
-                    aperturePlacement:
-                        s.params.aperturePlacement ?? DEFAULT_PLACEMENT,
-                    materialGroups: seedGroups,
-                },
-                editingGroupId: null,
-                pendingPaths: [],
-                dirty: true,
-            };
-        }),
+        set((s) => ({
+            // Inner counters used to seed a "Counters (auto)" solid group
+            // so they wouldn't be cut from the panel, but the new compound
+            // rendering handles this automatically — a path nested inside
+            // another is rendered as an even-odd hole in the parent's
+            // material. So we start clean with no groups; the user picks
+            // assignments and the donuts appear by themselves.
+            svgSource: source,
+            imported,
+            params: {
+                ...s.params,
+                aperturePlacement:
+                    s.params.aperturePlacement ?? DEFAULT_PLACEMENT,
+                materialGroups: [],
+            },
+            editingGroupId: null,
+            pendingPaths: [],
+            dirty: true,
+        })),
 
     clearSvg: () =>
         set((s) => ({

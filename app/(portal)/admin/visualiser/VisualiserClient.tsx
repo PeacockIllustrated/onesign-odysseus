@@ -205,6 +205,98 @@ export function VisualiserClient({
         return map;
     }, [params.materialGroups]);
 
+    // Containment map — for each imported path, the index of the
+    // SMALLEST closed path that contains its centroid (or null). Drives
+    // donut behaviour: a path nested inside another renders as an
+    // even-odd hole in the parent's material, regardless of its own
+    // assignment. Matches the SVG fill-rule semantics the operator
+    // expects from their artwork.
+    const parentByIndex = useMemo(() => {
+        const result: Array<number | null> = [];
+        const polyArea = (pts: Array<[number, number]>): number => {
+            let a = 0;
+            for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+                a += (pts[j][0] + pts[i][0]) * (pts[j][1] - pts[i][1]);
+            }
+            return Math.abs(a) / 2;
+        };
+        const containsPoint = (
+            ring: Array<[number, number]>,
+            p: [number, number],
+        ): boolean => {
+            let inside = false;
+            for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+                const xi = ring[i][0];
+                const yi = ring[i][1];
+                const xj = ring[j][0];
+                const yj = ring[j][1];
+                if (
+                    yi > p[1] !== yj > p[1] &&
+                    p[0] <
+                        ((xj - xi) * (p[1] - yi)) / (yj - yi || 1e-12) + xi
+                ) {
+                    inside = !inside;
+                }
+            }
+            return inside;
+        };
+        for (let i = 0; i < placedClipByIndex.length; i++) {
+            const p = placedClipByIndex[i];
+            if (!p || !p.closed || p.points.length < 3) {
+                result.push(null);
+                continue;
+            }
+            let cx = 0;
+            let cy = 0;
+            for (const [x, y] of p.points) {
+                cx += x;
+                cy += y;
+            }
+            cx /= p.points.length;
+            cy /= p.points.length;
+            let parent: number | null = null;
+            let parentArea = Infinity;
+            for (let j = 0; j < placedClipByIndex.length; j++) {
+                if (i === j) continue;
+                const other = placedClipByIndex[j];
+                if (!other || !other.closed || other.points.length < 3)
+                    continue;
+                if (!containsPoint(other.points, [cx, cy])) continue;
+                const a = polyArea(other.points);
+                if (a < parentArea) {
+                    parent = j;
+                    parentArea = a;
+                }
+            }
+            result.push(parent);
+        }
+        return result;
+    }, [placedClipByIndex]);
+
+    // Returns true iff `i` is in the subtree of `root` — used to gather
+    // every descendant of a vinyl / acrylic outer so they can be drawn
+    // as evenodd holes in that outer's compound shape.
+    const isDescendantOf = (i: number, root: number): boolean => {
+        let cursor = parentByIndex[i];
+        while (cursor !== null) {
+            if (cursor === root) return true;
+            cursor = parentByIndex[cursor];
+        }
+        return false;
+    };
+    // Checks whether the path at `i` is nested inside any vinyl/acrylic
+    // ancestor — those paths are owned by the ancestor's compound and
+    // must not double-render as their own face cut.
+    const nestedInsideMaterial = (i: number): boolean => {
+        let cursor = parentByIndex[i];
+        while (cursor !== null) {
+            const m = groupByPath.get(cursor)?.material;
+            if (m === 'vinyl' || m === 'acrylic') return true;
+            cursor = parentByIndex[cursor];
+        }
+        return false;
+    };
+
     // Set of paths in the active edit selection (multi-select).
     const pendingPathsSet = useMemo(
         () => new Set(pendingPaths),
@@ -238,26 +330,35 @@ export function VisualiserClient({
         params.fixingDiameterMm ??
         (params.fixingRadiusMm ? params.fixingRadiusMm * 2 : 10);
 
-    // Aperture-mode cuts (lettering as holes). Paths with a material
-    // override drop out of the cut — they're rendered as vinyl or
-    // acrylic instead.
+    // Aperture-mode cuts. A path is included as a face cut iff:
+    //   - its own material is cut / unassigned (not vinyl, acrylic, or solid)
+    //   - it isn't nested inside a vinyl / acrylic outer (those own the
+    //     path as a hole in their compound, no need to cut the face)
+    // Nested cuts inside a top-level cut still go in — face fill uses
+    // evenodd so a counter inside a cut letter naturally becomes an
+    // island of panel material.
     const aperture = useMemo(() => {
         if (mode !== 'aperture') return [];
         const out: typeof placedClip.paths = [];
         for (let i = 0; i < placedClipByIndex.length; i++) {
             const p = placedClipByIndex[i];
             if (!p) continue;
-            if (groupByPath.has(i)) continue; // overridden → not cut
+            const own = groupByPath.get(i)?.material;
+            if (own === 'vinyl' || own === 'acrylic' || own === 'solid')
+                continue;
+            if (nestedInsideMaterial(i)) continue;
             out.push(p);
         }
         return out;
-    }, [mode, placedClipByIndex, groupByPath]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [mode, placedClipByIndex, groupByPath, parentByIndex]);
 
-    // Mixed-material pieces — only meaningful in aperture mode. Each
-    // entry pairs a placed+clipped path with the material picked for it.
-    // 'solid' paths are excluded from BOTH the cut and the render — they
-    // just leave the panel material untouched (used for inner letter
-    // counters that the SVG exports as separate closed paths).
+    // Compound material pieces. Each vinyl / acrylic outer gathers ALL
+    // its descendant paths (any depth, any assignment) as evenodd holes
+    // — so an outer letter assigned to vinyl renders as a proper donut
+    // with the inner counter punched through. Standalone vinyl /
+    // acrylic paths with no nested counters just get an empty holes
+    // array.
     const materialPieces = useMemo(() => {
         if (mode !== 'aperture')
             return { vinyl: [] as MaterialPiece[], acrylic: [] as MaterialPiece[] };
@@ -267,18 +368,28 @@ export function VisualiserClient({
             const path = placedClipByIndex[i];
             const entry = groupByPath.get(i);
             if (!path || !entry) continue;
-            if (entry.material === 'solid') continue; // no render
+            if (entry.material !== 'vinyl' && entry.material !== 'acrylic')
+                continue;
+            const holes: typeof placedClip.paths = [];
+            for (let j = 0; j < placedClipByIndex.length; j++) {
+                if (j === i) continue;
+                const hp = placedClipByIndex[j];
+                if (!hp || !hp.closed) continue;
+                if (isDescendantOf(j, i)) holes.push(hp);
+            }
             const piece: MaterialPiece = {
                 pathIndex: i,
                 path,
+                holes,
                 color: entry.color,
                 thicknessMm: entry.thicknessMm,
             };
             if (entry.material === 'vinyl') vinyl.push(piece);
-            else if (entry.material === 'acrylic') acrylic.push(piece);
+            else acrylic.push(piece);
         }
         return { vinyl, acrylic };
-    }, [mode, placedClipByIndex, groupByPath]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [mode, placedClipByIndex, groupByPath, parentByIndex]);
 
     // Standoff-mode features: lettering outline shown as a reference, with
     // fixing holes placed inside each letter shape.
@@ -547,19 +658,12 @@ export function VisualiserClient({
                 <div className="relative flex-1 min-h-0 min-w-0 bg-neutral-50">
                     {(geometryWarning || apertureClipNotice || isEditingGroup) && (
                         <div className="pointer-events-none absolute inset-x-3 top-3 z-10 space-y-2">
-                            {isEditingGroup && tab === 'flat' && (
+                            {isEditingGroup && (
                                 <div className="rounded-md border border-orange-300 bg-orange-50/95 px-3 py-2 text-xs text-orange-900 shadow-sm">
                                     Editing material group — click paths
-                                    on the flat preview to add or remove
-                                    them from the selection, then pick a
+                                    on the canvas to add or remove them
+                                    from the selection, then pick a
                                     material in the side panel.
-                                </div>
-                            )}
-                            {isEditingGroup && tab !== 'flat' && (
-                                <div className="rounded-md border border-orange-300 bg-orange-50/95 px-3 py-2 text-xs text-orange-900 shadow-sm">
-                                    Editing material group — switch to
-                                    the flat preview to click paths into
-                                    the selection.
                                 </div>
                             )}
                             {geometryWarning && (
@@ -617,6 +721,17 @@ export function VisualiserClient({
                             reference={reference}
                             vinylPieces={materialPieces.vinyl}
                             acrylicPieces={materialPieces.acrylic}
+                            placedPathsByIndex={
+                                mode === 'aperture'
+                                    ? placedClipByIndex
+                                    : null
+                            }
+                            pathGroupColors={pathGroupColors}
+                            pendingPaths={pendingPathsSet}
+                            isEditingGroup={isEditingGroup}
+                            onPathToggle={
+                                isEditingGroup ? togglePendingPath : undefined
+                            }
                             fold={tab === 'folded' ? 1 : fold}
                             fixingMode={fixingMode}
                             onFixingClick={handleFixingClick}

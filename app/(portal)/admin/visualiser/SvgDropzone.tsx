@@ -337,9 +337,12 @@ function MaterialGroupsPanel({
                             </div>
 
                             {/* Inline colour / thickness — live edits while
-                                not in selection edit, no Apply needed. */}
+                                not in selection edit, no Apply needed.
+                                Stacked vertically so the hex code has
+                                room to breathe and the thickness field
+                                doesn't get squeezed. */}
                             {!isEditing && g.material !== 'solid' && (
-                                <div className="mt-2 grid grid-cols-2 gap-2">
+                                <div className="mt-2 space-y-2">
                                     <label className="block">
                                         <span className="text-[10px] text-neutral-500">
                                             Colour
@@ -353,7 +356,7 @@ function MaterialGroupsPanel({
                                                         color: e.target.value,
                                                     })
                                                 }
-                                                className="h-6 w-8 cursor-pointer rounded border border-neutral-300 bg-white p-0.5"
+                                                className="h-7 w-9 shrink-0 cursor-pointer rounded border border-neutral-300 bg-white p-0.5"
                                             />
                                             <input
                                                 type="text"
@@ -371,7 +374,7 @@ function MaterialGroupsPanel({
                                                             { color: v },
                                                         );
                                                 }}
-                                                className="flex-1 rounded border border-neutral-300 px-1 py-0.5 font-mono text-[10px] uppercase focus:border-black focus:outline-none"
+                                                className="flex-1 rounded border border-neutral-300 px-2 py-1 font-mono text-[11px] uppercase focus:border-black focus:outline-none"
                                             />
                                         </div>
                                     </label>

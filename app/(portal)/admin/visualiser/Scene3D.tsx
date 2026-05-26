@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Edges } from '@react-three/drei';
 import * as THREE from 'three';
@@ -626,6 +626,101 @@ function StandoffLocators({
 }
 
 /**
+ * Click-targets for material-group editing in 3D. Renders one invisible
+ * mesh per imported path; while the operator is in group edit mode the
+ * meshes pick up clicks (toggle pending) and pointer-overs (hover
+ * highlight). Outside edit mode we still draw the group-membership
+ * stroke so the operator can see what's grouped at a glance.
+ */
+function PathHitTarget({
+    pathIndex,
+    shape,
+    outlinePoints,
+    isEditing,
+    inPending,
+    groupColor,
+    onToggle,
+}: {
+    pathIndex: number;
+    shape: THREE.Shape | null;
+    outlinePoints: Float32Array | null;
+    isEditing: boolean;
+    inPending: boolean;
+    groupColor: string | null;
+    onToggle?: (i: number) => void;
+}) {
+    const [hovered, setHovered] = useState(false);
+    if (!shape || !outlinePoints) return null;
+    const hitListens = isEditing && !!onToggle;
+    // Draw the visible outline a hair above the face front so it never
+    // z-fights with the face mesh or the material pieces.
+    const z = 0.7 * S;
+    const outlineColor = inPending
+        ? '#f97316'
+        : hovered && hitListens
+          ? '#f97316'
+          : groupColor;
+    const outlineGeom = useMemo(() => {
+        const positions: number[] = [];
+        for (let i = 0; i + 5 < outlinePoints.length; i += 3) {
+            positions.push(
+                outlinePoints[i],
+                outlinePoints[i + 1],
+                z,
+            );
+            positions.push(
+                outlinePoints[i + 3],
+                outlinePoints[i + 4],
+                z,
+            );
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute(
+            'position',
+            new THREE.Float32BufferAttribute(positions, 3),
+        );
+        return g;
+    }, [outlinePoints, z]);
+    return (
+        <group>
+            {outlineColor && (
+                <lineSegments geometry={outlineGeom}>
+                    <lineBasicMaterial
+                        color={outlineColor}
+                        transparent
+                        opacity={inPending ? 1 : 0.85}
+                    />
+                </lineSegments>
+            )}
+            {hitListens && (
+                <mesh
+                    position={[0, 0, z + 0.01 * S]}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onToggle?.(pathIndex);
+                    }}
+                    onPointerOver={(e) => {
+                        e.stopPropagation();
+                        document.body.style.cursor = 'pointer';
+                        setHovered(true);
+                    }}
+                    onPointerOut={() => {
+                        document.body.style.cursor = '';
+                        setHovered(false);
+                    }}>
+                    <shapeGeometry args={[shape, 32]} />
+                    <meshBasicMaterial
+                        transparent
+                        opacity={0}
+                        depthWrite={false}
+                    />
+                </mesh>
+            )}
+        </group>
+    );
+}
+
+/**
  * Mixed-material pieces — paths the operator has removed from the cut
  * and re-classified as vinyl (flat colour on the face) or acrylic
  * (extruded sheet sitting on the face). Each shape is built from its
@@ -642,17 +737,30 @@ function MaterialPieces({
     acrylic: MaterialPiece[];
     outlines?: boolean;
 }) {
-    const toShape = (p: FlatPath): THREE.Shape => {
+    const toLocal = (q: [number, number]): [number, number] => [
+        (q[0] - face.xMm - face.wMm / 2) * S,
+        (face.yMm + face.hMm / 2 - q[1]) * S,
+    ];
+    const compoundShape = (piece: MaterialPiece): THREE.Shape => {
         const shape = new THREE.Shape();
-        const toLocal = (q: [number, number]): [number, number] => [
-            (q[0] - face.xMm - face.wMm / 2) * S,
-            (face.yMm + face.hMm / 2 - q[1]) * S,
-        ];
-        const pts = p.points.map(toLocal);
-        if (pts.length === 0) return shape;
-        shape.moveTo(pts[0][0], pts[0][1]);
-        for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i][0], pts[i][1]);
-        if (p.closed) shape.closePath();
+        const outer = piece.path.points.map(toLocal);
+        if (outer.length === 0) return shape;
+        shape.moveTo(outer[0][0], outer[0][1]);
+        for (let i = 1; i < outer.length; i++)
+            shape.lineTo(outer[i][0], outer[i][1]);
+        if (piece.path.closed) shape.closePath();
+        // Nested counters → holes. Outer letter shapes with holes
+        // (O / A / e / g etc.) end up as proper donuts in 3D too.
+        for (const hole of piece.holes ?? []) {
+            const hp = hole.points.map(toLocal);
+            if (hp.length < 3) continue;
+            const path = new THREE.Path();
+            path.moveTo(hp[0][0], hp[0][1]);
+            for (let i = 1; i < hp.length; i++)
+                path.lineTo(hp[i][0], hp[i][1]);
+            if (hole.closed) path.closePath();
+            shape.holes.push(path);
+        }
         return shape;
     };
 
@@ -664,7 +772,7 @@ function MaterialPieces({
                 <mesh
                     key={`vinyl-${piece.pathIndex}-${i}`}
                     position={[0, 0, 1 * S]}>
-                    <shapeGeometry args={[toShape(piece.path), 48]} />
+                    <shapeGeometry args={[compoundShape(piece), 48]} />
                     <meshBasicMaterial
                         color={piece.color}
                         side={THREE.DoubleSide}
@@ -688,7 +796,7 @@ function MaterialPieces({
                         key={`acrylic-${piece.pathIndex}-${i}`}>
                         <extrudeGeometry
                             args={[
-                                toShape(piece.path),
+                                compoundShape(piece),
                                 {
                                     depth,
                                     bevelEnabled: false,
@@ -712,6 +820,61 @@ function MaterialPieces({
     );
 }
 
+function Path3DHitTargets({
+    face,
+    placedPathsByIndex,
+    pathGroupColors,
+    pendingPaths,
+    isEditing,
+    onPathToggle,
+}: {
+    face: { xMm: number; yMm: number; wMm: number; hMm: number };
+    placedPathsByIndex: Array<FlatPath | null>;
+    pathGroupColors: Array<string | null>;
+    pendingPaths: Set<number>;
+    isEditing: boolean;
+    onPathToggle?: (i: number) => void;
+}) {
+    const toLocal = (q: [number, number]): [number, number] => [
+        (q[0] - face.xMm - face.wMm / 2) * S,
+        (face.yMm + face.hMm / 2 - q[1]) * S,
+    ];
+    const targets = useMemo(() => {
+        return placedPathsByIndex.map((p) => {
+            if (!p || !p.closed || p.points.length < 3) {
+                return { shape: null, outline: null };
+            }
+            const pts = p.points.map(toLocal);
+            const shape = new THREE.Shape();
+            shape.moveTo(pts[0][0], pts[0][1]);
+            for (let i = 1; i < pts.length; i++)
+                shape.lineTo(pts[i][0], pts[i][1]);
+            shape.closePath();
+            const flat: number[] = [];
+            for (const [x, y] of pts) flat.push(x, y, 0);
+            return { shape, outline: new Float32Array(flat) };
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [placedPathsByIndex, face.xMm, face.yMm, face.wMm, face.hMm]);
+
+    return (
+        <group>
+            {targets.map((t, i) => (
+                <PathHitTarget
+                    key={`hit3d-${i}`}
+                    pathIndex={i}
+                    shape={t.shape}
+                    outlinePoints={t.outline}
+                    isEditing={isEditing}
+                    inPending={pendingPaths.has(i)}
+                    groupColor={pathGroupColors[i] ?? null}
+                    onToggle={onPathToggle}
+                />
+            ))}
+        </group>
+    );
+}
+
 function Panel({
     params,
     development: dev,
@@ -723,6 +886,11 @@ function Panel({
     reference,
     vinylPieces,
     acrylicPieces,
+    placedPathsByIndex,
+    pathGroupColors,
+    pendingPaths,
+    isEditingGroup,
+    onPathToggle,
     fold,
     fixingMode,
     onFixingClick,
@@ -740,6 +908,11 @@ function Panel({
     reference: FlatPath[];
     vinylPieces: MaterialPiece[];
     acrylicPieces: MaterialPiece[];
+    placedPathsByIndex?: Array<FlatPath | null> | null;
+    pathGroupColors?: Array<string | null> | null;
+    pendingPaths?: Set<number>;
+    isEditingGroup?: boolean;
+    onPathToggle?: (i: number) => void;
     fold: number;
     fixingMode?: 'off' | 'place' | 'delete';
     onFixingClick?: (p: [number, number]) => void;
@@ -838,6 +1011,22 @@ function Panel({
                     vinyl={vinylPieces}
                     acrylic={acrylicPieces}
                     outlines={showOutlines}
+                />
+            )}
+
+            {/* Click-to-select hit targets — one transparent mesh per
+                imported path. Outside edit mode they only contribute
+                their group-membership outline; in edit mode they pick
+                up clicks and hovers so the operator can select paths
+                directly from the 3D view. */}
+            {face && placedPathsByIndex && (
+                <Path3DHitTargets
+                    face={face}
+                    placedPathsByIndex={placedPathsByIndex}
+                    pathGroupColors={pathGroupColors ?? []}
+                    pendingPaths={pendingPaths ?? new Set()}
+                    isEditing={isEditingGroup ?? false}
+                    onPathToggle={onPathToggle}
                 />
             )}
 
@@ -963,6 +1152,11 @@ export default function Scene3D(props: {
     reference?: FlatPath[];
     vinylPieces?: MaterialPiece[];
     acrylicPieces?: MaterialPiece[];
+    placedPathsByIndex?: Array<FlatPath | null> | null;
+    pathGroupColors?: Array<string | null> | null;
+    pendingPaths?: Set<number>;
+    isEditingGroup?: boolean;
+    onPathToggle?: (i: number) => void;
     /** 0 = flat (unfolded in 3D), 1 = folded. Default folded. */
     fold?: number;
     /** Active fixing edit mode: 'place' drops, 'delete' removes. */
@@ -1010,6 +1204,11 @@ export default function Scene3D(props: {
                 reference={reference}
                 vinylPieces={vinylPieces}
                 acrylicPieces={acrylicPieces}
+                placedPathsByIndex={props.placedPathsByIndex ?? null}
+                pathGroupColors={props.pathGroupColors ?? null}
+                pendingPaths={props.pendingPaths}
+                isEditingGroup={props.isEditingGroup}
+                onPathToggle={props.onPathToggle}
                 fold={fold}
                 fixingMode={props.fixingMode}
                 onFixingClick={props.onFixingClick}
