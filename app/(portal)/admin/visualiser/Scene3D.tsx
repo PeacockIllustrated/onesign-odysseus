@@ -91,37 +91,6 @@ function PanelPlane({
 }
 
 /**
- * A solid sheet-metal box — gives a return its real material thickness.
- * Sized so it occupies the panel's own "inward" volume when folded, so two
- * adjacent returns never share volume (the corner stays empty, matching
- * the notched cruciform that's actually cut in production).
- */
-function PanelBox({
-    args,
-    position,
-    color,
-    outlines = true,
-}: {
-    args: [number, number, number];
-    position?: [number, number, number];
-    color: string;
-    outlines?: boolean;
-}) {
-    return (
-        <mesh position={position}>
-            <boxGeometry args={args} />
-            <meshBasicMaterial
-                color={color}
-                polygonOffset
-                polygonOffsetFactor={1}
-                polygonOffsetUnits={1}
-            />
-            {outlines && <Edges color={EDGE_COLOR} lineWidth={1.5} />}
-        </mesh>
-    );
-}
-
-/**
  * The face panel as a flat shape with real cut-outs for every aperture
  * polygon / stand-off fixing hole — so the 3D shows what will actually be
  * cut on the panel, not just a coloured outline.
@@ -129,7 +98,6 @@ function PanelBox({
 function FacePlane({
     W,
     H,
-    T,
     color,
     holesLocal,
     onClick,
@@ -138,7 +106,6 @@ function FacePlane({
 }: {
     W: number; // mm
     H: number; // mm
-    T: number; // mm — material thickness, extruded INTO the panel
     color: string;
     /** Holes in face-local mm coords (face centred at origin, y-up). */
     holesLocal: Array<Array<[number, number]>>;
@@ -167,16 +134,8 @@ function FacePlane({
         return s;
     }, [W, H, holesLocal]);
 
-    const depth = T * S;
-
     return (
-        // Extrude inward — front cap stays at world z = 0 (camera-facing),
-        // material extends backward to z = -T*S. Returns hinge from the
-        // back edge so the corner joinery stays clean (paper-thin returns
-        // meet at the corner without overlap), but the cut-out edges now
-        // show the full material depth.
         <mesh
-            position={[0, 0, -depth]}
             onClick={
                 onClick
                     ? (e) => {
@@ -200,14 +159,10 @@ function FacePlane({
                       }
                     : undefined
             }>
-            <extrudeGeometry
-                args={[
-                    shape,
-                    { depth, bevelEnabled: false, curveSegments: 48 },
-                ]}
-            />
+            <shapeGeometry args={[shape, 48]} />
             <meshBasicMaterial
                 color={color}
+                side={THREE.DoubleSide}
                 polygonOffset
                 polygonOffsetFactor={1}
                 polygonOffsetUnits={1}
@@ -228,7 +183,6 @@ function Flap({
     H,
     D,
     Sg,
-    T,
     fold,
     color,
     outlines = true,
@@ -238,64 +192,54 @@ function Flap({
     H: number;
     D: number;
     Sg: number;
-    T: number; // material thickness (mm)
     fold: number;
     color: string;
     outlines?: boolean;
 }) {
     const a = fold * HALF_PI;
     const hasLip = Sg > 0;
-    const t = T * S;
-    // Pivot at the back surface of the face (z = -T). With the face
-    // extruded inward, this places the bend's inside corner at the back
-    // of the face. The return box sits with its inside face flush with
-    // the face's back when flat (coplanar at z ∈ [-T, 0]); when folded
-    // 90°, the return occupies the panel's "inward" volume just behind
-    // the face. Two adjacent returns never share volume — the corner is
-    // empty, matching the notched cruciform that's actually cut.
-    const hingeZ = -t;
 
     let groupPos: [number, number, number];
     let groupRot: [number, number, number];
-    let boxArgs: [number, number, number];
-    let boxPos: [number, number, number];
+    let planeArgs: [number, number];
+    let planePos: [number, number, number];
     let lipPos: [number, number, number] = [0, 0, 0];
     let lipRot: [number, number, number] = [0, 0, 0];
     let lipArgs: [number, number] = [0, 0];
     let lipPlanePos: [number, number, number] = [0, 0, 0];
 
     if (edge === 'bottom') {
-        groupPos = [0, (-H / 2) * S, hingeZ];
+        groupPos = [0, (-H / 2) * S, 0];
         groupRot = [a, 0, 0];
-        boxArgs = [W * S, D * S, t];
-        boxPos = [0, (-D / 2) * S, t / 2];
+        planeArgs = [W * S, D * S];
+        planePos = [0, (-D / 2) * S, 0];
         lipPos = [0, -D * S, 0];
         lipRot = [a, 0, 0];
         lipArgs = [W * S, Sg * S];
         lipPlanePos = [0, (-Sg / 2) * S, 0];
     } else if (edge === 'top') {
-        groupPos = [0, (H / 2) * S, hingeZ];
+        groupPos = [0, (H / 2) * S, 0];
         groupRot = [-a, 0, 0];
-        boxArgs = [W * S, D * S, t];
-        boxPos = [0, (D / 2) * S, t / 2];
+        planeArgs = [W * S, D * S];
+        planePos = [0, (D / 2) * S, 0];
         lipPos = [0, D * S, 0];
         lipRot = [-a, 0, 0];
         lipArgs = [W * S, Sg * S];
         lipPlanePos = [0, (Sg / 2) * S, 0];
     } else if (edge === 'left') {
-        groupPos = [(-W / 2) * S, 0, hingeZ];
+        groupPos = [(-W / 2) * S, 0, 0];
         groupRot = [0, -a, 0];
-        boxArgs = [D * S, H * S, t];
-        boxPos = [(-D / 2) * S, 0, t / 2];
+        planeArgs = [D * S, H * S];
+        planePos = [(-D / 2) * S, 0, 0];
         lipPos = [-D * S, 0, 0];
         lipRot = [0, -a, 0];
         lipArgs = [Sg * S, H * S];
         lipPlanePos = [(-Sg / 2) * S, 0, 0];
     } else {
-        groupPos = [(W / 2) * S, 0, hingeZ];
+        groupPos = [(W / 2) * S, 0, 0];
         groupRot = [0, a, 0];
-        boxArgs = [D * S, H * S, t];
-        boxPos = [(D / 2) * S, 0, t / 2];
+        planeArgs = [D * S, H * S];
+        planePos = [(D / 2) * S, 0, 0];
         lipPos = [D * S, 0, 0];
         lipRot = [0, a, 0];
         lipArgs = [Sg * S, H * S];
@@ -304,9 +248,9 @@ function Flap({
 
     return (
         <group position={groupPos} rotation={groupRot}>
-            <PanelBox
-                args={boxArgs}
-                position={boxPos}
+            <PanelPlane
+                args={planeArgs}
+                position={planePos}
                 color={color}
                 outlines={outlines}
             />
@@ -779,7 +723,6 @@ function Panel({
             <FacePlane
                 W={W}
                 H={H}
-                T={T}
                 color={panelColor}
                 holesLocal={holesLocal}
                 outlines={showOutlines}
@@ -849,7 +792,6 @@ function Panel({
                         H={H}
                         D={D}
                         Sg={Sg}
-                        T={T}
                         fold={fold}
                         color={panelColor}
                         outlines={showOutlines}

@@ -147,11 +147,18 @@ export const useVisualiser = create<VisualiserState>((set) => ({
         set((s) => {
             const list = s.params.manualFixings ?? [];
             if (index < 0 || index >= list.length) return {} as Partial<VisualiserState>;
+            const next = list.filter((_, i) => i !== index);
+            // If the operator was deleting and just removed the last
+            // fixing, drop them out of delete mode automatically — the
+            // delete pill disables itself with an empty list and the
+            // user would otherwise be stuck on a now-inert mode.
+            const nextMode =
+                s.fixingMode === 'delete' && next.length === 0
+                    ? ('off' as const)
+                    : s.fixingMode;
             return {
-                params: {
-                    ...s.params,
-                    manualFixings: list.filter((_, i) => i !== index),
-                },
+                params: { ...s.params, manualFixings: next },
+                fixingMode: nextMode,
                 dirty: true,
             };
         }),
@@ -159,6 +166,8 @@ export const useVisualiser = create<VisualiserState>((set) => ({
     clearManualFixings: () =>
         set((s) => ({
             params: { ...s.params, manualFixings: [] },
+            fixingMode:
+                s.fixingMode === 'delete' ? ('off' as const) : s.fixingMode,
             dirty: true,
         })),
 
