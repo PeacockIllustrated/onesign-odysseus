@@ -545,8 +545,23 @@ export function VisualiserClient({
                 </header>
 
                 <div className="relative flex-1 min-h-0 min-w-0 bg-neutral-50">
-                    {(geometryWarning || apertureClipNotice) && (
+                    {(geometryWarning || apertureClipNotice || isEditingGroup) && (
                         <div className="pointer-events-none absolute inset-x-3 top-3 z-10 space-y-2">
+                            {isEditingGroup && tab === 'flat' && (
+                                <div className="rounded-md border border-orange-300 bg-orange-50/95 px-3 py-2 text-xs text-orange-900 shadow-sm">
+                                    Editing material group — click paths
+                                    on the flat preview to add or remove
+                                    them from the selection, then pick a
+                                    material in the side panel.
+                                </div>
+                            )}
+                            {isEditingGroup && tab !== 'flat' && (
+                                <div className="rounded-md border border-orange-300 bg-orange-50/95 px-3 py-2 text-xs text-orange-900 shadow-sm">
+                                    Editing material group — switch to
+                                    the flat preview to click paths into
+                                    the selection.
+                                </div>
+                            )}
                             {geometryWarning && (
                                 <div className="rounded-md border border-amber-300 bg-amber-50/95 px-3 py-2 text-xs text-amber-700 shadow-sm">
                                     {geometryWarning}

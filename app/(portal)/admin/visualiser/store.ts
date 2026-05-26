@@ -302,7 +302,8 @@ export const useVisualiser = create<VisualiserState>((set) => ({
             const editingId = s.editingGroupId;
             const list = s.params.materialGroups ?? [];
 
-            // No-op if there's nothing to apply and no group to delete.
+            // No-op if there's nothing to apply and no existing group
+            // to delete — just close the editor.
             if (pending.length === 0 && (editingId === 'new' || !editingId)) {
                 return {
                     editingGroupId: null,
@@ -325,8 +326,10 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                 )
                 .filter((g) => g.pathIndices.length > 0);
 
-            if (material === 'cut') {
-                // No new group — also drop the one being edited.
+            // Cut, or apply with an empty selection on an existing
+            // group, both mean "this group should no longer exist" —
+            // drop the editing target if it was a real group.
+            if (material === 'cut' || pending.length === 0) {
                 const next = stripped.filter((g) => g.id !== editingId);
                 return {
                     params: { ...s.params, materialGroups: next },

@@ -39,6 +39,170 @@ type GroupMaterial = MaterialGroup['material'];
  * pencil to re-enter selection on its members; tweak colour /
  * thickness inline.
  */
+function defaultColorFor(
+    material: GroupMaterial,
+    panelColor: string,
+): string {
+    if (material === 'solid') return panelColor;
+    if (material === 'vinyl') return '#ffffff';
+    return '#1a1f23';
+}
+
+/**
+ * The orange edit panel. Lives in its own component so React can fully
+ * remount it (via a `key` from the editing target) when the operator
+ * switches between groups — that's what re-seeds the local input state
+ * cleanly without having to set state during render.
+ */
+function GroupEditControls({
+    initialMaterial,
+    initialColor,
+    initialThickness,
+    pendingCount,
+    isExistingGroup,
+    panelColor,
+    onApply,
+    onCancel,
+}: {
+    initialMaterial: GroupMaterial;
+    initialColor: string;
+    initialThickness: number;
+    pendingCount: number;
+    isExistingGroup: boolean;
+    panelColor: string;
+    onApply: (
+        material: 'cut' | GroupMaterial,
+        opts?: { color?: string; thicknessMm?: number },
+    ) => void;
+    onCancel: () => void;
+}) {
+    const [material, setMaterial] = useState<GroupMaterial>(initialMaterial);
+    const [color, setColor] = useState<string>(initialColor);
+    const [thickness, setThickness] = useState<number>(initialThickness);
+
+    // Smart colour default when the operator switches material — only
+    // snap if the colour is still the previous material's default; if
+    // they've picked a custom colour keep it.
+    const pickMaterial = (next: GroupMaterial) => {
+        const previousDefault = defaultColorFor(material, panelColor);
+        if (color.toLowerCase() === previousDefault.toLowerCase()) {
+            setColor(defaultColorFor(next, panelColor));
+        }
+        setMaterial(next);
+    };
+
+    return (
+        <div className="rounded-md border border-orange-300 bg-orange-50 p-2.5 space-y-2">
+            <p className="text-[11px] text-orange-900">
+                {isExistingGroup
+                    ? `Editing group · ${pendingCount} path${pendingCount === 1 ? '' : 's'}`
+                    : `Building new group · ${pendingCount} path${pendingCount === 1 ? '' : 's'}`}
+            </p>
+            <p className="text-[10px] text-orange-800">
+                Click paths on the flat preview to add or remove them,
+                then pick the material below.
+            </p>
+
+            <div className="flex overflow-hidden rounded-md border border-orange-300">
+                {(
+                    [
+                        ['cut', 'Cut'],
+                        ['solid', 'Solid'],
+                        ['vinyl', 'Vinyl'],
+                        ['acrylic', 'Acrylic'],
+                    ] as const
+                ).map(([v, label], k) => (
+                    <button
+                        key={v}
+                        type="button"
+                        onClick={() => {
+                            if (v === 'cut') onApply('cut');
+                            else pickMaterial(v);
+                        }}
+                        className={`flex-1 py-1.5 text-[11px] font-medium ${
+                            k > 0 ? 'border-l border-orange-300' : ''
+                        } ${
+                            v === 'cut'
+                                ? 'bg-white text-red-600 hover:bg-red-50'
+                                : material === v
+                                  ? 'bg-black text-white'
+                                  : 'bg-white text-neutral-700 hover:bg-neutral-100'
+                        }`}
+                        title={
+                            v === 'cut'
+                                ? 'Remove the selected paths from any group (revert to cut).'
+                                : v === 'solid'
+                                  ? 'Leave as panel material — no cut. Used for inner letter counters.'
+                                  : undefined
+                        }
+                    >
+                        {label}
+                    </button>
+                ))}
+            </div>
+
+            {material !== 'solid' && (
+                <label className="block">
+                    <span className="text-[10px] text-orange-900">
+                        Colour
+                    </span>
+                    <div className="mt-0.5 flex items-center gap-1.5">
+                        <input
+                            type="color"
+                            value={color}
+                            onChange={(e) => setColor(e.target.value)}
+                            className="h-7 w-9 cursor-pointer rounded border border-orange-300 bg-white p-0.5"
+                        />
+                        <input
+                            type="text"
+                            value={color}
+                            onChange={(e) => {
+                                const v = e.target.value.trim();
+                                if (/^#[0-9a-fA-F]{6}$/.test(v)) setColor(v);
+                            }}
+                            className="flex-1 rounded border border-orange-300 px-1.5 py-1 font-mono text-[10px] uppercase focus:border-black focus:outline-none"
+                        />
+                    </div>
+                </label>
+            )}
+
+            {material === 'acrylic' && (
+                <NumField
+                    label="Thickness (mm)"
+                    step={0.5}
+                    value={thickness}
+                    onChange={(n) => setThickness(n > 0 ? n : 0.5)}
+                />
+            )}
+
+            <div className="flex items-center gap-2 pt-1">
+                <button
+                    type="button"
+                    onClick={() =>
+                        onApply(material, {
+                            color,
+                            thicknessMm:
+                                material === 'acrylic' ? thickness : undefined,
+                        })
+                    }
+                    disabled={pendingCount === 0}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-black px-3 py-1.5 text-[11px] font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                    <Check size={12} /> Apply{' '}
+                    {material.charAt(0).toUpperCase() + material.slice(1)}
+                </button>
+                <button
+                    type="button"
+                    onClick={onCancel}
+                    className="rounded-md border border-orange-300 px-3 py-1.5 text-[11px] font-medium text-orange-900 hover:bg-orange-100"
+                >
+                    Cancel
+                </button>
+            </div>
+        </div>
+    );
+}
+
 function MaterialGroupsPanel({
     groups,
     editingGroupId,
@@ -74,32 +238,6 @@ function MaterialGroupsPanel({
             ? groups.find((g) => g.id === editingGroupId)
             : null;
 
-    // Working values for the apply step. When editing an existing group
-    // these seed from the group; otherwise sensible defaults.
-    const [applyMaterial, setApplyMaterial] = useState<GroupMaterial>(
-        editingExisting?.material ?? 'solid',
-    );
-    const [applyColor, setApplyColor] = useState<string>(
-        editingExisting?.color ?? panelColor,
-    );
-    const [applyThickness, setApplyThickness] = useState<number>(
-        editingExisting?.thicknessMm ?? 5,
-    );
-
-    // When the operator opens / switches the edit target, re-seed
-    // the working values from that target so the inputs reflect it.
-    const seedKey = editingGroupId ?? '';
-    const [lastSeedKey, setLastSeedKey] = useState<string | null>(null);
-    if (lastSeedKey !== seedKey) {
-        setLastSeedKey(seedKey);
-        setApplyMaterial(editingExisting?.material ?? 'solid');
-        setApplyColor(
-            editingExisting?.color ??
-                (applyMaterial === 'vinyl' ? '#ffffff' : '#1a1f23'),
-        );
-        setApplyThickness(editingExisting?.thicknessMm ?? 5);
-    }
-
     return (
         <div className="space-y-2 pt-2 border-t border-neutral-100">
             <div className="flex items-center justify-between gap-2">
@@ -119,130 +257,22 @@ function MaterialGroupsPanel({
             </div>
 
             {isEditing && (
-                <div className="rounded-md border border-orange-300 bg-orange-50 p-2.5 space-y-2">
-                    <p className="text-[11px] text-orange-900">
-                        {editingExisting
-                            ? `Editing group · ${pendingPaths.length} path${pendingPaths.length === 1 ? '' : 's'}`
-                            : `Building new group · ${pendingPaths.length} path${pendingPaths.length === 1 ? '' : 's'}`}
-                    </p>
-                    <p className="text-[10px] text-orange-800">
-                        Click paths on the flat preview to add / remove
-                        them, then pick the material below.
-                    </p>
-
-                    {/* Material chooser. Solid/vinyl/acrylic shows colour
-                        (and thickness for acrylic). Cut clears the
-                        selection from any group it was in. */}
-                    <div className="flex overflow-hidden rounded-md border border-orange-300">
-                        {(
-                            [
-                                ['cut', 'Cut'],
-                                ['solid', 'Solid'],
-                                ['vinyl', 'Vinyl'],
-                                ['acrylic', 'Acrylic'],
-                            ] as const
-                        ).map(([v, label], k) => (
-                            <button
-                                key={v}
-                                type="button"
-                                onClick={() => {
-                                    if (v === 'cut') {
-                                        applyEditMaterial('cut');
-                                    } else {
-                                        setApplyMaterial(v);
-                                    }
-                                }}
-                                className={`flex-1 py-1.5 text-[11px] font-medium ${
-                                    k > 0
-                                        ? 'border-l border-orange-300'
-                                        : ''
-                                } ${
-                                    v === 'cut'
-                                        ? 'bg-white text-red-600 hover:bg-red-50'
-                                        : applyMaterial === v
-                                          ? 'bg-black text-white'
-                                          : 'bg-white text-neutral-700 hover:bg-neutral-100'
-                                }`}
-                                title={
-                                    v === 'cut'
-                                        ? 'Remove the selected paths from any group (revert to cut).'
-                                        : v === 'solid'
-                                          ? 'Leave as panel material — no cut. Used for inner letter counters.'
-                                          : undefined
-                                }
-                            >
-                                {label}
-                            </button>
-                        ))}
-                    </div>
-
-                    {applyMaterial !== 'solid' && (
-                        <label className="block">
-                            <span className="text-[10px] text-orange-900">
-                                Colour
-                            </span>
-                            <div className="mt-0.5 flex items-center gap-1.5">
-                                <input
-                                    type="color"
-                                    value={applyColor}
-                                    onChange={(e) =>
-                                        setApplyColor(e.target.value)
-                                    }
-                                    className="h-7 w-9 cursor-pointer rounded border border-orange-300 bg-white p-0.5"
-                                />
-                                <input
-                                    type="text"
-                                    value={applyColor}
-                                    onChange={(e) => {
-                                        const v = e.target.value.trim();
-                                        if (/^#[0-9a-fA-F]{6}$/.test(v))
-                                            setApplyColor(v);
-                                    }}
-                                    className="flex-1 rounded border border-orange-300 px-1.5 py-1 font-mono text-[10px] uppercase focus:border-black focus:outline-none"
-                                />
-                            </div>
-                        </label>
-                    )}
-
-                    {applyMaterial === 'acrylic' && (
-                        <NumField
-                            label="Thickness (mm)"
-                            step={0.5}
-                            value={applyThickness}
-                            onChange={(n) =>
-                                setApplyThickness(n > 0 ? n : 0.5)
-                            }
-                        />
-                    )}
-
-                    <div className="flex items-center gap-2 pt-1">
-                        <button
-                            type="button"
-                            onClick={() =>
-                                applyEditMaterial(applyMaterial, {
-                                    color: applyColor,
-                                    thicknessMm:
-                                        applyMaterial === 'acrylic'
-                                            ? applyThickness
-                                            : undefined,
-                                })
-                            }
-                            disabled={pendingPaths.length === 0}
-                            className="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-black px-3 py-1.5 text-[11px] font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                            <Check size={12} /> Apply{' '}
-                            {applyMaterial.charAt(0).toUpperCase() +
-                                applyMaterial.slice(1)}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={cancelGroupEdit}
-                            className="rounded-md border border-orange-300 px-3 py-1.5 text-[11px] font-medium text-orange-900 hover:bg-orange-100"
-                        >
-                            Cancel
-                        </button>
-                    </div>
-                </div>
+                <GroupEditControls
+                    // Key on the editing target so seeding happens via
+                    // mount, not via setState-during-render.
+                    key={editingGroupId}
+                    initialMaterial={editingExisting?.material ?? 'solid'}
+                    initialColor={
+                        editingExisting?.color ??
+                        defaultColorFor('solid', panelColor)
+                    }
+                    initialThickness={editingExisting?.thicknessMm ?? 5}
+                    pendingCount={pendingPaths.length}
+                    isExistingGroup={!!editingExisting}
+                    panelColor={panelColor}
+                    onApply={applyEditMaterial}
+                    onCancel={cancelGroupEdit}
+                />
             )}
 
             {/* Existing groups. Each row shows a palette swatch (the
@@ -268,11 +298,17 @@ function MaterialGroupsPanel({
                             className={`rounded-md border bg-white p-2 ${
                                 isThisOne
                                     ? 'border-orange-400 ring-1 ring-orange-300'
-                                    : 'border-neutral-200'
+                                    : 'border-neutral-200 hover:border-neutral-300'
                             }`}
                         >
                             <div className="flex items-center justify-between gap-2">
-                                <div className="flex min-w-0 items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => startEditingGroup(g.id)}
+                                    disabled={isEditing && !isThisOne}
+                                    className="flex min-w-0 flex-1 items-center gap-2 text-left disabled:cursor-not-allowed disabled:opacity-50"
+                                    title="Edit members and material"
+                                >
                                     <span
                                         className="h-3 w-3 shrink-0 rounded-sm border border-neutral-300"
                                         style={{ background: palette }}
@@ -289,26 +325,15 @@ function MaterialGroupsPanel({
                                         {g.pathIndices.length} path
                                         {g.pathIndices.length === 1 ? '' : 's'}
                                     </span>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                    <button
-                                        type="button"
-                                        onClick={() => startEditingGroup(g.id)}
-                                        disabled={isEditing && !isThisOne}
-                                        className="rounded p-1 text-neutral-500 hover:bg-neutral-100 hover:text-black disabled:opacity-40"
-                                        title="Edit members and material"
-                                    >
-                                        <Pencil size={12} />
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => deleteGroup(g.id)}
-                                        className="rounded p-1 text-neutral-500 hover:bg-red-50 hover:text-red-600"
-                                        title="Delete group (paths revert to cut)"
-                                    >
-                                        <Trash2 size={12} />
-                                    </button>
-                                </div>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => deleteGroup(g.id)}
+                                    className="rounded p-1 text-neutral-500 hover:bg-red-50 hover:text-red-600"
+                                    title="Delete group (paths revert to cut)"
+                                >
+                                    <Trash2 size={12} />
+                                </button>
                             </div>
 
                             {/* Inline colour / thickness — live edits while
