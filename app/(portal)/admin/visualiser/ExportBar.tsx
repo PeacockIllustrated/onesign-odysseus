@@ -15,6 +15,8 @@ import {
     type FlatPath,
     type SectionedExport,
     type ExportWarning,
+    type MaterialPiece,
+    type StandoffPiece,
 } from '@/lib/visualiser/types';
 
 function download(blob: Blob, filename: string) {
@@ -32,6 +34,9 @@ export function ExportBar({
     keylineBySection,
     fixingsBySection,
     referenceBySection,
+    vinylPieces,
+    acrylicPieces,
+    standoffPieces,
     warnings = [],
 }: {
     sectionExport: SectionedExport;
@@ -39,6 +44,9 @@ export function ExportBar({
     keylineBySection: FlatPath[][];
     fixingsBySection: FlatPath[][];
     referenceBySection: FlatPath[][];
+    vinylPieces: MaterialPiece[];
+    acrylicPieces: MaterialPiece[];
+    standoffPieces: StandoffPiece[];
     warnings?: ExportWarning[];
 }) {
     const {
@@ -64,6 +72,9 @@ export function ExportBar({
             keylineBySection,
             fixingsBySection,
             referenceBySection,
+            vinylPieces,
+            acrylicPieces,
+            standoffPieces,
             thumbnailDataUrl: thumb || undefined,
         });
         download(blob, pdfFilename(params, 'reference'));
@@ -74,10 +85,9 @@ export function ExportBar({
             sectionExport,
             params,
             apertureBySection,
-            keylineBySection,
+            // Keyline + reference outlines + 3D thumbnail are reference-only.
+            // Production PDF gets cut geometry only — apertures and fixings.
             fixingsBySection,
-            // Reference outlines and the 3D thumbnail are reference-only —
-            // production gets cut geometry only.
         });
         download(blob, pdfFilename(params, 'production'));
     };

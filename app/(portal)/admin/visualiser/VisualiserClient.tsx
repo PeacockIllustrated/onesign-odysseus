@@ -959,6 +959,9 @@ export function VisualiserClient({
                             keylineBySection={keylineBySection}
                             fixingsBySection={fixingsBySection}
                             referenceBySection={referenceBySection}
+                            vinylPieces={materialPieces.vinyl}
+                            acrylicPieces={materialPieces.acrylic}
+                            standoffPieces={standoffPieces}
                             warnings={exportWarnings}
                         />
                     )}

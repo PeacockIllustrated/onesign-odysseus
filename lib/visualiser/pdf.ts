@@ -30,6 +30,8 @@ import {
     type PanelParams,
     type FlatPath,
     type SectionedExport,
+    type MaterialPiece,
+    type StandoffPiece,
 } from './types';
 import { outlinePerimeter } from './geometry';
 
@@ -58,6 +60,14 @@ interface PdfOptions {
     keylineBySection?: FlatPath[][];
     fixingsBySection?: FlatPath[][];
     referenceBySection?: FlatPath[][];
+    /**
+     * Mixed-material pieces in flat-development coords. Reference PDF
+     * shows them per-material on dedicated pages; production PDF
+     * ignores them entirely (they aren't cuts).
+     */
+    vinylPieces?: MaterialPiece[];
+    acrylicPieces?: MaterialPiece[];
+    standoffPieces?: StandoffPiece[];
     /** PNG/JPEG data URL of the 3D preview, optional. */
     thumbnailDataUrl?: string;
 }
@@ -91,312 +101,127 @@ function drawClosedPolyline(
     doc.lines(deltas, ring[0][0], ring[0][1], [1, 1], style, true);
 }
 
-/**
- * REFERENCE PDF — the dimensioned shop drawing. Spec block, colour
- * legend, dashed fold lines, section labels, dimension lines. Stays the
- * same per-section layout as today.
- */
-export function generateReferencePdfBlob(opts: PdfOptions): Blob {
-    const { sectionExport, params } = opts;
+// =============================================================================
+// REFERENCE PDF
+// =============================================================================
+//
+// Multi-page A4 landscape document. Built around three audiences:
+//
+//   1. The shop foreman opening the file cold — page 1 (Overview) is a
+//      one-glance summary: sign name, panel size, materials in use, and
+//      a 3D thumbnail. Everything they need to know it's the right job.
+//
+//   2. The CAM operator setting up the cutter — page 2 (Flat layout)
+//      shows the full flat blank with dimensions and fold lines.
+//
+//   3. The installer / finisher — one page per material group. Each
+//      page isolates a single material (vinyl colour, acrylic sheet,
+//      stood-off letterset, etc.) so it's obvious which parts they're
+//      working on, with the relevant specs (colour, thickness, standoff
+//      distance, count, total area) right there.
+//
+// All pages share the same A4 landscape size. Per-section / split-panel
+// behaviour is preserved on the layout pages.
+
+type PageContext = {
+    doc: jsPDF;
+    pageW: number;
+    pageH: number;
+    margin: number;
+    params: PanelParams;
+    opts: PdfOptions;
+    pageNumber: number;
+    totalPages: number;
+};
+
+function drawHeaderBar(ctx: PageContext, title: string): void {
+    const { doc, pageW, margin, params, pageNumber, totalPages } = ctx;
     const T = (s: string) => ascii(s);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text(T(`ONESIGN  —  ${params.name}`), margin, margin);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(110);
+    doc.text(T(title), margin, margin + 5);
+    const right = T(
+        `${new Date().toLocaleDateString('en-GB')}    Page ${pageNumber} / ${totalPages}    Reference — NOT a cut file`,
+    );
+    doc.text(right, pageW - margin, margin + 5, { align: 'right' });
+    doc.setTextColor(0);
+    // Divider
+    doc.setDrawColor(180);
+    doc.setLineWidth(0.2);
+    doc.line(margin, margin + 8, pageW - margin, margin + 8);
+}
 
-    const M = 18; // page margin
-    const COL_W = 86; // left info column
-    const partW = Math.max(1, sectionExport.totalLayoutWMm);
-    const partH = Math.max(1, sectionExport.totalLayoutHMm);
-    const isSplit = sectionExport.sections.length > 1;
+function fitScale(
+    boxW: number,
+    boxH: number,
+    partW: number,
+    partH: number,
+): number {
+    if (partW <= 0 || partH <= 0) return 1;
+    return Math.min(boxW / partW, boxH / partH);
+}
 
-    // Drawing origin leaves room for the left column + the vertical dim.
-    const drawX = M + COL_W + 16;
-    const drawY = M + 18;
-
-    // How tall the info column needs to be (fixed line steps + thumbnail).
-    const specRows = 10; // matches the `spec` array length below
-    let infoBottom = M + 13 + specRows * 5.2;
-    if (isSplit) infoBottom += 6;
-    infoBottom += 14; // bend note
-    infoBottom += 6 + 5 * 5; // legend header + 5 rows
-    const hasThumb = !!opts.thumbnailDataUrl;
-    if (hasThumb) infoBottom += 52;
-    const infoColH = infoBottom + M;
-
-    // Prefer true 1:1; fall back to a reduced A4 only if the part is huge.
-    const oneToOneW = drawX + partW + M + 18;
-    const oneToOneH = Math.max(infoColH, drawY + partH + 26) + M;
-    const oneToOne =
-        oneToOneW <= REFERENCE_PAGE_CAP_MM && oneToOneH <= REFERENCE_PAGE_CAP_MM;
-
-    let PAGE_W: number;
-    let PAGE_H: number;
-    let scale: number;
-    let dX = drawX;
-    let dY = drawY;
-    let doc: jsPDF;
-
-    if (oneToOne) {
-        PAGE_W = oneToOneW;
-        PAGE_H = oneToOneH;
-        scale = 1;
-        doc = new jsPDF({
-            unit: 'mm',
-            format: [PAGE_W, PAGE_H],
-            orientation: PAGE_W >= PAGE_H ? 'landscape' : 'portrait',
-        });
-    } else {
-        PAGE_W = 297;
-        PAGE_H = 210;
-        doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
-        dX = M + COL_W + 6;
-        dY = M + 22;
-        const drawW = PAGE_W - dX - M - 14;
-        const drawH = PAGE_H - dY - M - 12;
-        scale = Math.min(drawW / partW, drawH / partH);
+function pathDPolyline(
+    pts: Array<[number, number]>,
+    closed: boolean,
+): { deltas: number[][]; start: [number, number] } | null {
+    if (pts.length < 2) return null;
+    const head = pts[0];
+    const tail = pts[pts.length - 1];
+    const ring =
+        closed &&
+        Math.abs(tail[0] - head[0]) < 1e-6 &&
+        Math.abs(tail[1] - head[1]) < 1e-6
+            ? pts.slice(0, -1)
+            : pts;
+    if (ring.length < 2) return null;
+    const deltas: number[][] = [];
+    for (let i = 1; i < ring.length; i++) {
+        deltas.push([ring[i][0] - ring[i - 1][0], ring[i][1] - ring[i - 1][1]]);
     }
+    return { deltas, start: [ring[0][0], ring[0][1]] };
+}
+
+/**
+ * Draw the panel's flat development outline (cut perimeter + fold lines).
+ * All other layers (cuts, materials, dimensions) are drawn on top.
+ * Returns the projection helpers so the caller can place additional
+ * geometry in the same coordinate space.
+ */
+function drawFlatBlank(
+    doc: jsPDF,
+    sectionExport: SectionedExport,
+    dX: number,
+    dY: number,
+    scale: number,
+    options: {
+        outlineWeight?: number;
+        foldDashWeight?: number;
+        showFolds?: boolean;
+        showDims?: boolean;
+        dimFont?: number;
+    } = {},
+): {
+    px: (x: number) => number;
+    py: (y: number) => number;
+} {
+    const showFolds = options.showFolds ?? true;
+    const showDims = options.showDims ?? false;
+    const outlineWeight = options.outlineWeight ?? 0.5;
+    const foldDashWeight = options.foldDashWeight ?? 0.3;
 
     const px = (x: number) => dX + x * scale;
     const py = (y: number) => dY + y * scale;
 
-    // Annotation scaling — at 1:1 a fixed 7pt label on a 10 m part is
-    // unreadable, so dimensions/ticks/line-weights scale with part size.
-    const maxPart = Math.max(partW, partH) * scale;
-    const ann = Math.min(28, Math.max(1, maxPart / 380));
-    const dimFont = Math.min(96, Math.max(8, maxPart * 0.022));
-    const tick = 1.4 * ann;
-    const dimOff = 9 * ann;
-    const cutLW = 0.4 * Math.min(8, Math.max(1, ann));
-    const refLW = 0.3 * Math.min(8, Math.max(1, ann));
-    const dash = 1.6 * Math.min(6, Math.max(1, ann));
-
-    // ---- Header --------------------------------------------------------
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(15);
-    doc.text(T(`Onesign Panel - ${params.name}`), M, M);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(110);
-    doc.text(
-        T(
-            `Production shop drawing | NOT a cut file | ${new Date().toLocaleDateString('en-GB')}`,
-        ),
-        M,
-        M + 5,
-    );
-    doc.setTextColor(0);
-
-    // ---- Spec block ----------------------------------------------------
-    const matLabel = params.materialLabel
-        ? params.materialLabel.length > 30
-            ? params.materialLabel.slice(0, 29) + '...'
-            : params.materialLabel
-        : '-';
-    const specY = M + 13;
-    const mode = params.apertureMode ?? 'aperture';
-    const fixingD =
-        params.fixingDiameterMm ??
-        (params.fixingRadiusMm ? params.fixingRadiusMm * 2 : 10);
-    const nFixings = (opts.fixingsBySection ?? []).reduce(
-        (a, arr) => a + arr.length,
-        0,
-    );
-    const artworkRow: [string, string] =
-        mode === 'standoff'
-            ? [
-                  'Artwork',
-                  `Stand-off  |  ${nFixings} x ${fixingD.toFixed(1)} mm fixings`,
-              ]
-            : ['Artwork', 'Aperture cut'];
-
-    const spec: Array<[string, string]> = [
-        ['Sign face', `${params.panelWidthMm} x ${params.panelHeightMm} mm`],
-        ['Returns', returnsLabel(params)],
-        ['Return depth', `${params.returnDepthMm} mm`],
-        ['Shadow gap', params.shadowGapMm > 0 ? `${params.shadowGapMm} mm` : '-'],
-        artworkRow,
-        ['Keyline', mode === 'standoff' || params.keylineMm <= 0 ? '-' : `${params.keylineMm} mm`],
-        ['Material', matLabel],
-        ['Thickness', `${params.materialThicknessMm} mm`],
-        [
-            'Sections',
-            isSplit
-                ? `${sectionExport.sections.length} (centre full)`
-                : 'Single panel',
-        ],
-        [
-            'Sheet layout',
-            `${Math.round(sectionExport.totalLayoutWMm)} x ${Math.round(sectionExport.totalLayoutHMm)} mm`,
-        ],
-    ];
-    doc.setFontSize(8);
-    spec.forEach(([k, v], i) => {
-        const y = specY + i * 5.2;
-        doc.setFont('helvetica', 'bold');
-        doc.text(T(k), M, y);
-        doc.setFont('helvetica', 'normal');
-        doc.text(T(v), M + 26, y);
-    });
-    let cursorY = specY + spec.length * 5.2 + 2;
-
-    if (isSplit) {
-        doc.setFontSize(7);
-        doc.setTextColor(90);
-        const widths = sectionExport.sections
-            .map((s) => Math.round(s.sectionWidthMm))
-            .join(' / ');
-        doc.text(T(`Section widths: ${widths} mm`), M, cursorY, {
-            maxWidth: COL_W,
-        });
-        doc.setTextColor(0);
-        cursorY += 6;
-    }
-
-    doc.setFontSize(7);
-    doc.setTextColor(90);
-    doc.text(
-        T(
-            'Bend allowance: half the material thickness is deducted from each side of every fold line.',
-        ),
-        M,
-        cursorY,
-        { maxWidth: COL_W },
-    );
-    doc.setTextColor(0);
-    cursorY += 12;
-
-    // ---- Legend --------------------------------------------------------
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    doc.text('LEGEND', M, cursorY);
-    doc.setFont('helvetica', 'normal');
-    cursorY += 4;
-    const apCount = (opts.apertureBySection ?? []).reduce(
-        (a, arr) => a + arr.length,
-        0,
-    );
-    const klCount = (opts.keylineBySection ?? []).reduce(
-        (a, arr) => a + arr.length,
-        0,
-    );
-    const refCount = (opts.referenceBySection ?? []).reduce(
-        (a, arr) => a + arr.length,
-        0,
-    );
-    const legend: Array<{
-        rgb: [number, number, number];
-        dash: number[];
-        label: string;
-        w: number;
-    }> = [
-        { rgb: [20, 20, 20], dash: [], label: 'Cut outline', w: 0.5 },
-        {
-            rgb: [200, 0, 0],
-            dash: [1.2, 1.2],
-            label: 'Fold line - DO NOT CUT',
-            w: 0.4,
-        },
-    ];
-    if (apCount > 0) {
-        legend.push({
-            rgb: [30, 90, 200],
-            dash: [],
-            label: 'Aperture cut',
-            w: 0.35,
-        });
-    }
-    if (nFixings > 0) {
-        legend.push({
-            rgb: [30, 90, 200],
-            dash: [],
-            label: 'Stand-off fixing hole (cut)',
-            w: 0.5,
-        });
-    }
-    if (refCount > 0) {
-        legend.push({
-            rgb: [156, 163, 175],
-            dash: [0.8, 0.8],
-            label: 'Lettering position (NOT cut)',
-            w: 0.35,
-        });
-    }
-    if (klCount > 0) {
-        legend.push({
-            rgb: [0, 170, 190],
-            dash: [0.8, 0.8],
-            label: 'Keyline (register)',
-            w: 0.35,
-        });
-    }
-    // Pad so the layout reserves a consistent block; keeps info column tidy
-    while (legend.length < 5) {
-        legend.push({
-            rgb: [255, 255, 255],
-            dash: [],
-            label: '',
-            w: 0,
-        });
-    }
-    doc.setFontSize(7);
-    legend.forEach((l, i) => {
-        const y = cursorY + i * 5;
-        doc.setDrawColor(l.rgb[0], l.rgb[1], l.rgb[2]);
-        doc.setLineWidth(l.w);
-        doc.setLineDashPattern(l.dash, 0);
-        doc.line(M, y - 1, M + 10, y - 1);
-        doc.setLineDashPattern([], 0);
-        doc.setTextColor(40);
-        doc.text(T(l.label), M + 13, y);
-    });
-    doc.setTextColor(0);
-    cursorY += 5 * 5 + 4;
-
-    // ---- 3D thumbnail (in the info column) ----------------------------
-    if (hasThumb && opts.thumbnailDataUrl) {
-        const tw = 64;
-        const th = 44;
-        try {
-            doc.addImage(
-                opts.thumbnailDataUrl,
-                'PNG',
-                M,
-                cursorY,
-                tw,
-                th,
-                undefined,
-                'FAST',
-            );
-            doc.setDrawColor(210);
-            doc.setLineWidth(0.2);
-            doc.rect(M, cursorY, tw, th);
-        } catch {
-            /* thumbnail is best-effort */
-        }
-    }
-
-    // ---- Flat development drawing -------------------------------------
-    const scaleText = oneToOne
-        ? '1:1 (true size)'
-        : `1:${Math.round(1 / scale)} (reduced to fit A4)`;
-    const layoutCaption = isSplit
-        ? `Cut sheet  |  scale ${scaleText}  |  ${sectionExport.sections.length} sections side-by-side, total ${Math.round(sectionExport.totalLayoutWMm)} x ${Math.round(sectionExport.totalLayoutHMm)} mm`
-        : `Flat development  |  scale ${scaleText}  |  blank ${Math.round(sectionExport.totalLayoutWMm)} x ${Math.round(sectionExport.totalLayoutHMm)} mm`;
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'bold');
-    doc.text(T(layoutCaption), dX, dY - 6);
-    doc.setFont('helvetica', 'normal');
-
-    // Each section gets its own perimeter + folds, drawn at its layout
-    // origin. The per-section aperture / fixings / keyline / reference
-    // arrays are already translated into export-sheet coords.
-    sectionExport.sections.forEach((section, i) => {
+    // Per-section outer perimeter — one continuous polyline per section.
+    sectionExport.sections.forEach((section) => {
         const ox = section.layoutOriginXMm;
-        const sectionAp = opts.apertureBySection?.[i] ?? [];
-        const sectionFx = opts.fixingsBySection?.[i] ?? [];
-        const sectionKl = opts.keylineBySection?.[i] ?? [];
-        const sectionRef = opts.referenceBySection?.[i] ?? [];
-
-        // Cut outline (solid).
         doc.setDrawColor(20);
-        doc.setLineWidth(cutLW);
+        doc.setLineWidth(outlineWeight);
         const perimeter = outlinePerimeter(section.development);
         if (perimeter) {
             const pts = perimeter.points;
@@ -419,94 +244,788 @@ export function generateReferencePdfBlob(opts: PdfOptions): Blob {
             }
         }
 
-        // Fold lines — red dashed (reference, NOT a cut).
-        doc.setDrawColor(200, 0, 0);
-        doc.setLineWidth(refLW);
-        doc.setLineDashPattern([dash, dash], 0);
-        for (const f of section.development.foldLines) {
-            doc.line(
-                px(f.x1 + ox),
-                py(f.y1),
-                px(f.x2 + ox),
-                py(f.y2),
-            );
-        }
-        doc.setLineDashPattern([], 0);
-
-        // Reference lettering outline (standoff, non-cut, light dashed).
-        if (sectionRef.length) {
-            doc.setLineDashPattern([dash * 0.8, dash * 0.8], 0);
-            drawPaths(doc, sectionRef, px, py, [156, 163, 175], refLW * 0.7);
+        if (showFolds) {
+            doc.setDrawColor(200, 0, 0);
+            doc.setLineWidth(foldDashWeight);
+            doc.setLineDashPattern([1.4, 1.0], 0);
+            for (const f of section.development.foldLines) {
+                doc.line(
+                    px(f.x1 + ox),
+                    py(f.y1),
+                    px(f.x2 + ox),
+                    py(f.y2),
+                );
+            }
             doc.setLineDashPattern([], 0);
         }
+    });
 
-        // Aperture (blue) + keyline (cyan).
-        drawPaths(doc, sectionAp, px, py, [30, 90, 200], cutLW * 0.8);
-        drawPaths(doc, sectionKl, px, py, [0, 170, 190], refLW * 0.8);
-
-        // Stand-off fixings (filled blue dots).
-        if (sectionFx.length) {
-            doc.setFillColor(30, 90, 200);
-            doc.setDrawColor(30, 90, 200);
-            doc.setLineWidth(cutLW * 0.6);
-            for (const p of sectionFx) {
-                const cx =
-                    p.points.reduce((a, q) => a + q[0], 0) / p.points.length;
-                const cy =
-                    p.points.reduce((a, q) => a + q[1], 0) / p.points.length;
-                const rMm =
-                    p.points.reduce(
-                        (a, q) => a + Math.hypot(q[0] - cx, q[1] - cy),
-                        0,
-                    ) / p.points.length;
-                doc.circle(px(cx), py(cy), rMm * scale, 'FD');
-            }
-        }
-
-        // Section label (only when split) + per-section width dim line.
-        const sFace = section.development.segments.find(
-            (s) => s.role === 'face',
-        );
-        if (sFace) {
-            doc.setTextColor(70);
-            if (isSplit) {
-                doc.setFontSize(Math.max(9, dimFont * 0.85));
-                doc.setFont('helvetica', 'bold');
-                doc.text(
-                    T(
-                        `SECTION ${section.index + 1} / ${section.count}  -  ${Math.round(section.sectionWidthMm)} x ${Math.round(section.development.faceNominalHMm)} mm`,
-                    ),
-                    px(sFace.xMm + sFace.wMm / 2 + ox),
-                    py(sFace.yMm + sFace.hMm / 2),
-                    { align: 'center' },
-                );
-                doc.setFont('helvetica', 'normal');
-            }
+    if (showDims) {
+        const partW = sectionExport.totalLayoutWMm;
+        const partH = sectionExport.totalLayoutHMm;
+        const dimFont = options.dimFont ?? 9;
+        const tick = 1.6;
+        // Width dim under each section
+        sectionExport.sections.forEach((section) => {
+            const ox = section.layoutOriginXMm;
             dimH(
                 doc,
                 px(ox),
                 px(ox + section.development.totalFlatWMm),
-                py(section.development.totalFlatHMm) + dimOff,
-                T(`${Math.round(section.development.totalFlatWMm)} mm`),
+                py(section.development.totalFlatHMm) + 6,
+                ascii(
+                    `${Math.round(section.development.totalFlatWMm)} mm`,
+                ),
                 dimFont,
                 tick,
             );
-            doc.setTextColor(0);
+        });
+        dimV(
+            doc,
+            py(0),
+            py(partH),
+            px(0) - 6,
+            ascii(`${Math.round(partH)} mm`),
+            dimFont,
+            tick,
+        );
+        // Suppress unused warning for partW (used implicitly via section widths).
+        void partW;
+    }
+
+    return { px, py };
+}
+
+function drawApertureCuts(
+    doc: jsPDF,
+    apertureBySection: FlatPath[][] | undefined,
+    sectionExport: SectionedExport,
+    px: (x: number) => number,
+    py: (y: number) => number,
+    color: [number, number, number],
+    weight: number,
+) {
+    if (!apertureBySection) return;
+    doc.setDrawColor(color[0], color[1], color[2]);
+    doc.setLineWidth(weight);
+    sectionExport.sections.forEach((_section, i) => {
+        const list = apertureBySection[i] ?? [];
+        for (const p of list) {
+            for (let k = 0; k + 1 < p.points.length; k++) {
+                doc.line(
+                    px(p.points[k][0]),
+                    py(p.points[k][1]),
+                    px(p.points[k + 1][0]),
+                    py(p.points[k + 1][1]),
+                );
+            }
         }
     });
+}
 
-    // Single overall-height dim line on the left of the layout.
-    doc.setTextColor(70);
-    dimV(
+function drawMaterialPiece(
+    doc: jsPDF,
+    piece: MaterialPiece | StandoffPiece,
+    px: (x: number) => number,
+    py: (y: number) => number,
+    fill: [number, number, number],
+    stroke: [number, number, number],
+    weight: number,
+    style: 'F' | 'FD' | 'S',
+) {
+    if (piece.path.points.length < 3) return;
+    doc.setFillColor(fill[0], fill[1], fill[2]);
+    doc.setDrawColor(stroke[0], stroke[1], stroke[2]);
+    doc.setLineWidth(weight);
+    // Compound path: outer + holes via doc.lines() with multiple sub-paths.
+    // jsPDF's lines() doesn't natively support compound paths, so we
+    // approximate: draw the outer filled, then the holes filled with
+    // white (panel material colour) to "punch" through. Good enough for
+    // a reference document.
+    const drawOne = (pts: Array<[number, number]>, sub: 'F' | 'FD' | 'S') => {
+        if (pts.length < 2) return;
+        const head = pts[0];
+        const tail = pts[pts.length - 1];
+        const ring =
+            Math.abs(tail[0] - head[0]) < 1e-6 &&
+                Math.abs(tail[1] - head[1]) < 1e-6
+                ? pts.slice(0, -1)
+                : pts;
+        if (ring.length < 2) return;
+        const deltas: number[][] = [];
+        for (let i = 1; i < ring.length; i++) {
+            deltas.push([
+                ring[i][0] - ring[i - 1][0],
+                ring[i][1] - ring[i - 1][1],
+            ]);
+        }
+        doc.lines(
+            deltas,
+            px(ring[0][0]),
+            py(ring[0][1]),
+            [1, 1],
+            sub,
+            true,
+        );
+    };
+    drawOne(piece.path.points, style);
+    // Punch holes by re-filling with panel background. Reference-only —
+    // OK to be slightly inexact at compound corners.
+    if (piece.holes && piece.holes.length > 0) {
+        doc.setFillColor(255, 255, 255);
+        for (const h of piece.holes) {
+            drawOne(h.points, 'F');
+        }
+        doc.setFillColor(fill[0], fill[1], fill[2]);
+    }
+}
+
+function pieceBounds(
+    piece: MaterialPiece | StandoffPiece,
+): { w: number; h: number } {
+    if (piece.path.points.length === 0) return { w: 0, h: 0 };
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const [x, y] of piece.path.points) {
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+    }
+    return { w: Math.max(0, maxX - minX), h: Math.max(0, maxY - minY) };
+}
+
+interface MaterialPageSpec {
+    kind: 'cut' | 'vinyl' | 'acrylic' | 'standoff';
+    label: string;
+    color: [number, number, number];
+    /** Brief specs for the right-side info strip. */
+    specs: Array<[string, string]>;
+    /** Per-section paths that belong to this material. */
+    paths: FlatPath[];
+    /** When true, this is a per-piece material — drawn as filled shapes. */
+    pieces?: Array<MaterialPiece | StandoffPiece>;
+}
+
+function buildMaterialPages(opts: PdfOptions): MaterialPageSpec[] {
+    const pages: MaterialPageSpec[] = [];
+    const apCount = (opts.apertureBySection ?? []).reduce(
+        (a, arr) => a + arr.length,
+        0,
+    );
+    if (apCount > 0) {
+        const allPaths: FlatPath[] = [];
+        for (const arr of opts.apertureBySection ?? []) allPaths.push(...arr);
+        pages.push({
+            kind: 'cut',
+            label: 'Cut apertures',
+            color: [30, 90, 200],
+            specs: [
+                ['Type', 'Cut from panel'],
+                ['Count', `${apCount} aperture${apCount === 1 ? '' : 's'}`],
+                [
+                    'Stroke',
+                    'Sent to the CAM cutter as the production output',
+                ],
+            ],
+            paths: allPaths,
+        });
+    }
+    for (const p of opts.vinylPieces ?? []) {
+        const b = pieceBounds(p);
+        pages.push({
+            kind: 'vinyl',
+            label: 'Vinyl appliqué',
+            color: hexToRgb(p.color),
+            specs: [
+                ['Type', 'Vinyl appliqué — flat'],
+                ['Colour', p.color.toUpperCase()],
+                ['Size', `${Math.round(b.w)} x ${Math.round(b.h)} mm`],
+            ],
+            paths: [p.path, ...(p.holes ?? [])],
+            pieces: [p],
+        });
+    }
+    for (const p of opts.acrylicPieces ?? []) {
+        const b = pieceBounds(p);
+        pages.push({
+            kind: 'acrylic',
+            label: 'Acrylic — face stuck',
+            color: hexToRgb(p.color),
+            specs: [
+                ['Type', 'Acrylic — bonded to face'],
+                ['Colour', p.color.toUpperCase()],
+                [
+                    'Thickness',
+                    `${(p.thicknessMm ?? 5).toString()} mm`,
+                ],
+                ['Size', `${Math.round(b.w)} x ${Math.round(b.h)} mm`],
+            ],
+            paths: [p.path, ...(p.holes ?? [])],
+            pieces: [p],
+        });
+    }
+    for (const p of opts.standoffPieces ?? []) {
+        const b = pieceBounds(p);
+        pages.push({
+            kind: 'standoff',
+            label: 'Stood off lettering',
+            color: hexToRgb(p.color),
+            specs: [
+                ['Type', 'Stood-off letterset'],
+                ['Colour', p.color.toUpperCase()],
+                ['Thickness', `${p.thicknessMm} mm`],
+                ['Standoff', `${p.standoffDistanceMm} mm`],
+                ['Size', `${Math.round(b.w)} x ${Math.round(b.h)} mm`],
+            ],
+            paths: [p.path, ...(p.holes ?? [])],
+            pieces: [p],
+        });
+    }
+    return pages;
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+    const h = hex.replace('#', '');
+    return [
+        parseInt(h.substring(0, 2), 16),
+        parseInt(h.substring(2, 4), 16),
+        parseInt(h.substring(4, 6), 16),
+    ];
+}
+
+function returnsLabelCompact(p: PanelParams): string {
+    const on = (['top', 'bottom', 'left', 'right'] as const).filter(
+        (e) => p.returns[e],
+    );
+    return on.length === 4
+        ? 'All four edges'
+        : on.length === 0
+          ? 'None'
+          : on.join(', ');
+}
+
+function drawOverviewPage(ctx: PageContext): void {
+    const { doc, pageW, pageH, margin, params, opts } = ctx;
+    const T = (s: string) => ascii(s);
+    drawHeaderBar(ctx, 'Overview — sign specification');
+
+    const top = margin + 14;
+    const colW = (pageW - margin * 2 - 8) / 2;
+
+    // Left column: spec block
+    const mode = params.apertureMode ?? 'aperture';
+    const matLabel = params.materialLabel
+        ? params.materialLabel.length > 30
+            ? params.materialLabel.slice(0, 29) + '...'
+            : params.materialLabel
+        : '-';
+    const apCount = (opts.apertureBySection ?? []).reduce(
+        (a, arr) => a + arr.length,
+        0,
+    );
+    const groupCount = (params.materialGroups ?? []).length;
+    const spec: Array<[string, string]> = [
+        ['Sign face', `${params.panelWidthMm} x ${params.panelHeightMm} mm`],
+        ['Returns', returnsLabelCompact(params)],
+        ['Return depth', `${params.returnDepthMm} mm`],
+        [
+            'Shadow gap',
+            params.shadowGapMm > 0 ? `${params.shadowGapMm} mm` : '-',
+        ],
+        ['Material', matLabel],
+        ['Thickness', `${params.materialThicknessMm} mm`],
+        [
+            'Sections',
+            opts.sectionExport.sections.length > 1
+                ? `${opts.sectionExport.sections.length} (centre full)`
+                : 'Single panel',
+        ],
+        [
+            'Sheet layout',
+            `${Math.round(opts.sectionExport.totalLayoutWMm)} x ${Math.round(opts.sectionExport.totalLayoutHMm)} mm`,
+        ],
+        [
+            'Default for ungrouped',
+            mode === 'standoff' ? 'Stood off' : 'Cut',
+        ],
+        [
+            'Materials in use',
+            `${apCount > 0 ? '1 cut' : 'No cuts'}, ${groupCount} group${
+                groupCount === 1 ? '' : 's'
+            }`,
+        ],
+    ];
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text(T('SIGN SPECIFICATION'), margin, top);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    spec.forEach(([k, v], i) => {
+        const y = top + 6 + i * 5.5;
+        doc.setTextColor(120);
+        doc.text(T(k), margin, y);
+        doc.setTextColor(0);
+        doc.text(T(v), margin + 36, y);
+    });
+
+    // Right column: 3D thumbnail
+    const thumbX = margin + colW + 8;
+    const thumbTop = top;
+    const thumbW = colW;
+    const thumbH = colW * 0.55;
+    if (opts.thumbnailDataUrl) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.text(T('3D PREVIEW'), thumbX, thumbTop);
+        try {
+            doc.addImage(
+                opts.thumbnailDataUrl,
+                'PNG',
+                thumbX,
+                thumbTop + 4,
+                thumbW,
+                thumbH,
+                undefined,
+                'FAST',
+            );
+        } catch {
+            /* thumbnail best-effort */
+        }
+        doc.setDrawColor(200);
+        doc.setLineWidth(0.2);
+        doc.rect(thumbX, thumbTop + 4, thumbW, thumbH);
+    }
+
+    // Materials table (bottom of page)
+    const matY = Math.max(
+        top + 6 + spec.length * 5.5 + 6,
+        thumbTop + thumbH + 14,
+    );
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text(T('MATERIALS IN THIS SIGN'), margin, matY);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    const rows: Array<[string, string, string]> = [];
+    if (apCount > 0) {
+        rows.push([
+            'Cut',
+            `${apCount} aperture${apCount === 1 ? '' : 's'}`,
+            'Production cut from panel face',
+        ]);
+    }
+    for (const v of opts.vinylPieces ?? [])
+        rows.push(['Vinyl', v.color.toUpperCase(), 'Flat appliqué']);
+    for (const a of opts.acrylicPieces ?? [])
+        rows.push([
+            'Acrylic',
+            `${(a.thicknessMm ?? 5)} mm ${a.color.toUpperCase()}`,
+            'Face-stuck',
+        ]);
+    for (const s of opts.standoffPieces ?? [])
+        rows.push([
+            'Stood off',
+            `${s.thicknessMm} mm ${s.color.toUpperCase()}`,
+            `${s.standoffDistanceMm} mm offset`,
+        ]);
+
+    if (rows.length === 0) {
+        doc.setTextColor(140);
+        doc.text(
+            T('Panel-only sign — no SVG artwork applied.'),
+            margin,
+            matY + 6,
+        );
+        doc.setTextColor(0);
+    } else {
+        const headerY = matY + 5;
+        doc.setDrawColor(220);
+        doc.setLineWidth(0.2);
+        doc.line(margin, headerY + 1.5, pageW - margin, headerY + 1.5);
+        doc.setTextColor(110);
+        doc.text(T('Material'), margin, headerY);
+        doc.text(T('Spec'), margin + 50, headerY);
+        doc.text(T('Notes'), margin + 130, headerY);
+        doc.setTextColor(0);
+        rows.forEach((r, i) => {
+            const y = headerY + 6 + i * 5;
+            if (y > pageH - margin - 6) return; // truncate if too many
+            doc.text(T(r[0]), margin, y);
+            doc.text(T(r[1]), margin + 50, y);
+            doc.text(T(r[2]), margin + 130, y);
+        });
+    }
+}
+
+function drawFlatLayoutPage(ctx: PageContext): void {
+    const { doc, pageW, pageH, margin, params, opts } = ctx;
+    const T = (s: string) => ascii(s);
+    drawHeaderBar(ctx, 'Flat development — cutting layout');
+
+    const drawTop = margin + 18;
+    const drawW = pageW - margin * 2;
+    const drawH = pageH - drawTop - margin - 10;
+    const partW = Math.max(1, opts.sectionExport.totalLayoutWMm);
+    const partH = Math.max(1, opts.sectionExport.totalLayoutHMm);
+    const scale = fitScale(drawW - 18, drawH - 8, partW, partH);
+    const dX = margin + (drawW - partW * scale) / 2;
+    const dY = drawTop;
+
+    // Outer perimeter + folds + dims
+    const { px, py } = drawFlatBlank(doc, opts.sectionExport, dX, dY, scale, {
+        outlineWeight: 0.4 * Math.max(1, scale),
+        showFolds: true,
+        showDims: true,
+        dimFont: Math.max(8, Math.min(14, scale * 4)),
+    });
+
+    // Aperture cuts (dark blue)
+    drawApertureCuts(
         doc,
-        py(0),
-        py(partH),
-        px(0) - dimOff,
-        T(`${Math.round(partH)} mm`),
-        dimFont,
-        tick,
+        opts.apertureBySection,
+        opts.sectionExport,
+        px,
+        py,
+        [30, 90, 200],
+        0.3 * Math.max(1, scale),
+    );
+
+    // Material pieces — drawn filled with their colour
+    for (const p of opts.vinylPieces ?? []) {
+        drawMaterialPiece(
+            doc,
+            p,
+            px,
+            py,
+            hexToRgb(p.color),
+            [40, 40, 40],
+            0.15,
+            'FD',
+        );
+    }
+    for (const p of opts.acrylicPieces ?? []) {
+        drawMaterialPiece(
+            doc,
+            p,
+            px,
+            py,
+            hexToRgb(p.color),
+            [20, 20, 20],
+            0.4,
+            'FD',
+        );
+    }
+    // Standoff pieces — outlined dashed, not filled (they sit OFF the panel)
+    for (const p of opts.standoffPieces ?? []) {
+        doc.setDrawColor(...hexToRgb(p.color));
+        doc.setLineWidth(0.35);
+        doc.setLineDashPattern([1.2, 0.8], 0);
+        const pl = pathDPolyline(p.path.points, p.path.closed);
+        if (pl) {
+            doc.lines(
+                pl.deltas,
+                px(pl.start[0]),
+                py(pl.start[1]),
+                [1, 1],
+                'S',
+                p.path.closed,
+            );
+        }
+        doc.setLineDashPattern([], 0);
+    }
+
+    // Fixings (filled blue dots)
+    for (const arr of opts.fixingsBySection ?? []) {
+        doc.setFillColor(30, 90, 200);
+        doc.setDrawColor(30, 90, 200);
+        for (const f of arr) {
+            if (f.points.length < 3) continue;
+            let cx = 0;
+            let cy = 0;
+            for (const q of f.points) {
+                cx += q[0];
+                cy += q[1];
+            }
+            cx /= f.points.length;
+            cy /= f.points.length;
+            let rMm = 0;
+            for (const q of f.points)
+                rMm += Math.hypot(q[0] - cx, q[1] - cy);
+            rMm /= f.points.length;
+            doc.circle(px(cx), py(cy), rMm * scale, 'FD');
+        }
+    }
+
+    // Section labels
+    if (opts.sectionExport.sections.length > 1) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(Math.max(9, scale * 4));
+        doc.setTextColor(80);
+        opts.sectionExport.sections.forEach((section) => {
+            const sFace = section.development.segments.find(
+                (s) => s.role === 'face',
+            );
+            if (!sFace) return;
+            const ox = section.layoutOriginXMm;
+            doc.text(
+                T(
+                    `SECTION ${section.index + 1}/${section.count} - ${Math.round(section.sectionWidthMm)} mm`,
+                ),
+                px(sFace.xMm + sFace.wMm / 2 + ox),
+                py(sFace.yMm + sFace.hMm / 2),
+                { align: 'center' },
+            );
+        });
+        doc.setTextColor(0);
+    }
+
+    // Footer note
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(110);
+    doc.text(
+        T(
+            `Scale 1:${scale < 1 ? Math.round(1 / scale) : '1'}  |  Blank ${Math.round(partW)} x ${Math.round(partH)} mm  |  Bend allowance: ${params.materialThicknessMm / 2} mm per side of every fold`,
+        ),
+        margin,
+        pageH - margin + 4,
     );
     doc.setTextColor(0);
+}
+
+function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
+    const { doc, pageW, pageH, margin, opts } = ctx;
+    const T = (s: string) => ascii(s);
+    drawHeaderBar(ctx, `${spec.label}`);
+
+    // Specs strip on the right
+    const specW = 76;
+    const specX = pageW - margin - specW;
+    const specY = margin + 14;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text(T('MATERIAL'), specX, specY);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    // Colour swatch
+    doc.setFillColor(spec.color[0], spec.color[1], spec.color[2]);
+    doc.rect(specX, specY + 3, 8, 8, 'F');
+    doc.setDrawColor(200);
+    doc.setLineWidth(0.2);
+    doc.rect(specX, specY + 3, 8, 8, 'S');
+    doc.text(T(spec.label), specX + 10, specY + 8.5);
+
+    let rowY = specY + 18;
+    doc.setFontSize(8.5);
+    spec.specs.forEach(([k, v]) => {
+        doc.setTextColor(120);
+        doc.text(T(k), specX, rowY);
+        doc.setTextColor(0);
+        doc.text(T(v), specX + 30, rowY);
+        rowY += 5.2;
+    });
+
+    // Drawing area — left of the specs strip
+    const drawTop = margin + 18;
+    const drawW = specX - margin - 8;
+    const drawH = pageH - drawTop - margin - 10;
+    const partW = Math.max(1, opts.sectionExport.totalLayoutWMm);
+    const partH = Math.max(1, opts.sectionExport.totalLayoutHMm);
+    const scale = fitScale(drawW - 6, drawH - 8, partW, partH);
+    const dX = margin + (drawW - partW * scale) / 2;
+    const dY = drawTop;
+
+    // Faded panel outline + folds (so the operator sees the sign shape
+    // without the focused material being lost in detail).
+    const { px, py } = drawFlatBlank(doc, opts.sectionExport, dX, dY, scale, {
+        outlineWeight: 0.3,
+        showFolds: false,
+        showDims: false,
+    });
+
+    // Faded outlines of OTHER materials so it's clear where this
+    // material sits relative to the rest of the sign.
+    doc.setDrawColor(220);
+    doc.setLineWidth(0.15);
+    const apAll = (opts.apertureBySection ?? []).flatMap((a) => a);
+    if (spec.kind !== 'cut') {
+        for (const p of apAll) {
+            const pl = pathDPolyline(p.points, p.closed);
+            if (pl)
+                doc.lines(
+                    pl.deltas,
+                    px(pl.start[0]),
+                    py(pl.start[1]),
+                    [1, 1],
+                    'S',
+                    p.closed,
+                );
+        }
+    }
+    if (spec.kind !== 'vinyl') {
+        for (const p of opts.vinylPieces ?? []) {
+            const pl = pathDPolyline(p.path.points, p.path.closed);
+            if (pl)
+                doc.lines(
+                    pl.deltas,
+                    px(pl.start[0]),
+                    py(pl.start[1]),
+                    [1, 1],
+                    'S',
+                    p.path.closed,
+                );
+        }
+    }
+    if (spec.kind !== 'acrylic') {
+        for (const p of opts.acrylicPieces ?? []) {
+            const pl = pathDPolyline(p.path.points, p.path.closed);
+            if (pl)
+                doc.lines(
+                    pl.deltas,
+                    px(pl.start[0]),
+                    py(pl.start[1]),
+                    [1, 1],
+                    'S',
+                    p.path.closed,
+                );
+        }
+    }
+    if (spec.kind !== 'standoff') {
+        for (const p of opts.standoffPieces ?? []) {
+            const pl = pathDPolyline(p.path.points, p.path.closed);
+            if (pl)
+                doc.lines(
+                    pl.deltas,
+                    px(pl.start[0]),
+                    py(pl.start[1]),
+                    [1, 1],
+                    'S',
+                    p.path.closed,
+                );
+        }
+    }
+
+    // THIS material — drawn boldly.
+    if (spec.kind === 'cut') {
+        doc.setDrawColor(spec.color[0], spec.color[1], spec.color[2]);
+        doc.setLineWidth(0.5);
+        for (const p of apAll) {
+            for (let k = 0; k + 1 < p.points.length; k++) {
+                doc.line(
+                    px(p.points[k][0]),
+                    py(p.points[k][1]),
+                    px(p.points[k + 1][0]),
+                    py(p.points[k + 1][1]),
+                );
+            }
+        }
+    } else if (spec.pieces) {
+        for (const piece of spec.pieces) {
+            const fill = spec.color;
+            const strokeRgb: [number, number, number] = [20, 20, 20];
+            if (spec.kind === 'standoff') {
+                // Standoff: not filled — draw a solid heavy outline so the
+                // installer can see exactly which paths sit off the panel.
+                doc.setDrawColor(fill[0], fill[1], fill[2]);
+                doc.setLineWidth(0.6);
+                const pl = pathDPolyline(
+                    piece.path.points,
+                    piece.path.closed,
+                );
+                if (pl)
+                    doc.lines(
+                        pl.deltas,
+                        px(pl.start[0]),
+                        py(pl.start[1]),
+                        [1, 1],
+                        'S',
+                        piece.path.closed,
+                    );
+                for (const h of piece.holes ?? []) {
+                    const pl2 = pathDPolyline(h.points, h.closed);
+                    if (pl2)
+                        doc.lines(
+                            pl2.deltas,
+                            px(pl2.start[0]),
+                            py(pl2.start[1]),
+                            [1, 1],
+                            'S',
+                            h.closed,
+                        );
+                }
+            } else {
+                drawMaterialPiece(
+                    doc,
+                    piece,
+                    px,
+                    py,
+                    fill,
+                    strokeRgb,
+                    0.3,
+                    'FD',
+                );
+            }
+        }
+    }
+
+    // Footer
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(110);
+    doc.text(
+        T(
+            `Other materials shown faded for reference.  |  Scale 1:${scale < 1 ? Math.round(1 / scale) : '1'}`,
+        ),
+        margin,
+        pageH - margin + 4,
+    );
+    doc.setTextColor(0);
+}
+
+export function generateReferencePdfBlob(opts: PdfOptions): Blob {
+    const PAGE_W = 297;
+    const PAGE_H = 210;
+    const margin = 14;
+    const doc = new jsPDF({
+        unit: 'mm',
+        format: 'a4',
+        orientation: 'landscape',
+    });
+
+    const materialPages = buildMaterialPages(opts);
+    const totalPages = 2 + materialPages.length;
+    let pageNumber = 0;
+
+    const nextCtx = (): PageContext => {
+        pageNumber += 1;
+        return {
+            doc,
+            pageW: PAGE_W,
+            pageH: PAGE_H,
+            margin,
+            params: opts.params,
+            opts,
+            pageNumber,
+            totalPages,
+        };
+    };
+
+    // Page 1 — Overview
+    drawOverviewPage(nextCtx());
+
+    // Page 2 — Flat cutting layout
+    doc.addPage('a4', 'landscape');
+    drawFlatLayoutPage(nextCtx());
+
+    // Pages 3+ — one per material group
+    for (const page of materialPages) {
+        doc.addPage('a4', 'landscape');
+        drawMaterialPage(nextCtx(), page);
+    }
 
     return doc.output('blob');
 }
@@ -560,11 +1079,16 @@ export function generateProductionPdfBlob(opts: PdfOptions): Blob {
     const productionStroke = Math.max(0.05, Math.min(0.2, maxPart / 5000));
 
     // Project every section's geometry in export-sheet coords.
+    // The KEYLINE is intentionally not drawn here. It's an outward
+    // offset of each aperture used as a visual register / trap
+    // indicator in the reference PDF, not a real cut — drawing it in
+    // a CAM file would tell the cutter to cut a second outline
+    // millimetres away from the actual aperture, which is exactly
+    // what the operator does NOT want.
     sectionExport.sections.forEach((section, i) => {
         const ox = section.layoutOriginXMm;
         const sectionAp = opts.apertureBySection?.[i] ?? [];
         const sectionFx = opts.fixingsBySection?.[i] ?? [];
-        const sectionKl = opts.keylineBySection?.[i] ?? [];
 
         // Outer perimeter — one continuous welded closed contour.
         const perimeter = outlinePerimeter(section.development);
@@ -607,14 +1131,6 @@ export function generateProductionPdfBlob(opts: PdfOptions): Blob {
                 }
                 doc.lines(deltas, pts[0][0], pts[0][1], [1, 1], 'S', false);
             }
-        }
-
-        // Keyline (register cuts). Skip if none.
-        for (const k of sectionKl) {
-            const pts = k.points.map(
-                ([x, y]) => [px(x), py(y)] as [number, number],
-            );
-            if (k.closed) drawClosedPolyline(doc, pts, 'S');
         }
 
         // Stand-off fixings — single circle per hole, naturally welded.
