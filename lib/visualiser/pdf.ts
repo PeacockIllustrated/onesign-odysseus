@@ -1,4 +1,4 @@
-/**
+﻿/**
  * PDF exports — TRUE 1:1.
  *
  * Two flavours, same per-section layout (split signs stay split — each
@@ -26,6 +26,7 @@
  */
 
 import { jsPDF } from 'jspdf';
+import QRCode from 'qrcode';
 import {
     type PanelParams,
     type FlatPath,
@@ -34,27 +35,50 @@ import {
     type StandoffPiece,
 } from './types';
 import { outlinePerimeter } from './geometry';
+import { registerVisualiserFonts } from './pdf-fonts';
 
 /** PDF media box limit is ~14400 user units; stay well under it. */
 const MAX_PAGE_MM = 14000;
 /** Reference PDF cap — beyond this it scales down to A4 for readability. */
 const REFERENCE_PAGE_CAP_MM = 4800;
 
-function ascii(s: string): string {
-    return s
-        .replace(/[×✕✖]/g, 'x')
-        .replace(/÷/g, '/')
-        .replace(/[—–]/g, '-')
-        .replace(/°/g, ' deg')
-        .replace(/[·•]/g, '|')
-        .replace(/…/g, '...')
-        .replace(/[^\x20-\x7E]/g, '')
-        .trim();
+/** Brand teal — strap, accent, active states. */
+const BRAND_RGB: [number, number, number] = [78, 126, 140];
+const BRAND_DARK_RGB: [number, number, number] = [58, 95, 106];
+
+/**
+ * Text passthrough — kept as a function for ergonomic call sites + a
+ * future hook if we ever need to sanitise. With Gilroy embedded jsPDF
+ * handles UTF-8 directly, so no character coercion is needed. When the
+ * font load fails the doc falls back to helvetica (Latin-1) and any
+ * out-of-range glyphs render as the WinAnsi substitute — acceptable
+ * fallback for an offline shop.
+ */
+function txt(s: string): string {
+    return s;
+}
+
+/** Short, stable document ID for the header strap. */
+function docId(designId: string | null | undefined, fallbackName: string): string {
+    if (designId) return designId.slice(0, 8).toUpperCase();
+    // Unsaved designs: hash the name so two unsaved exports from the
+    // same design produce the same ID, but renamed designs differ.
+    let h = 0;
+    for (let i = 0; i < fallbackName.length; i++) {
+        h = (h * 31 + fallbackName.charCodeAt(i)) | 0;
+    }
+    const hex = (h >>> 0).toString(16).toUpperCase().padStart(6, '0');
+    return `UNSAVED-${hex.slice(0, 6)}`;
 }
 
 interface PdfOptions {
     sectionExport: SectionedExport;
     params: PanelParams;
+    /** Supabase design row id (null for unsaved designs). Drives the
+     *  doc-ID strap + the QR deep link. */
+    designId?: string | null;
+    /** Author of the export — shown in the rev block (reference PDF). */
+    drawnBy?: string | null;
     /** Per-section path arrays, already in export-sheet coords. */
     apertureBySection?: FlatPath[][];
     keylineBySection?: FlatPath[][];
@@ -141,27 +165,257 @@ type PageContext = {
     opts: PdfOptions;
     pageNumber: number;
     totalPages: number;
+    /** Resolved font family — Gilroy when the TTFs load successfully,
+     *  helvetica otherwise. Passed into every text call so the doc
+     *  renders in the brand wordmark when possible. */
+    font: string;
+    /** Pre-baked QR-back-to-design URL data URL, or null on failure. */
+    qrDataUrl: string | null;
 };
 
-function drawHeaderBar(ctx: PageContext, title: string): void {
-    const { doc, pageW, margin, params, pageNumber, totalPages } = ctx;
-    const T = (s: string) => ascii(s);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text(T(`ONESIGN  —  ${params.name}`), margin, margin);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(110);
-    doc.text(T(title), margin, margin + 5);
-    const right = T(
-        `${new Date().toLocaleDateString('en-GB')}    Page ${pageNumber} / ${totalPages}    Reference — NOT a cut file`,
+/**
+ * Brand-teal strap drawn flush against the top of every page on both
+ * the production and reference PDFs. Carries:
+ *   - ONESIGN wordmark + design name + 8-char document ID (left)
+ *   - Doc type ("PRODUCTION · CUT FILE · 1:1" or "REFERENCE · NOT A
+ *     CUT FILE") + Page X/Y (right)
+ *
+ * Production strap uses the darker brand variant so a stack of pages
+ * is distinguishable from reference at arm's length.
+ */
+type DocKind = 'production' | 'reference';
+
+const STRAP_H = 9; // mm
+
+function drawDocStrap(
+    doc: jsPDF,
+    args: {
+        pageW: number;
+        margin: number;
+        kind: DocKind;
+        designName: string;
+        designIdShort: string;
+        pageNumber: number;
+        totalPages: number;
+        font: string;
+        subtitle?: string;
+    },
+): void {
+    const {
+        pageW,
+        margin,
+        kind,
+        designName,
+        designIdShort,
+        pageNumber,
+        totalPages,
+        font,
+        subtitle,
+    } = args;
+    const teal = kind === 'production' ? BRAND_DARK_RGB : BRAND_RGB;
+
+    // Strap background — full-bleed brand teal across the very top.
+    doc.setFillColor(teal[0], teal[1], teal[2]);
+    doc.rect(0, 0, pageW, STRAP_H, 'F');
+
+    // Left block: ONESIGN wordmark + design name + doc ID.
+    doc.setTextColor(255, 255, 255);
+    doc.setFont(font, 'bold');
+    doc.setFontSize(11);
+    doc.text(txt('ONESIGN'), margin, 6.2);
+    doc.setFont(font, 'normal');
+    doc.setFontSize(9);
+    doc.text(
+        txt(`${designName}  ·  ${designIdShort}`),
+        margin + 22,
+        6.2,
     );
-    doc.text(right, pageW - margin, margin + 5, { align: 'right' });
+
+    // Right block: doc kind label + page numbering.
+    const kindLabel =
+        kind === 'production'
+            ? 'PRODUCTION · CUT FILE · 1:1'
+            : 'REFERENCE · NOT A CUT FILE';
+    doc.setFont(font, 'bold');
+    doc.setFontSize(9);
+    doc.text(
+        txt(`${kindLabel}  ·  PAGE ${pageNumber}/${totalPages}`),
+        pageW - margin,
+        6.2,
+        { align: 'right' },
+    );
     doc.setTextColor(0);
-    // Divider
-    doc.setDrawColor(180);
-    doc.setLineWidth(0.2);
-    doc.line(margin, margin + 8, pageW - margin, margin + 8);
+
+    // Optional subtitle below the strap (page-specific context like
+    // "Overview", "Flat layout", or the material name). Sits in the
+    // top margin between strap and content.
+    if (subtitle) {
+        doc.setFont(font, 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(110);
+        doc.text(txt(subtitle), margin, STRAP_H + 4);
+        doc.setTextColor(0);
+    }
+}
+
+/** Compatibility shim — the reference PDF code still calls this. */
+function drawHeaderBar(ctx: PageContext, title: string): void {
+    drawDocStrap(ctx.doc, {
+        pageW: ctx.pageW,
+        margin: ctx.margin,
+        kind: 'reference',
+        designName: ctx.params.name,
+        designIdShort: docId(ctx.opts.designId, ctx.params.name),
+        pageNumber: ctx.pageNumber,
+        totalPages: ctx.totalPages,
+        font: ctx.font,
+        subtitle: title,
+    });
+}
+
+/**
+ * Bottom-of-page footer with QR back to the digital design + small
+ * info strip + (production only) PRINT AT 100% warning. The QR
+ * dataURL is pre-baked once per export so this helper stays sync.
+ */
+function drawDocFooter(
+    doc: jsPDF,
+    args: {
+        pageW: number;
+        pageH: number;
+        margin: number;
+        kind: DocKind;
+        infoLines: string[];
+        qrDataUrl: string | null;
+        font: string;
+    },
+): void {
+    const { pageW, pageH, margin, kind, infoLines, qrDataUrl, font } = args;
+
+    const qrSize = 16; // mm
+    const qrX = pageW - margin - qrSize;
+    const qrY = pageH - margin - qrSize;
+    if (qrDataUrl) {
+        try {
+            doc.addImage(
+                qrDataUrl,
+                'PNG',
+                qrX,
+                qrY,
+                qrSize,
+                qrSize,
+                undefined,
+                'FAST',
+            );
+            doc.setFont(font, 'normal');
+            doc.setFontSize(6);
+            doc.setTextColor(140);
+            doc.text(
+                txt('Scan to open in app'),
+                qrX + qrSize / 2,
+                qrY + qrSize + 3,
+                { align: 'center' },
+            );
+            doc.setTextColor(0);
+        } catch {
+            /* best-effort */
+        }
+    }
+
+    // Info lines stacked to the left of the QR.
+    doc.setFont(font, 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(90);
+    const lineH = 4;
+    let y = pageH - margin - qrSize + 4;
+    for (const line of infoLines) {
+        doc.text(txt(line), margin, y);
+        y += lineH;
+    }
+    doc.setTextColor(0);
+
+    // Print-warning — production only, bottom-left, brand teal.
+    if (kind === 'production') {
+        doc.setFont(font, 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(
+            BRAND_DARK_RGB[0],
+            BRAND_DARK_RGB[1],
+            BRAND_DARK_RGB[2],
+        );
+        doc.text(
+            txt('PRINT AT 100% — DO NOT SCALE'),
+            margin,
+            pageH - margin + 2,
+        );
+        doc.setTextColor(0);
+    }
+}
+
+/**
+ * Place the QR code in the bottom-right corner of a reference page.
+ * Smaller than the production footer QR because reference pages have
+ * their own info strip and we don't want to fight for space.
+ */
+function drawCornerQr(
+    doc: jsPDF,
+    args: {
+        pageW: number;
+        pageH: number;
+        margin: number;
+        qrDataUrl: string | null;
+        font: string;
+    },
+): void {
+    const { pageW, pageH, margin, qrDataUrl, font } = args;
+    if (!qrDataUrl) return;
+    const qrSize = 12;
+    const qrX = pageW - margin - qrSize;
+    const qrY = pageH - margin - qrSize;
+    try {
+        doc.addImage(
+            qrDataUrl,
+            'PNG',
+            qrX,
+            qrY,
+            qrSize,
+            qrSize,
+            undefined,
+            'FAST',
+        );
+        doc.setFont(font, 'normal');
+        doc.setFontSize(5.5);
+        doc.setTextColor(140);
+        doc.text(
+            txt('Scan to open'),
+            qrX + qrSize / 2,
+            qrY + qrSize + 2.2,
+            { align: 'center' },
+        );
+        doc.setTextColor(0);
+    } catch {
+        /* best-effort */
+    }
+}
+
+/** Pre-generate the QR dataURL once per export (URL is constant). */
+async function buildQrCode(designId: string | null | undefined): Promise<string | null> {
+    try {
+        const origin =
+            typeof window !== 'undefined' && window.location?.origin
+                ? window.location.origin
+                : 'https://onesign.app';
+        const url = designId
+            ? `${origin}/admin/visualiser?id=${encodeURIComponent(designId)}`
+            : `${origin}/admin/visualiser`;
+        return await QRCode.toDataURL(url, {
+            margin: 0,
+            scale: 6,
+            color: { dark: '#1a1f23', light: '#ffffff' },
+        });
+    } catch {
+        return null;
+    }
 }
 
 function fitScale(
@@ -282,7 +536,7 @@ function drawFlatBlank(
                 px(ox),
                 px(ox + section.development.totalFlatWMm),
                 py(section.development.totalFlatHMm) + 6,
-                ascii(
+                txt(
                     `${Math.round(section.development.totalFlatWMm)} mm`,
                 ),
                 dimFont,
@@ -294,7 +548,7 @@ function drawFlatBlank(
             py(0),
             py(partH),
             px(0) - 6,
-            ascii(`${Math.round(partH)} mm`),
+            txt(`${Math.round(partH)} mm`),
             dimFont,
             tick,
         );
@@ -569,31 +823,32 @@ function returnsLabelCompact(p: PanelParams): string {
 
 function drawOverviewPage(ctx: PageContext): void {
     const { doc, pageW, pageH, margin, params, opts } = ctx;
-    const T = (s: string) => ascii(s);
+    const T = (s: string) => txt(s);
     drawHeaderBar(ctx, 'Overview — sign specification');
 
     const top = margin + 14;
     const colW = (pageW - margin * 2 - 8) / 2;
 
-    // Left column: spec block
-    const mode = params.apertureMode ?? 'aperture';
+    // Left column: spec block. Stale rows ("Default for ungrouped",
+    // "Materials in use") were dropped — the segmented control behind
+    // the first is gone, and the dedicated materials table below is
+    // the authoritative source for everything on the sign.
     const matLabel = params.materialLabel
         ? params.materialLabel.length > 30
             ? params.materialLabel.slice(0, 29) + '...'
             : params.materialLabel
-        : '-';
+        : '—';
     const apCount = (opts.apertureBySection ?? []).reduce(
         (a, arr) => a + arr.length,
         0,
     );
-    const groupCount = (params.materialGroups ?? []).length;
     const spec: Array<[string, string]> = [
-        ['Sign face', `${params.panelWidthMm} x ${params.panelHeightMm} mm`],
+        ['Sign face', `${params.panelWidthMm} × ${params.panelHeightMm} mm`],
         ['Returns', returnsLabelCompact(params)],
         ['Return depth', `${params.returnDepthMm} mm`],
         [
             'Shadow gap',
-            params.shadowGapMm > 0 ? `${params.shadowGapMm} mm` : '-',
+            params.shadowGapMm > 0 ? `${params.shadowGapMm} mm` : '—',
         ],
         ['Material', matLabel],
         ['Thickness', `${params.materialThicknessMm} mm`],
@@ -604,25 +859,15 @@ function drawOverviewPage(ctx: PageContext): void {
                 : 'Single panel',
         ],
         [
-            'Sheet layout',
-            `${Math.round(opts.sectionExport.totalLayoutWMm)} x ${Math.round(opts.sectionExport.totalLayoutHMm)} mm`,
-        ],
-        [
-            'Default for ungrouped',
-            mode === 'standoff' ? 'Stood off' : 'Cut',
-        ],
-        [
-            'Materials in use',
-            `${apCount > 0 ? '1 cut' : 'No cuts'}, ${groupCount} group${
-                groupCount === 1 ? '' : 's'
-            }`,
+            'Flat blank',
+            `${Math.round(opts.sectionExport.totalLayoutWMm)} × ${Math.round(opts.sectionExport.totalLayoutHMm)} mm`,
         ],
     ];
 
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(ctx.font, 'bold');
     doc.setFontSize(10);
     doc.text(T('SIGN SPECIFICATION'), margin, top);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(ctx.font, 'normal');
     doc.setFontSize(9);
     spec.forEach(([k, v], i) => {
         const y = top + 6 + i * 5.5;
@@ -638,7 +883,7 @@ function drawOverviewPage(ctx: PageContext): void {
     const thumbW = colW;
     const thumbH = colW * 0.55;
     if (opts.thumbnailDataUrl) {
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(ctx.font, 'bold');
         doc.setFontSize(10);
         doc.text(T('3D PREVIEW'), thumbX, thumbTop);
         try {
@@ -665,10 +910,10 @@ function drawOverviewPage(ctx: PageContext): void {
         top + 6 + spec.length * 5.5 + 6,
         thumbTop + thumbH + 14,
     );
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(ctx.font, 'bold');
     doc.setFontSize(10);
     doc.text(T('MATERIALS IN THIS SIGN'), margin, matY);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(ctx.font, 'normal');
     doc.setFontSize(8.5);
     const rows: Array<[string, string, string]> = [];
     if (apCount > 0) {
@@ -719,17 +964,117 @@ function drawOverviewPage(ctx: PageContext): void {
         doc.setTextColor(0);
         rows.forEach((r, i) => {
             const y = headerY + 6 + i * 5;
-            if (y > pageH - margin - 6) return; // truncate if too many
+            if (y > pageH - margin - 36) return; // truncate to leave room for legend / rev / QR
             doc.text(T(r[0]), margin, y);
             doc.text(T(r[1]), margin + 50, y);
             doc.text(T(r[2]), margin + 130, y);
         });
     }
+
+    // ---- Bottom-of-page metadata strip --------------------------------
+    // Three blocks: legend (left), revision/approval (right of legend),
+    // QR-back-to-design (corner). Sit just above the page footer.
+    const stripY = pageH - margin - 24;
+
+    // Legend — explains the line-style vocabulary the rest of the
+    // drawing uses. Keyed to the same colours / patterns drawn on
+    // the per-material pages and the placement template.
+    doc.setFont(ctx.font, 'bold');
+    doc.setFontSize(8.5);
+    doc.text(T('LEGEND'), margin, stripY);
+    doc.setFont(ctx.font, 'normal');
+    doc.setFontSize(7.5);
+    const legendItems: Array<{
+        draw: (x: number, y: number) => void;
+        label: string;
+    }> = [
+        {
+            label: 'Fold line',
+            draw: (x, y) => {
+                doc.setDrawColor(200, 0, 0);
+                doc.setLineWidth(0.3);
+                doc.setLineDashPattern([1.4, 1.0], 0);
+                doc.line(x, y, x + 10, y);
+                doc.setLineDashPattern([], 0);
+            },
+        },
+        {
+            label: 'Cut perimeter',
+            draw: (x, y) => {
+                doc.setDrawColor(20);
+                doc.setLineWidth(0.5);
+                doc.line(x, y, x + 10, y);
+            },
+        },
+        {
+            label: 'Aperture / push-through',
+            draw: (x, y) => {
+                doc.setDrawColor(30, 90, 200);
+                doc.setLineWidth(0.4);
+                doc.line(x, y, x + 10, y);
+            },
+        },
+        {
+            label: 'Material outline (current page)',
+            draw: (x, y) => {
+                doc.setDrawColor(20);
+                doc.setLineWidth(0.6);
+                doc.line(x, y, x + 10, y);
+            },
+        },
+        {
+            label: 'Other materials (ghosted)',
+            draw: (x, y) => {
+                doc.setDrawColor(200);
+                doc.setLineWidth(0.2);
+                doc.line(x, y, x + 10, y);
+            },
+        },
+    ];
+    legendItems.forEach((item, i) => {
+        const y = stripY + 4 + i * 3.6;
+        item.draw(margin, y);
+        doc.setDrawColor(0);
+        doc.setTextColor(80);
+        doc.text(T(item.label), margin + 13, y + 1.2);
+    });
+    doc.setTextColor(0);
+
+    // Revision / approval block — bottom-right above the QR.
+    const revX = pageW - margin - 90;
+    doc.setFont(ctx.font, 'bold');
+    doc.setFontSize(8.5);
+    doc.text(T('REVISION & APPROVAL'), revX, stripY);
+    doc.setFont(ctx.font, 'normal');
+    doc.setFontSize(8);
+    const today = new Date().toLocaleDateString('en-GB');
+    const drawnBy = opts.drawnBy || '—';
+    const revRows: Array<[string, string]> = [
+        ['Rev', '01'],
+        ['Drawn by', drawnBy],
+        ['Date', today],
+        ['Approved', '_____________________'],
+    ];
+    revRows.forEach(([k, v], i) => {
+        const y = stripY + 4 + i * 4;
+        doc.setTextColor(120);
+        doc.text(T(k), revX, y);
+        doc.setTextColor(0);
+        doc.text(T(v), revX + 20, y);
+    });
+
+    drawCornerQr(doc, {
+        pageW,
+        pageH,
+        margin,
+        qrDataUrl: ctx.qrDataUrl,
+        font: ctx.font,
+    });
 }
 
 function drawFlatLayoutPage(ctx: PageContext): void {
     const { doc, pageW, pageH, margin, params, opts } = ctx;
-    const T = (s: string) => ascii(s);
+    const T = (s: string) => txt(s);
     drawHeaderBar(ctx, 'Flat development — cutting layout');
 
     const drawTop = margin + 18;
@@ -846,7 +1191,7 @@ function drawFlatLayoutPage(ctx: PageContext): void {
 
     // Section labels
     if (opts.sectionExport.sections.length > 1) {
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(ctx.font, 'bold');
         doc.setFontSize(Math.max(9, scale * 4));
         doc.setTextColor(80);
         opts.sectionExport.sections.forEach((section) => {
@@ -868,32 +1213,39 @@ function drawFlatLayoutPage(ctx: PageContext): void {
     }
 
     // Footer note
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(ctx.font, 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(110);
     doc.text(
         T(
-            `Scale 1:${scale < 1 ? Math.round(1 / scale) : '1'}  |  Blank ${Math.round(partW)} x ${Math.round(partH)} mm  |  Bend allowance: ${params.materialThicknessMm / 2} mm per side of every fold`,
+            `Scale 1:${scale < 1 ? Math.round(1 / scale) : '1'}  ·  Blank ${Math.round(partW)} × ${Math.round(partH)} mm  ·  Bend allowance: ${params.materialThicknessMm / 2} mm per side of every fold`,
         ),
         margin,
         pageH - margin + 4,
     );
     doc.setTextColor(0);
+    drawCornerQr(doc, {
+        pageW,
+        pageH,
+        margin,
+        qrDataUrl: ctx.qrDataUrl,
+        font: ctx.font,
+    });
 }
 
 function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
     const { doc, pageW, pageH, margin, opts } = ctx;
-    const T = (s: string) => ascii(s);
+    const T = (s: string) => txt(s);
     drawHeaderBar(ctx, `${spec.label}`);
 
     // Specs strip on the right
     const specW = 76;
     const specX = pageW - margin - specW;
     const specY = margin + 14;
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(ctx.font, 'bold');
     doc.setFontSize(10);
     doc.text(T('MATERIAL'), specX, specY);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(ctx.font, 'normal');
     doc.setFontSize(9);
     // Colour swatch
     doc.setFillColor(spec.color[0], spec.color[1], spec.color[2]);
@@ -1103,20 +1455,29 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
     }
 
     // Footer
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(ctx.font, 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(110);
     doc.text(
         T(
-            `Other materials shown faded for reference.  |  Scale 1:${scale < 1 ? Math.round(1 / scale) : '1'}`,
+            `Other materials shown faded for reference.  ·  Scale 1:${scale < 1 ? Math.round(1 / scale) : '1'}`,
         ),
         margin,
         pageH - margin + 4,
     );
     doc.setTextColor(0);
+    drawCornerQr(doc, {
+        pageW,
+        pageH,
+        margin,
+        qrDataUrl: ctx.qrDataUrl,
+        font: ctx.font,
+    });
 }
 
-export function generateReferencePdfBlob(opts: PdfOptions): Blob {
+export async function generateReferencePdfBlob(
+    opts: PdfOptions,
+): Promise<Blob> {
     const PAGE_W = 297;
     const PAGE_H = 210;
     const margin = 14;
@@ -1124,6 +1485,15 @@ export function generateReferencePdfBlob(opts: PdfOptions): Blob {
         unit: 'mm',
         format: 'a4',
         orientation: 'landscape',
+    });
+    const fontRes = await registerVisualiserFonts(doc);
+    const font = fontRes.family;
+    const qrDataUrl = await buildQrCode(opts.designId ?? null);
+    doc.setProperties({
+        title: `${opts.params.name} — reference drawing`,
+        subject: 'Reference PDF — dimensioned shop drawing',
+        author: opts.drawnBy ?? 'Onesign Odysseus',
+        keywords: 'reference, drawing, signage, onesign',
     });
 
     const materialPages = buildMaterialPages(opts);
@@ -1141,6 +1511,8 @@ export function generateReferencePdfBlob(opts: PdfOptions): Blob {
             opts,
             pageNumber,
             totalPages,
+            font,
+            qrDataUrl,
         };
     };
 
@@ -1170,196 +1542,181 @@ export function generateReferencePdfBlob(opts: PdfOptions): Blob {
  * sits below the cut area so the operator can sanity-check the file
  * without it interfering with the geometry.
  */
-export function generateProductionPdfBlob(opts: PdfOptions): Blob {
+/**
+ * Production PDF — multi-page CAM bundle at 1:1.
+ *
+ * Design:
+ *   - Every page is the SAME sheet size (the largest required for any
+ *     individual page's content). Office printers stop silently
+ *     mis-scaling; a stack of printouts off the plotter is one paper
+ *     size.
+ *   - Brand-teal strap across the top of every page (kind=production,
+ *     darker variant) so the bundle is impossible to confuse with the
+ *     reference PDF at arm's length.
+ *   - QR code in the bottom-right of every page deep-links back to
+ *     /admin/visualiser?id=<designId>. "PRINT AT 100% — DO NOT SCALE"
+ *     warning in the footer.
+ *   - Each page's content is horizontally centred inside the sheet
+ *     and top-aligned below the strap, so the operator's eye lands in
+ *     the same place every page.
+ *   - A thin border 2 mm inside the sheet edge gives the operator a
+ *     known-dimension target to measure for a quick scale sanity check.
+ */
+export async function generateProductionPdfBlob(
+    opts: PdfOptions,
+): Promise<Blob> {
     const { sectionExport, params } = opts;
-    const T = (s: string) => ascii(s);
 
-    const M = 18; // page margin — also reserves space for the info strip
-    const INFO_GAP = 6; // gap from the cut area to the info strip
-    const partW = Math.max(1, sectionExport.totalLayoutWMm);
-    const partH = Math.max(1, sectionExport.totalLayoutHMm);
+    // ---- Phase 1: build the list of pages to emit ------------------
+    // Every page job knows its content bbox + how to draw itself at a
+    // given (dX, dY) origin. Emission order is fixed: panel cut →
+    // push-through → acrylic → vinyl → standoff → placement template.
+    // Each is conditional on its data existing.
 
-    // Production is ALWAYS 1:1. CAM software reads the coordinates straight
-    // off the PDF, so 1 mm on paper must equal 1 mm of metal — no reduced
-    // fallback. If the panel is so large that the page would exceed PDF's
-    // user-space limit, we throw rather than silently scaling.
-    const PAGE_W = partW + 2 * M;
-    const PAGE_H = partH + 2 * M;
-    if (PAGE_W > MAX_PAGE_MM || PAGE_H > MAX_PAGE_MM) {
-        throw new Error(
-            `Production PDF would need a page ${Math.round(PAGE_W)}x${Math.round(PAGE_H)} mm, larger than the PDF user-space limit. Split the sign into smaller sections first.`,
-        );
-    }
-    const scale = 1;
-    const dX = M;
-    const dY = M;
-    const doc = new jsPDF({
-        unit: 'mm',
-        format: [PAGE_W, PAGE_H],
-        orientation: PAGE_W >= PAGE_H ? 'landscape' : 'portrait',
-    });
+    type ProdPageJob = {
+        /** Short label shown in the page subtitle line. */
+        subtitle: string;
+        /** Content width in mm. */
+        partW: number;
+        /** Content height in mm. */
+        partH: number;
+        /** Lines for the footer info strip (left of the QR). */
+        footerInfo: string[];
+        /** Draws the content using the supplied (dX, dY) top-left. */
+        draw: (dX: number, dY: number) => void;
+    };
 
-    const px = (x: number) => dX + x * scale;
-    const py = (y: number) => dY + y * scale;
+    const today = new Date().toLocaleDateString('en-GB');
+    const jobs: ProdPageJob[] = [];
 
     // Hairline stroke that scales mildly with part size, capped well
     // below any sensible kerf so no CAM interpretation widens the cut.
-    //   200 mm part → 0.05 mm   1 m → 0.20 mm   4 m → 0.20 mm (capped)
-    const maxPart = Math.max(partW, partH);
-    const productionStroke = Math.max(0.05, Math.min(0.2, maxPart / 5000));
+    const layoutW = Math.max(1, sectionExport.totalLayoutWMm);
+    const layoutH = Math.max(1, sectionExport.totalLayoutHMm);
+    const productionStroke = Math.max(
+        0.05,
+        Math.min(0.2, Math.max(layoutW, layoutH) / 5000),
+    );
 
-    // Project every section's geometry in export-sheet coords.
-    //
-    // When the design uses a KEYLINE (push-through letters), the
-    // panel is cut along the KEYLINE — slightly larger than the
-    // letter — so a separate push-through insert can sit in the
-    // hole with a clean shoulder. The original aperture letter
-    // shapes get cut from a different material (acrylic etc.) and
-    // pushed through from behind. Those push-through cuts go on
-    // their own page below the panel layout.
-    //
-    // When there is NO keyline, the panel is cut along the
-    // aperture itself and there are no push-through inserts.
-    sectionExport.sections.forEach((section, i) => {
-        const ox = section.layoutOriginXMm;
-        const sectionAp = opts.apertureBySection?.[i] ?? [];
-        const sectionKl = opts.keylineBySection?.[i] ?? [];
-        const panelCuts = sectionKl.length > 0 ? sectionKl : sectionAp;
-        const sectionFx = opts.fixingsBySection?.[i] ?? [];
-        const sectionSolid = opts.solidPathsBySection?.[i] ?? [];
+    // ---- Page 1: panel cut -----------------------------------------
+    jobs.push({
+        subtitle: 'Panel cut — perimeter + apertures + stand-off holes',
+        partW: layoutW,
+        partH: layoutH,
+        footerInfo: [
+            `${params.materialLabel || 'material -'}  ·  ${params.materialThicknessMm} mm`,
+            `face ${params.panelWidthMm} × ${params.panelHeightMm} mm  ·  ${
+                sectionExport.sections.length > 1
+                    ? `${sectionExport.sections.length} sections`
+                    : '1 panel'
+            }  ·  ${today}`,
+        ],
+        draw: (dX, dY) => {
+            const px = (x: number) => dX + x;
+            const py = (y: number) => dY + y;
+            sectionExport.sections.forEach((section, i) => {
+                const ox = section.layoutOriginXMm;
+                const sectionAp = opts.apertureBySection?.[i] ?? [];
+                const sectionKl = opts.keylineBySection?.[i] ?? [];
+                const panelCuts =
+                    sectionKl.length > 0 ? sectionKl : sectionAp;
+                const sectionFx = opts.fixingsBySection?.[i] ?? [];
+                const sectionSolid = opts.solidPathsBySection?.[i] ?? [];
 
-        // Outer perimeter — one continuous welded closed contour.
-        const perimeter = outlinePerimeter(section.development);
-        doc.setDrawColor(0);
-        doc.setLineWidth(productionStroke);
-        if (perimeter) {
-            const pts = perimeter.points.map(
-                ([x, y]) =>
-                    [px(x + ox), py(y)] as [number, number],
-            );
-            drawClosedPolyline(doc, pts, 'S');
-        } else {
-            // Degenerate fallback — per-segment rectangles. Validation
-            // upstream warns the user before they reach this state.
-            for (const seg of section.development.segments) {
-                doc.rect(
-                    px(seg.xMm + ox),
-                    py(seg.yMm),
-                    seg.wMm * scale,
-                    seg.hMm * scale,
-                );
-            }
-        }
-
-        // Panel cut(s) — the actual line the cutter follows on the
-        // panel. Keyline when present (push-through), else aperture.
-        for (const ap of panelCuts) {
-            const pts = ap.points.map(
-                ([x, y]) => [px(x), py(y)] as [number, number],
-            );
-            if (ap.closed) drawClosedPolyline(doc, pts, 'S');
-            else {
-                // Open paths (rare): emit as a single open polyline.
-                if (pts.length < 2) continue;
-                const deltas: number[][] = [];
-                for (let k = 1; k < pts.length; k++) {
-                    deltas.push([
-                        pts[k][0] - pts[k - 1][0],
-                        pts[k][1] - pts[k - 1][1],
-                    ]);
+                // Outer perimeter — one continuous welded contour.
+                const perimeter = outlinePerimeter(section.development);
+                doc.setDrawColor(0);
+                doc.setLineWidth(productionStroke);
+                if (perimeter) {
+                    const pts = perimeter.points.map(
+                        ([x, y]) =>
+                            [px(x + ox), py(y)] as [number, number],
+                    );
+                    drawClosedPolyline(doc, pts, 'S');
+                } else {
+                    for (const seg of section.development.segments) {
+                        doc.rect(
+                            px(seg.xMm + ox),
+                            py(seg.yMm),
+                            seg.wMm,
+                            seg.hMm,
+                        );
+                    }
                 }
-                doc.lines(deltas, pts[0][0], pts[0][1], [1, 1], 'S', false);
-            }
-        }
 
-        // Inner-counter / solid pieces — emitted as additional closed
-        // contours alongside the panel cut. CAM software interprets a
-        // smaller closed contour sitting inside a larger one as a
-        // compound shape (outer ring + inner island), so the cutter
-        // pierces both lines and leaves the inner area as panel
-        // material. Without this, the inside of letters like R / B /
-        // A / O would fall out as cut waste.
-        for (const sp of sectionSolid) {
-            if (!sp.closed || sp.points.length < 3) continue;
-            const pts = sp.points.map(
-                ([x, y]) => [px(x), py(y)] as [number, number],
-            );
-            drawClosedPolyline(doc, pts, 'S');
-        }
+                // Panel cuts — keyline if present, else aperture.
+                for (const ap of panelCuts) {
+                    const pts = ap.points.map(
+                        ([x, y]) =>
+                            [px(x), py(y)] as [number, number],
+                    );
+                    if (ap.closed) drawClosedPolyline(doc, pts, 'S');
+                    else if (pts.length >= 2) {
+                        const deltas: number[][] = [];
+                        for (let k = 1; k < pts.length; k++) {
+                            deltas.push([
+                                pts[k][0] - pts[k - 1][0],
+                                pts[k][1] - pts[k - 1][1],
+                            ]);
+                        }
+                        doc.lines(
+                            deltas,
+                            pts[0][0],
+                            pts[0][1],
+                            [1, 1],
+                            'S',
+                            false,
+                        );
+                    }
+                }
 
-        // Stand-off fixings — single circle per hole, naturally welded.
-        for (const f of sectionFx) {
-            const cx =
-                f.points.reduce((a, q) => a + q[0], 0) / f.points.length;
-            const cy =
-                f.points.reduce((a, q) => a + q[1], 0) / f.points.length;
-            const rMm =
-                f.points.reduce(
-                    (a, q) => a + Math.hypot(q[0] - cx, q[1] - cy),
-                    0,
-                ) / f.points.length;
-            doc.circle(px(cx), py(cy), rMm * scale, 'S');
-        }
+                // Solid-piece compound islands inside the panel cut so
+                // the cutter leaves the inner counters as panel material.
+                for (const sp of sectionSolid) {
+                    if (!sp.closed || sp.points.length < 3) continue;
+                    const pts = sp.points.map(
+                        ([x, y]) =>
+                            [px(x), py(y)] as [number, number],
+                    );
+                    drawClosedPolyline(doc, pts, 'S');
+                }
+
+                // Stand-off fixings — naturally welded single circles.
+                for (const f of sectionFx) {
+                    const cx =
+                        f.points.reduce((a, q) => a + q[0], 0) /
+                        f.points.length;
+                    const cy =
+                        f.points.reduce((a, q) => a + q[1], 0) /
+                        f.points.length;
+                    const rMm =
+                        f.points.reduce(
+                            (a, q) =>
+                                a + Math.hypot(q[0] - cx, q[1] - cy),
+                            0,
+                        ) / f.points.length;
+                    doc.circle(px(cx), py(cy), rMm, 'S');
+                }
+            });
+        },
     });
 
-    // Tiny info strip in the bottom margin — out of the way of the cuts.
-    const widthsLabel = sectionExport.sections
-        .map((s) => Math.round(s.sectionWidthMm))
-        .join(' / ');
-    const info = [
-        `ONESIGN`,
-        params.name,
-        params.materialLabel || 'material -',
-        `${params.materialThicknessMm} mm`,
-        `face ${params.panelWidthMm}x${params.panelHeightMm} mm`,
-        sectionExport.sections.length > 1
-            ? `sections ${widthsLabel} mm`
-            : `1 panel`,
-        new Date().toLocaleDateString('en-GB'),
-        '1:1',
-    ]
-        .filter(Boolean)
-        .join('  |  ');
-    doc.setFontSize(8);
-    doc.setTextColor(110);
-    doc.text(
-        T(info),
-        dX,
-        Math.min(PAGE_H - 4, dY + partH * scale + INFO_GAP),
-    );
-    doc.setTextColor(0);
-
-    // ---- Page 2: push-through insert cuts ----------------------------
-    // When the design uses a keyline, the actual letter shapes (the
-    // SVG aperture paths) are cut from the push-through material —
-    // typically a coloured / illuminated acrylic — and pushed through
-    // the larger keyline holes in the panel from behind. Emit them as
-    // their own welded contours on a separate page so the CAM operator
-    // gets a clean cut file for the insert material.
+    // ---- Page 2: push-through inserts (when keyline) ---------------
     const hasKeyline =
         (opts.keylineBySection ?? []).some((arr) => arr.length > 0);
     const allApertures: FlatPath[] = (opts.apertureBySection ?? []).flatMap(
-        (arr) => arr,
+        (a) => a,
     );
-    // Solid pieces (in flat-dev coords) — these are the inner-counter
-    // outlines of letters that should appear as ISLANDS inside their
-    // parent aperture. On the push-through page the parent aperture
-    // is the letter shape itself, so a solid that sits geometrically
-    // inside any aperture becomes an inner compound contour and the
-    // CAM cutter pierces both, leaving the counter as a separate
-    // small piece of insert material.
-    const allSolids: FlatPath[] = (opts.solidPieces ?? [])
+    const allSolidsFlat: FlatPath[] = (opts.solidPieces ?? [])
         .map((s) => s.path)
         .filter((p) => p.closed && p.points.length >= 3);
     if (hasKeyline && allApertures.length > 0) {
-        // Bounding box of the insert layout so we can size the page.
-        // Solids that sit inside the apertures contribute to the bbox
-        // implicitly via the apertures; iterate them too for safety.
-        let minX = Infinity;
-        let minY = Infinity;
-        let maxX = -Infinity;
-        let maxY = -Infinity;
-        for (const p of [...allApertures, ...allSolids]) {
+        // BBox over apertures + solids in flat-dev coords.
+        let minX = Infinity,
+            minY = Infinity,
+            maxX = -Infinity,
+            maxY = -Infinity;
+        for (const p of [...allApertures, ...allSolidsFlat]) {
             for (const [x, y] of p.points) {
                 if (x < minX) minX = x;
                 if (y < minY) minY = y;
@@ -1369,369 +1726,384 @@ export function generateProductionPdfBlob(opts: PdfOptions): Blob {
         }
         const insertW = Math.max(1, maxX - minX);
         const insertH = Math.max(1, maxY - minY);
-        // 1:1 page, same margin as the panel cut page.
-        const insertPageW = insertW + 2 * M;
-        const insertPageH = insertH + 2 * M;
-        if (
-            insertPageW <= MAX_PAGE_MM &&
-            insertPageH <= MAX_PAGE_MM
-        ) {
-            doc.addPage(
-                [insertPageW, insertPageH],
-                insertPageW >= insertPageH ? 'landscape' : 'portrait',
-            );
-            const ipx = (x: number) => M + (x - minX);
-            const ipy = (y: number) => M + (y - minY);
-            doc.setDrawColor(0);
-            doc.setLineWidth(productionStroke);
-            for (const ap of allApertures) {
-                const pts = ap.points.map(
-                    ([x, y]) => [ipx(x), ipy(y)] as [number, number],
-                );
-                if (ap.closed) drawClosedPolyline(doc, pts, 'S');
-                else if (pts.length >= 2) {
-                    const deltas: number[][] = [];
-                    for (let k = 1; k < pts.length; k++) {
-                        deltas.push([
-                            pts[k][0] - pts[k - 1][0],
-                            pts[k][1] - pts[k - 1][1],
-                        ]);
-                    }
-                    doc.lines(
-                        deltas,
-                        pts[0][0],
-                        pts[0][1],
-                        [1, 1],
-                        'S',
-                        false,
+        jobs.push({
+            subtitle: 'Push-through inserts — letter shapes for insert material',
+            partW: insertW,
+            partH: insertH,
+            footerInfo: [
+                `${allApertures.length} insert${allApertures.length === 1 ? '' : 's'}  ·  ${allSolidsFlat.length} counter island${allSolidsFlat.length === 1 ? '' : 's'}`,
+                `bbox ${Math.round(insertW)} × ${Math.round(insertH)} mm  ·  ${today}`,
+            ],
+            draw: (dX, dY) => {
+                const ipx = (x: number) => dX + (x - minX);
+                const ipy = (y: number) => dY + (y - minY);
+                doc.setDrawColor(0);
+                doc.setLineWidth(productionStroke);
+                for (const ap of allApertures) {
+                    const pts = ap.points.map(
+                        ([x, y]) =>
+                            [ipx(x), ipy(y)] as [number, number],
                     );
+                    if (ap.closed) drawClosedPolyline(doc, pts, 'S');
+                    else if (pts.length >= 2) {
+                        const deltas: number[][] = [];
+                        for (let k = 1; k < pts.length; k++) {
+                            deltas.push([
+                                pts[k][0] - pts[k - 1][0],
+                                pts[k][1] - pts[k - 1][1],
+                            ]);
+                        }
+                        doc.lines(
+                            deltas,
+                            pts[0][0],
+                            pts[0][1],
+                            [1, 1],
+                            'S',
+                            false,
+                        );
+                    }
+                }
+                for (const sp of allSolidsFlat) {
+                    const pts = sp.points.map(
+                        ([x, y]) =>
+                            [ipx(x), ipy(y)] as [number, number],
+                    );
+                    drawClosedPolyline(doc, pts, 'S');
+                }
+            },
+        });
+    }
+
+    // ---- Per-material cut pages ------------------------------------
+    type MaterialPieceBundle = {
+        title: string;
+        subtitle: string;
+        pieces: MaterialPiece[];
+    };
+    const materialBundles: MaterialPieceBundle[] = [
+        {
+            title: 'ACRYLIC',
+            subtitle: 'Acrylic face-stuck — 1:1 cut file for the acrylic sheet',
+            pieces: opts.acrylicPieces ?? [],
+        },
+        {
+            title: 'VINYL',
+            subtitle: 'Vinyl appliqué — 1:1 cut file for the vinyl plotter',
+            pieces: opts.vinylPieces ?? [],
+        },
+        {
+            title: 'STOOD-OFF',
+            subtitle: 'Stood-off lettering — 1:1 cut file for the standoff material',
+            pieces: (opts.standoffPieces ?? []).map((p) => ({
+                pathIndex: p.pathIndex,
+                path: p.path,
+                holes: p.holes,
+                color: p.color,
+                thicknessMm: p.thicknessMm,
+            })),
+        },
+    ];
+    for (const bundle of materialBundles) {
+        if (bundle.pieces.length === 0) continue;
+        let minX = Infinity,
+            minY = Infinity,
+            maxX = -Infinity,
+            maxY = -Infinity;
+        for (const piece of bundle.pieces) {
+            for (const path of [piece.path, ...(piece.holes ?? [])]) {
+                for (const [x, y] of path.points) {
+                    if (x < minX) minX = x;
+                    if (y < minY) minY = y;
+                    if (x > maxX) maxX = x;
+                    if (y > maxY) maxY = y;
                 }
             }
-            // Solid pieces — inner-counter islands. CAM treats them as
-            // compound parts of the surrounding aperture letter.
-            for (const sp of allSolids) {
-                const pts = sp.points.map(
-                    ([x, y]) => [ipx(x), ipy(y)] as [number, number],
-                );
-                drawClosedPolyline(doc, pts, 'S');
-            }
-            // Info strip
-            const insertInfo = [
-                'ONESIGN',
-                params.name,
-                'PUSH-THROUGH INSERTS',
-                `${allApertures.length} piece${allApertures.length === 1 ? '' : 's'}`,
-                allSolids.length > 0
-                    ? `${allSolids.length} counter island${allSolids.length === 1 ? '' : 's'}`
+        }
+        const partW = Math.max(1, maxX - minX);
+        const partH = Math.max(1, maxY - minY);
+        const colours = Array.from(
+            new Set(bundle.pieces.map((p) => p.color.toUpperCase())),
+        );
+        const thicknesses = Array.from(
+            new Set(
+                bundle.pieces
+                    .map((p) =>
+                        p.thicknessMm != null ? `${p.thicknessMm}mm` : null,
+                    )
+                    .filter((s): s is string => s !== null),
+            ),
+        );
+        const footerInfo = [
+            `${bundle.title} — ${bundle.pieces.length} piece${bundle.pieces.length === 1 ? '' : 's'}`,
+            [
+                colours.length > 0 ? `colour ${colours.join(' / ')}` : '',
+                thicknesses.length > 0
+                    ? `thickness ${thicknesses.join(' / ')}`
                     : '',
-                `bbox ${Math.round(insertW)} x ${Math.round(insertH)} mm`,
-                new Date().toLocaleDateString('en-GB'),
-                '1:1',
+                `bbox ${Math.round(partW)} × ${Math.round(partH)} mm`,
+                today,
             ]
                 .filter(Boolean)
-                .join('  |  ');
-            doc.setFontSize(8);
-            doc.setTextColor(110);
-            doc.text(T(insertInfo), M, M + insertH + INFO_GAP);
-            doc.setTextColor(0);
-        }
+                .join('  ·  '),
+        ];
+        jobs.push({
+            subtitle: bundle.subtitle,
+            partW,
+            partH,
+            footerInfo,
+            draw: (dX, dY) => {
+                const px = (x: number) => dX + (x - minX);
+                const py = (y: number) => dY + (y - minY);
+                doc.setDrawColor(0);
+                doc.setLineWidth(productionStroke);
+                for (const piece of bundle.pieces) {
+                    if (piece.path.closed && piece.path.points.length >= 3) {
+                        const pts = piece.path.points.map(
+                            ([x, y]) =>
+                                [px(x), py(y)] as [number, number],
+                        );
+                        drawClosedPolyline(doc, pts, 'S');
+                    }
+                    for (const hole of piece.holes ?? []) {
+                        if (!hole.closed || hole.points.length < 3) continue;
+                        const pts = hole.points.map(
+                            ([x, y]) =>
+                                [px(x), py(y)] as [number, number],
+                        );
+                        drawClosedPolyline(doc, pts, 'S');
+                    }
+                }
+            },
+        });
     }
 
-    // ---- Per-material cut pages -------------------------------------
-    // One 1:1 production-ready cut page per non-empty material type.
-    // Each piece is emitted as a compound shape: outer outline + inner
-    // counter holes as separate closed contours so the CAM cutter
-    // pierces both and leaves the inner counter as material of that
-    // type (acrylic / vinyl / standoff).
-    drawProductionMaterialPage(doc, {
-        title: 'ACRYLIC — FACE-STUCK',
-        pieces: opts.acrylicPieces ?? [],
-        params,
-        productionStroke,
-    });
-    drawProductionMaterialPage(doc, {
-        title: 'VINYL APPLIQUE',
-        pieces: opts.vinylPieces ?? [],
-        params,
-        productionStroke,
-    });
-    drawProductionMaterialPage(doc, {
-        title: 'STOOD-OFF LETTERING',
-        pieces: (opts.standoffPieces ?? []).map((p) => ({
-            pathIndex: p.pathIndex,
-            path: p.path,
-            holes: p.holes,
-            color: p.color,
-            thicknessMm: p.thicknessMm,
-        })),
-        params,
-        productionStroke,
-    });
-
-    // ---- Placement template page (1:1 panel face) -------------------
-    // Final page: face-only print at 1:1 with stand-off hole positions
-    // and faint letter reference outlines. The backshop prints this
-    // and lays it on the panel as a stencil for drilling stud holes
-    // and lining up the lettering. Skip when there's nothing to mark.
-    drawPlacementTemplatePage(doc, opts, productionStroke);
-
-    return doc.output('blob');
-}
-
-/**
- * One 1:1 cut page per material type. Sized to the bbox of the pieces
- * with a margin; emits the outer outline + every nested counter as a
- * closed contour so the cutter reads them as compound shapes.
- *
- * No-ops when `pieces` is empty.
- */
-function drawProductionMaterialPage(
-    doc: jsPDF,
-    args: {
-        title: string;
-        pieces: MaterialPiece[];
-        params: PanelParams;
-        productionStroke: number;
-    },
-): void {
-    const { title, pieces, params, productionStroke } = args;
-    if (pieces.length === 0) return;
-
-    // Compute bbox over outer paths + holes.
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (const piece of pieces) {
-        for (const path of [piece.path, ...(piece.holes ?? [])]) {
-            for (const [x, y] of path.points) {
-                if (x < minX) minX = x;
-                if (y < minY) minY = y;
-                if (x > maxX) maxX = x;
-                if (y > maxY) maxY = y;
-            }
-        }
-    }
-    const partW = Math.max(1, maxX - minX);
-    const partH = Math.max(1, maxY - minY);
-    const M = 18;
-    const INFO_GAP = 6;
-    const pageW = partW + 2 * M;
-    const pageH = partH + 2 * M;
-    if (pageW > MAX_PAGE_MM || pageH > MAX_PAGE_MM) return; // too big — skip
-    doc.addPage([pageW, pageH], pageW >= pageH ? 'landscape' : 'portrait');
-    const px = (x: number) => M + (x - minX);
-    const py = (y: number) => M + (y - minY);
-    doc.setDrawColor(0);
-    doc.setLineWidth(productionStroke);
-    for (const piece of pieces) {
-        // Outer ring
-        if (piece.path.closed && piece.path.points.length >= 3) {
-            const pts = piece.path.points.map(
-                ([x, y]) => [px(x), py(y)] as [number, number],
-            );
-            drawClosedPolyline(doc, pts, 'S');
-        }
-        // Inner counter holes → emitted as separate closed contours.
-        for (const hole of piece.holes ?? []) {
-            if (!hole.closed || hole.points.length < 3) continue;
-            const pts = hole.points.map(
-                ([x, y]) => [px(x), py(y)] as [number, number],
-            );
-            drawClosedPolyline(doc, pts, 'S');
-        }
-    }
-    // Info strip — colour / thickness varies per piece, summarise.
-    const colours = Array.from(
-        new Set(pieces.map((p) => p.color.toUpperCase())),
-    );
-    const thicknesses = Array.from(
-        new Set(
-            pieces
-                .map((p) =>
-                    p.thicknessMm != null ? `${p.thicknessMm}mm` : null,
-                )
-                .filter(Boolean),
-        ),
-    );
-    const info = [
-        'ONESIGN',
-        params.name,
-        title,
-        `${pieces.length} piece${pieces.length === 1 ? '' : 's'}`,
-        colours.length > 0 ? `colour ${colours.join(' / ')}` : '',
-        thicknesses.length > 0 ? `thickness ${thicknesses.join(' / ')}` : '',
-        `bbox ${Math.round(partW)} x ${Math.round(partH)} mm`,
-        new Date().toLocaleDateString('en-GB'),
-        '1:1',
-    ]
-        .filter(Boolean)
-        .join('  |  ');
-    doc.setFontSize(8);
-    doc.setTextColor(110);
-    doc.text(ascii(info), M, M + partH + INFO_GAP);
-    doc.setTextColor(0);
-}
-
-/**
- * Final placement-template page — 1:1 panel FACE only (no returns) so
- * the backshop can print, lay it on the panel, and mark stud-hole /
- * letter positions. Skip when the sign has nothing position-critical
- * to mark (no fixings, no standoff letters, no push-through inserts).
- */
-function drawPlacementTemplatePage(
-    doc: jsPDF,
-    opts: PdfOptions,
-    productionStroke: number,
-): void {
-    const { sectionExport, params } = opts;
+    // ---- Placement template page (face 1:1) ------------------------
     const allFixings: FlatPath[] = (opts.fixingsBySection ?? []).flatMap(
         (a) => a,
     );
     const allReferences: FlatPath[] = (opts.referenceBySection ?? []).flatMap(
         (a) => a,
     );
-    const allApertures: FlatPath[] = (opts.apertureBySection ?? []).flatMap(
-        (a) => a,
-    );
-    if (
-        allFixings.length === 0 &&
-        allReferences.length === 0 &&
-        allApertures.length === 0
-    ) {
-        return;
-    }
-
-    // Face dimensions assembled across all sections, in face-local
-    // coords (origin at the face top-left of the first section).
-    const M = 18;
-    const INFO_GAP = 6;
-    // Use the assembled layout sheet height for the face — sectionExport
-    // already aggregates sections; the face occupies the central band
-    // of the layout. Simpler: bbox the fixings + references + apertures
-    // in export-sheet coords, plus the panel face rectangle that wraps
-    // them. We use sectionExport's total layout width as the worst-case
-    // canvas; the face height is params.panelHeightMm.
-    const partW = sectionExport.totalLayoutWMm;
-    const partH = params.panelHeightMm;
-    // Find the face's Y offset within the layout: use the first
-    // section's face segment, since the face is constant across
-    // sections.
-    const firstFace = sectionExport.sections[0]?.development.segments.find(
-        (s) => s.role === 'face',
-    );
-    const faceYInLayout = firstFace?.yMm ?? 0;
-
-    const pageW = partW + 2 * M;
-    const pageH = partH + 2 * M;
-    if (pageW > MAX_PAGE_MM || pageH > MAX_PAGE_MM) return;
-
-    doc.addPage([pageW, pageH], pageW >= pageH ? 'landscape' : 'portrait');
-    // Translate so the face top-left lands at (M, M).
-    const px = (x: number) => M + x;
-    const py = (y: number) => M + (y - faceYInLayout);
-
-    // Panel face outline — full-scale rectangle of the panel face.
-    // Walk the per-section face segments side-by-side so split panels
-    // show their seams.
-    doc.setDrawColor(0);
-    doc.setLineWidth(productionStroke);
-    sectionExport.sections.forEach((section) => {
-        const ox = section.layoutOriginXMm;
-        const face = section.development.segments.find(
+    const needsTemplate =
+        allFixings.length > 0 ||
+        allReferences.length > 0 ||
+        allApertures.length > 0;
+    if (needsTemplate) {
+        const firstFace = sectionExport.sections[0]?.development.segments.find(
             (s) => s.role === 'face',
         );
-        if (!face) return;
-        doc.rect(
-            px(face.xMm + ox),
-            py(face.yMm),
-            face.wMm,
-            face.hMm,
+        const faceYInLayout = firstFace?.yMm ?? 0;
+        const faceW = sectionExport.totalLayoutWMm;
+        const faceH = params.panelHeightMm;
+        jobs.push({
+            subtitle: 'Placement template — face 1:1, lay on panel and prick centres',
+            partW: faceW,
+            partH: faceH,
+            footerInfo: [
+                allFixings.length > 0
+                    ? `${allFixings.length} fixing hole${allFixings.length === 1 ? '' : 's'}`
+                    : 'No fixings',
+                `face ${Math.round(params.panelWidthMm)} × ${Math.round(params.panelHeightMm)} mm  ·  ${today}`,
+                'LEGEND: ⊕ stud hole · — — letter position · · · · aperture cut',
+            ],
+            draw: (dX, dY) => {
+                const px = (x: number) => dX + x;
+                const py = (y: number) => dY + (y - faceYInLayout);
+
+                // Panel face outline at 1:1 — per-section so seams show.
+                doc.setDrawColor(0);
+                doc.setLineWidth(productionStroke);
+                sectionExport.sections.forEach((section) => {
+                    const ox = section.layoutOriginXMm;
+                    const face = section.development.segments.find(
+                        (s) => s.role === 'face',
+                    );
+                    if (!face) return;
+                    doc.rect(
+                        px(face.xMm + ox),
+                        py(face.yMm),
+                        face.wMm,
+                        face.hMm,
+                    );
+                });
+
+                // Letter reference outlines — dashed.
+                if (allReferences.length > 0) {
+                    doc.setDrawColor(140);
+                    doc.setLineWidth(0.25);
+                    doc.setLineDashPattern([1.2, 0.8], 0);
+                    for (const ref of allReferences) {
+                        if (!ref.closed || ref.points.length < 3) continue;
+                        const pts = ref.points.map(
+                            ([x, y]) =>
+                                [px(x), py(y)] as [number, number],
+                        );
+                        drawClosedPolyline(doc, pts, 'S');
+                    }
+                    doc.setLineDashPattern([], 0);
+                }
+                // Aperture outlines — dotted.
+                if (allApertures.length > 0) {
+                    doc.setDrawColor(180);
+                    doc.setLineWidth(0.25);
+                    doc.setLineDashPattern([0.6, 0.6], 0);
+                    for (const ap of allApertures) {
+                        if (!ap.closed || ap.points.length < 3) continue;
+                        const pts = ap.points.map(
+                            ([x, y]) =>
+                                [px(x), py(y)] as [number, number],
+                        );
+                        drawClosedPolyline(doc, pts, 'S');
+                    }
+                    doc.setLineDashPattern([], 0);
+                }
+                // Fixing centres — hole + crosshair + prick.
+                doc.setDrawColor(0);
+                doc.setFillColor(0, 0, 0);
+                doc.setLineWidth(productionStroke);
+                for (const f of allFixings) {
+                    if (f.points.length < 3) continue;
+                    let cx = 0,
+                        cy = 0;
+                    for (const q of f.points) {
+                        cx += q[0];
+                        cy += q[1];
+                    }
+                    cx /= f.points.length;
+                    cy /= f.points.length;
+                    let rMm = 0;
+                    for (const q of f.points)
+                        rMm += Math.hypot(q[0] - cx, q[1] - cy);
+                    rMm /= f.points.length;
+                    doc.circle(px(cx), py(cy), rMm, 'S');
+                    const xh = rMm * 1.5;
+                    doc.line(
+                        px(cx) - xh,
+                        py(cy),
+                        px(cx) + xh,
+                        py(cy),
+                    );
+                    doc.line(
+                        px(cx),
+                        py(cy) - xh,
+                        px(cx),
+                        py(cy) + xh,
+                    );
+                    // Visible + print-survivable centre cross (1.5 mm
+                    // each side, brand teal) so the prick mark doesn't
+                    // disappear when photocopied.
+                    doc.setDrawColor(
+                        BRAND_RGB[0],
+                        BRAND_RGB[1],
+                        BRAND_RGB[2],
+                    );
+                    doc.setLineWidth(0.4);
+                    doc.line(
+                        px(cx) - 1.5,
+                        py(cy),
+                        px(cx) + 1.5,
+                        py(cy),
+                    );
+                    doc.line(
+                        px(cx),
+                        py(cy) - 1.5,
+                        px(cx),
+                        py(cy) + 1.5,
+                    );
+                    doc.setDrawColor(0);
+                }
+            },
+        });
+    }
+
+    // ---- Phase 2: compute single fixed sheet size ------------------
+    // The whole bundle uses one paper size so office printers can't
+    // silently mis-scale a page that's smaller than the others.
+    const M_TOP = STRAP_H + 5; // strap (9 mm) + breathing room
+    const M_BOTTOM = 28; // QR (16 mm) + label + warning + breathing
+    const M_SIDE = 14;
+    let maxPartW = 0;
+    let maxPartH = 0;
+    for (const job of jobs) {
+        if (job.partW > maxPartW) maxPartW = job.partW;
+        if (job.partH > maxPartH) maxPartH = job.partH;
+    }
+    const sheetW = maxPartW + 2 * M_SIDE;
+    const sheetH = maxPartH + M_TOP + M_BOTTOM;
+    if (sheetW > MAX_PAGE_MM || sheetH > MAX_PAGE_MM) {
+        throw new Error(
+            `Production PDF would need a page ${Math.round(sheetW)}×${Math.round(sheetH)} mm, larger than the PDF user-space limit. Split the sign into smaller sections first.`,
         );
+    }
+
+    const doc = new jsPDF({
+        unit: 'mm',
+        format: [sheetW, sheetH],
+        orientation: sheetW >= sheetH ? 'landscape' : 'portrait',
+    });
+    const fontRes = await registerVisualiserFonts(doc);
+    const font = fontRes.family;
+    const qrDataUrl = await buildQrCode(opts.designId ?? null);
+    doc.setProperties({
+        title: `${params.name} — production cut file`,
+        subject: 'Production PDF — 1:1 CAM-ready cut file',
+        author: opts.drawnBy ?? 'Onesign Odysseus',
+        keywords: 'production, cut, CAM, signage, onesign',
     });
 
-    // Letter / reference outlines — faint dashed so they read as
-    // positioning guides, not as cuts. Drawn first so fixings on top
-    // pop out.
-    if (allReferences.length > 0) {
-        doc.setDrawColor(140);
-        doc.setLineWidth(0.25);
-        doc.setLineDashPattern([1.2, 0.8], 0);
-        for (const ref of allReferences) {
-            if (!ref.closed || ref.points.length < 3) continue;
-            const pts = ref.points.map(
-                ([x, y]) => [px(x), py(y)] as [number, number],
+    const designIdShort = docId(opts.designId, params.name);
+    const totalPages = jobs.length;
+
+    // ---- Phase 3: emit pages ---------------------------------------
+    jobs.forEach((job, index) => {
+        if (index > 0) {
+            doc.addPage(
+                [sheetW, sheetH],
+                sheetW >= sheetH ? 'landscape' : 'portrait',
             );
-            drawClosedPolyline(doc, pts, 'S');
         }
-        doc.setLineDashPattern([], 0);
-    }
+        // Top strap
+        drawDocStrap(doc, {
+            pageW: sheetW,
+            margin: M_SIDE,
+            kind: 'production',
+            designName: params.name,
+            designIdShort,
+            pageNumber: index + 1,
+            totalPages,
+            font,
+            subtitle: job.subtitle,
+        });
 
-    // Aperture outlines (faint) — useful even when there are no
-    // standoffs, so the installer sees where the cuts will land.
-    if (allApertures.length > 0) {
-        doc.setDrawColor(180);
-        doc.setLineWidth(0.25);
-        doc.setLineDashPattern([0.6, 0.6], 0);
-        for (const ap of allApertures) {
-            if (!ap.closed || ap.points.length < 3) continue;
-            const pts = ap.points.map(
-                ([x, y]) => [px(x), py(y)] as [number, number],
-            );
-            drawClosedPolyline(doc, pts, 'S');
-        }
-        doc.setLineDashPattern([], 0);
-    }
+        // Thin border 2 mm inside the page edge — operator can measure
+        // border-to-border to verify the print is at 100%.
+        doc.setDrawColor(200);
+        doc.setLineWidth(0.15);
+        doc.rect(2, STRAP_H + 1.5, sheetW - 4, sheetH - STRAP_H - 3);
 
-    // Fixing positions — filled black dots + crosshairs at the
-    // centre so the installer can prick-mark accurately.
-    doc.setDrawColor(0);
-    doc.setFillColor(0, 0, 0);
-    doc.setLineWidth(productionStroke);
-    for (const f of allFixings) {
-        if (f.points.length < 3) continue;
-        let cx = 0;
-        let cy = 0;
-        for (const q of f.points) {
-            cx += q[0];
-            cy += q[1];
-        }
-        cx /= f.points.length;
-        cy /= f.points.length;
-        let rMm = 0;
-        for (const q of f.points)
-            rMm += Math.hypot(q[0] - cx, q[1] - cy);
-        rMm /= f.points.length;
-        // Outline at actual hole diameter
-        doc.circle(px(cx), py(cy), rMm, 'S');
-        // Crosshair through the centre — 1.5x the hole radius each side
-        const xh = rMm * 1.5;
-        doc.line(px(cx) - xh, py(cy), px(cx) + xh, py(cy));
-        doc.line(px(cx), py(cy) - xh, px(cx), py(cy) + xh);
-        // Centre prick mark
-        doc.circle(px(cx), py(cy), 0.4, 'F');
-    }
+        // Content — horizontally centred, top-aligned just below the strap.
+        const dX = M_SIDE + (maxPartW - job.partW) / 2;
+        const dY = M_TOP;
+        job.draw(dX, dY);
 
-    // Info strip
-    const info = [
-        'ONESIGN',
-        params.name,
-        'PLACEMENT TEMPLATE — face 1:1',
-        allFixings.length > 0
-            ? `${allFixings.length} hole${allFixings.length === 1 ? '' : 's'}`
-            : '',
-        `face ${Math.round(params.panelWidthMm)} x ${Math.round(params.panelHeightMm)} mm`,
-        'print 1:1, lay on panel, prick centres',
-        new Date().toLocaleDateString('en-GB'),
-        '1:1',
-    ]
-        .filter(Boolean)
-        .join('  |  ');
-    doc.setFontSize(8);
-    doc.setTextColor(110);
-    doc.text(ascii(info), M, M + partH + INFO_GAP);
-    doc.setTextColor(0);
+        // Footer — info strip + sheet sizing + QR + scale warning.
+        drawDocFooter(doc, {
+            pageW: sheetW,
+            pageH: sheetH,
+            margin: M_SIDE,
+            kind: 'production',
+            infoLines: [
+                ...job.footerInfo,
+                `Sheet ${Math.round(sheetW)} × ${Math.round(sheetH)} mm  ·  ${designIdShort}`,
+            ],
+            qrDataUrl,
+            font,
+        });
+    });
+
+    return doc.output('blob');
 }
+
 
 /** Horizontal dimension: dashed line + end ticks + centred value. */
 function dimH(

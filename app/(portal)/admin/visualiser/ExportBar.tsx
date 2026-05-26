@@ -158,9 +158,10 @@ export function ExportBar({
         setPdfPending('ref');
         try {
             const thumb = sceneCapture.fn?.() ?? undefined;
-            const blob = generateReferencePdfBlob({
+            const blob = await generateReferencePdfBlob({
                 sectionExport,
                 params,
+                designId: designId ?? null,
                 apertureBySection,
                 keylineBySection,
                 fixingsBySection,
@@ -189,9 +190,10 @@ export function ExportBar({
             // placement template for the backshop. Pass everything;
             // each helper inside the generator no-ops when its data
             // is empty.
-            const blob = generateProductionPdfBlob({
+            const blob = await generateProductionPdfBlob({
                 sectionExport,
                 params,
+                designId: designId ?? null,
                 apertureBySection,
                 keylineBySection,
                 fixingsBySection,
