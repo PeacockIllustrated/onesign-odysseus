@@ -24,6 +24,7 @@ import { importSvg, buildKeyline } from '@/lib/visualiser/svg-import';
 import {
     PanelParamsSchema,
     DEFAULT_PLACEMENT,
+    GROUP_HIGHLIGHT_PALETTE,
     type VisualiserDesignRow,
     type PanelParams,
     type MaterialPiece,
@@ -92,8 +93,9 @@ export function VisualiserClient({
         fixingMode,
         addManualFixing,
         removeManualFixing,
-        selectedPathIndex,
-        setSelectedPathIndex,
+        editingGroupId,
+        pendingPaths,
+        togglePendingPath,
     } = useVisualiser();
     const [tab, setTab] = useState<Tab>('folded');
     const [mobilePane, setMobilePane] = useState<MobilePane>('preview');
@@ -189,14 +191,45 @@ export function VisualiserClient({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [development, imported, JSON.stringify(placement)]);
 
-    // Lookup: original imported-path index → material override (if any).
-    const materialByIndex = useMemo(() => {
-        const map = new Map<number, NonNullable<PanelParams['nonCutPaths']>[number]>();
-        for (const entry of params.nonCutPaths ?? []) {
-            map.set(entry.pathIndex, entry);
+    // Lookup: original imported-path index → owning material group (if
+    // any). One path can only belong to one group at a time; we just
+    // index forwards so the lookup is O(1) at render.
+    const groupByPath = useMemo(() => {
+        const map = new Map<
+            number,
+            NonNullable<PanelParams['materialGroups']>[number]
+        >();
+        for (const g of params.materialGroups ?? []) {
+            for (const i of g.pathIndices) map.set(i, g);
         }
         return map;
-    }, [params.nonCutPaths]);
+    }, [params.materialGroups]);
+
+    // Set of paths in the active edit selection (multi-select).
+    const pendingPathsSet = useMemo(
+        () => new Set(pendingPaths),
+        [pendingPaths],
+    );
+
+    // Per-imported-path highlight colour. Each group gets a deterministic
+    // palette colour by position in materialGroups, so the operator can
+    // tell groups apart at a glance on the flat canvas.
+    const pathGroupColors = useMemo(() => {
+        if (!imported) return null;
+        const groups = params.materialGroups ?? [];
+        const positionById = new Map<string, number>();
+        groups.forEach((g, i) => positionById.set(g.id, i));
+        return imported.paths.map((_, i) => {
+            const g = groupByPath.get(i);
+            if (!g) return null;
+            const pos = positionById.get(g.id) ?? 0;
+            return GROUP_HIGHLIGHT_PALETTE[
+                pos % GROUP_HIGHLIGHT_PALETTE.length
+            ];
+        });
+    }, [imported, params.materialGroups, groupByPath]);
+
+    const isEditingGroup = editingGroupId !== null;
 
     const mode = params.apertureMode ?? 'aperture';
     // Diameter is the source of truth; fall back to legacy radius * 2 for
@@ -214,11 +247,11 @@ export function VisualiserClient({
         for (let i = 0; i < placedClipByIndex.length; i++) {
             const p = placedClipByIndex[i];
             if (!p) continue;
-            if (materialByIndex.has(i)) continue; // overridden → not cut
+            if (groupByPath.has(i)) continue; // overridden → not cut
             out.push(p);
         }
         return out;
-    }, [mode, placedClipByIndex, materialByIndex]);
+    }, [mode, placedClipByIndex, groupByPath]);
 
     // Mixed-material pieces — only meaningful in aperture mode. Each
     // entry pairs a placed+clipped path with the material picked for it.
@@ -232,7 +265,7 @@ export function VisualiserClient({
         const acrylic: MaterialPiece[] = [];
         for (let i = 0; i < placedClipByIndex.length; i++) {
             const path = placedClipByIndex[i];
-            const entry = materialByIndex.get(i);
+            const entry = groupByPath.get(i);
             if (!path || !entry) continue;
             if (entry.material === 'solid') continue; // no render
             const piece: MaterialPiece = {
@@ -245,7 +278,7 @@ export function VisualiserClient({
             else if (entry.material === 'acrylic') acrylic.push(piece);
         }
         return { vinyl, acrylic };
-    }, [mode, placedClipByIndex, materialByIndex]);
+    }, [mode, placedClipByIndex, groupByPath]);
 
     // Standoff-mode features: lettering outline shown as a reference, with
     // fixing holes placed inside each letter shape.
@@ -547,8 +580,12 @@ export function VisualiserClient({
                                     ? placedClipByIndex
                                     : null
                             }
-                            selectedPathIndex={selectedPathIndex}
-                            onPathSelect={setSelectedPathIndex}
+                            pathGroupColors={pathGroupColors}
+                            pendingPaths={pendingPathsSet}
+                            isEditingGroup={isEditingGroup}
+                            onPathToggle={
+                                isEditingGroup ? togglePendingPath : undefined
+                            }
                             panelColor={params.panelColor ?? '#d6d6d6'}
                             fixingMode={fixingMode}
                             onFixingClick={handleFixingClick}

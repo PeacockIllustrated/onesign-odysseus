@@ -1,150 +1,319 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useVisualiser } from './store';
 import { importSvg } from '@/lib/visualiser/svg-import';
-import type {
-    AlignH,
-    AlignV,
-    ApertureMode,
-    FlatPath,
-    PanelParams,
+import {
+    GROUP_HIGHLIGHT_PALETTE,
+    type AlignH,
+    type AlignV,
+    type ApertureMode,
+    type PanelParams,
 } from '@/lib/visualiser/types';
-import { AlertTriangle, Crosshair, Eraser, Upload, X } from 'lucide-react';
+import {
+    AlertTriangle,
+    Check,
+    Crosshair,
+    Eraser,
+    Pencil,
+    Trash2,
+    Upload,
+    X,
+} from 'lucide-react';
 
-type NonCutEntry = NonNullable<PanelParams['nonCutPaths']>[number];
+type MaterialGroup = NonNullable<PanelParams['materialGroups']>[number];
+type GroupMaterial = MaterialGroup['material'];
 
 /**
- * Per-imported-path material picker for aperture mode. Each row maps to
- * one imported SVG path: leave it as Cut (the default), or move it out
- * of the cut and re-render as vinyl (colour) or acrylic (colour +
- * thickness). Indices line up with imported.paths order.
+ * Material-group editor. Aperture mode lets the operator bundle SVG
+ * paths into named groups that share a material (solid / vinyl /
+ * acrylic) and its properties (colour, thickness). The flow:
+ *
+ *   1. Click "Edit cuts" — enters multi-select mode on the canvas.
+ *   2. Click each SVG path that should belong to the group; selected
+ *      paths flash orange.
+ *   3. Pick Cut / Solid / Vinyl / Acrylic — the whole selection takes
+ *      that material and the group is saved.
+ *
+ * Existing groups appear as cards underneath. Click a group's edit
+ * pencil to re-enter selection on its members; tweak colour /
+ * thickness inline.
  */
-function MaterialsPanel({
-    paths,
-    nonCut,
-    setPathMaterial,
-    selectedPathIndex,
-    setSelectedPathIndex,
+function MaterialGroupsPanel({
+    groups,
+    editingGroupId,
+    pendingPaths,
+    panelColor,
+    startNewGroupEdit,
+    startEditingGroup,
+    cancelGroupEdit,
+    applyEditMaterial,
+    updateGroupProps,
+    deleteGroup,
 }: {
-    paths: FlatPath[];
-    nonCut: NonCutEntry[];
-    setPathMaterial: (
-        pathIndex: number,
-        patch:
-            | null
-            | {
-                  material: 'solid' | 'vinyl' | 'acrylic';
-                  color?: string;
-                  thicknessMm?: number;
-              },
+    groups: MaterialGroup[];
+    editingGroupId: string | null;
+    pendingPaths: number[];
+    panelColor: string;
+    startNewGroupEdit: () => void;
+    startEditingGroup: (id: string) => void;
+    cancelGroupEdit: () => void;
+    applyEditMaterial: (
+        material: 'cut' | GroupMaterial,
+        options?: { color?: string; thicknessMm?: number },
     ) => void;
-    selectedPathIndex: number | null;
-    setSelectedPathIndex: (i: number | null) => void;
+    updateGroupProps: (
+        id: string,
+        patch: { color?: string; thicknessMm?: number; label?: string },
+    ) => void;
+    deleteGroup: (id: string) => void;
 }) {
-    const byIndex = useMemo(() => {
-        const m = new Map<number, NonCutEntry>();
-        for (const e of nonCut) m.set(e.pathIndex, e);
-        return m;
-    }, [nonCut]);
+    const isEditing = editingGroupId !== null;
+    const editingExisting =
+        editingGroupId && editingGroupId !== 'new'
+            ? groups.find((g) => g.id === editingGroupId)
+            : null;
 
-    // Scroll the selected row into view when the operator picks a path
-    // on the canvas — otherwise it can sit off-screen on a long list.
-    const rowRefs = useRef<Array<HTMLLIElement | null>>([]);
-    useEffect(() => {
-        if (selectedPathIndex == null) return;
-        const el = rowRefs.current[selectedPathIndex];
-        if (el)
-            el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    }, [selectedPathIndex]);
+    // Working values for the apply step. When editing an existing group
+    // these seed from the group; otherwise sensible defaults.
+    const [applyMaterial, setApplyMaterial] = useState<GroupMaterial>(
+        editingExisting?.material ?? 'solid',
+    );
+    const [applyColor, setApplyColor] = useState<string>(
+        editingExisting?.color ?? panelColor,
+    );
+    const [applyThickness, setApplyThickness] = useState<number>(
+        editingExisting?.thicknessMm ?? 5,
+    );
 
-    if (paths.length === 0) return null;
+    // When the operator opens / switches the edit target, re-seed
+    // the working values from that target so the inputs reflect it.
+    const seedKey = editingGroupId ?? '';
+    const [lastSeedKey, setLastSeedKey] = useState<string | null>(null);
+    if (lastSeedKey !== seedKey) {
+        setLastSeedKey(seedKey);
+        setApplyMaterial(editingExisting?.material ?? 'solid');
+        setApplyColor(
+            editingExisting?.color ??
+                (applyMaterial === 'vinyl' ? '#ffffff' : '#1a1f23'),
+        );
+        setApplyThickness(editingExisting?.thicknessMm ?? 5);
+    }
 
     return (
         <div className="space-y-2 pt-2 border-t border-neutral-100">
-            <h4 className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
-                Materials per path
-            </h4>
-            <p className="text-[10px] text-neutral-400">
-                By default every SVG path is cut out of the panel. Switch a
-                row to Vinyl (printed/cut sticker) or Acrylic (sheet sitting
-                on the face) to keep it.
-            </p>
-            <ul className="space-y-2">
-                {paths.map((_, i) => {
-                    const entry = byIndex.get(i);
-                    const material = entry?.material ?? 'cut';
-                    const isSelected = selectedPathIndex === i;
+            <div className="flex items-center justify-between gap-2">
+                <h4 className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                    Material groups
+                </h4>
+                {!isEditing && (
+                    <button
+                        type="button"
+                        onClick={startNewGroupEdit}
+                        className="flex items-center gap-1 rounded-md bg-black px-2 py-1 text-[11px] font-medium text-white hover:bg-neutral-800"
+                        title="Click paths on the canvas to bundle them into a new group"
+                    >
+                        <Pencil size={11} /> Edit cuts
+                    </button>
+                )}
+            </div>
+
+            {isEditing && (
+                <div className="rounded-md border border-orange-300 bg-orange-50 p-2.5 space-y-2">
+                    <p className="text-[11px] text-orange-900">
+                        {editingExisting
+                            ? `Editing group · ${pendingPaths.length} path${pendingPaths.length === 1 ? '' : 's'}`
+                            : `Building new group · ${pendingPaths.length} path${pendingPaths.length === 1 ? '' : 's'}`}
+                    </p>
+                    <p className="text-[10px] text-orange-800">
+                        Click paths on the flat preview to add / remove
+                        them, then pick the material below.
+                    </p>
+
+                    {/* Material chooser. Solid/vinyl/acrylic shows colour
+                        (and thickness for acrylic). Cut clears the
+                        selection from any group it was in. */}
+                    <div className="flex overflow-hidden rounded-md border border-orange-300">
+                        {(
+                            [
+                                ['cut', 'Cut'],
+                                ['solid', 'Solid'],
+                                ['vinyl', 'Vinyl'],
+                                ['acrylic', 'Acrylic'],
+                            ] as const
+                        ).map(([v, label], k) => (
+                            <button
+                                key={v}
+                                type="button"
+                                onClick={() => {
+                                    if (v === 'cut') {
+                                        applyEditMaterial('cut');
+                                    } else {
+                                        setApplyMaterial(v);
+                                    }
+                                }}
+                                className={`flex-1 py-1.5 text-[11px] font-medium ${
+                                    k > 0
+                                        ? 'border-l border-orange-300'
+                                        : ''
+                                } ${
+                                    v === 'cut'
+                                        ? 'bg-white text-red-600 hover:bg-red-50'
+                                        : applyMaterial === v
+                                          ? 'bg-black text-white'
+                                          : 'bg-white text-neutral-700 hover:bg-neutral-100'
+                                }`}
+                                title={
+                                    v === 'cut'
+                                        ? 'Remove the selected paths from any group (revert to cut).'
+                                        : v === 'solid'
+                                          ? 'Leave as panel material — no cut. Used for inner letter counters.'
+                                          : undefined
+                                }
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {applyMaterial !== 'solid' && (
+                        <label className="block">
+                            <span className="text-[10px] text-orange-900">
+                                Colour
+                            </span>
+                            <div className="mt-0.5 flex items-center gap-1.5">
+                                <input
+                                    type="color"
+                                    value={applyColor}
+                                    onChange={(e) =>
+                                        setApplyColor(e.target.value)
+                                    }
+                                    className="h-7 w-9 cursor-pointer rounded border border-orange-300 bg-white p-0.5"
+                                />
+                                <input
+                                    type="text"
+                                    value={applyColor}
+                                    onChange={(e) => {
+                                        const v = e.target.value.trim();
+                                        if (/^#[0-9a-fA-F]{6}$/.test(v))
+                                            setApplyColor(v);
+                                    }}
+                                    className="flex-1 rounded border border-orange-300 px-1.5 py-1 font-mono text-[10px] uppercase focus:border-black focus:outline-none"
+                                />
+                            </div>
+                        </label>
+                    )}
+
+                    {applyMaterial === 'acrylic' && (
+                        <NumField
+                            label="Thickness (mm)"
+                            step={0.5}
+                            value={applyThickness}
+                            onChange={(n) =>
+                                setApplyThickness(n > 0 ? n : 0.5)
+                            }
+                        />
+                    )}
+
+                    <div className="flex items-center gap-2 pt-1">
+                        <button
+                            type="button"
+                            onClick={() =>
+                                applyEditMaterial(applyMaterial, {
+                                    color: applyColor,
+                                    thicknessMm:
+                                        applyMaterial === 'acrylic'
+                                            ? applyThickness
+                                            : undefined,
+                                })
+                            }
+                            disabled={pendingPaths.length === 0}
+                            className="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-black px-3 py-1.5 text-[11px] font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                            <Check size={12} /> Apply{' '}
+                            {applyMaterial.charAt(0).toUpperCase() +
+                                applyMaterial.slice(1)}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={cancelGroupEdit}
+                            className="rounded-md border border-orange-300 px-3 py-1.5 text-[11px] font-medium text-orange-900 hover:bg-orange-100"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Existing groups. Each row shows a palette swatch (the
+                group's identity colour on the canvas), the material chip
+                and member count, with pencil + trash actions. */}
+            {groups.length === 0 && !isEditing && (
+                <p className="text-[10px] text-neutral-400">
+                    No groups yet. Click "Edit cuts" to pull SVG paths
+                    out of the production cut as solid panel material,
+                    vinyl appliqué, or extruded acrylic.
+                </p>
+            )}
+            <ul className="space-y-1.5">
+                {groups.map((g, i) => {
+                    const palette =
+                        GROUP_HIGHLIGHT_PALETTE[
+                            i % GROUP_HIGHLIGHT_PALETTE.length
+                        ];
+                    const isThisOne = editingGroupId === g.id;
                     return (
                         <li
-                            key={i}
-                            ref={(el) => {
-                                rowRefs.current[i] = el;
-                            }}
-                            className={`rounded-md border bg-neutral-50 p-2 transition-colors ${
-                                isSelected
+                            key={g.id}
+                            className={`rounded-md border bg-white p-2 ${
+                                isThisOne
                                     ? 'border-orange-400 ring-1 ring-orange-300'
                                     : 'border-neutral-200'
                             }`}
                         >
                             <div className="flex items-center justify-between gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() =>
-                                        setSelectedPathIndex(
-                                            isSelected ? null : i,
-                                        )
-                                    }
-                                    className="text-[11px] font-medium text-neutral-600 hover:text-black"
-                                >
-                                    Path {i + 1}
-                                    {isSelected && (
-                                        <span className="ml-1 text-orange-500">
-                                            • selected
-                                        </span>
-                                    )}
-                                </button>
-                                <div className="flex overflow-hidden rounded border border-neutral-300">
-                                    {(
-                                        [
-                                            ['cut', 'Cut'],
-                                            ['solid', 'Solid'],
-                                            ['vinyl', 'Vinyl'],
-                                            ['acrylic', 'Acrylic'],
-                                        ] as const
-                                    ).map(([v, label], k) => (
-                                        <button
-                                            key={v}
-                                            type="button"
-                                            onClick={() =>
-                                                setPathMaterial(
-                                                    i,
-                                                    v === 'cut'
-                                                        ? null
-                                                        : { material: v },
-                                                )
-                                            }
-                                            className={`px-2 py-0.5 text-[10px] font-medium ${
-                                                k > 0
-                                                    ? 'border-l border-neutral-300'
-                                                    : ''
-                                            } ${
-                                                material === v
-                                                    ? 'bg-black text-white'
-                                                    : 'bg-white text-neutral-500 hover:bg-neutral-100'
-                                            }`}
-                                            title={
-                                                v === 'solid'
-                                                    ? 'Leave as panel material (no cut). Use for inner letter counters.'
-                                                    : undefined
-                                            }
-                                        >
-                                            {label}
-                                        </button>
-                                    ))}
+                                <div className="flex min-w-0 items-center gap-2">
+                                    <span
+                                        className="h-3 w-3 shrink-0 rounded-sm border border-neutral-300"
+                                        style={{ background: palette }}
+                                        aria-hidden
+                                    />
+                                    <span className="text-[11px] font-medium text-neutral-700 truncate">
+                                        {g.label ??
+                                            `${g.material[0].toUpperCase()}${g.material.slice(1)} group`}
+                                    </span>
+                                    <span className="rounded-full bg-neutral-100 px-1.5 py-px text-[9px] uppercase tracking-wide text-neutral-500">
+                                        {g.material}
+                                    </span>
+                                    <span className="text-[10px] text-neutral-400">
+                                        {g.pathIndices.length} path
+                                        {g.pathIndices.length === 1 ? '' : 's'}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => startEditingGroup(g.id)}
+                                        disabled={isEditing && !isThisOne}
+                                        className="rounded p-1 text-neutral-500 hover:bg-neutral-100 hover:text-black disabled:opacity-40"
+                                        title="Edit members and material"
+                                    >
+                                        <Pencil size={12} />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => deleteGroup(g.id)}
+                                        className="rounded p-1 text-neutral-500 hover:bg-red-50 hover:text-red-600"
+                                        title="Delete group (paths revert to cut)"
+                                    >
+                                        <Trash2 size={12} />
+                                    </button>
                                 </div>
                             </div>
-                            {entry && entry.material !== 'solid' && (
+
+                            {/* Inline colour / thickness — live edits while
+                                not in selection edit, no Apply needed. */}
+                            {!isEditing && g.material !== 'solid' && (
                                 <div className="mt-2 grid grid-cols-2 gap-2">
                                     <label className="block">
                                         <span className="text-[10px] text-neutral-500">
@@ -153,20 +322,17 @@ function MaterialsPanel({
                                         <div className="mt-0.5 flex items-center gap-1.5">
                                             <input
                                                 type="color"
-                                                value={entry.color}
+                                                value={g.color}
                                                 onChange={(e) =>
-                                                    setPathMaterial(i, {
-                                                        material:
-                                                            entry.material,
+                                                    updateGroupProps(g.id, {
                                                         color: e.target.value,
                                                     })
                                                 }
                                                 className="h-6 w-8 cursor-pointer rounded border border-neutral-300 bg-white p-0.5"
-                                                aria-label={`Path ${i + 1} colour`}
                                             />
                                             <input
                                                 type="text"
-                                                value={entry.color}
+                                                value={g.color}
                                                 onChange={(e) => {
                                                     const v =
                                                         e.target.value.trim();
@@ -175,24 +341,22 @@ function MaterialsPanel({
                                                             v,
                                                         )
                                                     )
-                                                        setPathMaterial(i, {
-                                                            material:
-                                                                entry.material,
-                                                            color: v,
-                                                        });
+                                                        updateGroupProps(
+                                                            g.id,
+                                                            { color: v },
+                                                        );
                                                 }}
                                                 className="flex-1 rounded border border-neutral-300 px-1 py-0.5 font-mono text-[10px] uppercase focus:border-black focus:outline-none"
                                             />
                                         </div>
                                     </label>
-                                    {entry.material === 'acrylic' && (
+                                    {g.material === 'acrylic' && (
                                         <NumField
                                             label="Thickness (mm)"
                                             step={0.5}
-                                            value={entry.thicknessMm ?? 5}
+                                            value={g.thicknessMm ?? 5}
                                             onChange={(n) =>
-                                                setPathMaterial(i, {
-                                                    material: 'acrylic',
+                                                updateGroupProps(g.id, {
                                                     thicknessMm:
                                                         n > 0 ? n : 0.5,
                                                 })
@@ -281,9 +445,14 @@ export function SvgDropzone() {
         fixingMode,
         setFixingMode,
         clearManualFixings,
-        setPathMaterial,
-        selectedPathIndex,
-        setSelectedPathIndex,
+        editingGroupId,
+        pendingPaths,
+        startNewGroupEdit,
+        startEditingGroup,
+        cancelGroupEdit,
+        applyEditMaterial,
+        updateGroupProps,
+        deleteGroup,
     } = useVisualiser();
     const inputRef = useRef<HTMLInputElement>(null);
     const [error, setError] = useState<string | null>(null);
@@ -488,14 +657,19 @@ export function SvgDropzone() {
                         </div>
                         {(params.apertureMode ?? 'aperture') === 'aperture' &&
                             imported && (
-                                <MaterialsPanel
-                                    paths={imported.paths}
-                                    nonCut={params.nonCutPaths ?? []}
-                                    setPathMaterial={setPathMaterial}
-                                    selectedPathIndex={selectedPathIndex}
-                                    setSelectedPathIndex={
-                                        setSelectedPathIndex
+                                <MaterialGroupsPanel
+                                    groups={params.materialGroups ?? []}
+                                    editingGroupId={editingGroupId}
+                                    pendingPaths={pendingPaths}
+                                    panelColor={
+                                        params.panelColor ?? '#d6d6d6'
                                     }
+                                    startNewGroupEdit={startNewGroupEdit}
+                                    startEditingGroup={startEditingGroup}
+                                    cancelGroupEdit={cancelGroupEdit}
+                                    applyEditMaterial={applyEditMaterial}
+                                    updateGroupProps={updateGroupProps}
+                                    deleteGroup={deleteGroup}
                                 />
                             )}
                         {(params.apertureMode ?? 'aperture') === 'standoff' && (

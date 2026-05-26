@@ -32,6 +32,25 @@ export const DEFAULT_PARAMS: PanelParams = {
     manualFixings: [],
 };
 
+type GroupMaterial = 'solid' | 'vinyl' | 'acrylic';
+
+type MaterialGroup = NonNullable<PanelParams['materialGroups']>[number];
+
+let idCounter = 0;
+function nextGroupId(): string {
+    idCounter += 1;
+    return `g${Date.now().toString(36)}${idCounter}`;
+}
+
+function defaultGroupColor(
+    material: GroupMaterial,
+    panelColor: string | undefined,
+): string {
+    if (material === 'solid') return panelColor ?? '#d6d6d6';
+    if (material === 'vinyl') return '#ffffff';
+    return '#1a1f23';
+}
+
 interface VisualiserState {
     params: PanelParams;
     svgSource: string | null;
@@ -42,18 +61,19 @@ interface VisualiserState {
     dirty: boolean;
     /**
      * Current fixing-edit mode. 'place' drops a fixing on click; 'delete'
-     * removes the nearest manual fixing within a tolerance. 'off' is the
-     * default — clicks don't affect fixings. Stored on `params.manualFixings`
-     * in SVG-local coords so fixings track the lettering across placement
-     * changes (re-aligning the SVG drags the fixings with it).
+     * removes the nearest manual fixing within a tolerance.
      */
     fixingMode: 'off' | 'place' | 'delete';
     /**
-     * Imported SVG path index currently selected for material editing.
-     * Set by clicks on the flat preview; reset to null on background
-     * clicks or when a new SVG is loaded.
+     * Material-group editor state. When non-null the operator is
+     * picking paths in the canvas to bundle into a group:
+     *   - 'new'           — building a brand-new group
+     *   - <group.id>      — editing an existing group's members
+     * `pendingPaths` is the working set of imported-path indices in
+     * the current edit; clicks on the canvas toggle entries in it.
      */
-    selectedPathIndex: number | null;
+    editingGroupId: string | null;
+    pendingPaths: number[];
 
     setParam: <K extends keyof PanelParams>(k: K, v: PanelParams[K]) => void;
     setReturn: (edge: PanelEdge, on: boolean) => void;
@@ -69,17 +89,28 @@ interface VisualiserState {
     removeManualFixing: (index: number) => void;
     clearManualFixings: () => void;
     setFixingMode: (m: 'off' | 'place' | 'delete') => void;
-    setSelectedPathIndex: (i: number | null) => void;
-    setPathMaterial: (
-        pathIndex: number,
-        patch:
-            | null
-            | {
-                  material: 'solid' | 'vinyl' | 'acrylic';
-                  color?: string;
-                  thicknessMm?: number;
-              },
+
+    /* Material group actions */
+    startNewGroupEdit: () => void;
+    startEditingGroup: (groupId: string) => void;
+    cancelGroupEdit: () => void;
+    togglePendingPath: (pathIndex: number) => void;
+    /**
+     * Commit the current edit. `material === 'cut'` removes the pending
+     * paths from any group they're in (and deletes the group being
+     * edited if applicable). Non-cut materials create or update a group
+     * with the pending paths as its members.
+     */
+    applyEditMaterial: (
+        material: 'cut' | GroupMaterial,
+        options?: { color?: string; thicknessMm?: number },
     ) => void;
+    updateGroupProps: (
+        groupId: string,
+        patch: { color?: string; thicknessMm?: number; label?: string },
+    ) => void;
+    deleteGroup: (groupId: string) => void;
+
     markSaved: (id: string) => void;
 }
 
@@ -92,7 +123,8 @@ export const useVisualiser = create<VisualiserState>((set) => ({
     quoteItemId: null,
     dirty: false,
     fixingMode: 'off',
-    selectedPathIndex: null,
+    editingGroupId: null,
+    pendingPaths: [],
 
     setParam: (k, v) =>
         set((s) => ({ params: { ...s.params, [k]: v }, dirty: true })),
@@ -130,16 +162,22 @@ export const useVisualiser = create<VisualiserState>((set) => ({
 
     setSvg: (source, imported) =>
         set((s) => {
-            // Pre-populate inner counters as "solid". Most SVGs export
-            // letter holes (O, e, g) as separate closed paths that should
-            // stay as panel material rather than become their own cut.
-            // The operator can still flip them to cut/vinyl/acrylic.
+            // Pre-populate one "Counters (auto)" group with all detected
+            // inner counters (the holes in O / e / g). Operator can edit
+            // it like any other group or break it apart.
             const counters = detectInnerCounters(imported.paths);
-            const seeded = counters.map((pathIndex) => ({
-                pathIndex,
-                material: 'solid' as const,
-                color: s.params.panelColor ?? '#d6d6d6',
-            }));
+            const seedGroups: MaterialGroup[] =
+                counters.length > 0
+                    ? [
+                          {
+                              id: nextGroupId(),
+                              label: 'Counters (auto)',
+                              material: 'solid',
+                              color: s.params.panelColor ?? '#d6d6d6',
+                              pathIndices: counters,
+                          },
+                      ]
+                    : [];
             return {
                 svgSource: source,
                 imported,
@@ -147,9 +185,10 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                     ...s.params,
                     aperturePlacement:
                         s.params.aperturePlacement ?? DEFAULT_PLACEMENT,
-                    nonCutPaths: seeded,
+                    materialGroups: seedGroups,
                 },
-                selectedPathIndex: null,
+                editingGroupId: null,
+                pendingPaths: [],
                 dirty: true,
             };
         }),
@@ -161,9 +200,10 @@ export const useVisualiser = create<VisualiserState>((set) => ({
             params: {
                 ...s.params,
                 aperturePlacement: null,
-                nonCutPaths: [],
+                materialGroups: [],
             },
-            selectedPathIndex: null,
+            editingGroupId: null,
+            pendingPaths: [],
             dirty: true,
         })),
 
@@ -175,6 +215,8 @@ export const useVisualiser = create<VisualiserState>((set) => ({
             designId: row.id,
             quoteId: row.quote_id,
             quoteItemId: row.quote_item_id,
+            editingGroupId: null,
+            pendingPaths: [],
             dirty: false,
         }),
 
@@ -200,10 +242,6 @@ export const useVisualiser = create<VisualiserState>((set) => ({
             const list = s.params.manualFixings ?? [];
             if (index < 0 || index >= list.length) return {} as Partial<VisualiserState>;
             const next = list.filter((_, i) => i !== index);
-            // If the operator was deleting and just removed the last
-            // fixing, drop them out of delete mode automatically — the
-            // delete pill disables itself with an empty list and the
-            // user would otherwise be stuck on a now-inert mode.
             const nextMode =
                 s.fixingMode === 'delete' && next.length === 0
                     ? ('off' as const)
@@ -225,45 +263,147 @@ export const useVisualiser = create<VisualiserState>((set) => ({
 
     setFixingMode: (m) => set({ fixingMode: m }),
 
-    setSelectedPathIndex: (i) => set({ selectedPathIndex: i }),
+    /* ------------------------------------------------------------------ *
+     * Material groups
+     * ------------------------------------------------------------------ */
 
-    setPathMaterial: (pathIndex, patch) =>
+    startNewGroupEdit: () =>
+        set({
+            editingGroupId: 'new',
+            pendingPaths: [],
+            // Fixing edits can't run at the same time as a group edit.
+            fixingMode: 'off',
+        }),
+
+    startEditingGroup: (groupId) =>
         set((s) => {
-            const list = s.params.nonCutPaths ?? [];
-            const idx = list.findIndex((e) => e.pathIndex === pathIndex);
-            // Null removes the override → path goes back to "cut".
-            if (patch === null) {
-                if (idx < 0) return {} as Partial<VisualiserState>;
-                const next = list.filter((_, i) => i !== idx);
+            const g = (s.params.materialGroups ?? []).find(
+                (x) => x.id === groupId,
+            );
+            return {
+                editingGroupId: groupId,
+                pendingPaths: g ? [...g.pathIndices] : [],
+                fixingMode: 'off',
+            };
+        }),
+
+    cancelGroupEdit: () => set({ editingGroupId: null, pendingPaths: [] }),
+
+    togglePendingPath: (pathIndex) =>
+        set((s) => ({
+            pendingPaths: s.pendingPaths.includes(pathIndex)
+                ? s.pendingPaths.filter((p) => p !== pathIndex)
+                : [...s.pendingPaths, pathIndex],
+        })),
+
+    applyEditMaterial: (material, options) =>
+        set((s) => {
+            const pending = s.pendingPaths;
+            const editingId = s.editingGroupId;
+            const list = s.params.materialGroups ?? [];
+
+            // No-op if there's nothing to apply and no group to delete.
+            if (pending.length === 0 && (editingId === 'new' || !editingId)) {
                 return {
-                    params: { ...s.params, nonCutPaths: next },
+                    editingGroupId: null,
+                    pendingPaths: [],
+                };
+            }
+
+            // Strip pending paths from every OTHER group first — a path
+            // can only belong to one group at a time.
+            const stripped = list
+                .map((g) =>
+                    g.id === editingId
+                        ? g
+                        : {
+                              ...g,
+                              pathIndices: g.pathIndices.filter(
+                                  (i) => !pending.includes(i),
+                              ),
+                          },
+                )
+                .filter((g) => g.pathIndices.length > 0);
+
+            if (material === 'cut') {
+                // No new group — also drop the one being edited.
+                const next = stripped.filter((g) => g.id !== editingId);
+                return {
+                    params: { ...s.params, materialGroups: next },
+                    editingGroupId: null,
+                    pendingPaths: [],
                     dirty: true,
                 };
             }
-            const existing = idx >= 0 ? list[idx] : undefined;
-            const defaultColor =
-                patch.material === 'solid'
-                    ? s.params.panelColor ?? '#d6d6d6'
-                    : patch.material === 'vinyl'
-                      ? '#ffffff'
-                      : '#1a1f23';
-            const merged = {
-                pathIndex,
-                material: patch.material,
-                color: patch.color ?? existing?.color ?? defaultColor,
-                thicknessMm:
-                    patch.thicknessMm ??
-                    existing?.thicknessMm ??
-                    (patch.material === 'acrylic' ? 5 : undefined),
+
+            // Solid / vinyl / acrylic — create or update.
+            const existing =
+                editingId && editingId !== 'new'
+                    ? list.find((g) => g.id === editingId)
+                    : undefined;
+            const color =
+                options?.color ??
+                existing?.color ??
+                defaultGroupColor(material, s.params.panelColor);
+            const thicknessMm =
+                options?.thicknessMm ??
+                existing?.thicknessMm ??
+                (material === 'acrylic' ? 5 : undefined);
+
+            const updated: MaterialGroup = {
+                id: existing?.id ?? nextGroupId(),
+                label: existing?.label,
+                material,
+                color,
+                thicknessMm,
+                pathIndices: [...pending].sort((a, b) => a - b),
             };
-            const next = idx >= 0
-                ? list.map((e, i) => (i === idx ? merged : e))
-                : [...list, merged];
+
+            const withoutOld = stripped.filter((g) => g.id !== updated.id);
             return {
-                params: { ...s.params, nonCutPaths: next },
+                params: {
+                    ...s.params,
+                    materialGroups: [...withoutOld, updated],
+                },
+                editingGroupId: null,
+                pendingPaths: [],
                 dirty: true,
             };
         }),
+
+    updateGroupProps: (groupId, patch) =>
+        set((s) => {
+            const list = s.params.materialGroups ?? [];
+            const next = list.map((g) =>
+                g.id === groupId
+                    ? {
+                          ...g,
+                          color: patch.color ?? g.color,
+                          thicknessMm:
+                              patch.thicknessMm ?? g.thicknessMm,
+                          label: patch.label ?? g.label,
+                      }
+                    : g,
+            );
+            return {
+                params: { ...s.params, materialGroups: next },
+                dirty: true,
+            };
+        }),
+
+    deleteGroup: (groupId) =>
+        set((s) => ({
+            params: {
+                ...s.params,
+                materialGroups: (s.params.materialGroups ?? []).filter(
+                    (g) => g.id !== groupId,
+                ),
+            },
+            editingGroupId:
+                s.editingGroupId === groupId ? null : s.editingGroupId,
+            pendingPaths: s.editingGroupId === groupId ? [] : s.pendingPaths,
+            dirty: true,
+        })),
 
     markSaved: (id) => set({ designId: id, dirty: false }),
 }));

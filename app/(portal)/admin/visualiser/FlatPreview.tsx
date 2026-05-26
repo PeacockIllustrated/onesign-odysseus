@@ -30,8 +30,10 @@ export function FlatPreview({
     vinylPieces = [],
     acrylicPieces = [],
     placedPathsByIndex = null,
-    selectedPathIndex = null,
-    onPathSelect,
+    pathGroupColors = null,
+    pendingPaths,
+    isEditingGroup = false,
+    onPathToggle,
     panelColor = DEFAULT_PANEL_COLOR,
     fixingMode = 'off',
     onFixingClick,
@@ -45,13 +47,22 @@ export function FlatPreview({
     vinylPieces?: MaterialPiece[];
     acrylicPieces?: MaterialPiece[];
     /**
-     * Per-original-path placed+clipped data so the operator can click on
-     * any imported shape (cut / vinyl / acrylic) to select it. Null
-     * disables selection entirely (standoff mode, or no SVG loaded).
+     * Per-original-path placed+clipped data — one entry per imported
+     * path, null if it was clipped away. Drives the click overlays and
+     * group highlights.
      */
     placedPathsByIndex?: Array<FlatPath | null> | null;
-    selectedPathIndex?: number | null;
-    onPathSelect?: (index: number | null) => void;
+    /**
+     * Highlight colour per imported path (group's palette colour) or
+     * null if the path isn't in any group.
+     */
+    pathGroupColors?: Array<string | null> | null;
+    /** Paths in the active group-edit selection (multi-select). */
+    pendingPaths?: Set<number>;
+    /** True when the operator is editing a material group. */
+    isEditingGroup?: boolean;
+    /** Click handler — called with the path index. Only in edit mode. */
+    onPathToggle?: (index: number) => void;
     panelColor?: string;
     fixingMode?: 'off' | 'place' | 'delete';
     /** Called with the click point in flat-development mm coords. */
@@ -60,14 +71,7 @@ export function FlatPreview({
     const svgRef = useRef<SVGSVGElement | null>(null);
 
     const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
-        // Path overlays handle their own click and stopPropagation, so any
-        // click that reaches the root is background → deselect.
-        if (fixingMode === 'off') {
-            if (onPathSelect && selectedPathIndex !== null) {
-                onPathSelect(null);
-            }
-            return;
-        }
+        if (fixingMode === 'off') return;
         if (!onFixingClick || !svgRef.current) return;
         const ctm = svgRef.current.getScreenCTM();
         if (!ctm) return;
@@ -279,40 +283,56 @@ export function FlatPreview({
                     (a cut) just as easily as a filled vinyl/acrylic piece.
                     The selected path gets an orange dashed highlight on
                     top so it's obvious which row the side panel is for. */}
-                {placedPathsByIndex && onPathSelect && (
+                {placedPathsByIndex && (
                     <g>
                         {placedPathsByIndex.map((p, i) => {
                             if (!p) return null;
-                            const isSelected = selectedPathIndex === i;
-                            const cursor =
-                                fixingMode === 'off'
-                                    ? 'pointer'
-                                    : 'crosshair';
+                            const groupStroke =
+                                pathGroupColors?.[i] ?? null;
+                            const inPending = !!pendingPaths?.has(i);
+                            // The hit overlay only listens to clicks
+                            // while the operator is editing a group;
+                            // otherwise the canvas stays passive.
+                            const hitListens =
+                                isEditingGroup && !!onPathToggle;
                             return (
                                 <g key={`pick-${i}`}>
-                                    <path
-                                        d={pathD(p)}
-                                        fill="rgba(0,0,0,0.001)"
-                                        stroke="rgba(0,0,0,0)"
-                                        strokeWidth={Math.max(
-                                            stroke * 4,
-                                            2,
-                                        )}
-                                        style={{ cursor }}
-                                        pointerEvents="all"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            onPathSelect(
-                                                isSelected ? null : i,
-                                            );
-                                        }}
-                                    />
-                                    {isSelected && (
+                                    {/* Solid group highlight underneath
+                                        so it sits below the pending /
+                                        select highlight without
+                                        fighting it. */}
+                                    {groupStroke && !inPending && (
+                                        <path
+                                            d={pathD(p)}
+                                            fill="none"
+                                            stroke={groupStroke}
+                                            strokeWidth={stroke * 1.4}
+                                            pointerEvents="none"
+                                        />
+                                    )}
+                                    {hitListens && (
+                                        <path
+                                            d={pathD(p)}
+                                            fill="rgba(0,0,0,0.001)"
+                                            stroke="rgba(0,0,0,0)"
+                                            strokeWidth={Math.max(
+                                                stroke * 4,
+                                                2,
+                                            )}
+                                            style={{ cursor: 'pointer' }}
+                                            pointerEvents="all"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onPathToggle?.(i);
+                                            }}
+                                        />
+                                    )}
+                                    {inPending && (
                                         <path
                                             d={pathD(p)}
                                             fill="none"
                                             stroke="#f97316"
-                                            strokeWidth={stroke * 2}
+                                            strokeWidth={stroke * 2.4}
                                             strokeDasharray={`${stroke * 3} ${stroke * 2}`}
                                             pointerEvents="none"
                                         />

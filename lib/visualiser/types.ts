@@ -163,27 +163,31 @@ export const PanelParamsSchema = z.object({
      */
     manualFixings: z.array(z.tuple([z.number(), z.number()])).optional(),
     /**
-     * Aperture-mode mixed materials. By default every imported SVG path
-     * becomes a cut-out; entries here override that:
+     * Aperture-mode material groups. Each group bundles a set of imported
+     * SVG paths under a shared material (solid / vinyl / acrylic). Paths
+     * not in any group default to "cut" and end up in the production
+     * aperture as cut-outs. Indices are positions into `imported.paths`,
+     * so the list is cleared whenever a new SVG is loaded.
+     *
      *   - 'solid'   — drop from the cut, leave as panel material. Used
      *                 for inner counters (the hole in an O, e, g) that
      *                 the SVG exports as a separate closed path. Colour
-     *                 / thickness ignored.
+     *                 / thickness ignored visually but stored.
      *   - 'vinyl'   — drop from the cut, draw as a flat colour appliqué.
      *   - 'acrylic' — drop from the cut, draw as a coloured sheet
      *                 extruded by thicknessMm in 3D.
-     * Indices are positions into `imported.paths`, so the list is cleared
-     * whenever a new SVG is loaded.
      */
-    nonCutPaths: z
+    materialGroups: z
         .array(
             z.object({
-                pathIndex: z.number().int().min(0),
+                id: z.string().min(1),
+                label: z.string().optional(),
                 material: z.enum(['solid', 'vinyl', 'acrylic']),
                 color: z
                     .string()
                     .regex(/^#[0-9a-fA-F]{6}$/, 'colour must be 6-digit hex'),
                 thicknessMm: z.number().positive().max(50).optional(),
+                pathIndices: z.array(z.number().int().min(0)),
             }),
         )
         .optional(),
@@ -363,3 +367,20 @@ export interface MaterialPiece {
     /** Only set for acrylic. */
     thicknessMm?: number;
 }
+
+/**
+ * High-contrast palette used to outline material groups on the flat
+ * canvas. Each group gets the colour at `index % palette.length`, so
+ * the operator can tell groups apart at a glance regardless of the
+ * material colour they ship with.
+ */
+export const GROUP_HIGHLIGHT_PALETTE = [
+    '#0ea5e9', // sky
+    '#22c55e', // green
+    '#a855f7', // purple
+    '#f59e0b', // amber
+    '#ec4899', // pink
+    '#14b8a6', // teal
+    '#eab308', // yellow
+    '#6366f1', // indigo
+] as const;
