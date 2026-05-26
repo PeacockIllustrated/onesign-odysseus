@@ -10,6 +10,7 @@ import type {
     PanelSplit,
     FlatPath,
     PanelEdge,
+    MaterialPiece,
 } from '@/lib/visualiser/types';
 
 /** Set by the scene on mount so ExportBar can grab a PDF thumbnail. */
@@ -624,6 +625,93 @@ function StandoffLocators({
     );
 }
 
+/**
+ * Mixed-material pieces — paths the operator has removed from the cut
+ * and re-classified as vinyl (flat colour on the face) or acrylic
+ * (extruded sheet sitting on the face). Each shape is built from its
+ * placed + clipped polygon, so apertures and these pieces line up.
+ */
+function MaterialPieces({
+    face,
+    vinyl,
+    acrylic,
+    outlines = true,
+}: {
+    face: { xMm: number; yMm: number; wMm: number; hMm: number };
+    vinyl: MaterialPiece[];
+    acrylic: MaterialPiece[];
+    outlines?: boolean;
+}) {
+    const toShape = (p: FlatPath): THREE.Shape => {
+        const shape = new THREE.Shape();
+        const toLocal = (q: [number, number]): [number, number] => [
+            (q[0] - face.xMm - face.wMm / 2) * S,
+            (face.yMm + face.hMm / 2 - q[1]) * S,
+        ];
+        const pts = p.points.map(toLocal);
+        if (pts.length === 0) return shape;
+        shape.moveTo(pts[0][0], pts[0][1]);
+        for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i][0], pts[i][1]);
+        if (p.closed) shape.closePath();
+        return shape;
+    };
+
+    return (
+        <group>
+            {/* Vinyl: paper-thin coloured fill ~1 mm in front of the face
+                (avoids z-fighting with the panel surface). */}
+            {vinyl.map((piece, i) => (
+                <mesh
+                    key={`vinyl-${piece.pathIndex}-${i}`}
+                    position={[0, 0, 1 * S]}>
+                    <shapeGeometry args={[toShape(piece.path), 48]} />
+                    <meshBasicMaterial
+                        color={piece.color}
+                        side={THREE.DoubleSide}
+                        polygonOffset
+                        polygonOffsetFactor={1}
+                        polygonOffsetUnits={1}
+                    />
+                    {outlines && (
+                        <Edges color={EDGE_COLOR} lineWidth={1} />
+                    )}
+                </mesh>
+            ))}
+
+            {/* Acrylic: extruded sheet sitting on the face. Sits at z = 0
+                to z = thicknessMm so its back is flush with the panel
+                front (face is paper-thin at z = 0). */}
+            {acrylic.map((piece, i) => {
+                const depth = Math.max(0.1, piece.thicknessMm ?? 5) * S;
+                return (
+                    <mesh
+                        key={`acrylic-${piece.pathIndex}-${i}`}>
+                        <extrudeGeometry
+                            args={[
+                                toShape(piece.path),
+                                {
+                                    depth,
+                                    bevelEnabled: false,
+                                    curveSegments: 48,
+                                },
+                            ]}
+                        />
+                        <meshBasicMaterial
+                            color={piece.color}
+                            polygonOffset
+                            polygonOffsetFactor={1}
+                            polygonOffsetUnits={1}
+                        />
+                        {outlines && (
+                            <Edges color={EDGE_COLOR} lineWidth={1.5} />
+                        )}
+                    </mesh>
+                );
+            })}
+        </group>
+    );
+}
+
 function Panel({
     params,
     development: dev,
@@ -633,6 +721,8 @@ function Panel({
     autoFixings,
     manualFixings,
     reference,
+    vinylPieces,
+    acrylicPieces,
     fold,
     fixingMode,
     onFixingClick,
@@ -648,6 +738,8 @@ function Panel({
     autoFixings: FlatPath[];
     manualFixings: FlatPath[];
     reference: FlatPath[];
+    vinylPieces: MaterialPiece[];
+    acrylicPieces: MaterialPiece[];
     fold: number;
     fixingMode?: 'off' | 'place' | 'delete';
     onFixingClick?: (p: [number, number]) => void;
@@ -737,6 +829,18 @@ function Panel({
             {/* Face — a single sheet with real cut-outs for every aperture /
                 stand-off fixing. No back plate (there isn't one in
                 production), and what you see here is what the cutter cuts. */}
+            {/* Vinyl + acrylic pieces sit on the face front. They render
+                in aperture mode only — VisualiserClient passes empty
+                arrays in standoff mode. */}
+            {face && (vinylPieces.length > 0 || acrylicPieces.length > 0) && (
+                <MaterialPieces
+                    face={face}
+                    vinyl={vinylPieces}
+                    acrylic={acrylicPieces}
+                    outlines={showOutlines}
+                />
+            )}
+
             <FacePlane
                 W={W}
                 H={H}
@@ -857,6 +961,8 @@ export default function Scene3D(props: {
     autoFixings?: FlatPath[];
     manualFixings?: FlatPath[];
     reference?: FlatPath[];
+    vinylPieces?: MaterialPiece[];
+    acrylicPieces?: MaterialPiece[];
     /** 0 = flat (unfolded in 3D), 1 = folded. Default folded. */
     fold?: number;
     /** Active fixing edit mode: 'place' drops, 'delete' removes. */
@@ -870,6 +976,8 @@ export default function Scene3D(props: {
     const autoFixings = props.autoFixings ?? [];
     const manualFixings = props.manualFixings ?? [];
     const reference = props.reference ?? [];
+    const vinylPieces = props.vinylPieces ?? [];
+    const acrylicPieces = props.acrylicPieces ?? [];
     const showOutlines = props.showOutlines ?? true;
     const showStandoffLetters = props.showStandoffLetters ?? true;
     const showStandoffLocators = props.showStandoffLocators ?? true;
@@ -900,6 +1008,8 @@ export default function Scene3D(props: {
                 autoFixings={autoFixings}
                 manualFixings={manualFixings}
                 reference={reference}
+                vinylPieces={vinylPieces}
+                acrylicPieces={acrylicPieces}
                 fold={fold}
                 fixingMode={props.fixingMode}
                 onFixingClick={props.onFixingClick}

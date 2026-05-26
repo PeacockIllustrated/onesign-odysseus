@@ -162,6 +162,26 @@ export const PanelParamsSchema = z.object({
      * fixings at render and export time.
      */
     manualFixings: z.array(z.tuple([z.number(), z.number()])).optional(),
+    /**
+     * Aperture-mode mixed materials. By default every imported SVG path
+     * becomes a cut-out; entries here override that — the path is
+     * removed from the cut and drawn as vinyl (flat colour) or acrylic
+     * (coloured + extruded by thicknessMm). Indices are positions into
+     * `imported.paths`, so the list is cleared whenever a new SVG is
+     * loaded.
+     */
+    nonCutPaths: z
+        .array(
+            z.object({
+                pathIndex: z.number().int().min(0),
+                material: z.enum(['vinyl', 'acrylic']),
+                color: z
+                    .string()
+                    .regex(/^#[0-9a-fA-F]{6}$/, 'colour must be 6-digit hex'),
+                thicknessMm: z.number().positive().max(50).optional(),
+            }),
+        )
+        .optional(),
 });
 export type PanelParams = z.infer<typeof PanelParamsSchema>;
 
@@ -322,4 +342,19 @@ export interface ImportedSvg {
     bbox: { x: number; y: number; w: number; h: number };
     /** Non-blocking laser warnings (features < MIN_LASER_FEATURE_MM). */
     warnings: string[];
+}
+
+/**
+ * A path that has been pulled out of the aperture cut and re-classified
+ * as a different material. Placed + clipped to face bounds, so callers
+ * can render it directly. Vinyl = flat colour on the face; acrylic =
+ * extruded by thicknessMm, sitting on the face front.
+ */
+export interface MaterialPiece {
+    /** Index back into the original imported.paths array. */
+    pathIndex: number;
+    path: FlatPath;
+    color: string;
+    /** Only set for acrylic. */
+    thicknessMm?: number;
 }

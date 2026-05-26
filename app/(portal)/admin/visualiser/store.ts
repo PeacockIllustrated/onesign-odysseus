@@ -62,6 +62,16 @@ interface VisualiserState {
     removeManualFixing: (index: number) => void;
     clearManualFixings: () => void;
     setFixingMode: (m: 'off' | 'place' | 'delete') => void;
+    setPathMaterial: (
+        pathIndex: number,
+        patch:
+            | null
+            | {
+                  material: 'vinyl' | 'acrylic';
+                  color?: string;
+                  thicknessMm?: number;
+              },
+    ) => void;
     markSaved: (id: string) => void;
 }
 
@@ -117,6 +127,9 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                 ...s.params,
                 aperturePlacement:
                     s.params.aperturePlacement ?? DEFAULT_PLACEMENT,
+                // Path indices change with the new artwork, so any prior
+                // material assignments would point at the wrong shapes.
+                nonCutPaths: [],
             },
             dirty: true,
         })),
@@ -125,7 +138,11 @@ export const useVisualiser = create<VisualiserState>((set) => ({
         set((s) => ({
             svgSource: null,
             imported: null,
-            params: { ...s.params, aperturePlacement: null },
+            params: {
+                ...s.params,
+                aperturePlacement: null,
+                nonCutPaths: [],
+            },
             dirty: true,
         })),
 
@@ -186,6 +203,41 @@ export const useVisualiser = create<VisualiserState>((set) => ({
         })),
 
     setFixingMode: (m) => set({ fixingMode: m }),
+
+    setPathMaterial: (pathIndex, patch) =>
+        set((s) => {
+            const list = s.params.nonCutPaths ?? [];
+            const idx = list.findIndex((e) => e.pathIndex === pathIndex);
+            // Null removes the override → path goes back to "cut".
+            if (patch === null) {
+                if (idx < 0) return {} as Partial<VisualiserState>;
+                const next = list.filter((_, i) => i !== idx);
+                return {
+                    params: { ...s.params, nonCutPaths: next },
+                    dirty: true,
+                };
+            }
+            const existing = idx >= 0 ? list[idx] : undefined;
+            const merged = {
+                pathIndex,
+                material: patch.material,
+                color:
+                    patch.color ??
+                    existing?.color ??
+                    (patch.material === 'vinyl' ? '#ffffff' : '#1a1f23'),
+                thicknessMm:
+                    patch.thicknessMm ??
+                    existing?.thicknessMm ??
+                    (patch.material === 'acrylic' ? 5 : undefined),
+            };
+            const next = idx >= 0
+                ? list.map((e, i) => (i === idx ? merged : e))
+                : [...list, merged];
+            return {
+                params: { ...s.params, nonCutPaths: next },
+                dirty: true,
+            };
+        }),
 
     markSaved: (id) => set({ designId: id, dirty: false }),
 }));

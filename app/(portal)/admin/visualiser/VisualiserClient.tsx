@@ -26,6 +26,7 @@ import {
     DEFAULT_PLACEMENT,
     type VisualiserDesignRow,
     type PanelParams,
+    type MaterialPiece,
 } from '@/lib/visualiser/types';
 
 const Scene3D = dynamic(() => import('./Scene3D'), {
@@ -166,6 +167,35 @@ export function VisualiserClient({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [development, imported, JSON.stringify(placement)]);
 
+    // Same placement + clipping, but tracked per original imported path so
+    // material assignments (cut / vinyl / acrylic) can be applied by
+    // original index — preserves the user's mental model of "click that
+    // shape, paint it vinyl" even when paths get clipped to face bounds.
+    const placedClipByIndex = useMemo<Array<import('@/lib/visualiser/types').FlatPath | null>>(() => {
+        if (!development || !imported) return [];
+        const imp = imported;
+        return imp.paths.map((path) => {
+            const placed = placeAperture(
+                development,
+                [path],
+                imp.bbox,
+                placement,
+            );
+            const clipped = clipApertureToFace(development, placed);
+            return clipped.paths[0] ?? null;
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [development, imported, JSON.stringify(placement)]);
+
+    // Lookup: original imported-path index → material override (if any).
+    const materialByIndex = useMemo(() => {
+        const map = new Map<number, NonNullable<PanelParams['nonCutPaths']>[number]>();
+        for (const entry of params.nonCutPaths ?? []) {
+            map.set(entry.pathIndex, entry);
+        }
+        return map;
+    }, [params.nonCutPaths]);
+
     const mode = params.apertureMode ?? 'aperture';
     // Diameter is the source of truth; fall back to legacy radius * 2 for
     // designs saved before the units change.
@@ -173,11 +203,43 @@ export function VisualiserClient({
         params.fixingDiameterMm ??
         (params.fixingRadiusMm ? params.fixingRadiusMm * 2 : 10);
 
-    // Aperture-mode cuts (lettering as holes).
-    const aperture = useMemo(
-        () => (mode === 'aperture' ? placedClip.paths : []),
-        [mode, placedClip.paths],
-    );
+    // Aperture-mode cuts (lettering as holes). Paths with a material
+    // override drop out of the cut — they're rendered as vinyl or
+    // acrylic instead.
+    const aperture = useMemo(() => {
+        if (mode !== 'aperture') return [];
+        const out: typeof placedClip.paths = [];
+        for (let i = 0; i < placedClipByIndex.length; i++) {
+            const p = placedClipByIndex[i];
+            if (!p) continue;
+            if (materialByIndex.has(i)) continue; // overridden → not cut
+            out.push(p);
+        }
+        return out;
+    }, [mode, placedClipByIndex, materialByIndex]);
+
+    // Mixed-material pieces — only meaningful in aperture mode. Each
+    // entry pairs a placed+clipped path with the material picked for it.
+    const materialPieces = useMemo(() => {
+        if (mode !== 'aperture')
+            return { vinyl: [] as MaterialPiece[], acrylic: [] as MaterialPiece[] };
+        const vinyl: MaterialPiece[] = [];
+        const acrylic: MaterialPiece[] = [];
+        for (let i = 0; i < placedClipByIndex.length; i++) {
+            const path = placedClipByIndex[i];
+            const entry = materialByIndex.get(i);
+            if (!path || !entry) continue;
+            const piece: MaterialPiece = {
+                pathIndex: i,
+                path,
+                color: entry.color,
+                thicknessMm: entry.thicknessMm,
+            };
+            if (entry.material === 'vinyl') vinyl.push(piece);
+            else acrylic.push(piece);
+        }
+        return { vinyl, acrylic };
+    }, [mode, placedClipByIndex, materialByIndex]);
 
     // Standoff-mode features: lettering outline shown as a reference, with
     // fixing holes placed inside each letter shape.
@@ -472,6 +534,8 @@ export function VisualiserClient({
                             keyline={keyline}
                             fixings={fixings}
                             reference={reference}
+                            vinylPieces={materialPieces.vinyl}
+                            acrylicPieces={materialPieces.acrylic}
                             panelColor={params.panelColor ?? '#d6d6d6'}
                             fixingMode={fixingMode}
                             onFixingClick={handleFixingClick}
@@ -486,6 +550,8 @@ export function VisualiserClient({
                             autoFixings={autoFixings}
                             manualFixings={manualFixings}
                             reference={reference}
+                            vinylPieces={materialPieces.vinyl}
+                            acrylicPieces={materialPieces.acrylic}
                             fold={tab === 'folded' ? 1 : fold}
                             fixingMode={fixingMode}
                             onFixingClick={handleFixingClick}

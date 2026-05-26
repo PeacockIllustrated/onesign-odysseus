@@ -5,6 +5,7 @@ import type {
     PanelDevelopment,
     PanelSplit,
     FlatPath,
+    MaterialPiece,
 } from '@/lib/visualiser/types';
 
 const DEFAULT_PANEL_COLOR = '#d6d6d6';
@@ -26,6 +27,8 @@ export function FlatPreview({
     keyline,
     fixings = [],
     reference = [],
+    vinylPieces = [],
+    acrylicPieces = [],
     panelColor = DEFAULT_PANEL_COLOR,
     fixingMode = 'off',
     onFixingClick,
@@ -36,6 +39,8 @@ export function FlatPreview({
     keyline: FlatPath[];
     fixings?: FlatPath[];
     reference?: FlatPath[];
+    vinylPieces?: MaterialPiece[];
+    acrylicPieces?: MaterialPiece[];
     panelColor?: string;
     fixingMode?: 'off' | 'place' | 'delete';
     /** Called with the click point in flat-development mm coords. */
@@ -162,6 +167,34 @@ export function FlatPreview({
                         </text>
                     </g>
                 )}
+
+                {/* Vinyl appliqués — flat coloured fills sitting on the
+                    face. No cut, no extrusion: just a printed/cut vinyl
+                    sticker glued to the panel. */}
+                {vinylPieces.map((piece, i) => (
+                    <path
+                        key={`vinyl-${i}`}
+                        d={pathD(piece.path)}
+                        fill={piece.color}
+                        stroke="#1a1f23"
+                        strokeWidth={stroke * 0.4}
+                    />
+                ))}
+
+                {/* Acrylic pieces — coloured fills with a stronger edge
+                    stroke so they read as a sheet sitting proud of the
+                    panel rather than vinyl. Thickness shows up properly
+                    in the 3D view; the flat preview just hints at it. */}
+                {acrylicPieces.map((piece, i) => (
+                    <g key={`acrylic-${i}`}>
+                        <path
+                            d={pathD(piece.path)}
+                            fill={piece.color}
+                            stroke="#1a1f23"
+                            strokeWidth={stroke * 1.1}
+                        />
+                    </g>
+                ))}
 
                 {/* Fold lines */}
                 {dev.foldLines.map((f) => (

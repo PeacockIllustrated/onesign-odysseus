@@ -1,14 +1,172 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useVisualiser } from './store';
 import { importSvg } from '@/lib/visualiser/svg-import';
 import type {
     AlignH,
     AlignV,
     ApertureMode,
+    FlatPath,
+    PanelParams,
 } from '@/lib/visualiser/types';
 import { AlertTriangle, Crosshair, Eraser, Upload, X } from 'lucide-react';
+
+type NonCutEntry = NonNullable<PanelParams['nonCutPaths']>[number];
+
+/**
+ * Per-imported-path material picker for aperture mode. Each row maps to
+ * one imported SVG path: leave it as Cut (the default), or move it out
+ * of the cut and re-render as vinyl (colour) or acrylic (colour +
+ * thickness). Indices line up with imported.paths order.
+ */
+function MaterialsPanel({
+    paths,
+    nonCut,
+    setPathMaterial,
+}: {
+    paths: FlatPath[];
+    nonCut: NonCutEntry[];
+    setPathMaterial: (
+        pathIndex: number,
+        patch:
+            | null
+            | {
+                  material: 'vinyl' | 'acrylic';
+                  color?: string;
+                  thicknessMm?: number;
+              },
+    ) => void;
+}) {
+    const byIndex = useMemo(() => {
+        const m = new Map<number, NonCutEntry>();
+        for (const e of nonCut) m.set(e.pathIndex, e);
+        return m;
+    }, [nonCut]);
+
+    if (paths.length === 0) return null;
+
+    return (
+        <div className="space-y-2 pt-2 border-t border-neutral-100">
+            <h4 className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                Materials per path
+            </h4>
+            <p className="text-[10px] text-neutral-400">
+                By default every SVG path is cut out of the panel. Switch a
+                row to Vinyl (printed/cut sticker) or Acrylic (sheet sitting
+                on the face) to keep it.
+            </p>
+            <ul className="space-y-2">
+                {paths.map((_, i) => {
+                    const entry = byIndex.get(i);
+                    const material = entry?.material ?? 'cut';
+                    return (
+                        <li
+                            key={i}
+                            className="rounded-md border border-neutral-200 bg-neutral-50 p-2"
+                        >
+                            <div className="flex items-center justify-between gap-2">
+                                <span className="text-[11px] font-medium text-neutral-600">
+                                    Path {i + 1}
+                                </span>
+                                <div className="flex overflow-hidden rounded border border-neutral-300">
+                                    {(
+                                        [
+                                            ['cut', 'Cut'],
+                                            ['vinyl', 'Vinyl'],
+                                            ['acrylic', 'Acrylic'],
+                                        ] as const
+                                    ).map(([v, label], k) => (
+                                        <button
+                                            key={v}
+                                            type="button"
+                                            onClick={() =>
+                                                setPathMaterial(
+                                                    i,
+                                                    v === 'cut'
+                                                        ? null
+                                                        : { material: v },
+                                                )
+                                            }
+                                            className={`px-2 py-0.5 text-[10px] font-medium ${
+                                                k > 0
+                                                    ? 'border-l border-neutral-300'
+                                                    : ''
+                                            } ${
+                                                material === v
+                                                    ? 'bg-black text-white'
+                                                    : 'bg-white text-neutral-500 hover:bg-neutral-100'
+                                            }`}
+                                        >
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            {entry && (
+                                <div className="mt-2 grid grid-cols-2 gap-2">
+                                    <label className="block">
+                                        <span className="text-[10px] text-neutral-500">
+                                            Colour
+                                        </span>
+                                        <div className="mt-0.5 flex items-center gap-1.5">
+                                            <input
+                                                type="color"
+                                                value={entry.color}
+                                                onChange={(e) =>
+                                                    setPathMaterial(i, {
+                                                        material:
+                                                            entry.material,
+                                                        color: e.target.value,
+                                                    })
+                                                }
+                                                className="h-6 w-8 cursor-pointer rounded border border-neutral-300 bg-white p-0.5"
+                                                aria-label={`Path ${i + 1} colour`}
+                                            />
+                                            <input
+                                                type="text"
+                                                value={entry.color}
+                                                onChange={(e) => {
+                                                    const v =
+                                                        e.target.value.trim();
+                                                    if (
+                                                        /^#[0-9a-fA-F]{6}$/.test(
+                                                            v,
+                                                        )
+                                                    )
+                                                        setPathMaterial(i, {
+                                                            material:
+                                                                entry.material,
+                                                            color: v,
+                                                        });
+                                                }}
+                                                className="flex-1 rounded border border-neutral-300 px-1 py-0.5 font-mono text-[10px] uppercase focus:border-black focus:outline-none"
+                                            />
+                                        </div>
+                                    </label>
+                                    {entry.material === 'acrylic' && (
+                                        <NumField
+                                            label="Thickness (mm)"
+                                            step={0.5}
+                                            value={entry.thicknessMm ?? 5}
+                                            onChange={(n) =>
+                                                setPathMaterial(i, {
+                                                    material: 'acrylic',
+                                                    thicknessMm:
+                                                        n > 0 ? n : 0.5,
+                                                })
+                                            }
+                                        />
+                                    )}
+                                </div>
+                            )}
+                        </li>
+                    );
+                })}
+            </ul>
+        </div>
+    );
+}
 
 function Segmented<T extends string>({
     options,
@@ -82,6 +240,7 @@ export function SvgDropzone() {
         fixingMode,
         setFixingMode,
         clearManualFixings,
+        setPathMaterial,
     } = useVisualiser();
     const inputRef = useRef<HTMLInputElement>(null);
     const [error, setError] = useState<string | null>(null);
@@ -284,6 +443,14 @@ export function SvgDropzone() {
                                 />
                             </div>
                         </div>
+                        {(params.apertureMode ?? 'aperture') === 'aperture' &&
+                            imported && (
+                                <MaterialsPanel
+                                    paths={imported.paths}
+                                    nonCut={params.nonCutPaths ?? []}
+                                    setPathMaterial={setPathMaterial}
+                                />
+                            )}
                         {(params.apertureMode ?? 'aperture') === 'standoff' && (
                             <>
                                 {/* Lettering — physical letter material */}
