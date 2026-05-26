@@ -85,9 +85,9 @@ export function ExportBar({
             sectionExport,
             params,
             apertureBySection,
-            // Keyline + reference outlines + 3D thumbnail are reference-only.
-            // Production PDF gets cut geometry only — apertures and fixings.
+            keylineBySection,
             fixingsBySection,
+            // Reference outlines + 3D thumbnail are reference-only.
         });
         download(blob, pdfFilename(params, 'production'));
     };

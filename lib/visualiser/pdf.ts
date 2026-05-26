@@ -1079,15 +1079,22 @@ export function generateProductionPdfBlob(opts: PdfOptions): Blob {
     const productionStroke = Math.max(0.05, Math.min(0.2, maxPart / 5000));
 
     // Project every section's geometry in export-sheet coords.
-    // The KEYLINE is intentionally not drawn here. It's an outward
-    // offset of each aperture used as a visual register / trap
-    // indicator in the reference PDF, not a real cut — drawing it in
-    // a CAM file would tell the cutter to cut a second outline
-    // millimetres away from the actual aperture, which is exactly
-    // what the operator does NOT want.
+    //
+    // When the design uses a KEYLINE (push-through letters), the
+    // panel is cut along the KEYLINE — slightly larger than the
+    // letter — so a separate push-through insert can sit in the
+    // hole with a clean shoulder. The original aperture letter
+    // shapes get cut from a different material (acrylic etc.) and
+    // pushed through from behind. Those push-through cuts go on
+    // their own page below the panel layout.
+    //
+    // When there is NO keyline, the panel is cut along the
+    // aperture itself and there are no push-through inserts.
     sectionExport.sections.forEach((section, i) => {
         const ox = section.layoutOriginXMm;
         const sectionAp = opts.apertureBySection?.[i] ?? [];
+        const sectionKl = opts.keylineBySection?.[i] ?? [];
+        const panelCuts = sectionKl.length > 0 ? sectionKl : sectionAp;
         const sectionFx = opts.fixingsBySection?.[i] ?? [];
 
         // Outer perimeter — one continuous welded closed contour.
@@ -1113,8 +1120,9 @@ export function generateProductionPdfBlob(opts: PdfOptions): Blob {
             }
         }
 
-        // Aperture cut(s) — each closed sub-path as one welded contour.
-        for (const ap of sectionAp) {
+        // Panel cut(s) — the actual line the cutter follows on the
+        // panel. Keyline when present (push-through), else aperture.
+        for (const ap of panelCuts) {
             const pts = ap.points.map(
                 ([x, y]) => [px(x), py(y)] as [number, number],
             );
@@ -1174,6 +1182,89 @@ export function generateProductionPdfBlob(opts: PdfOptions): Blob {
         Math.min(PAGE_H - 4, dY + partH * scale + INFO_GAP),
     );
     doc.setTextColor(0);
+
+    // ---- Page 2: push-through insert cuts ----------------------------
+    // When the design uses a keyline, the actual letter shapes (the
+    // SVG aperture paths) are cut from the push-through material —
+    // typically a coloured / illuminated acrylic — and pushed through
+    // the larger keyline holes in the panel from behind. Emit them as
+    // their own welded contours on a separate page so the CAM operator
+    // gets a clean cut file for the insert material.
+    const hasKeyline =
+        (opts.keylineBySection ?? []).some((arr) => arr.length > 0);
+    const allApertures: FlatPath[] = (opts.apertureBySection ?? []).flatMap(
+        (arr) => arr,
+    );
+    if (hasKeyline && allApertures.length > 0) {
+        // Bounding box of the insert layout so we can size the page.
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+        for (const p of allApertures) {
+            for (const [x, y] of p.points) {
+                if (x < minX) minX = x;
+                if (y < minY) minY = y;
+                if (x > maxX) maxX = x;
+                if (y > maxY) maxY = y;
+            }
+        }
+        const insertW = Math.max(1, maxX - minX);
+        const insertH = Math.max(1, maxY - minY);
+        // 1:1 page, same margin as the panel cut page.
+        const insertPageW = insertW + 2 * M;
+        const insertPageH = insertH + 2 * M;
+        if (
+            insertPageW <= MAX_PAGE_MM &&
+            insertPageH <= MAX_PAGE_MM
+        ) {
+            doc.addPage(
+                [insertPageW, insertPageH],
+                insertPageW >= insertPageH ? 'landscape' : 'portrait',
+            );
+            const ipx = (x: number) => M + (x - minX);
+            const ipy = (y: number) => M + (y - minY);
+            doc.setDrawColor(0);
+            doc.setLineWidth(productionStroke);
+            for (const ap of allApertures) {
+                const pts = ap.points.map(
+                    ([x, y]) => [ipx(x), ipy(y)] as [number, number],
+                );
+                if (ap.closed) drawClosedPolyline(doc, pts, 'S');
+                else if (pts.length >= 2) {
+                    const deltas: number[][] = [];
+                    for (let k = 1; k < pts.length; k++) {
+                        deltas.push([
+                            pts[k][0] - pts[k - 1][0],
+                            pts[k][1] - pts[k - 1][1],
+                        ]);
+                    }
+                    doc.lines(
+                        deltas,
+                        pts[0][0],
+                        pts[0][1],
+                        [1, 1],
+                        'S',
+                        false,
+                    );
+                }
+            }
+            // Info strip
+            const insertInfo = [
+                'ONESIGN',
+                params.name,
+                'PUSH-THROUGH INSERTS',
+                `${allApertures.length} piece${allApertures.length === 1 ? '' : 's'}`,
+                `bounding box ${Math.round(insertW)} x ${Math.round(insertH)} mm`,
+                new Date().toLocaleDateString('en-GB'),
+                '1:1',
+            ].join('  |  ');
+            doc.setFontSize(8);
+            doc.setTextColor(110);
+            doc.text(T(insertInfo), M, M + insertH + INFO_GAP);
+            doc.setTextColor(0);
+        }
+    }
 
     return doc.output('blob');
 }
