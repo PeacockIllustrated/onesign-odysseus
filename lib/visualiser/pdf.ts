@@ -853,6 +853,21 @@ function buildMaterialPages(opts: PdfOptions): MaterialPageSpec[] {
         const distances = standoffPieces.map(
             (p) => `${p.standoffDistanceMm} mm`,
         );
+        // Stud spec — fixings the back-shop procures. Defaults derived
+        // from the largest standoff distance + a 15 mm penetration
+        // allowance into the substrate when the operator hasn't set
+        // anything explicitly.
+        const stud = opts.params.standoffStudSpec ?? {};
+        const maxDistance = standoffPieces.reduce(
+            (m, p) => Math.max(m, p.standoffDistanceMm),
+            0,
+        );
+        const studThread = stud.thread ?? 'M8';
+        const studLength =
+            stud.lengthMm ?? Math.max(20, Math.round(maxDistance + 15));
+        const studFinish = stud.finish ?? 'Stainless A2';
+        const studSummary = `${studThread} × ${studLength} mm, ${studFinish}`;
+        const studSupplier = stud.supplier;
         pages.push({
             kind: 'standoff',
             label: 'Stood-off lettering',
@@ -866,6 +881,10 @@ function buildMaterialPages(opts: PdfOptions): MaterialPageSpec[] {
                 ['Colour', summariseVariants(colours)],
                 ['Thickness', summariseVariants(thicknesses)],
                 ['Standoff', summariseVariants(distances)],
+                ['Stud', studSummary],
+                ...(studSupplier
+                    ? ([['Supplier', studSupplier]] as Array<[string, string]>)
+                    : []),
             ],
             paths: standoffPieces.flatMap((p) => [
                 p.path,
@@ -1767,11 +1786,30 @@ export async function generateProductionPdfBlob(
         Math.min(0.2, Math.max(layoutW, layoutH) / 5000),
     );
 
+    // Counter-survival check — when aperture counters exist AND no
+    // section carries a global keyline, the counters can't survive
+    // the panel-only cut (they fall out with the letter-piece during
+    // fabrication). The in-app banner warns about this, but once the
+    // PDF leaves the building the warning is lost — so stamp it on
+    // the page too, in the operator's face. Push-through groups carry
+    // their counters as separate insert pieces, so don't count those.
+    const apertureCounterCount = (opts.apertureHolesBySection ?? [])
+        .flat()
+        .filter((p) => p.closed && p.points.length >= 3).length;
+    const hasAnyKeyline = (opts.keylineBySection ?? []).some(
+        (arr) => arr.length > 0,
+    );
+    const counterSurvivalWarning =
+        apertureCounterCount > 0 && !hasAnyKeyline
+            ? `WARNING: ${apertureCounterCount} letter counter${apertureCounterCount === 1 ? '' : 's'} cannot survive this cut — counter falls away with letter-piece during fabrication. To preserve counters as illuminated acrylic, re-export with a keyline + push-through group.`
+            : null;
+    const warningBandH = counterSurvivalWarning ? 18 : 0;
+
     // ---- Page 1: panel cut -----------------------------------------
     jobs.push({
         subtitle: 'Panel cut — perimeter + apertures + stand-off holes',
         partW: layoutW,
-        partH: layoutH,
+        partH: layoutH + warningBandH,
         footerInfo: [
             `${params.materialLabel || 'material -'}  ·  ${params.materialThicknessMm} mm`,
             `face ${params.panelWidthMm} × ${params.panelHeightMm} mm  ·  ${
@@ -1781,8 +1819,31 @@ export async function generateProductionPdfBlob(
             }  ·  ${today}`,
         ],
         draw: (dX, dY) => {
+            // Counter-survival warning band — yellow band at the top
+            // of the content area, content shifted down beneath it.
+            if (counterSurvivalWarning) {
+                doc.setFillColor(255, 243, 205); // soft amber
+                doc.setDrawColor(217, 154, 0);
+                doc.setLineWidth(0.35);
+                doc.rect(dX, dY, layoutW, warningBandH - 3, 'FD');
+                doc.setTextColor(120, 80, 0);
+                doc.setFont(font, 'bold');
+                doc.setFontSize(8.5);
+                doc.text(
+                    txt(counterSurvivalWarning),
+                    dX + 4,
+                    dY + 6,
+                    {
+                        maxWidth: layoutW - 8,
+                    },
+                );
+                doc.setFont(font, 'normal');
+                doc.setTextColor(0);
+                doc.setDrawColor(0);
+            }
+            const yOffset = warningBandH;
             const px = (x: number) => dX + x;
-            const py = (y: number) => dY + y;
+            const py = (y: number) => dY + yOffset + y;
             sectionExport.sections.forEach((section, i) => {
                 const ox = section.layoutOriginXMm;
                 const sectionAp = opts.apertureBySection?.[i] ?? [];
@@ -1966,7 +2027,7 @@ export async function generateProductionPdfBlob(
                 : '';
         jobs.push({
             subtitle:
-                'Push-through inserts — outer letter + each counter as a SEPARATE piece, mount on backing board behind panel',
+                'Push-through inserts — outer letter + each counter cut as SEPARATE pieces. Glue each counter to backing in its original position alongside its outer ring; do NOT bond counter to outer.',
             partW: insertW,
             partH: insertH,
             footerInfo: [
@@ -1978,6 +2039,7 @@ export async function generateProductionPdfBlob(
                 ]
                     .filter(Boolean)
                     .join('  ·  '),
+                'ASSEMBLY: bond every piece to the diffuser backing panel (next page) in its original position, then press from REAR of face panel.',
             ],
             draw: (dX, dY) => {
                 const ipx = (x: number) => dX + (x - minX);
@@ -2019,6 +2081,70 @@ export async function generateProductionPdfBlob(
                     );
                     drawClosedPolyline(doc, pts, 'S');
                 }
+            },
+        });
+
+        // ---- Push-through diffuser backing page -----------------------
+        //
+        // The opal backing panel the letter pieces (and counters) glue
+        // to before the assembly is pressed into the rear of the face
+        // panel. Visible from the front through the keyline shoulder
+        // as a soft halo around each letter when backlit.
+        //
+        // Cut at the union bbox of all push-through pieces (with the
+        // same 12 mm pad used in the 3D scene) — production typically
+        // uses an off-the-shelf opal acrylic sheet. The cut file is
+        // just the panel outline; assembly happens by hand.
+        const BACKING_PAD = 12;
+        const BACKING_THICKNESS_MM = 5;
+        const backingW = insertW + BACKING_PAD * 2;
+        const backingH = insertH + BACKING_PAD * 2;
+        jobs.push({
+            subtitle:
+                'Push-through diffuser backing — opal acrylic panel. Letter pieces + counters glue to FRONT; assembly press-fits against REAR of face panel.',
+            partW: backingW,
+            partH: backingH,
+            footerInfo: [
+                `Opal acrylic  ·  ${BACKING_THICKNESS_MM} mm thick  ·  ${Math.round(backingW)} × ${Math.round(backingH)} mm`,
+                'Light diffuses through this panel; halo visible at keyline shoulder around each letter when backlit.',
+                today,
+            ],
+            draw: (dX, dY) => {
+                doc.setDrawColor(0);
+                doc.setLineWidth(productionStroke);
+                // Outline — single rectangle the cutter follows.
+                doc.rect(dX, dY, backingW, backingH, 'S');
+                // Ghost letter outlines INSIDE the rectangle (light
+                // grey, dashed) so the operator can verify the
+                // backing footprint covers every piece. Not cut —
+                // reference only.
+                doc.setDrawColor(170);
+                doc.setLineWidth(0.2);
+                doc.setLineDashPattern([1.2, 0.8], 0);
+                for (const ap of insertOuters) {
+                    if (!ap.closed || ap.points.length < 3) continue;
+                    const pts = ap.points.map(
+                        ([x, y]) =>
+                            [
+                                dX + BACKING_PAD + (x - minX),
+                                dY + BACKING_PAD + (y - minY),
+                            ] as [number, number],
+                    );
+                    drawClosedPolyline(doc, pts, 'S');
+                }
+                for (const sp of insertCounters) {
+                    if (!sp.closed || sp.points.length < 3) continue;
+                    const pts = sp.points.map(
+                        ([x, y]) =>
+                            [
+                                dX + BACKING_PAD + (x - minX),
+                                dY + BACKING_PAD + (y - minY),
+                            ] as [number, number],
+                    );
+                    drawClosedPolyline(doc, pts, 'S');
+                }
+                doc.setLineDashPattern([], 0);
+                doc.setDrawColor(0);
             },
         });
     }

@@ -1032,6 +1032,131 @@ export function SvgDropzone() {
                                     </label>
                                 </div>
 
+                                {/* Stud hardware — thread / length / finish.
+                                    Surfaced on the standoff material page of
+                                    the reference PDF so the back-shop has
+                                    the procurement spec without phoning. */}
+                                <div className="space-y-2 pt-1">
+                                    <h4 className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                                        Stud hardware
+                                    </h4>
+                                    <p className="text-[10px] text-neutral-400">
+                                        Printed on the reference PDF for the
+                                        fabricator. Defaults: M8 stainless,
+                                        length sized to standoff distance.
+                                    </p>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <label className="block">
+                                            <span className="text-[10px] text-neutral-500">
+                                                Thread
+                                            </span>
+                                            <select
+                                                value={
+                                                    params.standoffStudSpec
+                                                        ?.thread ?? 'M8'
+                                                }
+                                                onChange={(e) =>
+                                                    setParam(
+                                                        'standoffStudSpec',
+                                                        {
+                                                            ...(params.standoffStudSpec ??
+                                                                {}),
+                                                            thread: e.target
+                                                                .value as
+                                                                | 'M5'
+                                                                | 'M6'
+                                                                | 'M8'
+                                                                | 'M10',
+                                                        },
+                                                    )
+                                                }
+                                                className="mt-0.5 w-full rounded border border-neutral-300 px-1.5 py-1 text-xs focus:border-black focus:outline-none"
+                                            >
+                                                <option value="M5">M5</option>
+                                                <option value="M6">M6</option>
+                                                <option value="M8">M8</option>
+                                                <option value="M10">M10</option>
+                                            </select>
+                                        </label>
+                                        <NumField
+                                            label="Length (mm)"
+                                            step={5}
+                                            value={
+                                                params.standoffStudSpec
+                                                    ?.lengthMm ??
+                                                Math.max(
+                                                    20,
+                                                    Math.round(
+                                                        (params.standoffDistanceMm ??
+                                                            25) + 15,
+                                                    ),
+                                                )
+                                            }
+                                            onChange={(n) =>
+                                                setParam(
+                                                    'standoffStudSpec',
+                                                    {
+                                                        ...(params.standoffStudSpec ??
+                                                            {}),
+                                                        lengthMm:
+                                                            n > 0 ? n : 20,
+                                                    },
+                                                )
+                                            }
+                                        />
+                                    </div>
+                                    <label className="block">
+                                        <span className="text-[10px] text-neutral-500">
+                                            Finish
+                                        </span>
+                                        <input
+                                            type="text"
+                                            value={
+                                                params.standoffStudSpec
+                                                    ?.finish ?? 'Stainless A2'
+                                            }
+                                            onChange={(e) =>
+                                                setParam(
+                                                    'standoffStudSpec',
+                                                    {
+                                                        ...(params.standoffStudSpec ??
+                                                            {}),
+                                                        finish: e.target.value,
+                                                    },
+                                                )
+                                            }
+                                            placeholder="Stainless A2"
+                                            className="mt-0.5 w-full rounded border border-neutral-300 px-1.5 py-1 text-xs focus:border-black focus:outline-none"
+                                        />
+                                    </label>
+                                    <label className="block">
+                                        <span className="text-[10px] text-neutral-500">
+                                            Supplier (optional)
+                                        </span>
+                                        <input
+                                            type="text"
+                                            value={
+                                                params.standoffStudSpec
+                                                    ?.supplier ?? ''
+                                            }
+                                            onChange={(e) =>
+                                                setParam(
+                                                    'standoffStudSpec',
+                                                    {
+                                                        ...(params.standoffStudSpec ??
+                                                            {}),
+                                                        supplier:
+                                                            e.target.value ||
+                                                            undefined,
+                                                    },
+                                                )
+                                            }
+                                            placeholder="e.g. ASF Components"
+                                            className="mt-0.5 w-full rounded border border-neutral-300 px-1.5 py-1 text-xs focus:border-black focus:outline-none"
+                                        />
+                                    </label>
+                                </div>
+
                                 {/* Fixings — diameter + density + manual */}
                                 <div className="space-y-2 pt-1">
                                     <h4 className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">

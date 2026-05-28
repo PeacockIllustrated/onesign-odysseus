@@ -156,6 +156,24 @@ export const PanelParamsSchema = z.object({
         .regex(/^#[0-9a-fA-F]{6}$/, 'letterColor must be a 6-digit hex colour')
         .optional(),
     /**
+     * Standoff stud / fixing hardware spec — what the fabricator
+     * actually procures. Captured once per sign (signs typically use
+     * one stud type throughout). Surfaced on the standoff material
+     * page of the reference PDF so the back-shop knows exactly which
+     * fixings to order without phoning the office.
+     *
+     * Defaults to M8 stainless studs sized for the sign's standoff
+     * distance (distance + ~15 mm penetration allowance).
+     */
+    standoffStudSpec: z
+        .object({
+            thread: z.enum(['M5', 'M6', 'M8', 'M10']).optional(),
+            lengthMm: z.number().positive().max(300).optional(),
+            finish: z.string().max(60).optional(),
+            supplier: z.string().max(120).optional(),
+        })
+        .optional(),
+    /**
      * Manually-placed fixing positions in flat-development coords (mm).
      * These survive density / radius / artwork edits — they're the "I
      * need a fixing exactly here" pins. Merged with the auto-placed
