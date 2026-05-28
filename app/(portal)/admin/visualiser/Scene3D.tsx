@@ -919,10 +919,18 @@ function MaterialPieces({
 function PushThroughPieces({
     face,
     pieces,
+    materialThicknessMm,
     outlines = true,
 }: {
     face: { xMm: number; yMm: number; wMm: number; hMm: number };
     pieces: PushThroughPiece[];
+    /**
+     * Face panel thickness — letters extrude back from the panel face
+     * far enough to pass through the panel hole and mount on the
+     * backing panel front. Without this, the letter back face sits at
+     * the same z as the face plane and z-fights the panel.
+     */
+    materialThicknessMm: number;
     outlines?: boolean;
 }) {
     const builtShapes = useMemo(() => {
@@ -963,17 +971,17 @@ function PushThroughPieces({
             {pieces.map((piece, pi) => {
                 const built = builtShapes[pi];
                 if (!built.hasOuter) return null;
-                // Letter spans `thicknessMm` along z, with its FRONT face
-                // proud of the panel by `protrusionMm` and its BACK face
-                // touching the diffuser backing panel behind. Clamp so
-                // thickness >= protrusion — the letter can't be thinner
-                // than what it sticks out (would float in space).
-                const thicknessMm = Math.max(
-                    piece.thicknessMm,
-                    piece.protrusionMm,
-                );
-                const depthScene = Math.max(0.1, thicknessMm) * S;
-                const backFaceZ = (piece.protrusionMm - thicknessMm) * S;
+                // Letter passes through the face panel hole. Visual
+                // extent ALWAYS spans from the backing panel front
+                // (z = -materialThickness) to the protrusion proud of
+                // the face (z = +protrusion), regardless of the
+                // user's `thicknessMm` — production reality is the
+                // letter has to physically reach back to whatever it
+                // mounts on. `thicknessMm` is preserved as a spec
+                // value for the production PDF.
+                const backFaceZ = -materialThicknessMm * S;
+                const depthScene =
+                    (materialThicknessMm + piece.protrusionMm) * S;
                 return (
                     <mesh
                         key={`pt-${piece.pathIndex}-${pi}`}
@@ -1024,10 +1032,18 @@ function PushThroughPieces({
 function PushThroughBacking({
     face,
     pieces,
+    materialThicknessMm,
     outlines = true,
 }: {
     face: { xMm: number; yMm: number; wMm: number; hMm: number };
     pieces: PushThroughPiece[];
+    /**
+     * Face panel thickness — backing sits BEHIND the face panel back
+     * (z = -materialThicknessMm), with no overlap. Without this the
+     * translucent backing fights the face plane and produces a
+     * hatched z-fighting artifact across both surfaces.
+     */
+    materialThicknessMm: number;
     outlines?: boolean;
 }) {
     const layout = useMemo(() => {
@@ -1052,26 +1068,15 @@ function PushThroughBacking({
                 }
             }
         }
-        // Pad so the backing reads as a panel rather than a tight
-        // letterform-shaped sheet, and so light has somewhere to
-        // diffuse from around each letter.
-        const pad = 40;
+        // Tight padding so the backing reads as a panel without
+        // extending into territory occupied by standoff fixings,
+        // dimensions, or other panel hardware nearby.
+        const pad = 12;
         const wMm = maxX - minX + pad * 2;
         const hMm = maxY - minY + pad * 2;
         const cxMm = (minX + maxX) / 2;
         const cyMm = (minY + maxY) / 2;
-        // Deepest letter back face wins — backing front face sits at
-        // that depth so every letter mounts flush against it.
-        let backingFrontZmm = 0;
-        for (const piece of pieces) {
-            const thickness = Math.max(
-                piece.thicknessMm,
-                piece.protrusionMm,
-            );
-            const back = piece.protrusionMm - thickness;
-            if (back < backingFrontZmm) backingFrontZmm = back;
-        }
-        return { wMm, hMm, cxMm, cyMm, backingFrontZmm };
+        return { wMm, hMm, cxMm, cyMm };
     }, [pieces]);
 
     if (!layout || pieces.length === 0) return null;
@@ -1079,8 +1084,11 @@ function PushThroughBacking({
     const BACKING_THICKNESS_MM = 5;
     const cx = (layout.cxMm - face.xMm - face.wMm / 2) * S;
     const cy = (face.yMm + face.hMm / 2 - layout.cyMm) * S;
-    // Centre Z = front face Z - half thickness (extending backwards).
-    const cz = (layout.backingFrontZmm - BACKING_THICKNESS_MM / 2) * S;
+    // Backing front face sits flush against the back of the face panel
+    // (z = -materialThicknessMm). Centre Z is half the backing
+    // thickness further back.
+    const cz =
+        (-materialThicknessMm - BACKING_THICKNESS_MM / 2) * S;
 
     return (
         <mesh position={[cx, cy, cz]}>
@@ -1361,11 +1369,13 @@ function Panel({
                     <PushThroughBacking
                         face={face}
                         pieces={pushThroughPieces}
+                        materialThicknessMm={T}
                         outlines={showOutlines}
                     />
                     <PushThroughPieces
                         face={face}
                         pieces={pushThroughPieces}
+                        materialThicknessMm={T}
                         outlines={showOutlines}
                     />
                 </>
