@@ -95,9 +95,17 @@ function ViewToggle({
 export function VisualiserClient({
     initialDesigns,
     prefill,
+    initialLoadId,
 }: {
     initialDesigns: VisualiserDesignRow[];
     prefill: { patch: Partial<PanelParams> & { quoteId: string | null }; quoteItemId: string } | null;
+    /**
+     * Design ID from `?id=<...>` in the URL (set by QR codes on the
+     * exported PDFs). When set and the id exists in `initialDesigns`,
+     * that design is loaded on mount so the operator lands on the
+     * exact design the QR refers to.
+     */
+    initialLoadId: string | null;
 }) {
     const {
         params,
@@ -151,6 +159,25 @@ export function VisualiserClient({
             const { quoteId, ...patch } = prefill.patch;
             applyPrefill(patch, quoteId, prefill.quoteItemId);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // One-shot auto-load from ?id= (QR codes on exported PDFs land here).
+    // Mirrors handleLoad — re-imports the SVG so artwork is back in the
+    // editor too, not just the parameters.
+    useEffect(() => {
+        if (!initialLoadId) return;
+        const row = initialDesigns.find((d) => d.id === initialLoadId);
+        if (!row) return;
+        let imp = null;
+        if (row.svg_source) {
+            try {
+                imp = importSvg(row.svg_source);
+            } catch {
+                imp = null;
+            }
+        }
+        loadDesign(row, imp);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -632,9 +659,19 @@ export function VisualiserClient({
             if (!p) continue;
             if (effectiveMaterials[i]?.kind !== 'standoff') continue;
             out.push(p);
+            // Compound-path counters (the holes inside O / R / e etc.)
+            // must travel with the outer outline so the fixing-placement
+            // algorithm + insideLettering check see the actual letter
+            // material (a donut), not the bounding outline alone. Without
+            // these, placeFixings happily drops a stud in the counter
+            // region — geometrically inside the outer, but actually
+            // outside the letter material.
+            for (const h of holesByIndex[i] ?? []) {
+                if (h && h.closed) out.push(h);
+            }
         }
         return out;
-    }, [placedClipByIndex, effectiveMaterials]);
+    }, [placedClipByIndex, effectiveMaterials, holesByIndex]);
 
     const fixingDensity = params.fixingDensity ?? 1;
 

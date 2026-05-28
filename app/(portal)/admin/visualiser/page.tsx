@@ -8,11 +8,11 @@ export const metadata = { title: 'Panel Visualiser · Onesign Odysseus' };
 export default async function VisualiserPage({
     searchParams,
 }: {
-    searchParams: Promise<{ quoteItemId?: string }>;
+    searchParams: Promise<{ quoteItemId?: string; id?: string }>;
 }) {
     await requireAdmin();
 
-    const { quoteItemId } = await searchParams;
+    const { quoteItemId, id } = await searchParams;
 
     const designsRes = await listDesigns();
     const designs = designsRes.ok ? designsRes.data : [];
@@ -24,6 +24,11 @@ export default async function VisualiserPage({
             prefill = { patch: res.data, quoteItemId };
         }
     }
+
+    // QR codes on every exported PDF point back here with ?id=<design>.
+    // Surface the id so the client auto-loads it on mount; falls through
+    // silently if the id is unknown (e.g. design was deleted).
+    const initialLoadId = id && designs.some((d) => d.id === id) ? id : null;
 
     return (
         // Pin the whole tool to the viewport so the visualiser stays on
@@ -43,7 +48,11 @@ export default async function VisualiserPage({
                     </p>
                 </div>
             </header>
-            <VisualiserClient initialDesigns={designs} prefill={prefill} />
+            <VisualiserClient
+                initialDesigns={designs}
+                prefill={prefill}
+                initialLoadId={initialLoadId}
+            />
         </div>
     );
 }
