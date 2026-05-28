@@ -963,9 +963,21 @@ function PushThroughPieces({
             {pieces.map((piece, pi) => {
                 const built = builtShapes[pi];
                 if (!built.hasOuter) return null;
-                const depthScene = Math.max(0.1, piece.protrusionMm) * S;
+                // Letter spans `thicknessMm` along z, with its FRONT face
+                // proud of the panel by `protrusionMm` and its BACK face
+                // touching the diffuser backing panel behind. Clamp so
+                // thickness >= protrusion — the letter can't be thinner
+                // than what it sticks out (would float in space).
+                const thicknessMm = Math.max(
+                    piece.thicknessMm,
+                    piece.protrusionMm,
+                );
+                const depthScene = Math.max(0.1, thicknessMm) * S;
+                const backFaceZ = (piece.protrusionMm - thicknessMm) * S;
                 return (
-                    <mesh key={`pt-${piece.pathIndex}-${pi}`}>
+                    <mesh
+                        key={`pt-${piece.pathIndex}-${pi}`}
+                        position={[0, 0, backFaceZ]}>
                         <extrudeGeometry
                             args={[
                                 built.outer,
@@ -989,6 +1001,106 @@ function PushThroughPieces({
                 );
             })}
         </group>
+    );
+}
+
+/**
+ * Opal diffuser backing panel — the white acrylic sheet that sits
+ * BEHIND the face panel. Push-through letter pieces (and their
+ * counter pieces) are glued to its front; the assembly is then
+ * pressed against the back of the face panel from behind. A light
+ * source behind the diffuser shines through the panel's keyline
+ * holes, illuminating the shoulder between letter outline and
+ * keyline edge as a soft halo around each letter.
+ *
+ * One panel covers the union bbox of every push-through piece on
+ * the sign (with padding). Real production usually uses one big
+ * opal sheet rather than per-letter cut-outs, and this matches that.
+ *
+ * Translucent material so the letter pieces glued to its front are
+ * still discernible from the front view through the keyline hole —
+ * which is exactly what happens with backlit opal acrylic.
+ */
+function PushThroughBacking({
+    face,
+    pieces,
+    outlines = true,
+}: {
+    face: { xMm: number; yMm: number; wMm: number; hMm: number };
+    pieces: PushThroughPiece[];
+    outlines?: boolean;
+}) {
+    const layout = useMemo(() => {
+        if (pieces.length === 0) return null;
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+        for (const piece of pieces) {
+            for (const [x, y] of piece.path.points) {
+                if (x < minX) minX = x;
+                if (y < minY) minY = y;
+                if (x > maxX) maxX = x;
+                if (y > maxY) maxY = y;
+            }
+            for (const hole of piece.holes ?? []) {
+                for (const [x, y] of hole.points) {
+                    if (x < minX) minX = x;
+                    if (y < minY) minY = y;
+                    if (x > maxX) maxX = x;
+                    if (y > maxY) maxY = y;
+                }
+            }
+        }
+        // Pad so the backing reads as a panel rather than a tight
+        // letterform-shaped sheet, and so light has somewhere to
+        // diffuse from around each letter.
+        const pad = 40;
+        const wMm = maxX - minX + pad * 2;
+        const hMm = maxY - minY + pad * 2;
+        const cxMm = (minX + maxX) / 2;
+        const cyMm = (minY + maxY) / 2;
+        // Deepest letter back face wins — backing front face sits at
+        // that depth so every letter mounts flush against it.
+        let backingFrontZmm = 0;
+        for (const piece of pieces) {
+            const thickness = Math.max(
+                piece.thicknessMm,
+                piece.protrusionMm,
+            );
+            const back = piece.protrusionMm - thickness;
+            if (back < backingFrontZmm) backingFrontZmm = back;
+        }
+        return { wMm, hMm, cxMm, cyMm, backingFrontZmm };
+    }, [pieces]);
+
+    if (!layout || pieces.length === 0) return null;
+
+    const BACKING_THICKNESS_MM = 5;
+    const cx = (layout.cxMm - face.xMm - face.wMm / 2) * S;
+    const cy = (face.yMm + face.hMm / 2 - layout.cyMm) * S;
+    // Centre Z = front face Z - half thickness (extending backwards).
+    const cz = (layout.backingFrontZmm - BACKING_THICKNESS_MM / 2) * S;
+
+    return (
+        <mesh position={[cx, cy, cz]}>
+            <boxGeometry
+                args={[
+                    layout.wMm * S,
+                    layout.hMm * S,
+                    BACKING_THICKNESS_MM * S,
+                ]}
+            />
+            <meshBasicMaterial
+                color="#f5f5f0"
+                transparent
+                opacity={0.78}
+                polygonOffset
+                polygonOffsetFactor={1}
+                polygonOffsetUnits={1}
+            />
+            {outlines && <Edges color={EDGE_COLOR} lineWidth={1} />}
+        </mesh>
     );
 }
 
@@ -1236,16 +1348,27 @@ function Panel({
                 }
             />
 
-            {/* Push-through inserts — letters pressed through the
-                panel from behind. Renders after the face so they sit
-                visibly inside the keyline holes that the face already
-                lost. */}
+            {/* Push-through assembly. Two parts, rendered back-to-
+                front in the z-stack:
+                  1. Opal diffuser backing panel behind the face — the
+                     surface that letter pieces (+ counters) mount on,
+                     and the light-source diffuser visible through the
+                     keyline shoulder.
+                  2. The letter pieces themselves, extending forward
+                     through the keyline hole. */}
             {face && pushThroughPieces.length > 0 && (
-                <PushThroughPieces
-                    face={face}
-                    pieces={pushThroughPieces}
-                    outlines={showOutlines}
-                />
+                <>
+                    <PushThroughBacking
+                        face={face}
+                        pieces={pushThroughPieces}
+                        outlines={showOutlines}
+                    />
+                    <PushThroughPieces
+                        face={face}
+                        pieces={pushThroughPieces}
+                        outlines={showOutlines}
+                    />
+                </>
             )}
 
             {/* Stand-off pieces — each material group with material =
