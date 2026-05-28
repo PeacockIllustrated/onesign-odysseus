@@ -668,14 +668,52 @@ export function VisualiserClient({
     // for rendering / export. Rendered whenever there's at least one
     // standoff path on the sign (group or default), independent of the
     // quick default mode.
+    //
+    // Stale-fixings filter: a fixing placed back when a letter was
+    // standoff will still be in the store after the letter switches
+    // material (push-through, vinyl, etc.). The fixing now belongs to
+    // nobody — rendering it leaves a phantom stud floating outside the
+    // current standoff lettering. Filter to keep only the fixings whose
+    // centre is still inside the current standoff set. The store row
+    // stays untouched, so the fixing reappears the moment the letter
+    // is regrouped to standoff again.
     const manualFixings = useMemo(() => {
         if (!development || !placementXf || reference.length === 0)
             return [];
         const r = fixingDiameter / 2;
-        const polys = (params.manualFixings ?? []).map((p) => {
-            const [x, y] = placementXf.toFlat(p);
-            return circlePoly(x, y, r);
-        });
+        const isInside = (pt: [number, number]): boolean => {
+            let n = 0;
+            for (const ref of reference) {
+                const ring = ref.points;
+                let inside = false;
+                for (
+                    let i = 0, j = ring.length - 1;
+                    i < ring.length;
+                    j = i++
+                ) {
+                    const xi = ring[i][0];
+                    const yi = ring[i][1];
+                    const xj = ring[j][0];
+                    const yj = ring[j][1];
+                    if (
+                        yi > pt[1] !== yj > pt[1] &&
+                        pt[0] <
+                            ((xj - xi) * (pt[1] - yi)) / (yj - yi || 1e-12) +
+                                xi
+                    ) {
+                        inside = !inside;
+                    }
+                }
+                if (inside) n++;
+            }
+            return n % 2 === 1;
+        };
+        const polys: ReturnType<typeof circlePoly>[] = [];
+        for (const p of params.manualFixings ?? []) {
+            const flatPt = placementXf.toFlat(p);
+            if (!isInside(flatPt)) continue;
+            polys.push(circlePoly(flatPt[0], flatPt[1], r));
+        }
         return clipApertureToFace(development, polys).paths;
     }, [
         development,

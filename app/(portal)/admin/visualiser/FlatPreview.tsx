@@ -68,7 +68,14 @@ function PathHitOverlay({
                     fill="rgba(0,0,0,0.001)"
                     fillRule="evenodd"
                     stroke="rgba(0,0,0,0)"
-                    strokeWidth={Math.max(stroke * 4, 2)}
+                    /* Non-scaling stroke = strokeWidth is in SCREEN
+                       pixels, not SVG/mm units. Without this, a small
+                       counter on a 2.4 m panel collapses to a hit
+                       target of ~3 px even with the mm padding bumped
+                       up. 18 px gives a generous click halo around
+                       even the smallest path. */
+                    strokeWidth={18}
+                    vectorEffect="non-scaling-stroke"
                     style={{ cursor: 'pointer' }}
                     pointerEvents="all"
                     onClick={(e) => {
