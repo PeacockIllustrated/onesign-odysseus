@@ -883,25 +883,23 @@ function MaterialPieces({
 /**
  * Push-through inserts — letters pressed through the panel face from
  * behind. The panel already has the press-fit hole cut at the keyline
- * (slightly larger than the letter outline). Each push-through letter
- * is rendered as TWO acrylic shapes that fit together inside the panel
- * hole:
- *   1. The OUTER piece — a donut. Letter outline with counter regions
- *      cut out (compound shape via THREE.Path holes).
- *   2. The COUNTER piece(s) — separate solid blobs that fit exactly
- *      into the donut's hole(s).
+ * (slightly larger than the letter outline). Each piece renders as a
+ * single compound extrusion: outer letter outline + counter regions as
+ * THREE.Path holes through the extrusion.
  *
- * From the front the operator sees both: the donut outline AND the
- * counter, both as illuminated acrylic, with the panel surrounding
- * them at the keyline. This matches production: cutter produces N+1
- * pieces per letter (one donut + one piece per counter), operator
- * glues them to the backing board in their original positions, the
- * backing assembly is pressed into the panel from behind.
+ * Counters are NOT rendered as separate filled pieces in the preview,
+ * even though production cuts them that way. Reason: filling counters
+ * with same-coloured acrylic blobs would hide the very thing the
+ * operator needs to see — that the R has its counter, the O is a
+ * donut, the e has its eye. Showing them as visible holes through the
+ * letter makes the design verifiable at a glance. The production PDF
+ * still emits both pieces as separate contours so the cutter produces
+ * the right parts.
  *
- * The extrusion runs FROM the panel face outward, `protrusionMm`
- * proud of the face. (In production the pieces extend back to the
- * backing board too, but only the proud-of-face part is visible from
- * the front, so we render just that.)
+ * Extrusion runs FROM the panel face outward, `protrusionMm` proud of
+ * the face. (In production the pieces extend back to the backing
+ * board too, but only the proud-of-face part is visible from the
+ * front, so we render just that.)
  */
 function PushThroughPieces({
     face,
@@ -918,44 +916,28 @@ function PushThroughPieces({
             (face.yMm + face.hMm / 2 - q[1]) * S,
         ];
         return pieces.map((piece) => {
-            // Outer = compound (letter outline + counter holes).
-            // Renders as a donut so the counter pieces below sit in
-            // the holes and are visible alongside the outer ring.
             const outerLocal = piece.path.points.map(toLocal);
             const outer = new THREE.Shape();
-            if (outerLocal.length >= 3) {
-                outer.moveTo(outerLocal[0][0], outerLocal[0][1]);
-                for (let i = 1; i < outerLocal.length; i++) {
-                    outer.lineTo(outerLocal[i][0], outerLocal[i][1]);
-                }
-                outer.closePath();
-                for (const hole of piece.holes ?? []) {
-                    const hp = hole.points.map(toLocal);
-                    if (hp.length < 3) continue;
-                    const path = new THREE.Path();
-                    path.moveTo(hp[0][0], hp[0][1]);
-                    for (let i = 1; i < hp.length; i++) {
-                        path.lineTo(hp[i][0], hp[i][1]);
-                    }
-                    path.closePath();
-                    outer.holes.push(path);
-                }
+            if (outerLocal.length < 3) {
+                return { outer, hasOuter: false };
             }
-            // Counters = separate solid blobs, one per hole. They sit
-            // exactly inside the donut's holes at the same z.
-            const counters: THREE.Shape[] = [];
+            outer.moveTo(outerLocal[0][0], outerLocal[0][1]);
+            for (let i = 1; i < outerLocal.length; i++) {
+                outer.lineTo(outerLocal[i][0], outerLocal[i][1]);
+            }
+            outer.closePath();
             for (const hole of piece.holes ?? []) {
                 const hp = hole.points.map(toLocal);
                 if (hp.length < 3) continue;
-                const c = new THREE.Shape();
-                c.moveTo(hp[0][0], hp[0][1]);
+                const path = new THREE.Path();
+                path.moveTo(hp[0][0], hp[0][1]);
                 for (let i = 1; i < hp.length; i++) {
-                    c.lineTo(hp[i][0], hp[i][1]);
+                    path.lineTo(hp[i][0], hp[i][1]);
                 }
-                c.closePath();
-                counters.push(c);
+                path.closePath();
+                outer.holes.push(path);
             }
-            return { outer, counters, hasOuter: outerLocal.length >= 3 };
+            return { outer, hasOuter: true };
         });
     }, [pieces, face.xMm, face.yMm, face.wMm, face.hMm]);
 
@@ -966,59 +948,29 @@ function PushThroughPieces({
             {pieces.map((piece, pi) => {
                 const built = builtShapes[pi];
                 if (!built.hasOuter) return null;
-                // Extrude forward FROM the panel face (z = 0) by the
-                // protrusion — visibly sticking proud of the panel.
                 const depthScene = Math.max(0.1, piece.protrusionMm) * S;
                 return (
-                    <group key={`pt-${piece.pathIndex}-${pi}`}>
-                        <mesh>
-                            <extrudeGeometry
-                                args={[
-                                    built.outer,
-                                    {
-                                        depth: depthScene,
-                                        bevelEnabled: false,
-                                        curveSegments: 48,
-                                    },
-                                ]}
-                            />
-                            <meshBasicMaterial
-                                color={piece.color}
-                                polygonOffset
-                                polygonOffsetFactor={1}
-                                polygonOffsetUnits={1}
-                            />
-                            {outlines && (
-                                <Edges color={EDGE_COLOR} lineWidth={1.5} />
-                            )}
-                        </mesh>
-                        {built.counters.map((counterShape, ci) => (
-                            <mesh key={`ctr-${ci}`}>
-                                <extrudeGeometry
-                                    args={[
-                                        counterShape,
-                                        {
-                                            depth: depthScene,
-                                            bevelEnabled: false,
-                                            curveSegments: 48,
-                                        },
-                                    ]}
-                                />
-                                <meshBasicMaterial
-                                    color={piece.color}
-                                    polygonOffset
-                                    polygonOffsetFactor={1}
-                                    polygonOffsetUnits={1}
-                                />
-                                {outlines && (
-                                    <Edges
-                                        color={EDGE_COLOR}
-                                        lineWidth={1.5}
-                                    />
-                                )}
-                            </mesh>
-                        ))}
-                    </group>
+                    <mesh key={`pt-${piece.pathIndex}-${pi}`}>
+                        <extrudeGeometry
+                            args={[
+                                built.outer,
+                                {
+                                    depth: depthScene,
+                                    bevelEnabled: false,
+                                    curveSegments: 48,
+                                },
+                            ]}
+                        />
+                        <meshBasicMaterial
+                            color={piece.color}
+                            polygonOffset
+                            polygonOffsetFactor={1}
+                            polygonOffsetUnits={1}
+                        />
+                        {outlines && (
+                            <Edges color={EDGE_COLOR} lineWidth={1.5} />
+                        )}
+                    </mesh>
                 );
             })}
         </group>

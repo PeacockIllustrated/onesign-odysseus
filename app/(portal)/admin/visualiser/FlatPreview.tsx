@@ -335,34 +335,32 @@ export function FlatPreview({
                     );
                 })}
 
-                {/* Push-through inserts — outer letter outline AND
-                    each counter rendered as SEPARATE filled shapes (no
-                    compound-with-hole). This matches production: each
-                    letter is two pieces of acrylic glued to a backing
-                    board behind the panel, and both press through the
-                    keyline hole in the panel face. The keyline hole is
-                    already cut out of the face above. */}
-                {pushThroughPieces.map((piece, i) => (
-                    <g key={`pt-${i}`}>
+                {/* Push-through inserts — outer letter outline rendered
+                    as a compound donut, with counters as evenodd holes.
+                    Counters are NOT filled in (even though production
+                    cuts them as separate acrylic pieces) because filling
+                    them would hide the very thing the operator checks:
+                    "does the R have a counter? is the O a donut?". The
+                    counter pieces still emit on the production PDF as
+                    separate contours. */}
+                {pushThroughPieces.map((piece, i) => {
+                    const d =
+                        pathD(piece.path) +
+                        ' ' +
+                        (piece.holes ?? [])
+                            .map((h) => pathD(h))
+                            .join(' ');
+                    return (
                         <path
-                            d={pathD(piece.path)}
+                            key={`pt-${i}`}
+                            d={d}
                             fill={piece.color}
                             fillRule="evenodd"
                             stroke="#1a1f23"
                             strokeWidth={stroke * 0.8}
                         />
-                        {(piece.holes ?? []).map((h, k) => (
-                            <path
-                                key={`pt-${i}-c-${k}`}
-                                d={pathD(h)}
-                                fill={piece.color}
-                                fillRule="evenodd"
-                                stroke="#1a1f23"
-                                strokeWidth={stroke * 0.8}
-                            />
-                        ))}
-                    </g>
-                ))}
+                    );
+                })}
 
                 {/* Acrylic pieces — coloured fills with a stronger edge
                     stroke so they read as a sheet sitting proud of the
