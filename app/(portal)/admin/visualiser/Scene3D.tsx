@@ -656,17 +656,18 @@ function StandoffLocators({
 }
 
 /**
- * Click-targets for material-group editing in 3D. Renders one invisible
- * mesh per imported path; while the operator is in group edit mode the
- * meshes pick up clicks (toggle pending) and pointer-overs (hover
- * highlight). Outside edit mode we still draw the group-membership
- * stroke so the operator can see what's grouped at a glance.
+ * Click-targets for material-group editing in 3D. Always picks up
+ * clicks when `onToggle` is supplied — outside group-edit mode the
+ * dispatcher in the parent auto-enters the path's group (or starts a
+ * new group with that path selected); inside edit mode it toggles
+ * selection. Group-membership is shown as a translucent wash over the
+ * whole element AND a stroke around it, so the tag is visible at a
+ * glance rather than just hinted at the outline.
  */
 function PathHitTarget({
     pathIndex,
     shape,
     outlinePoints,
-    isEditing,
     inPending,
     groupColor,
     onToggle,
@@ -674,7 +675,6 @@ function PathHitTarget({
     pathIndex: number;
     shape: THREE.Shape | null;
     outlinePoints: Float32Array | null;
-    isEditing: boolean;
     inPending: boolean;
     groupColor: string | null;
     onToggle?: (i: number) => void;
@@ -709,18 +709,33 @@ function PathHitTarget({
         return g;
     }, [outlinePoints, z]);
     if (!shape || !outlineGeom) return null;
-    const hitListens = isEditing && !!onToggle;
-    const outlineColor = inPending
+    const hitListens = !!onToggle;
+    // Wash colour priority: pending > hovered > group membership.
+    const washColor = inPending
         ? '#f97316'
         : hovered && hitListens
           ? '#f97316'
           : groupColor;
+    const washOpacity = inPending ? 0.28 : hovered && hitListens ? 0.18 : 0.22;
     return (
         <group>
-            {outlineColor && (
-                <lineSegments geometry={outlineGeom}>
+            {washColor && (
+                <mesh position={[0, 0, z]}>
+                    <shapeGeometry args={[shape, 48]} />
+                    <meshBasicMaterial
+                        color={washColor}
+                        transparent
+                        opacity={washOpacity}
+                        depthWrite={false}
+                    />
+                </mesh>
+            )}
+            {washColor && (
+                <lineSegments
+                    geometry={outlineGeom}
+                    position={[0, 0, 0.005 * S]}>
                     <lineBasicMaterial
-                        color={outlineColor}
+                        color={washColor}
                         transparent
                         opacity={inPending ? 1 : 0.85}
                     />
@@ -982,14 +997,12 @@ function Path3DHitTargets({
     placedPathsByIndex,
     pathGroupColors,
     pendingPaths,
-    isEditing,
     onPathToggle,
 }: {
     face: { xMm: number; yMm: number; wMm: number; hMm: number };
     placedPathsByIndex: Array<FlatPath | null>;
     pathGroupColors: Array<string | null>;
     pendingPaths: Set<number>;
-    isEditing: boolean;
     onPathToggle?: (i: number) => void;
 }) {
     const toLocal = (q: [number, number]): [number, number] => [
@@ -1022,7 +1035,6 @@ function Path3DHitTargets({
                     pathIndex={i}
                     shape={t.shape}
                     outlinePoints={t.outline}
-                    isEditing={isEditing}
                     inPending={pendingPaths.has(i)}
                     groupColor={pathGroupColors[i] ?? null}
                     onToggle={onPathToggle}
@@ -1197,7 +1209,6 @@ function Panel({
                     placedPathsByIndex={placedPathsByIndex}
                     pathGroupColors={pathGroupColors ?? []}
                     pendingPaths={pendingPaths ?? new Set()}
-                    isEditing={isEditingGroup ?? false}
                     onPathToggle={onPathToggle}
                 />
             )}

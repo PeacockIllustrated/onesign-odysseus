@@ -12,9 +12,14 @@ import type {
 const DEFAULT_PANEL_COLOR = '#d6d6d6';
 
 /**
- * Per-path clickable overlay. Stays invisible when the operator isn't
- * editing a group; in edit mode it picks up hovers so the path about
- * to be toggled lights up in orange, making the click target obvious.
+ * Per-path clickable overlay. Always picks up clicks so the operator
+ * can pick a path straight from the canvas — outside group-edit mode
+ * the click auto-enters the path's group (or starts a new one with
+ * that path selected); inside edit mode it toggles selection.
+ *
+ * When a path belongs to a group, the WHOLE shape is washed in the
+ * group's palette colour (translucent fill + matching outline) so it
+ * reads as a tagged element rather than just an outlined one.
  */
 function PathHitOverlay({
     d,
@@ -28,18 +33,27 @@ function PathHitOverlay({
     stroke: number;
     groupStroke: string | null;
     inPending: boolean;
+    /**
+     * Always-on click handler is provided when this is true. The
+     * dispatch (toggle-in-edit-mode vs auto-enter-group) is owned by
+     * the parent so we don't need to know which we're doing here.
+     */
     hitListens: boolean;
     onClick: () => void;
 }) {
     const [hovered, setHovered] = useState(false);
     return (
         <g>
-            {/* Group-membership stroke — sits beneath the hover /
-                pending highlight so the active state always wins. */}
+            {/* Group-membership wash — translucent fill + matching
+                stroke covering the whole element. Hidden when a
+                pending / hover state is showing so the active feedback
+                always wins. */}
             {groupStroke && !inPending && !hovered && (
                 <path
                     d={d}
-                    fill="none"
+                    fill={groupStroke}
+                    fillOpacity={0.22}
+                    fillRule="evenodd"
                     stroke={groupStroke}
                     strokeWidth={stroke * 1.4}
                     pointerEvents="none"
@@ -48,7 +62,11 @@ function PathHitOverlay({
             {hitListens && (
                 <path
                     d={d}
+                    /* Translucent fill = clickable interior; the slight
+                       alpha matters because SVG hit testing on a
+                       fully-transparent fill is browser-inconsistent. */
                     fill="rgba(0,0,0,0.001)"
+                    fillRule="evenodd"
                     stroke="rgba(0,0,0,0)"
                     strokeWidth={Math.max(stroke * 4, 2)}
                     style={{ cursor: 'pointer' }}
@@ -64,7 +82,9 @@ function PathHitOverlay({
             {(inPending || (hitListens && hovered)) && (
                 <path
                     d={d}
-                    fill="none"
+                    fill="#f97316"
+                    fillOpacity={inPending ? 0.28 : 0.18}
+                    fillRule="evenodd"
                     stroke="#f97316"
                     strokeWidth={inPending ? stroke * 2.4 : stroke * 2}
                     strokeDasharray={
@@ -72,7 +92,7 @@ function PathHitOverlay({
                             ? `${stroke * 3} ${stroke * 2}`
                             : undefined
                     }
-                    opacity={inPending ? 1 : 0.7}
+                    opacity={inPending ? 1 : 0.85}
                     pointerEvents="none"
                 />
             )}
@@ -471,8 +491,10 @@ export function FlatPreview({
                             const groupStroke =
                                 pathGroupColors?.[i] ?? null;
                             const inPending = !!pendingPaths?.has(i);
-                            const hitListens =
-                                isEditingGroup && !!onPathToggle;
+                            // Always clickable when a handler is
+                            // supplied. The parent decides whether to
+                            // pass one (it doesn't in fixing mode).
+                            const hitListens = !!onPathToggle;
                             return (
                                 <PathHitOverlay
                                     key={`pick-${i}`}

@@ -131,6 +131,14 @@ interface VisualiserState {
     /* Material group actions */
     startNewGroupEdit: () => void;
     startEditingGroup: (groupId: string) => void;
+    /**
+     * Click-to-edit entry point: given a path, enter that path's
+     * group's edit mode if it's already grouped, otherwise start a
+     * brand-new group with that path pre-selected. Lets the operator
+     * skip the "+ New material group" button entirely for the common
+     * case of "I want to change THIS letter's material".
+     */
+    startGroupEditFromPath: (pathIndex: number) => void;
     cancelGroupEdit: () => void;
     togglePendingPath: (pathIndex: number) => void;
     /**
@@ -334,6 +342,26 @@ export const useVisualiser = create<VisualiserState>((set) => ({
             return {
                 editingGroupId: groupId,
                 pendingPaths: g ? [...g.pathIndices] : [],
+                fixingMode: 'off',
+            };
+        }),
+
+    startGroupEditFromPath: (pathIndex) =>
+        set((s) => {
+            const groups = s.params.materialGroups ?? [];
+            const existing = groups.find((g) =>
+                g.pathIndices.includes(pathIndex),
+            );
+            if (existing) {
+                return {
+                    editingGroupId: existing.id,
+                    pendingPaths: [...existing.pathIndices],
+                    fixingMode: 'off',
+                };
+            }
+            return {
+                editingGroupId: 'new',
+                pendingPaths: [pathIndex],
                 fixingMode: 'off',
             };
         }),
