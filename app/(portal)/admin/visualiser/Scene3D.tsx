@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { Plus } from 'lucide-react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Edges, Html } from '@react-three/drei';
 import * as THREE from 'three';
@@ -39,6 +40,7 @@ function CaptureBinder() {
 const S = 0.01; // mm → scene units
 const HALF_PI = Math.PI / 2;
 const DEFAULT_PANEL_COLOR = '#d6d6d6';
+const ACCENT = '#4e7e8c'; // brand steel teal — accents on overlay widgets
 const EDGE_COLOR = '#111111'; // technical-drawing black strokes
 const STANDOFF_STUD_COLOR = '#9aa0a4'; // brushed-metal grey for the studs
 // When the operator is actively placing or deleting manual fixings,
@@ -1250,11 +1252,19 @@ function DimensionEditLabel({
     label,
     valueMm,
     onCommit,
+    addWhenZero,
 }: {
     position: [number, number, number];
     label: string;
     valueMm: number;
     onCommit: (v: number) => void;
+    /**
+     * When the value is zero (feature absent), show a "+ add" pill
+     * instead of a measurement. Clicking it commits `defaultMm`, which
+     * brings the feature into existence and flips the label to its
+     * normal editable state.
+     */
+    addWhenZero?: { label: string; defaultMm: number };
 }) {
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState(String(Math.round(valueMm)));
@@ -1268,6 +1278,24 @@ function DimensionEditLabel({
         if (Number.isFinite(v) && v > 0) onCommit(v);
         setEditing(false);
     };
+
+    // Absent feature → a plus affordance to add it.
+    if (addWhenZero && valueMm <= 0 && !editing) {
+        return (
+            <Html position={position} center zIndexRange={[30, 0]}>
+                <button
+                    type="button"
+                    onClick={() => onCommit(addWhenZero.defaultMm)}
+                    title={`Add ${addWhenZero.label.toLowerCase()}`}
+                    className="flex items-center gap-1 whitespace-nowrap rounded-full border border-dashed border-neutral-300 bg-white/80 px-2 py-0.5 text-[11px] font-medium text-neutral-500 shadow-sm hover:border-neutral-400 hover:text-neutral-700"
+                >
+                    <Plus size={12} aria-hidden style={{ color: ACCENT }} />
+                    {addWhenZero.label}
+                </button>
+            </Html>
+        );
+    }
+
     return (
         <Html position={position} center zIndexRange={[30, 0]}>
             {editing ? (
@@ -1304,20 +1332,30 @@ function DimensionEditLabel({
 }
 
 /**
- * In-scene dimension annotations for the face — width along the bottom
- * edge, height up the left edge — each with extension lines, a
- * dimension line, end ticks, and an editable label at the midpoint.
- * Editing a label propagates straight back to the panel params.
+ * In-scene dimension annotations for the face. Width + height get true
+ * dimension lines (extension lines, dimension line, end ticks) along
+ * the bottom and left edges. Return depth + shadow gap are callouts —
+ * a leader from the relevant edge to an editable label — since they
+ * measure perpendicular into the (folded) returns rather than across
+ * the face, so a scale dimension line would imply a false length.
+ * Every label propagates edits straight back to the panel params; the
+ * shadow-gap callout shows a "+ Shadow gap" affordance when absent.
  */
 function Dimensions3D({
     W,
     H,
+    returnDepthMm,
+    hasReturns,
+    shadowGapMm,
     onDimensionChange,
 }: {
     W: number;
     H: number;
+    returnDepthMm: number;
+    hasReturns: boolean;
+    shadowGapMm: number;
     onDimensionChange?: (
-        field: 'width' | 'height',
+        field: 'width' | 'height' | 'return' | 'shadowGap',
         valueMm: number,
     ) => void;
 }) {
@@ -1355,13 +1393,19 @@ function Dimensions3D({
         push(xDim, -hh, xDim, hh);
         push(xDim - tick, -hh - tick, xDim + tick, -hh + tick);
         push(xDim - tick, hh - tick, xDim + tick, hh + tick);
+        // Return callout leader (top edge centre → label) when returns
+        // exist; shadow-gap callout leader (right edge centre → label)
+        // always (the label itself offers to add a gap when there's
+        // none).
+        if (hasReturns) push(0, hh, 0, hh + off - tick);
+        push(hw, 0, hw + off - tick, 0);
         const g = new THREE.BufferGeometry();
         g.setAttribute(
             'position',
             new THREE.Float32BufferAttribute(seg, 3),
         );
         return g;
-    }, [hw, hh, off, tick, z]);
+    }, [hw, hh, off, tick, z, hasReturns]);
 
     return (
         <group>
@@ -1379,6 +1423,21 @@ function Dimensions3D({
                 label="H"
                 valueMm={H}
                 onCommit={(v) => onDimensionChange?.('height', v)}
+            />
+            {hasReturns && (
+                <DimensionEditLabel
+                    position={[0, hh + off, z]}
+                    label="Return"
+                    valueMm={returnDepthMm}
+                    onCommit={(v) => onDimensionChange?.('return', v)}
+                />
+            )}
+            <DimensionEditLabel
+                position={[hw + off, 0, z]}
+                label="Gap"
+                valueMm={shadowGapMm}
+                onCommit={(v) => onDimensionChange?.('shadowGap', v)}
+                addWhenZero={{ label: 'Shadow gap', defaultMm: 15 }}
             />
         </group>
     );
@@ -1450,7 +1509,7 @@ function Panel({
     illumination?: PanelParams['illumination'];
     showDimensions?: boolean;
     onDimensionChange?: (
-        field: 'width' | 'height',
+        field: 'width' | 'height' | 'return' | 'shadowGap',
         valueMm: number,
     ) => void;
 }) {
@@ -1866,6 +1925,9 @@ function Panel({
                 <Dimensions3D
                     W={W}
                     H={H}
+                    returnDepthMm={D}
+                    hasReturns={r.top || r.bottom || r.left || r.right}
+                    shadowGapMm={Sg}
                     onDimensionChange={onDimensionChange}
                 />
             )}
@@ -1908,10 +1970,10 @@ export default function Scene3D(props: {
     /** Dark illumination preview — darkens the scene + lights configured glow. */
     illuminationView?: boolean;
     illumination?: PanelParams['illumination'];
-    /** Editable in-scene dimension annotations (width / height). */
+    /** Editable in-scene dimension annotations (width / height / return / gap). */
     showDimensions?: boolean;
     onDimensionChange?: (
-        field: 'width' | 'height',
+        field: 'width' | 'height' | 'return' | 'shadowGap',
         valueMm: number,
     ) => void;
 }) {

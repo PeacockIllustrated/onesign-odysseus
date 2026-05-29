@@ -1166,14 +1166,20 @@ export function VisualiserClient({
     };
 
     // Edits from the in-scene dimension widgets propagate straight to
-    // the panel params — change the width label, the panel resizes.
+    // the panel params — change the width label, the panel resizes;
+    // edit the single Return value, every return depth follows;
+    // adding a shadow gap brings the lips into being.
     const handleDimensionChange = (
-        field: 'width' | 'height',
+        field: 'width' | 'height' | 'return' | 'shadowGap',
         valueMm: number,
     ) => {
-        if (!Number.isFinite(valueMm) || valueMm <= 0) return;
-        if (field === 'width') setParam('panelWidthMm', valueMm);
-        else if (field === 'height') setParam('panelHeightMm', valueMm);
+        if (!Number.isFinite(valueMm) || valueMm < 0) return;
+        if (field === 'width' && valueMm > 0)
+            setParam('panelWidthMm', valueMm);
+        else if (field === 'height' && valueMm > 0)
+            setParam('panelHeightMm', valueMm);
+        else if (field === 'return') setParam('returnDepthMm', valueMm);
+        else if (field === 'shadowGap') setParam('shadowGapMm', valueMm);
     };
 
     // Annotation gating — the Display panel toggles these view layers.
