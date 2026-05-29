@@ -107,6 +107,7 @@ export function ExportBar({
     apertureBySection,
     keylineBySection,
     pushThroughKeylineBySection,
+    pushThroughIslandsBySection,
     fixingsBySection,
     cableHolesBySection,
     referenceBySection,
@@ -123,6 +124,7 @@ export function ExportBar({
     apertureBySection: FlatPath[][];
     keylineBySection: FlatPath[][];
     pushThroughKeylineBySection: FlatPath[][];
+    pushThroughIslandsBySection: FlatPath[][];
     fixingsBySection: FlatPath[][];
     cableHolesBySection: FlatPath[][];
     referenceBySection: FlatPath[][];
@@ -172,6 +174,7 @@ export function ExportBar({
                 apertureBySection,
                 keylineBySection,
                 pushThroughKeylineBySection,
+                pushThroughIslandsBySection,
                 fixingsBySection,
                 cableHolesBySection,
                 referenceBySection,
@@ -207,6 +210,7 @@ export function ExportBar({
                 apertureBySection,
                 keylineBySection,
                 pushThroughKeylineBySection,
+                pushThroughIslandsBySection,
                 fixingsBySection,
                 cableHolesBySection,
                 referenceBySection,

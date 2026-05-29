@@ -1243,6 +1243,7 @@ function Panel({
     aperture,
     keyline,
     pushThroughKeyline,
+    pushThroughIslands,
     autoFixings,
     manualFixings,
     cableHoles,
@@ -1273,6 +1274,7 @@ function Panel({
     aperture: FlatPath[];
     keyline: FlatPath[];
     pushThroughKeyline: FlatPath[];
+    pushThroughIslands: FlatPath[];
     autoFixings: FlatPath[];
     manualFixings: FlatPath[];
     cableHoles: FlatPath[];
@@ -1441,6 +1443,32 @@ function Panel({
         return { kl: build(keyline), ref: build(reference) };
     }, [face, keyline, reference, T]);
 
+    // Retained counter islands — panel metal kept inside each counter
+    // (G / e / g), ringed by the keyline gap. Rendered as a paper-thin
+    // panel-coloured shape at the face plane so it OCCLUDES the glowing
+    // backing behind it; only the keyline gap around the island (out to
+    // the acrylic counter edge) stays open and glows. Without this the
+    // whole counter reads as a solid blob of light.
+    const islandShapes = useMemo(() => {
+        if (!face || pushThroughIslands.length === 0) return [];
+        const toLocal = (q: [number, number]): [number, number] => [
+            (q[0] - face.xMm - face.wMm / 2) * S,
+            (face.yMm + face.hMm / 2 - q[1]) * S,
+        ];
+        const out: THREE.Shape[] = [];
+        for (const island of pushThroughIslands) {
+            if (!island.closed || island.points.length < 3) continue;
+            const pts = island.points.map(toLocal);
+            const shape = new THREE.Shape();
+            shape.moveTo(pts[0][0], pts[0][1]);
+            for (let i = 1; i < pts.length; i++)
+                shape.lineTo(pts[i][0], pts[i][1]);
+            shape.closePath();
+            out.push(shape);
+        }
+        return out;
+    }, [face, pushThroughIslands]);
+
     return (
         <group>
             {/* Face — a single sheet with real cut-outs for every aperture /
@@ -1528,6 +1556,26 @@ function Panel({
                         outlines={showOutlines}
                         night={night}
                     />
+                    {/* Retained metal counter islands — sit at the face
+                        plane in the panel colour, occluding the glow so
+                        only the keyline gap around them lights up. */}
+                    {islandShapes.map((shape, i) => (
+                        <mesh
+                            key={`pt-island-${i}`}
+                            position={[0, 0, 0.5 * S]}>
+                            <shapeGeometry args={[shape, 48]} />
+                            <meshBasicMaterial
+                                color={panelColor}
+                                side={THREE.DoubleSide}
+                                polygonOffset
+                                polygonOffsetFactor={1}
+                                polygonOffsetUnits={1}
+                            />
+                            {showOutlines && (
+                                <Edges color={EDGE_COLOR} lineWidth={1} />
+                            )}
+                        </mesh>
+                    ))}
                 </>
             )}
 
@@ -1666,6 +1714,7 @@ export default function Scene3D(props: {
     aperture: FlatPath[];
     keyline: FlatPath[];
     pushThroughKeyline?: FlatPath[];
+    pushThroughIslands?: FlatPath[];
     autoFixings?: FlatPath[];
     manualFixings?: FlatPath[];
     cableHoles?: FlatPath[];
@@ -1704,6 +1753,7 @@ export default function Scene3D(props: {
     const solidPieces = props.solidPieces ?? [];
     const standoffPieces = props.standoffPieces ?? [];
     const pushThroughKeyline = props.pushThroughKeyline ?? [];
+    const pushThroughIslands = props.pushThroughIslands ?? [];
     const pushThroughPieces = props.pushThroughPieces ?? [];
     const showOutlines = props.showOutlines ?? true;
     const showStandoffLetters = props.showStandoffLetters ?? true;
@@ -1745,6 +1795,7 @@ export default function Scene3D(props: {
                 solidPieces={solidPieces}
                 standoffPieces={standoffPieces}
                 pushThroughKeyline={pushThroughKeyline}
+                pushThroughIslands={pushThroughIslands}
                 pushThroughPieces={pushThroughPieces}
                 placedPathsByIndex={props.placedPathsByIndex ?? null}
                 pathGroupColors={props.pathGroupColors ?? null}

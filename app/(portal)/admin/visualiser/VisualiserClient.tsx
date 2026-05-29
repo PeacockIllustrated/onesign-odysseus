@@ -902,27 +902,74 @@ export function VisualiserClient({
     }, [development, aperture, params.keylineMm]);
     const keyline = keylineClip.paths;
 
-    // Per-pushthrough-path keyline — outward offset of each push-
-    // through outer outline using THAT group's keylineOffsetMm. This
-    // is what actually becomes the letter-shaped hole in the panel
-    // face for press-fit assembly. Built per-piece so different
-    // push-through groups can carry different press fits.
-    const pushThroughKeyline = useMemo<typeof placedClip.paths>(() => {
-        if (!development || pushThroughPieces.length === 0) return [];
-        const out: typeof placedClip.paths = [];
+    // Per-pushthrough-path keyline + retained counter islands.
+    //
+    // A compound letter (G, e, g, O) has counters. Production keeps the
+    // panel METAL inside each counter as an island, ringed by the same
+    // keyline gap as the outer edge — NOT a fully-open hole that just
+    // glows. buildKeyline applied to the FULL compound does both at
+    // once: it grows the outer outward and shrinks the counters inward
+    // (opposite winding, uniform band). So:
+    //   - the largest-area output contour is the grown OUTER keyline →
+    //     the letter-shaped panel hole / press-fit shoulder, and
+    //   - every other contour is a shrunk COUNTER → the retained metal
+    //     island boundary (the keyline gap rings it).
+    const pushThrough = useMemo<{
+        keyline: typeof placedClip.paths;
+        islands: typeof placedClip.paths;
+    }>(() => {
+        const keyline: typeof placedClip.paths = [];
+        const islands: typeof placedClip.paths = [];
+        if (!development || pushThroughPieces.length === 0)
+            return { keyline, islands };
+        const ringArea = (pts: Array<[number, number]>): number => {
+            let a = 0;
+            for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+                a += (pts[j][0] + pts[i][0]) * (pts[j][1] - pts[i][1]);
+            }
+            return Math.abs(a) / 2;
+        };
         for (const piece of pushThroughPieces) {
+            const holes = (piece.holes ?? []).filter(
+                (h) => h.closed && h.points.length >= 3,
+            );
             if (piece.keylineOffsetMm <= 0) {
-                // Operator zeroed the offset — the press fit is the
-                // outline itself. Fine for laser-tight tolerances.
-                out.push(piece.path);
+                // Operator zeroed the offset — press fit is the outline
+                // itself; islands sit exactly on the counter edge.
+                keyline.push(piece.path);
+                islands.push(...holes);
                 continue;
             }
-            const raw = buildKeyline([piece.path], piece.keylineOffsetMm);
-            const clipped = clipApertureToFace(development, raw).paths;
-            out.push(...clipped);
+            const compound = buildKeyline(
+                [piece.path, ...holes],
+                piece.keylineOffsetMm,
+            );
+            if (compound.length === 0) {
+                keyline.push(piece.path);
+                continue;
+            }
+            // Largest contour = the grown outer; the rest are the
+            // shrunk counters (metal islands).
+            let maxArea = -Infinity;
+            let maxIdx = 0;
+            compound.forEach((c, i) => {
+                const a = ringArea(c.points);
+                if (a > maxArea) {
+                    maxArea = a;
+                    maxIdx = i;
+                }
+            });
+            compound.forEach((c, i) => {
+                if (i === maxIdx) keyline.push(c);
+                else islands.push(c);
+            });
         }
-        return out;
+        const clip = (paths: typeof placedClip.paths) =>
+            clipApertureToFace(development, paths).paths;
+        return { keyline: clip(keyline), islands: clip(islands) };
     }, [development, pushThroughPieces]);
+    const pushThroughKeyline = pushThrough.keyline;
+    const pushThroughIslands = pushThrough.islands;
 
     const apertureClipNotice =
         placedClip.anyOutside || keylineClip.anyOutside
@@ -971,6 +1018,15 @@ export function VisualiserClient({
             clipApertureToSection(development, s, pushThroughKeyline),
         );
     }, [development, sectionExport, pushThroughKeyline]);
+
+    // Retained counter islands per section — cut around (ringed by the
+    // keyline) but kept as metal, remounted on the backing.
+    const pushThroughIslandsBySection = useMemo(() => {
+        if (!development || !sectionExport) return [];
+        return sectionExport.sections.map((s) =>
+            clipApertureToSection(development, s, pushThroughIslands),
+        );
+    }, [development, sectionExport, pushThroughIslands]);
 
     const fixingsBySection = useMemo(() => {
         if (!development || !sectionExport) return [];
@@ -1401,6 +1457,7 @@ export function VisualiserClient({
                             aperture={aperture}
                             keyline={keyline}
                             pushThroughKeyline={pushThroughKeyline}
+                            pushThroughIslands={pushThroughIslands}
                             pushThroughPieces={pushThroughPieces}
                             fixings={fixings}
                             reference={reference}
@@ -1426,6 +1483,7 @@ export function VisualiserClient({
                             aperture={aperture}
                             keyline={keyline}
                             pushThroughKeyline={pushThroughKeyline}
+                            pushThroughIslands={pushThroughIslands}
                             autoFixings={autoFixings}
                             manualFixings={manualFixings}
                             reference={reference}
@@ -1533,6 +1591,9 @@ export function VisualiserClient({
                             keylineBySection={keylineBySection}
                             pushThroughKeylineBySection={
                                 pushThroughKeylineBySection
+                            }
+                            pushThroughIslandsBySection={
+                                pushThroughIslandsBySection
                             }
                             fixingsBySection={fixingsBySection}
                             cableHolesBySection={cableHolesBySection}

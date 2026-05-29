@@ -123,6 +123,7 @@ export function FlatPreview({
     aperture,
     keyline,
     pushThroughKeyline = [],
+    pushThroughIslands = [],
     pushThroughPieces = [],
     fixings = [],
     cableHoles = [],
@@ -150,6 +151,13 @@ export function FlatPreview({
      * so the operator sees the panel-with-letter-shaped-windows.
      */
     pushThroughKeyline?: FlatPath[];
+    /**
+     * Retained counter islands — the metal panel kept inside each
+     * counter (G/e/g), ringed by the keyline gap. Drawn in the panel
+     * colour on top of the open counter so it reads as metal with a
+     * thin cut around it, not an open hole.
+     */
+    pushThroughIslands?: FlatPath[];
     /**
      * Push-through inserts — letters mounted from behind. Drawn as
      * filled acrylic shapes (outer + each counter as a SEPARATE piece)
@@ -403,6 +411,21 @@ export function FlatPreview({
                         />
                     );
                 })}
+
+                {/* Retained counter islands — panel metal kept inside
+                    each counter, drawn in the panel colour on top of the
+                    open counter so it reads as metal. The keyline gap
+                    between the island and the counter edge stays open
+                    (shows the face/background through). */}
+                {pushThroughIslands.map((p, i) => (
+                    <path
+                        key={`pt-island-${i}`}
+                        d={pathD(p)}
+                        fill={panelColor}
+                        stroke="#1a1f23"
+                        strokeWidth={stroke * 0.8}
+                    />
+                ))}
 
                 {/* Acrylic pieces — coloured fills with a stronger edge
                     stroke so they read as a sheet sitting proud of the

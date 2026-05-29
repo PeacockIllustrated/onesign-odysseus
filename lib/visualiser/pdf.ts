@@ -91,6 +91,14 @@ interface PdfOptions {
      * than via the global keylineMm).
      */
     pushThroughKeylineBySection?: FlatPath[][];
+    /**
+     * Per-section retained counter islands (shrunk-counter contours).
+     * Cut on the panel-cut page so the cutter rings the metal island
+     * inside each push-through counter with the keyline gap. The island
+     * stays as panel metal (remounted on the backing), so the counter
+     * reads as metal with a glowing keyline ring, not an open hole.
+     */
+    pushThroughIslandsBySection?: FlatPath[][];
     fixingsBySection?: FlatPath[][];
     /**
      * Per-section cable-routing holes (circle polys in export-sheet
@@ -1816,6 +1824,9 @@ export async function generateProductionPdfBlob(
         .flat()
         .filter((p) => p.points.length >= 3).length;
     const cableHoleDia = opts.params.cableHoleDiameterMm ?? 10;
+    const islandCount = (opts.pushThroughIslandsBySection ?? [])
+        .flat()
+        .filter((p) => p.closed && p.points.length >= 3).length;
 
     // ---- Page 1: panel cut -----------------------------------------
     jobs.push({
@@ -1833,6 +1844,9 @@ export async function generateProductionPdfBlob(
                     : '1 panel',
                 cableHoleCount > 0
                     ? `${cableHoleCount} cable hole${cableHoleCount === 1 ? '' : 's'} (Ø${cableHoleDia})`
+                    : '',
+                islandCount > 0
+                    ? `${islandCount} retained counter island${islandCount === 1 ? '' : 's'} (remount on backing)`
                     : '',
                 today,
             ]
@@ -1876,9 +1890,14 @@ export async function generateProductionPdfBlob(
                 // Push-through-group paths emit their per-group keyline
                 // alongside — these are real face holes regardless of the
                 // global keyline setting.
+                const sectionPtIsland =
+                    opts.pushThroughIslandsBySection?.[i] ?? [];
                 const panelCuts = [
                     ...(sectionKl.length > 0 ? sectionKl : sectionAp),
                     ...sectionPtKl,
+                    // Counter islands: cut the keyline ring around the
+                    // retained metal island so it frees + the gap lights.
+                    ...sectionPtIsland,
                 ];
                 const sectionFx = opts.fixingsBySection?.[i] ?? [];
                 const sectionCable = opts.cableHolesBySection?.[i] ?? [];
@@ -2051,11 +2070,11 @@ export async function generateProductionPdfBlob(
                 : '';
         jobs.push({
             subtitle:
-                'Push-through inserts — outer letter + each counter cut as SEPARATE pieces. Glue each counter to backing in its original position alongside its outer ring; do NOT bond counter to outer.',
+                'Push-through inserts — acrylic letter donut (outer outline + counter as a hole through the acrylic). The counter is filled by a retained METAL island from the panel (see panel-cut page), not acrylic.',
             partW: insertW,
             partH: insertH,
             footerInfo: [
-                `${insertOuters.length} outer${insertOuters.length === 1 ? '' : 's'}  ·  ${insertCounters.length} counter${insertCounters.length === 1 ? '' : 's'}`,
+                `${insertOuters.length} letter${insertOuters.length === 1 ? '' : 's'}  ·  ${insertCounters.length} counter hole${insertCounters.length === 1 ? '' : 's'} (cut through the acrylic)`,
                 [
                     `bbox ${Math.round(insertW)} × ${Math.round(insertH)} mm`,
                     specsTrailer,
@@ -2063,7 +2082,7 @@ export async function generateProductionPdfBlob(
                 ]
                     .filter(Boolean)
                     .join('  ·  '),
-                'ASSEMBLY: bond every piece to the diffuser backing panel (next page) in its original position, then press from REAR of face panel.',
+                'ASSEMBLY: bond acrylic donuts to the diffuser backing (next page); the metal counter islands sit in the counter holes, keyline gap all round; press from REAR of face panel.',
             ],
             draw: (dX, dY) => {
                 const ipx = (x: number) => dX + (x - minX);
