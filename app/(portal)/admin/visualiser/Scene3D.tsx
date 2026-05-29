@@ -1393,12 +1393,12 @@ function Dimensions3D({
         push(xDim, -hh, xDim, hh);
         push(xDim - tick, -hh - tick, xDim + tick, -hh + tick);
         push(xDim - tick, hh - tick, xDim + tick, hh + tick);
-        // Return callout leader (top edge centre → label) when returns
-        // exist; shadow-gap callout leader (right edge centre → label)
-        // always (the label itself offers to add a gap when there's
-        // none).
-        if (hasReturns) push(0, hh, 0, hh + off - tick);
-        push(hw, 0, hw + off - tick, 0);
+        // Shadow-gap callout leader (top edge centre → label) always
+        // (the label itself offers to add a gap when there's none);
+        // return callout leader (right edge centre → label) when
+        // returns exist.
+        push(0, hh, 0, hh + off - tick);
+        if (hasReturns) push(hw, 0, hw + off - tick, 0);
         const g = new THREE.BufferGeometry();
         g.setAttribute(
             'position',
@@ -1426,14 +1426,14 @@ function Dimensions3D({
             />
             {hasReturns && (
                 <DimensionEditLabel
-                    position={[0, hh + off, z]}
+                    position={[hw + off, 0, z]}
                     label="Return"
                     valueMm={returnDepthMm}
                     onCommit={(v) => onDimensionChange?.('return', v)}
                 />
             )}
             <DimensionEditLabel
-                position={[hw + off, 0, z]}
+                position={[0, hh + off, z]}
                 label="Gap"
                 valueMm={shadowGapMm}
                 onCommit={(v) => onDimensionChange?.('shadowGap', v)}
