@@ -29,6 +29,8 @@ export const DEFAULT_PARAMS: PanelParams = {
     standoffDistanceMm: 25,
     letterColor: '#1a1f23',
     manualFixings: [],
+    cableHoles: [],
+    cableHoleDiameterMm: 10,
 };
 
 type GroupMaterial =
@@ -103,6 +105,13 @@ interface VisualiserState {
      */
     fixingMode: 'off' | 'place' | 'delete';
     /**
+     * Current cable-hole edit mode — mutually exclusive with fixingMode
+     * and group edit. 'place' drops a cable hole on click; 'delete'
+     * removes the nearest one. Cable holes are pure positioners (no
+     * auto-placement), so there's no density / count concept.
+     */
+    cableMode: 'off' | 'place' | 'delete';
+    /**
      * Material-group editor state. When non-null the operator is
      * picking paths in the canvas to bundle into a group:
      *   - 'new'           — building a brand-new group
@@ -127,6 +136,12 @@ interface VisualiserState {
     removeManualFixing: (index: number) => void;
     clearManualFixings: () => void;
     setFixingMode: (m: 'off' | 'place' | 'delete') => void;
+
+    /* Cable-hole actions (positioner — manual place/delete only) */
+    addCableHole: (p: [number, number]) => void;
+    removeCableHole: (index: number) => void;
+    clearCableHoles: () => void;
+    setCableMode: (m: 'off' | 'place' | 'delete') => void;
 
     /* Material group actions */
     startNewGroupEdit: () => void;
@@ -184,6 +199,7 @@ export const useVisualiser = create<VisualiserState>((set) => ({
     quoteItemId: null,
     dirty: false,
     fixingMode: 'off',
+    cableMode: 'off',
     editingGroupId: null,
     pendingPaths: [],
 
@@ -320,7 +336,63 @@ export const useVisualiser = create<VisualiserState>((set) => ({
             dirty: true,
         })),
 
-    setFixingMode: (m) => set({ fixingMode: m }),
+    // Turning a fixing mode on cancels any cable-hole edit — the two
+    // placement workflows are mutually exclusive so canvas clicks only
+    // ever mean one thing. Turning it off leaves cable mode untouched.
+    setFixingMode: (m) =>
+        set((s) => ({
+            fixingMode: m,
+            cableMode: m === 'off' ? s.cableMode : 'off',
+        })),
+
+    /* ------------------------------------------------------------------ *
+     * Cable holes (manual positioner)
+     * ------------------------------------------------------------------ */
+
+    addCableHole: (p) =>
+        set((s) => ({
+            params: {
+                ...s.params,
+                cableHoles: [...(s.params.cableHoles ?? []), p],
+            },
+            dirty: true,
+        })),
+
+    removeCableHole: (index) =>
+        set((s) => {
+            const list = s.params.cableHoles ?? [];
+            if (index < 0 || index >= list.length)
+                return {} as Partial<VisualiserState>;
+            const next = list.filter((_, i) => i !== index);
+            const nextMode =
+                s.cableMode === 'delete' && next.length === 0
+                    ? ('off' as const)
+                    : s.cableMode;
+            return {
+                params: { ...s.params, cableHoles: next },
+                cableMode: nextMode,
+                dirty: true,
+            };
+        }),
+
+    clearCableHoles: () =>
+        set((s) => ({
+            params: { ...s.params, cableHoles: [] },
+            cableMode:
+                s.cableMode === 'delete' ? ('off' as const) : s.cableMode,
+            dirty: true,
+        })),
+
+    // Symmetric to setFixingMode — turning cable mode on cancels any
+    // fixing-edit and group-edit so the canvas only does one thing.
+    setCableMode: (m) =>
+        set((s) => ({
+            cableMode: m,
+            fixingMode: m === 'off' ? s.fixingMode : 'off',
+            ...(m === 'off'
+                ? {}
+                : { editingGroupId: null, pendingPaths: [] }),
+        })),
 
     /* ------------------------------------------------------------------ *
      * Material groups
@@ -330,8 +402,10 @@ export const useVisualiser = create<VisualiserState>((set) => ({
         set({
             editingGroupId: 'new',
             pendingPaths: [],
-            // Fixing edits can't run at the same time as a group edit.
+            // Fixing + cable edits can't run at the same time as a
+            // group edit — clear both.
             fixingMode: 'off',
+            cableMode: 'off',
         }),
 
     startEditingGroup: (groupId) =>
@@ -343,6 +417,7 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                 editingGroupId: groupId,
                 pendingPaths: g ? [...g.pathIndices] : [],
                 fixingMode: 'off',
+                cableMode: 'off',
             };
         }),
 

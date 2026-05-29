@@ -1173,6 +1173,7 @@ function Panel({
     pushThroughKeyline,
     autoFixings,
     manualFixings,
+    cableHoles,
     reference,
     vinylPieces,
     acrylicPieces,
@@ -1186,6 +1187,7 @@ function Panel({
     onPathToggle,
     fold,
     fixingMode,
+    cableMode,
     onFixingClick,
     showOutlines = true,
     showStandoffLetters = true,
@@ -1199,6 +1201,7 @@ function Panel({
     pushThroughKeyline: FlatPath[];
     autoFixings: FlatPath[];
     manualFixings: FlatPath[];
+    cableHoles: FlatPath[];
     reference: FlatPath[];
     vinylPieces: MaterialPiece[];
     acrylicPieces: MaterialPiece[];
@@ -1212,6 +1215,7 @@ function Panel({
     onPathToggle?: (i: number) => void;
     fold: number;
     fixingMode?: 'off' | 'place' | 'delete';
+    cableMode?: 'off' | 'place' | 'delete';
     onFixingClick?: (p: [number, number]) => void;
     showOutlines?: boolean;
     showStandoffLetters?: boolean;
@@ -1235,6 +1239,11 @@ function Panel({
     };
     const panelColor = params.panelColor ?? DEFAULT_PANEL_COLOR;
     const edges: PanelEdge[] = ['top', 'bottom', 'left', 'right'];
+    // Either placement workflow active → canvas captures clicks +
+    // shows the crosshair cursor. The parent dispatches to the right
+    // handler based on which mode is set.
+    const placementActive =
+        (fixingMode ?? 'off') !== 'off' || (cableMode ?? 'off') !== 'off';
 
     const face = dev.segments.find((s) => s.role === 'face');
 
@@ -1259,12 +1268,59 @@ function Panel({
             (face.yMm + face.hMm / 2 - p[1]) * S,
         ];
         const out: Array<Array<[number, number]>> = [];
-        for (const cut of [...aperture, ...pushThroughKeyline, ...fixings]) {
+        for (const cut of [
+            ...aperture,
+            ...pushThroughKeyline,
+            ...fixings,
+            ...cableHoles,
+        ]) {
             const pts = cut.points.map(toLocal);
             if (pts.length >= 3) out.push(pts);
         }
         return out;
-    }, [face, aperture, pushThroughKeyline, fixings]);
+    }, [face, aperture, pushThroughKeyline, fixings, cableHoles]);
+
+    // Cable-hole ring overlays — the holes themselves are cut in the
+    // face above; a distinct purple ring just in front makes them
+    // identifiable as cable routing (vs standoff fixings) and gives a
+    // visible target in cable-delete mode.
+    const cableRings = useMemo(() => {
+        if (!face || cableHoles.length === 0) return null;
+        const z = 1.2 * S;
+        const pos: number[] = [];
+        const segs = 28;
+        for (const hole of cableHoles) {
+            if (hole.points.length < 3) continue;
+            let cx = 0;
+            let cy = 0;
+            for (const [x, y] of hole.points) {
+                cx += x;
+                cy += y;
+            }
+            cx /= hole.points.length;
+            cy /= hole.points.length;
+            let rad = 0;
+            for (const [x, y] of hole.points)
+                rad += Math.hypot(x - cx, y - cy);
+            rad /= hole.points.length;
+            const lx = (cx - face.xMm - face.wMm / 2) * S;
+            const ly = (face.yMm + face.hMm / 2 - cy) * S;
+            const rs = rad * S;
+            for (let i = 0; i < segs; i++) {
+                const t0 = (i / segs) * Math.PI * 2;
+                const t1 = ((i + 1) / segs) * Math.PI * 2;
+                pos.push(lx + Math.cos(t0) * rs, ly + Math.sin(t0) * rs, z);
+                pos.push(lx + Math.cos(t1) * rs, ly + Math.sin(t1) * rs, z);
+            }
+        }
+        if (pos.length === 0) return null;
+        const g = new THREE.BufferGeometry();
+        g.setAttribute(
+            'position',
+            new THREE.Float32BufferAttribute(pos, 3),
+        );
+        return g;
+    }, [face, cableHoles]);
 
     // Reference (lettering outline, NOT cut) and keyline (register line, NOT
     // cut) ride on top of the face as thin line overlays.
@@ -1339,9 +1395,9 @@ function Panel({
                 color={panelColor}
                 holesLocal={holesLocal}
                 outlines={showOutlines}
-                cursorCrosshair={(fixingMode ?? 'off') !== 'off'}
+                cursorCrosshair={placementActive}
                 onClick={
-                    (fixingMode ?? 'off') !== 'off' && face && onFixingClick
+                    placementActive && face && onFixingClick
                         ? (sceneX, sceneY) => {
                               // Scene units are mm × S. The face mesh is
                               // centred at world origin, so convert back to
@@ -1488,6 +1544,16 @@ function Panel({
                     </lineSegments>
                 </>
             )}
+
+            {/* Cable-hole rings — distinct purple (red while deleting)
+                so they read as cable routing, not standoff fixings. */}
+            {cableRings && (
+                <lineSegments geometry={cableRings}>
+                    <lineBasicMaterial
+                        color={cableMode === 'delete' ? '#dc2626' : '#7c3aed'}
+                    />
+                </lineSegments>
+            )}
         </group>
     );
 }
@@ -1501,6 +1567,7 @@ export default function Scene3D(props: {
     pushThroughKeyline?: FlatPath[];
     autoFixings?: FlatPath[];
     manualFixings?: FlatPath[];
+    cableHoles?: FlatPath[];
     reference?: FlatPath[];
     vinylPieces?: MaterialPiece[];
     acrylicPieces?: MaterialPiece[];
@@ -1516,6 +1583,8 @@ export default function Scene3D(props: {
     fold?: number;
     /** Active fixing edit mode: 'place' drops, 'delete' removes. */
     fixingMode?: 'off' | 'place' | 'delete';
+    /** Active cable-hole edit mode: 'place' drops, 'delete' removes. */
+    cableMode?: 'off' | 'place' | 'delete';
     onFixingClick?: (p: [number, number]) => void;
     showOutlines?: boolean;
     showStandoffLetters?: boolean;
@@ -1524,6 +1593,7 @@ export default function Scene3D(props: {
     const fold = props.fold ?? 1;
     const autoFixings = props.autoFixings ?? [];
     const manualFixings = props.manualFixings ?? [];
+    const cableHoles = props.cableHoles ?? [];
     const reference = props.reference ?? [];
     const vinylPieces = props.vinylPieces ?? [];
     const acrylicPieces = props.acrylicPieces ?? [];
@@ -1560,6 +1630,7 @@ export default function Scene3D(props: {
                 {...props}
                 autoFixings={autoFixings}
                 manualFixings={manualFixings}
+                cableHoles={cableHoles}
                 reference={reference}
                 vinylPieces={vinylPieces}
                 acrylicPieces={acrylicPieces}
@@ -1574,6 +1645,7 @@ export default function Scene3D(props: {
                 onPathToggle={props.onPathToggle}
                 fold={fold}
                 fixingMode={props.fixingMode}
+                cableMode={props.cableMode}
                 onFixingClick={props.onFixingClick}
                 showOutlines={showOutlines}
                 showStandoffLetters={showStandoffLetters}

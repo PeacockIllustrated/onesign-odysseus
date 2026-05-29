@@ -181,6 +181,19 @@ export const PanelParamsSchema = z.object({
      */
     manualFixings: z.array(z.tuple([z.number(), z.number()])).optional(),
     /**
+     * Cable-routing holes — manually positioned holes cut in the panel
+     * face to feed LED cables into illuminated letters. Unlike standoff
+     * fixings these are NEVER auto-placed: there's only one or two per
+     * letter and the fabricator wants them exactly where the cable run
+     * dictates, so they're a pure click-to-place positioner.
+     *
+     * Stored in SVG-local coords (like manualFixings) so they track the
+     * lettering across alignment / scale / nudge edits.
+     */
+    cableHoles: z.array(z.tuple([z.number(), z.number()])).optional(),
+    /** Diameter (mm) of each cable hole. Default 10mm. */
+    cableHoleDiameterMm: z.number().positive().max(100).optional(),
+    /**
      * Material groups — the heart of the mixed-material model. Each
      * group bundles a set of imported SVG paths under a shared
      * material. A single sign can mix any combination of materials

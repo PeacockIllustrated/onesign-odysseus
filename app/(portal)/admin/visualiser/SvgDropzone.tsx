@@ -702,6 +702,9 @@ export function SvgDropzone() {
         fixingMode,
         setFixingMode,
         clearManualFixings,
+        cableMode,
+        setCableMode,
+        clearCableHoles,
         editingGroupId,
         pendingPaths,
         startNewGroupEdit,
@@ -1318,6 +1321,97 @@ export function SvgDropzone() {
                             </>
                         )}
                     </div>
+
+                    {/* Cable holes — available for any illuminated sign,
+                        independent of material. A pure positioner: there
+                        are only one or two per letter and the fabricator
+                        wants them exactly where the cable run dictates, so
+                        there's no auto-placement or density. */}
+                    {imported && (
+                        <div className="pt-2 border-t border-neutral-100 space-y-2">
+                            <h3 className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                                Cable holes
+                            </h3>
+                            <p className="text-[10px] text-neutral-500">
+                                Holes cut in the panel face to feed cables
+                                into illuminated letters. Click to place;
+                                one or two per letter is typical.
+                            </p>
+                            <NumField
+                                label="Diameter (mm)"
+                                step={0.5}
+                                value={params.cableHoleDiameterMm ?? 10}
+                                onChange={(n) =>
+                                    setParam(
+                                        'cableHoleDiameterMm',
+                                        n > 0 ? n : 0.2,
+                                    )
+                                }
+                            />
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        setCableMode(
+                                            cableMode === 'place'
+                                                ? 'off'
+                                                : 'place',
+                                        )
+                                    }
+                                    aria-pressed={cableMode === 'place'}
+                                    className={`flex min-h-[40px] flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium transition-colors ${
+                                        cableMode === 'place'
+                                            ? 'text-white shadow-sm'
+                                            : 'border border-neutral-300 text-neutral-700 hover:bg-neutral-100'
+                                    }`}
+                                    style={
+                                        cableMode === 'place'
+                                            ? { background: ACCENT }
+                                            : undefined
+                                    }
+                                >
+                                    <Crosshair size={14} aria-hidden />
+                                    {cableMode === 'place'
+                                        ? 'Done placing'
+                                        : 'Place cable holes'}
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={
+                                        (params.cableHoles?.length ?? 0) === 0
+                                    }
+                                    onClick={() =>
+                                        setCableMode(
+                                            cableMode === 'delete'
+                                                ? 'off'
+                                                : 'delete',
+                                        )
+                                    }
+                                    aria-pressed={cableMode === 'delete'}
+                                    className={`flex min-h-[40px] flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                                        cableMode === 'delete'
+                                            ? 'bg-red-600 text-white shadow-sm'
+                                            : 'border border-neutral-300 text-neutral-700 hover:bg-neutral-100'
+                                    }`}
+                                >
+                                    <Eraser size={14} aria-hidden />
+                                    {cableMode === 'delete'
+                                        ? 'Done deleting'
+                                        : 'Delete'}
+                                </button>
+                                {(params.cableHoles?.length ?? 0) > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => clearCableHoles()}
+                                        className="min-h-[40px] rounded-md border border-neutral-300 px-2 py-2 text-xs font-medium text-neutral-500 hover:bg-neutral-100"
+                                        aria-label="Remove every cable hole"
+                                    >
+                                        Clear ({params.cableHoles?.length})
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
         </div>

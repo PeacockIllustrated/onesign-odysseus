@@ -125,6 +125,7 @@ export function FlatPreview({
     pushThroughKeyline = [],
     pushThroughPieces = [],
     fixings = [],
+    cableHoles = [],
     reference = [],
     vinylPieces = [],
     acrylicPieces = [],
@@ -136,6 +137,7 @@ export function FlatPreview({
     onPathToggle,
     panelColor = DEFAULT_PANEL_COLOR,
     fixingMode = 'off',
+    cableMode = 'off',
     onFixingClick,
 }: {
     development: PanelDevelopment;
@@ -155,6 +157,12 @@ export function FlatPreview({
      */
     pushThroughPieces?: PushThroughPiece[];
     fixings?: FlatPath[];
+    /**
+     * Cable-routing holes (flat-dev circle polys). Real holes cut in
+     * the panel face, drawn with a distinct ring so the operator can
+     * tell them from standoff fixings.
+     */
+    cableHoles?: FlatPath[];
     reference?: FlatPath[];
     vinylPieces?: MaterialPiece[];
     acrylicPieces?: MaterialPiece[];
@@ -184,13 +192,15 @@ export function FlatPreview({
     onPathToggle?: (index: number) => void;
     panelColor?: string;
     fixingMode?: 'off' | 'place' | 'delete';
+    cableMode?: 'off' | 'place' | 'delete';
     /** Called with the click point in flat-development mm coords. */
     onFixingClick?: (p: [number, number]) => void;
 }) {
     const svgRef = useRef<SVGSVGElement | null>(null);
 
+    const placementActive = fixingMode !== 'off' || cableMode !== 'off';
     const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
-        if (fixingMode === 'off') return;
+        if (!placementActive) return;
         if (!onFixingClick || !svgRef.current) return;
         const ctm = svgRef.current.getScreenCTM();
         if (!ctm) return;
@@ -238,7 +248,12 @@ export function FlatPreview({
                 `V ${face.yMm + face.hMm} ` +
                 `H ${face.xMm} Z`,
         ];
-        for (const cut of [...aperture, ...pushThroughKeyline, ...fixings]) {
+        for (const cut of [
+            ...aperture,
+            ...pushThroughKeyline,
+            ...fixings,
+            ...cableHoles,
+        ]) {
             if (cut.points.length < 3) continue;
             const [first, ...rest] = cut.points;
             out.push(
@@ -248,7 +263,7 @@ export function FlatPreview({
             );
         }
         return out.join(' ');
-    }, [face, aperture, pushThroughKeyline, fixings]);
+    }, [face, aperture, pushThroughKeyline, fixings, cableHoles]);
 
     return (
         <div className="h-full w-full bg-neutral-50">
@@ -256,7 +271,7 @@ export function FlatPreview({
                 ref={svgRef}
                 viewBox={vb}
                 className={`h-full w-full ${
-                    fixingMode !== 'off' ? 'cursor-crosshair' : ''
+                    placementActive ? 'cursor-crosshair' : ''
                 }`}
                 preserveAspectRatio="xMidYMid meet"
                 onClick={handleClick}
@@ -484,6 +499,56 @@ export function FlatPreview({
                         strokeDasharray={`${stroke * 2} ${stroke * 2}`}
                     />
                 ))}
+
+                {/* Cable holes — real holes in the face (cut above), with
+                    a distinct purple ring + crosshair so they read as
+                    cable routing rather than standoff fixings, and so
+                    they're an obvious target in cable-delete mode. */}
+                {cableHoles.map((p, i) => {
+                    let cx = 0;
+                    let cy = 0;
+                    for (const [x, y] of p.points) {
+                        cx += x;
+                        cy += y;
+                    }
+                    cx /= p.points.length || 1;
+                    cy /= p.points.length || 1;
+                    let r = 0;
+                    for (const [x, y] of p.points)
+                        r += Math.hypot(x - cx, y - cy);
+                    r /= p.points.length || 1;
+                    const xh = r * 1.5;
+                    const ringColor =
+                        cableMode === 'delete' ? '#dc2626' : '#7c3aed';
+                    return (
+                        <g key={`cable-${i}`} pointerEvents="none">
+                            <circle
+                                cx={cx}
+                                cy={cy}
+                                r={r}
+                                fill="none"
+                                stroke={ringColor}
+                                strokeWidth={stroke * 1.2}
+                            />
+                            <line
+                                x1={cx - xh}
+                                y1={cy}
+                                x2={cx + xh}
+                                y2={cy}
+                                stroke={ringColor}
+                                strokeWidth={stroke}
+                            />
+                            <line
+                                x1={cx}
+                                y1={cy - xh}
+                                x2={cx}
+                                y2={cy + xh}
+                                stroke={ringColor}
+                                strokeWidth={stroke}
+                            />
+                        </g>
+                    );
+                })}
 
                 {/* Click-to-select overlays — one transparent hit shape per
                     imported path, regardless of whether it's a cut, vinyl

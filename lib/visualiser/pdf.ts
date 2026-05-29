@@ -92,6 +92,13 @@ interface PdfOptions {
      */
     pushThroughKeylineBySection?: FlatPath[][];
     fixingsBySection?: FlatPath[][];
+    /**
+     * Per-section cable-routing holes (circle polys in export-sheet
+     * coords). Real panel cuts — emitted on the panel-cut page and the
+     * placement template, kept separate from standoff fixings so the
+     * footer can count them distinctly.
+     */
+    cableHolesBySection?: FlatPath[][];
     referenceBySection?: FlatPath[][];
     /**
      * Mixed-material pieces in flat-development coords. Reference PDF
@@ -1805,18 +1812,32 @@ export async function generateProductionPdfBlob(
             : null;
     const warningBandH = counterSurvivalWarning ? 18 : 0;
 
+    const cableHoleCount = (opts.cableHolesBySection ?? [])
+        .flat()
+        .filter((p) => p.points.length >= 3).length;
+    const cableHoleDia = opts.params.cableHoleDiameterMm ?? 10;
+
     // ---- Page 1: panel cut -----------------------------------------
     jobs.push({
-        subtitle: 'Panel cut — perimeter + apertures + stand-off holes',
+        subtitle: cableHoleCount > 0
+            ? 'Panel cut — perimeter + apertures + stand-off + cable holes'
+            : 'Panel cut — perimeter + apertures + stand-off holes',
         partW: layoutW,
         partH: layoutH + warningBandH,
         footerInfo: [
             `${params.materialLabel || 'material -'}  ·  ${params.materialThicknessMm} mm`,
-            `face ${params.panelWidthMm} × ${params.panelHeightMm} mm  ·  ${
+            [
+                `face ${params.panelWidthMm} × ${params.panelHeightMm} mm`,
                 sectionExport.sections.length > 1
                     ? `${sectionExport.sections.length} sections`
-                    : '1 panel'
-            }  ·  ${today}`,
+                    : '1 panel',
+                cableHoleCount > 0
+                    ? `${cableHoleCount} cable hole${cableHoleCount === 1 ? '' : 's'} (Ø${cableHoleDia})`
+                    : '',
+                today,
+            ]
+                .filter(Boolean)
+                .join('  ·  '),
         ],
         draw: (dX, dY) => {
             // Counter-survival warning band — yellow band at the top
@@ -1860,6 +1881,7 @@ export async function generateProductionPdfBlob(
                     ...sectionPtKl,
                 ];
                 const sectionFx = opts.fixingsBySection?.[i] ?? [];
+                const sectionCable = opts.cableHolesBySection?.[i] ?? [];
 
                 // Outer perimeter — one continuous welded contour.
                 const perimeter = outlinePerimeter(section.development);
@@ -1918,8 +1940,10 @@ export async function generateProductionPdfBlob(
                 // on the push-through insert page (keyline mode) or
                 // via the per-material pages (face-stuck inserts).
 
-                // Stand-off fixings — naturally welded single circles.
-                for (const f of sectionFx) {
+                // Stand-off fixings + cable holes — both are single
+                // welded circles cut in the panel. Same emission; the
+                // footer counts them separately.
+                for (const f of [...sectionFx, ...sectionCable]) {
                     const cx =
                         f.points.reduce((a, q) => a + q[0], 0) /
                         f.points.length;
@@ -2256,11 +2280,15 @@ export async function generateProductionPdfBlob(
     const allFixings: FlatPath[] = (opts.fixingsBySection ?? []).flatMap(
         (a) => a,
     );
+    const allCableHoles: FlatPath[] = (opts.cableHolesBySection ?? []).flatMap(
+        (a) => a,
+    );
     const allReferences: FlatPath[] = (opts.referenceBySection ?? []).flatMap(
         (a) => a,
     );
     const needsTemplate =
         allFixings.length > 0 ||
+        allCableHoles.length > 0 ||
         allReferences.length > 0 ||
         allApertures.length > 0;
     if (needsTemplate) {
@@ -2275,11 +2303,18 @@ export async function generateProductionPdfBlob(
             partW: faceW,
             partH: faceH,
             footerInfo: [
-                allFixings.length > 0
-                    ? `${allFixings.length} fixing hole${allFixings.length === 1 ? '' : 's'}`
-                    : 'No fixings',
+                [
+                    allFixings.length > 0
+                        ? `${allFixings.length} fixing hole${allFixings.length === 1 ? '' : 's'}`
+                        : 'No fixings',
+                    allCableHoles.length > 0
+                        ? `${allCableHoles.length} cable hole${allCableHoles.length === 1 ? '' : 's'} (Ø${opts.params.cableHoleDiameterMm ?? 10})`
+                        : '',
+                ]
+                    .filter(Boolean)
+                    .join('  ·  '),
                 `face ${Math.round(params.panelWidthMm)} × ${Math.round(params.panelHeightMm)} mm  ·  ${today}`,
-                'LEGEND: ⊕ stud hole · — — letter position · · · · aperture cut',
+                'LEGEND: + stud hole  ·  O cable hole  ·  - - letter position  ·  .... aperture cut',
             ],
             draw: (dX, dY) => {
                 const px = (x: number) => dX + x;
@@ -2385,6 +2420,33 @@ export async function generateProductionPdfBlob(
                         px(cx),
                         py(cy) + 1.5,
                     );
+                    doc.setDrawColor(0);
+                }
+
+                // Cable holes — hole + crosshair, drawn in purple so the
+                // operator can tell them from the stud holes above. No
+                // centre prick: these are clearance holes for a cable,
+                // not a stud location that needs marking out precisely.
+                for (const f of allCableHoles) {
+                    if (f.points.length < 3) continue;
+                    let cx = 0,
+                        cy = 0;
+                    for (const q of f.points) {
+                        cx += q[0];
+                        cy += q[1];
+                    }
+                    cx /= f.points.length;
+                    cy /= f.points.length;
+                    let rMm = 0;
+                    for (const q of f.points)
+                        rMm += Math.hypot(q[0] - cx, q[1] - cy);
+                    rMm /= f.points.length;
+                    doc.setDrawColor(124, 58, 237); // purple
+                    doc.setLineWidth(productionStroke);
+                    doc.circle(px(cx), py(cy), rMm, 'S');
+                    const xh = rMm * 1.5;
+                    doc.line(px(cx) - xh, py(cy), px(cx) + xh, py(cy));
+                    doc.line(px(cx), py(cy) - xh, px(cx), py(cy) + xh);
                     doc.setDrawColor(0);
                 }
             },

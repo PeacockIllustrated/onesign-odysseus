@@ -117,6 +117,10 @@ export function VisualiserClient({
         setFixingMode,
         addManualFixing,
         removeManualFixing,
+        cableMode,
+        setCableMode,
+        addCableHole,
+        removeCableHole,
         editingGroupId,
         pendingPaths,
         togglePendingPath,
@@ -191,11 +195,20 @@ export function VisualiserClient({
                 cancelGroupEdit();
             } else if (fixingMode !== 'off') {
                 setFixingMode('off');
+            } else if (cableMode !== 'off') {
+                setCableMode('off');
             }
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [editingGroupId, fixingMode, cancelGroupEdit, setFixingMode]);
+    }, [
+        editingGroupId,
+        fixingMode,
+        cableMode,
+        cancelGroupEdit,
+        setFixingMode,
+        setCableMode,
+    ]);
 
     const valid = PanelParamsSchema.safeParse(params);
 
@@ -765,6 +778,25 @@ export function VisualiserClient({
         [autoFixings, manualFixings],
     );
 
+    const cableHoleDiameter = params.cableHoleDiameterMm ?? 10;
+
+    // Cable holes — manually positioned holes cut in the panel face to
+    // feed LED cables into illuminated letters. Stored SVG-local so
+    // they track the lettering; converted to flat-dev circle polys and
+    // clipped to the face for render + export. Available whenever
+    // there's artwork (any illuminated-letter type), independent of
+    // material — unlike standoff fixings these aren't tied to the
+    // reference set, the operator just drops them where the cable runs.
+    const cableHoles = useMemo(() => {
+        if (!development || !placementXf) return [];
+        const r = cableHoleDiameter / 2;
+        const polys = (params.cableHoles ?? []).map((p) => {
+            const [x, y] = placementXf.toFlat(p);
+            return circlePoly(x, y, r);
+        });
+        return clipApertureToFace(development, polys).paths;
+    }, [development, placementXf, cableHoleDiameter, params.cableHoles]);
+
     // Even-odd inside test across the reference rings — counters of O /
     // A / B correctly exclude. Used by the place handler to reject
     // clicks on the panel background.
@@ -793,6 +825,9 @@ export function VisualiserClient({
         return n % 2 === 1;
     };
 
+    // Single canvas-click dispatcher — routes to whichever placement
+    // workflow is active. fixing and cable modes are mutually exclusive
+    // (the store enforces it), so at most one branch fires.
     const handleFixingClick = (p: [number, number]) => {
         if (fixingMode === 'place') {
             if (!placementXf) return;
@@ -823,6 +858,32 @@ export function VisualiserClient({
                 }
             }
             if (bestIdx >= 0) removeManualFixing(bestIdx);
+            return;
+        }
+        if (cableMode === 'place') {
+            if (!placementXf) return;
+            // Cable holes can sit anywhere on the face — no inside-
+            // lettering constraint. The canvas already rejects clicks
+            // outside the face bounds before reaching here.
+            addCableHole(placementXf.toLocal(p));
+            return;
+        }
+        if (cableMode === 'delete') {
+            if (!placementXf) return;
+            const stored = params.cableHoles ?? [];
+            if (stored.length === 0) return;
+            const tol = Math.max(cableHoleDiameter / 2, 6) * 1.4;
+            let bestIdx = -1;
+            let bestDist = tol;
+            for (let i = 0; i < stored.length; i++) {
+                const [fx, fy] = placementXf.toFlat(stored[i]);
+                const d = Math.hypot(fx - p[0], fy - p[1]);
+                if (d < bestDist) {
+                    bestDist = d;
+                    bestIdx = i;
+                }
+            }
+            if (bestIdx >= 0) removeCableHole(bestIdx);
         }
     };
 
@@ -912,6 +973,13 @@ export function VisualiserClient({
             clipApertureToSection(development, s, fixings),
         );
     }, [development, sectionExport, fixings]);
+
+    const cableHolesBySection = useMemo(() => {
+        if (!development || !sectionExport) return [];
+        return sectionExport.sections.map((s) =>
+            clipApertureToSection(development, s, cableHoles),
+        );
+    }, [development, sectionExport, cableHoles]);
 
     const referenceBySection = useMemo(() => {
         if (!development || !sectionExport) return [];
@@ -1086,7 +1154,9 @@ export function VisualiserClient({
                         so the operator has one consistent place to look
                         for "you are currently doing X" and one Cancel
                         button to exit it. Esc also exits. */}
-                    {(isEditingGroup || fixingMode !== 'off') && (
+                    {(isEditingGroup ||
+                        fixingMode !== 'off' ||
+                        cableMode !== 'off') && (
                         <div className="pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center px-3">
                             <div
                                 className="pointer-events-auto flex max-w-full items-center gap-2 rounded-full border bg-white px-3 py-1.5 shadow-md"
@@ -1106,7 +1176,8 @@ export function VisualiserClient({
                                         aria-hidden
                                         style={{
                                             color:
-                                                fixingMode === 'delete'
+                                                fixingMode === 'delete' ||
+                                                cableMode === 'delete'
                                                     ? '#dc2626'
                                                     : ACCENT,
                                         }}
@@ -1117,13 +1188,19 @@ export function VisualiserClient({
                                         ? `Editing material group · ${pendingPaths.length} path${pendingPaths.length === 1 ? '' : 's'} selected · click paths to toggle`
                                         : fixingMode === 'place'
                                           ? 'Placing fixings · click the lettering on either canvas'
-                                          : 'Deleting fixings · click a manual fixing to remove'}
+                                          : fixingMode === 'delete'
+                                            ? 'Deleting fixings · click a manual fixing to remove'
+                                            : cableMode === 'place'
+                                              ? 'Placing cable holes · click anywhere on the panel face'
+                                              : 'Deleting cable holes · click a cable hole to remove'}
                                 </span>
                                 <button
                                     type="button"
                                     onClick={() => {
                                         if (isEditingGroup) cancelGroupEdit();
-                                        else setFixingMode('off');
+                                        else if (fixingMode !== 'off')
+                                            setFixingMode('off');
+                                        else setCableMode('off');
                                     }}
                                     className="ml-1 flex min-h-[28px] items-center gap-1 rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] font-medium text-neutral-600 hover:bg-neutral-200"
                                 >
@@ -1288,6 +1365,8 @@ export function VisualiserClient({
                             onPathToggle={handlePathPick}
                             panelColor={params.panelColor ?? '#d6d6d6'}
                             fixingMode={fixingMode}
+                            cableMode={cableMode}
+                            cableHoles={cableHoles}
                             onFixingClick={handleFixingClick}
                         />
                     ) : (
@@ -1313,6 +1392,8 @@ export function VisualiserClient({
                             onPathToggle={handlePathPick}
                             fold={tab === 'folded' ? 1 : fold}
                             fixingMode={fixingMode}
+                            cableMode={cableMode}
+                            cableHoles={cableHoles}
                             onFixingClick={handleFixingClick}
                             showOutlines={showOutlines}
                             showStandoffLetters={showStandoffLetters}
@@ -1403,6 +1484,7 @@ export function VisualiserClient({
                                 pushThroughKeylineBySection
                             }
                             fixingsBySection={fixingsBySection}
+                            cableHolesBySection={cableHolesBySection}
                             apertureHolesBySection={apertureHolesBySection}
                             referenceBySection={referenceBySection}
                             vinylPieces={materialPieces.vinyl}
