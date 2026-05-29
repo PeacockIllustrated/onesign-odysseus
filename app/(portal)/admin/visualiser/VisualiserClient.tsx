@@ -10,6 +10,7 @@ import {
     Eye,
     EyeOff,
     Layers,
+    Lightbulb,
     Sliders,
     Upload,
     X,
@@ -139,6 +140,10 @@ export function VisualiserClient({
     const [showStandoffLetters, setShowStandoffLetters] = useState(true);
     const [showStandoffLocators, setShowStandoffLocators] = useState(true);
     const [showOutlines, setShowOutlines] = useState(true);
+    // Illumination preview — off by default (daylight, no glow). When
+    // on, the scene goes dark and any configured illumination
+    // (keyline halo, etc.) lights up. Pure view state, not saved.
+    const [illuminationView, setIlluminationView] = useState(false);
 
     // Auto-play the unfold (folded → flat) when the tab opens or on replay.
     useEffect(() => {
@@ -1142,6 +1147,45 @@ export function VisualiserClient({
                         })}
                     </nav>
                     <div className="flex items-center gap-2 md:gap-3 min-w-0">
+                        {/* Illumination preview switch — darkens the
+                            scene and lights up any configured
+                            illumination. 3D tabs only (a 2D technical
+                            drawing has no lighting to show). */}
+                        {tab !== 'flat' && (
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    setIlluminationView((v) => !v)
+                                }
+                                aria-pressed={illuminationView}
+                                title="Toggle the lit / dark preview"
+                                className={`flex min-h-[32px] items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                                    illuminationView
+                                        ? 'text-white shadow-sm'
+                                        : 'border border-neutral-300 text-neutral-600 hover:bg-neutral-100'
+                                }`}
+                                style={
+                                    illuminationView
+                                        ? { background: '#1a1f23' }
+                                        : undefined
+                                }
+                            >
+                                <Lightbulb
+                                    size={13}
+                                    aria-hidden
+                                    style={{
+                                        color: illuminationView
+                                            ? '#fde68a'
+                                            : undefined,
+                                    }}
+                                />
+                                <span className="hidden sm:inline">
+                                    {illuminationView
+                                        ? 'Lit'
+                                        : 'Illumination'}
+                                </span>
+                            </button>
+                        )}
                         {split.wasSplit && (
                             <span className="hidden sm:inline rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-200">
                                 Split · {split.sections.length} panels
@@ -1403,6 +1447,8 @@ export function VisualiserClient({
                             showOutlines={showOutlines}
                             showStandoffLetters={showStandoffLetters}
                             showStandoffLocators={showStandoffLocators}
+                            illuminationView={illuminationView}
+                            illumination={params.illumination}
                         />
                     )}
 

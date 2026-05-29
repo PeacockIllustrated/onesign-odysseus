@@ -49,6 +49,39 @@ const STANDOFF_STUD_COLOR = '#9aa0a4'; // brushed-metal grey for the studs
 const MANUAL_PLACE_COLOR = '#10b981';
 const MANUAL_DELETE_COLOR = '#ef4444';
 
+// Illumination preview. The scene has no real lights (everything is
+// meshBasicMaterial, which ignores lighting), so "going dark" means:
+// drop the background to near-black and multiply every surface colour
+// down toward black. The only things that DON'T darken are the
+// emissive elements (the opal backing in keyline mode), which carry
+// their own light. NIGHT_FACTOR is how much ambient bounce survives —
+// low enough that lit elements dominate, high enough that the dark
+// geometry still reads as form rather than a black void.
+const NIGHT_BG = '#0a0b0d';
+const NIGHT_FACTOR = 0.17;
+
+/** Multiply a hex colour toward black by `factor` (0..1). */
+function shadeHex(hex: string, factor: number): string {
+    const h = hex.replace('#', '');
+    if (h.length !== 6) return hex;
+    const ch = (i: number) =>
+        Math.max(
+            0,
+            Math.min(
+                255,
+                Math.round(parseInt(h.substring(i, i + 2), 16) * factor),
+            ),
+        )
+            .toString(16)
+            .padStart(2, '0');
+    return `#${ch(0)}${ch(2)}${ch(4)}`;
+}
+
+/** Display colour for a surface — darkened in the illumination view. */
+function displayColor(hex: string, night: boolean): string {
+    return night ? shadeHex(hex, NIGHT_FACTOR) : hex;
+}
+
 /** Pick black or white based on the perceptual luminance of `hex`. */
 function contrastTo(hex: string): string {
     const h = hex.replace('#', '');
@@ -601,6 +634,7 @@ function StandoffLocators({
     faceThicknessMm,
     standoffMm,
     outlines = true,
+    night = false,
 }: {
     face: { xMm: number; yMm: number; wMm: number; hMm: number };
     fixings: FlatPath[];
@@ -608,6 +642,7 @@ function StandoffLocators({
     faceThicknessMm: number;
     standoffMm: number;
     outlines?: boolean;
+    night?: boolean;
 }) {
     if (fixings.length === 0 || standoffMm <= 0) return null;
     // Slight clearance so the stud reads as something inside the hole,
@@ -640,7 +675,7 @@ function StandoffLocators({
                             args={[radius, radius, length, 20]}
                         />
                         <meshBasicMaterial
-                            color={STANDOFF_STUD_COLOR}
+                            color={displayColor(STANDOFF_STUD_COLOR, night)}
                             polygonOffset
                             polygonOffsetFactor={1}
                             polygonOffsetUnits={1}
@@ -781,12 +816,14 @@ function MaterialPieces({
     acrylic,
     solid,
     outlines = true,
+    night = false,
 }: {
     face: { xMm: number; yMm: number; wMm: number; hMm: number };
     vinyl: MaterialPiece[];
     acrylic: MaterialPiece[];
     solid: MaterialPiece[];
     outlines?: boolean;
+    night?: boolean;
 }) {
     const toLocal = (q: [number, number]): [number, number] => [
         (q[0] - face.xMm - face.wMm / 2) * S,
@@ -829,7 +866,7 @@ function MaterialPieces({
                     position={[0, 0, 0.5 * S]}>
                     <shapeGeometry args={[compoundShape(piece), 48]} />
                     <meshBasicMaterial
-                        color={piece.color}
+                        color={displayColor(piece.color, night)}
                         side={THREE.DoubleSide}
                         polygonOffset
                         polygonOffsetFactor={1}
@@ -849,7 +886,7 @@ function MaterialPieces({
                     position={[0, 0, 1 * S]}>
                     <shapeGeometry args={[compoundShape(piece), 48]} />
                     <meshBasicMaterial
-                        color={piece.color}
+                        color={displayColor(piece.color, night)}
                         side={THREE.DoubleSide}
                         polygonOffset
                         polygonOffsetFactor={1}
@@ -880,7 +917,7 @@ function MaterialPieces({
                             ]}
                         />
                         <meshBasicMaterial
-                            color={piece.color}
+                            color={displayColor(piece.color, night)}
                             polygonOffset
                             polygonOffsetFactor={1}
                             polygonOffsetUnits={1}
@@ -921,6 +958,7 @@ function PushThroughPieces({
     pieces,
     materialThicknessMm,
     outlines = true,
+    night = false,
 }: {
     face: { xMm: number; yMm: number; wMm: number; hMm: number };
     pieces: PushThroughPiece[];
@@ -932,6 +970,7 @@ function PushThroughPieces({
      */
     materialThicknessMm: number;
     outlines?: boolean;
+    night?: boolean;
 }) {
     const builtShapes = useMemo(() => {
         const toLocal = (q: [number, number]): [number, number] => [
@@ -997,7 +1036,7 @@ function PushThroughPieces({
                             ]}
                         />
                         <meshBasicMaterial
-                            color={piece.color}
+                            color={displayColor(piece.color, night)}
                             polygonOffset
                             polygonOffsetFactor={1}
                             polygonOffsetUnits={1}
@@ -1034,6 +1073,10 @@ function PushThroughBacking({
     pieces,
     materialThicknessMm,
     outlines = true,
+    night = false,
+    lit = false,
+    glowColor = '#ffffff',
+    glowIntensity = 1,
 }: {
     face: { xMm: number; yMm: number; wMm: number; hMm: number };
     pieces: PushThroughPiece[];
@@ -1045,6 +1088,12 @@ function PushThroughBacking({
      */
     materialThicknessMm: number;
     outlines?: boolean;
+    /** Dark illumination view — darken the unlit opal. */
+    night?: boolean;
+    /** Keyline illumination on — the opal glows (emissive). */
+    lit?: boolean;
+    glowColor?: string;
+    glowIntensity?: number;
 }) {
     const layout = useMemo(() => {
         if (pieces.length === 0) return null;
@@ -1090,19 +1139,42 @@ function PushThroughBacking({
     const cz =
         (-materialThicknessMm - BACKING_THICKNESS_MM / 2) * S;
 
+    const boxArgs: [number, number, number] = [
+        layout.wMm * S,
+        layout.hMm * S,
+        BACKING_THICKNESS_MM * S,
+    ];
+
+    // Lit: opal glows. meshStandardMaterial renders its emissive
+    // colour regardless of scene lighting (there are no lights), so a
+    // black base + emissive glow reads as a self-lit diffuser. The
+    // halo falls out of the existing geometry — the keyline gap in the
+    // dark face panel reveals this glowing panel behind. toneMapped is
+    // off so a bright colour isn't desaturated by tone mapping. Opaque
+    // so the halo ring stays crisp.
+    if (lit) {
+        return (
+            <mesh position={[cx, cy, cz]}>
+                <boxGeometry args={boxArgs} />
+                <meshStandardMaterial
+                    color="#000000"
+                    emissive={glowColor}
+                    emissiveIntensity={Math.max(0, glowIntensity)}
+                    toneMapped={false}
+                />
+            </mesh>
+        );
+    }
+
     return (
         <mesh position={[cx, cy, cz]}>
-            <boxGeometry
-                args={[
-                    layout.wMm * S,
-                    layout.hMm * S,
-                    BACKING_THICKNESS_MM * S,
-                ]}
-            />
+            <boxGeometry args={boxArgs} />
             <meshBasicMaterial
-                color="#f5f5f0"
-                transparent
-                opacity={0.78}
+                // Unlit opal: a dim sheet in the dark view, the usual
+                // translucent opal in daylight.
+                color={night ? shadeHex('#f5f5f0', 0.28) : '#f5f5f0'}
+                transparent={!night}
+                opacity={night ? 1 : 0.78}
                 polygonOffset
                 polygonOffsetFactor={1}
                 polygonOffsetUnits={1}
@@ -1192,6 +1264,8 @@ function Panel({
     showOutlines = true,
     showStandoffLetters = true,
     showStandoffLocators = true,
+    illuminationView = false,
+    illumination,
 }: {
     params: PanelParams;
     development: PanelDevelopment;
@@ -1220,6 +1294,8 @@ function Panel({
     showOutlines?: boolean;
     showStandoffLetters?: boolean;
     showStandoffLocators?: boolean;
+    illuminationView?: boolean;
+    illumination?: PanelParams['illumination'];
 }) {
     const W = dev.faceNominalWMm;
     const H = dev.faceNominalHMm;
@@ -1237,7 +1313,19 @@ function Panel({
         if (edge === 'bottom' && lipEdges.bottom) return Sg;
         return 0;
     };
-    const panelColor = params.panelColor ?? DEFAULT_PANEL_COLOR;
+    const night = illuminationView;
+    const rawPanelColor = params.panelColor ?? DEFAULT_PANEL_COLOR;
+    // Surfaces darken in the illumination view; lit elements (the opal
+    // backing in keyline mode) carry their own colour and stay bright.
+    const panelColor = displayColor(rawPanelColor, night);
+    // Keyline illumination — the opal push-through backing glows. Only
+    // active when the design has it configured AND there's a backing to
+    // light (push-through pieces present) AND we're in the dark view.
+    const keylineIllum = illumination?.keyline;
+    const keylineLit =
+        night &&
+        !!keylineIllum?.enabled &&
+        pushThroughPieces.length > 0;
     const edges: PanelEdge[] = ['top', 'bottom', 'left', 'right'];
     // Either placement workflow active → canvas captures clicks +
     // shows the crosshair cursor. The parent dispatches to the right
@@ -1371,6 +1459,7 @@ function Panel({
                         acrylic={acrylicPieces}
                         solid={solidPieces}
                         outlines={showOutlines}
+                        night={night}
                     />
                 )}
 
@@ -1427,12 +1516,17 @@ function Panel({
                         pieces={pushThroughPieces}
                         materialThicknessMm={T}
                         outlines={showOutlines}
+                        night={night}
+                        lit={keylineLit}
+                        glowColor={keylineIllum?.color ?? '#ffffff'}
+                        glowIntensity={keylineIllum?.intensity ?? 1}
                     />
                     <PushThroughPieces
                         face={face}
                         pieces={pushThroughPieces}
                         materialThicknessMm={T}
                         outlines={showOutlines}
+                        night={night}
                     />
                 </>
             )}
@@ -1462,6 +1556,7 @@ function Panel({
                                     faceThicknessMm={T}
                                     standoffMm={piece.standoffDistanceMm}
                                     outlines={showOutlines}
+                                    night={night}
                                 />
                             );
                         })}
@@ -1489,7 +1584,7 @@ function Panel({
                                     thicknessMm={piece.thicknessMm}
                                     standoffMm={piece.standoffDistanceMm}
                                     faceThicknessMm={T}
-                                    color={piece.color}
+                                    color={displayColor(piece.color, night)}
                                     outlines={showOutlines}
                                     fixingMode={fixingMode}
                                     onFixingClick={onFixingClick}
@@ -1524,7 +1619,9 @@ function Panel({
                         position={[(sx - W / 2) * S, 0, 0.5 * S]}
                     >
                         <boxGeometry args={[2 * S, H * S, 0.5 * S]} />
-                        <meshBasicMaterial color="#009933" />
+                        <meshBasicMaterial
+                            color={displayColor('#009933', night)}
+                        />
                     </mesh>
                 ))}
 
@@ -1537,10 +1634,14 @@ function Panel({
                         the "Letters" toggle only hides the extruded 3D
                         lettering, not the footprint on the panel face. */}
                     <lineSegments geometry={overlay.ref}>
-                        <lineBasicMaterial color="#9ca3af" />
+                        <lineBasicMaterial
+                            color={displayColor('#9ca3af', night)}
+                        />
                     </lineSegments>
                     <lineSegments geometry={overlay.kl}>
-                        <lineBasicMaterial color="#00aabe" />
+                        <lineBasicMaterial
+                            color={displayColor('#00aabe', night)}
+                        />
                     </lineSegments>
                 </>
             )}
@@ -1589,6 +1690,9 @@ export default function Scene3D(props: {
     showOutlines?: boolean;
     showStandoffLetters?: boolean;
     showStandoffLocators?: boolean;
+    /** Dark illumination preview — darkens the scene + lights configured glow. */
+    illuminationView?: boolean;
+    illumination?: PanelParams['illumination'];
 }) {
     const fold = props.fold ?? 1;
     const autoFixings = props.autoFixings ?? [];
@@ -1604,6 +1708,7 @@ export default function Scene3D(props: {
     const showOutlines = props.showOutlines ?? true;
     const showStandoffLetters = props.showStandoffLetters ?? true;
     const showStandoffLocators = props.showStandoffLocators ?? true;
+    const illuminationView = props.illuminationView ?? false;
     // Frame the flat blank so both folded and unfolded states stay in view.
     const reach =
         Math.max(
@@ -1624,7 +1729,10 @@ export default function Scene3D(props: {
             gl={{ preserveDrawingBuffer: true, antialias: true }}
             className="h-full w-full"
         >
-            <color attach="background" args={['#ffffff']} />
+            <color
+                attach="background"
+                args={[illuminationView ? NIGHT_BG : '#ffffff']}
+            />
             <CaptureBinder />
             <Panel
                 {...props}

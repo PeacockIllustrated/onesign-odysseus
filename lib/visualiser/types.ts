@@ -194,6 +194,36 @@ export const PanelParamsSchema = z.object({
     /** Diameter (mm) of each cable hole. Default 10mm. */
     cableHoleDiameterMm: z.number().positive().max(100).optional(),
     /**
+     * Illumination config — which lighting effects the sign has, and
+     * their colour. Independent of the day/night PREVIEW toggle (that's
+     * a view-only state in the client): this records what's actually
+     * built into the sign, so the preview knows what to light up when
+     * the operator switches to the dark view.
+     *
+     * Keyline illumination: LEDs behind the opal push-through backing
+     * board; the opal diffuses the light, which escapes through the
+     * keyline shoulder (the gap between each letter and the panel hole)
+     * as a halo around the lettering. Modelled as an emissive backing
+     * panel so the halo falls out of the existing geometry for free.
+     */
+    illumination: z
+        .object({
+            keyline: z
+                .object({
+                    enabled: z.boolean(),
+                    color: z
+                        .string()
+                        .regex(
+                            /^#[0-9a-fA-F]{6}$/,
+                            'colour must be 6-digit hex',
+                        ),
+                    /** Glow strength multiplier. Default 1. */
+                    intensity: z.number().min(0).max(5).optional(),
+                })
+                .optional(),
+        })
+        .optional(),
+    /**
      * Material groups — the heart of the mixed-material model. Each
      * group bundles a set of imported SVG paths under a shared
      * material. A single sign can mix any combination of materials

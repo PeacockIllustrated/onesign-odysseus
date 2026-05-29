@@ -326,6 +326,136 @@ export function ControlsPanel() {
                     </span>
                 </div>
             </Section>
+
+            <Section title="Illumination" defaultOpen={false}>
+                <p className="text-[10px] text-neutral-500">
+                    Records the lighting built into the sign. Toggle the
+                    dark view in the preview header to see it lit.
+                </p>
+
+                {/* Keyline illumination — LEDs behind the opal
+                    push-through backing; light diffuses and escapes
+                    through the keyline shoulder as a halo. */}
+                {(() => {
+                    const kl = params.illumination?.keyline ?? {
+                        enabled: false,
+                        color: '#ffffff',
+                        intensity: 1,
+                    };
+                    const setKeyline = (
+                        patch: Partial<typeof kl>,
+                    ) =>
+                        setParam('illumination', {
+                            ...params.illumination,
+                            keyline: { ...kl, ...patch },
+                        });
+                    return (
+                        <div className="space-y-2">
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    setKeyline({ enabled: !kl.enabled })
+                                }
+                                aria-pressed={kl.enabled}
+                                className={`flex min-h-[36px] w-full items-center justify-between rounded-md px-3 py-2 text-xs font-medium transition-colors ${
+                                    kl.enabled
+                                        ? 'text-white'
+                                        : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                                }`}
+                                style={
+                                    kl.enabled
+                                        ? { background: ACCENT }
+                                        : undefined
+                                }
+                            >
+                                <span>Keyline halo</span>
+                                <span className="text-[10px] uppercase tracking-wide">
+                                    {kl.enabled ? 'On' : 'Off'}
+                                </span>
+                            </button>
+                            <p className="text-[10px] text-neutral-400">
+                                Backlit push-through letters — light
+                                halos the keyline shoulder around each
+                                letter. Needs a push-through group.
+                            </p>
+
+                            {kl.enabled && (
+                                <>
+                                    <div>
+                                        <span className="text-[11px] font-medium text-neutral-600">
+                                            Light colour
+                                        </span>
+                                        <div className="mt-1 flex items-center gap-2">
+                                            <input
+                                                type="color"
+                                                value={kl.color}
+                                                onChange={(e) =>
+                                                    setKeyline({
+                                                        color: e.target
+                                                            .value,
+                                                    })
+                                                }
+                                                className="h-11 w-14 cursor-pointer rounded border border-neutral-300 bg-white p-0.5"
+                                                aria-label="Keyline light colour"
+                                            />
+                                            <input
+                                                type="text"
+                                                value={kl.color}
+                                                onChange={(e) => {
+                                                    const v =
+                                                        e.target.value.trim();
+                                                    if (
+                                                        /^#[0-9a-fA-F]{6}$/.test(
+                                                            v,
+                                                        )
+                                                    )
+                                                        setKeyline({
+                                                            color: v,
+                                                        });
+                                                }}
+                                                className="flex-1 rounded-md border border-neutral-300 px-2 py-2 font-mono text-xs uppercase tracking-wide focus:border-black focus:outline-none"
+                                                placeholder="#ffffff"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="flex items-baseline justify-between">
+                                            <span className="text-[11px] font-medium text-neutral-600">
+                                                Brightness
+                                            </span>
+                                            <span className="text-[10px] tabular-nums text-neutral-400">
+                                                {Math.round(
+                                                    (kl.intensity ?? 1) *
+                                                        100,
+                                                )}
+                                                %
+                                            </span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min={20}
+                                            max={300}
+                                            value={Math.round(
+                                                (kl.intensity ?? 1) * 100,
+                                            )}
+                                            onChange={(e) =>
+                                                setKeyline({
+                                                    intensity:
+                                                        Number(
+                                                            e.target.value,
+                                                        ) / 100,
+                                                })
+                                            }
+                                            className="mt-1 h-1 w-full accent-black"
+                                            aria-label="Keyline brightness"
+                                        />
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    );
+                })()}
+            </Section>
         </div>
     );
 }
