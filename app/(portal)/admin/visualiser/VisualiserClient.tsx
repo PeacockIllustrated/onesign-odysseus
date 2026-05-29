@@ -1055,10 +1055,15 @@ export function VisualiserClient({
     // Unified path-click dispatcher for the previews. In edit mode a
     // click toggles the path in/out of the working selection; outside
     // edit mode it auto-enters the path's group's edit (or starts a
-    // new group with that path selected). Disabled in fixing mode so
-    // canvas clicks reach the fixing handler instead.
+    // new group with that path selected).
+    //
+    // Disabled entirely while ANY placement workflow is active (fixings
+    // or cable holes) so a click that lands on a letter places the
+    // hole/fixing rather than hijacking it into group selection. With
+    // this undefined the path hit overlays stop listening, so clicks
+    // fall through to the canvas placement handler.
     const handlePathPick =
-        fixingMode === 'off'
+        fixingMode === 'off' && cableMode === 'off'
             ? (i: number) => {
                   if (isEditingGroup) togglePendingPath(i);
                   else startGroupEditFromPath(i);
