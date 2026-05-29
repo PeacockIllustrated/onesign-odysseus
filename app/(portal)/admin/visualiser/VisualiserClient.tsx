@@ -11,7 +11,9 @@ import {
     EyeOff,
     Layers,
     Lightbulb,
+    Ruler,
     Sliders,
+    SlidersHorizontal,
     Upload,
     X,
 } from 'lucide-react';
@@ -67,28 +69,40 @@ const TAB_LABELS: Record<Tab, string> = {
 /** Which pane is showing on a phone-sized screen. Desktop ignores this. */
 type MobilePane = 'preview' | 'settings' | 'designs';
 
-function ViewToggle({
+/**
+ * A single labelled visibility row in the Display panel — a full-width
+ * target with the layer name on the left and an eye / eye-off state on
+ * the right. Reads top-to-bottom as a layers list, scales past the
+ * three-pill cluster the viewport used to carry.
+ */
+function DisplayRow({
+    label,
     on,
     setOn,
-    label,
 }: {
+    label: string;
     on: boolean;
     setOn: (v: boolean) => void;
-    label: string;
 }) {
-    const Icon = on ? Eye : EyeOff;
     return (
         <button
             type="button"
             onClick={() => setOn(!on)}
             aria-pressed={on}
-            className={`flex min-h-[28px] items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                on ? 'text-white' : 'text-neutral-500 hover:bg-neutral-100'
-            }`}
-            style={on ? { background: ACCENT } : undefined}
+            className="flex min-h-[30px] w-full items-center justify-between gap-3 rounded-md px-2 py-1 text-left transition-colors hover:bg-neutral-100"
         >
-            <Icon size={12} aria-hidden />
-            {label}
+            <span
+                className={`text-[11px] font-medium ${
+                    on ? 'text-neutral-700' : 'text-neutral-400'
+                }`}
+            >
+                {label}
+            </span>
+            {on ? (
+                <Eye size={13} aria-hidden style={{ color: ACCENT }} />
+            ) : (
+                <EyeOff size={13} aria-hidden className="text-neutral-300" />
+            )}
         </button>
     );
 }
@@ -140,6 +154,15 @@ export function VisualiserClient({
     const [showStandoffLetters, setShowStandoffLetters] = useState(true);
     const [showStandoffLocators, setShowStandoffLocators] = useState(true);
     const [showOutlines, setShowOutlines] = useState(true);
+    // Annotation layers — view-only visibility toggles surfaced in the
+    // Display panel. Defaults keep every annotation on (the working
+    // look); the operator mutes layers for a clean render or to
+    // declutter the lit preview.
+    const [showGroupColours, setShowGroupColours] = useState(true);
+    const [showKeyline, setShowKeyline] = useState(true);
+    const [showReference, setShowReference] = useState(true);
+    const [showDimensions, setShowDimensions] = useState(false);
+    const [displayOpen, setDisplayOpen] = useState(false);
     // Illumination preview — off by default (daylight, no glow). When
     // on, the scene goes dark and any configured illumination
     // (keyline halo, etc.) lights up. Pure view state, not saved.
@@ -1143,6 +1166,17 @@ export function VisualiserClient({
         loadDesign(row, imp);
     };
 
+    // Annotation gating — the Display panel toggles these view layers.
+    // Muting a layer just stops passing its data to the previews; the
+    // underlying geometry / export is untouched (these are view-only).
+    const dispGroupColors = showGroupColours ? pathGroupColors : null;
+    const dispKeyline = showKeyline ? keyline : [];
+    const dispReference = showReference ? reference : [];
+    // Which Display rows are relevant in the current tab. Outlines +
+    // stand-off layers only mean something in 3D; group colours,
+    // keyline, reference + dimensions apply to both 3D and flat.
+    const standoffPresent = mode === 'standoff' || standoffPieces.length > 0;
+
     // Pane visibility classes. On desktop (md+) every pane is always
     // visible at its fixed/flex size; on mobile only one pane shows at a
     // time, switched via the bottom tab bar.
@@ -1455,17 +1489,17 @@ export function VisualiserClient({
                             development={development}
                             split={split}
                             aperture={aperture}
-                            keyline={keyline}
+                            keyline={dispKeyline}
                             pushThroughKeyline={pushThroughKeyline}
                             pushThroughIslands={pushThroughIslands}
                             pushThroughPieces={pushThroughPieces}
                             fixings={fixings}
-                            reference={reference}
+                            reference={dispReference}
                             vinylPieces={materialPieces.vinyl}
                             acrylicPieces={materialPieces.acrylic}
                             solidPieces={materialPieces.solid}
                             placedPathsByIndex={placedClipByIndex}
-                            pathGroupColors={pathGroupColors}
+                            pathGroupColors={dispGroupColors}
                             pendingPaths={pendingPathsSet}
                             isEditingGroup={isEditingGroup}
                             onPathToggle={handlePathPick}
@@ -1481,19 +1515,19 @@ export function VisualiserClient({
                             development={development}
                             split={split}
                             aperture={aperture}
-                            keyline={keyline}
+                            keyline={dispKeyline}
                             pushThroughKeyline={pushThroughKeyline}
                             pushThroughIslands={pushThroughIslands}
                             autoFixings={autoFixings}
                             manualFixings={manualFixings}
-                            reference={reference}
+                            reference={dispReference}
                             vinylPieces={materialPieces.vinyl}
                             acrylicPieces={materialPieces.acrylic}
                             solidPieces={materialPieces.solid}
                             standoffPieces={standoffPieces}
                             pushThroughPieces={pushThroughPieces}
                             placedPathsByIndex={placedClipByIndex}
-                            pathGroupColors={pathGroupColors}
+                            pathGroupColors={dispGroupColors}
                             pendingPaths={pendingPathsSet}
                             isEditingGroup={isEditingGroup}
                             onPathToggle={handlePathPick}
@@ -1510,46 +1544,175 @@ export function VisualiserClient({
                         />
                     )}
 
-                    {tab !== 'flat' && (() => {
-                        const showLettersToggle =
-                            mode === 'standoff' && reference.length > 0;
-                        const showLocatorsToggle =
-                            mode === 'standoff' && fixings.length > 0;
-                        const showOutlinesToggle = true;
-                        if (
-                            !showLettersToggle &&
-                            !showLocatorsToggle &&
-                            !showOutlinesToggle
-                        )
-                            return null;
-                        return (
-                            <div className="pointer-events-none absolute right-2 md:right-3 bottom-3 md:bottom-4 z-10">
-                                <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-neutral-200 bg-white/95 px-1 py-1 shadow backdrop-blur">
-                                    {showLettersToggle && (
-                                        <ViewToggle
-                                            on={showStandoffLetters}
-                                            setOn={setShowStandoffLetters}
-                                            label="Letters"
+                    {/* Display panel — the single home for "what's shown
+                        in the viewport". Collapses to one button so it
+                        never competes with the sign; expands to a layers
+                        list. Available on every preview tab; rows that
+                        only mean something in 3D (outlines, stand-off)
+                        are hidden on the flat tab. */}
+                    {development && (
+                        <div className="pointer-events-none absolute right-2 md:right-3 bottom-3 md:bottom-4 z-10 flex max-w-[12rem] flex-col items-end gap-2">
+                            {displayOpen && (
+                                <div className="pointer-events-auto w-44 rounded-lg border border-neutral-200 bg-white/95 p-2 shadow-lg backdrop-blur">
+                                    <div className="flex items-center justify-between px-1 pb-1">
+                                        <span className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                                            Display
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setDisplayOpen(false)
+                                            }
+                                            aria-label="Collapse display options"
+                                            className="flex min-h-[24px] min-w-[24px] items-center justify-center rounded text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+                                        >
+                                            <ChevronDown
+                                                size={14}
+                                                aria-hidden
+                                            />
+                                        </button>
+                                    </div>
+                                    <div className="space-y-0.5">
+                                        {tab !== 'flat' && (
+                                            <DisplayRow
+                                                label="Outlines"
+                                                on={showOutlines}
+                                                setOn={setShowOutlines}
+                                            />
+                                        )}
+                                        <DisplayRow
+                                            label="Group colours"
+                                            on={showGroupColours}
+                                            setOn={setShowGroupColours}
                                         />
-                                    )}
-                                    {showLocatorsToggle && (
-                                        <ViewToggle
-                                            on={showStandoffLocators}
-                                            setOn={setShowStandoffLocators}
-                                            label="Locators"
+                                        <DisplayRow
+                                            label="Keyline lines"
+                                            on={showKeyline}
+                                            setOn={setShowKeyline}
                                         />
-                                    )}
-                                    {showOutlinesToggle && (
-                                        <ViewToggle
-                                            on={showOutlines}
-                                            setOn={setShowOutlines}
-                                            label="Outlines"
+                                        <DisplayRow
+                                            label="Reference"
+                                            on={showReference}
+                                            setOn={setShowReference}
                                         />
+                                        <DisplayRow
+                                            label="Dimensions"
+                                            on={showDimensions}
+                                            setOn={setShowDimensions}
+                                        />
+                                    </div>
+                                    {tab !== 'flat' && standoffPresent && (
+                                        <>
+                                            <div className="my-1 border-t border-neutral-100" />
+                                            <span className="block px-1 pb-0.5 text-[9px] font-semibold uppercase tracking-wide text-neutral-400">
+                                                Stand-off
+                                            </span>
+                                            <div className="space-y-0.5">
+                                                <DisplayRow
+                                                    label="Letters"
+                                                    on={showStandoffLetters}
+                                                    setOn={
+                                                        setShowStandoffLetters
+                                                    }
+                                                />
+                                                <DisplayRow
+                                                    label="Locators"
+                                                    on={showStandoffLocators}
+                                                    setOn={
+                                                        setShowStandoffLocators
+                                                    }
+                                                />
+                                            </div>
+                                        </>
                                     )}
                                 </div>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => setDisplayOpen((o) => !o)}
+                                aria-pressed={displayOpen}
+                                aria-label="Display options"
+                                title="Show / hide viewport layers"
+                                className={`pointer-events-auto flex min-h-[36px] items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-medium shadow backdrop-blur transition-colors ${
+                                    displayOpen
+                                        ? 'border-transparent text-white'
+                                        : 'border-neutral-200 bg-white/95 text-neutral-600 hover:bg-neutral-100'
+                                }`}
+                                style={
+                                    displayOpen
+                                        ? { background: ACCENT }
+                                        : undefined
+                                }
+                            >
+                                <SlidersHorizontal
+                                    size={14}
+                                    aria-hidden
+                                    style={
+                                        displayOpen
+                                            ? undefined
+                                            : { color: ACCENT }
+                                    }
+                                />
+                                <span className="hidden sm:inline">
+                                    Display
+                                </span>
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Dimension HUD — config widgets pinned to the
+                        edges they describe: width along the bottom,
+                        height up the left, a spec chip top-left. Faint
+                        frosted chips so they read as annotation over
+                        both the light panel and the dark lit scene.
+                        Toggled by the Dimensions row in the Display
+                        panel; off by default. */}
+                    {development && showDimensions && (
+                        <div className="pointer-events-none absolute inset-0 z-10">
+                            {/* Width — bottom edge, centred. Lifted clear
+                                of the unfold slider on that tab. */}
+                            <div
+                                className={`absolute left-1/2 -translate-x-1/2 ${
+                                    tab === 'unfold'
+                                        ? 'bottom-16'
+                                        : 'bottom-3'
+                                }`}
+                            >
+                                <span className="rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-medium tabular-nums text-neutral-700 ring-1 ring-black/5 shadow-sm">
+                                    <span className="text-neutral-400">
+                                        W&nbsp;
+                                    </span>
+                                    {Math.round(params.panelWidthMm)} mm
+                                </span>
                             </div>
-                        );
-                    })()}
+                            {/* Height — left edge, centred vertically. */}
+                            <div className="absolute left-3 top-1/2 -translate-y-1/2">
+                                <span className="rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-medium tabular-nums text-neutral-700 ring-1 ring-black/5 shadow-sm">
+                                    <span className="text-neutral-400">
+                                        H&nbsp;
+                                    </span>
+                                    {Math.round(params.panelHeightMm)} mm
+                                </span>
+                            </div>
+                            {/* Spec chip — return depth, thickness, gap. */}
+                            <div className="absolute left-3 top-3">
+                                <span className="flex items-center gap-1 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-medium tabular-nums text-neutral-600 ring-1 ring-black/5 shadow-sm">
+                                    <Ruler
+                                        size={11}
+                                        aria-hidden
+                                        style={{ color: ACCENT }}
+                                    />
+                                    {params.returnDepthMm > 0
+                                        ? `return ${Math.round(params.returnDepthMm)} · `
+                                        : ''}
+                                    {params.materialThicknessMm} mm
+                                    {params.shadowGapMm > 0
+                                        ? ` · gap ${Math.round(params.shadowGapMm)}`
+                                        : ''}
+                                </span>
+                            </div>
+                        </div>
+                    )}
 
                     {tab === 'unfold' && (
                         <div className="pointer-events-none absolute inset-x-2 bottom-3 flex justify-center md:inset-x-0 md:bottom-4">
