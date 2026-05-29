@@ -11,7 +11,6 @@ import {
     EyeOff,
     Layers,
     Lightbulb,
-    Ruler,
     Sliders,
     SlidersHorizontal,
     Upload,
@@ -1166,6 +1165,17 @@ export function VisualiserClient({
         loadDesign(row, imp);
     };
 
+    // Edits from the in-scene dimension widgets propagate straight to
+    // the panel params — change the width label, the panel resizes.
+    const handleDimensionChange = (
+        field: 'width' | 'height',
+        valueMm: number,
+    ) => {
+        if (!Number.isFinite(valueMm) || valueMm <= 0) return;
+        if (field === 'width') setParam('panelWidthMm', valueMm);
+        else if (field === 'height') setParam('panelHeightMm', valueMm);
+    };
+
     // Annotation gating — the Display panel toggles these view layers.
     // Muting a layer just stops passing its data to the previews; the
     // underlying geometry / export is untouched (these are view-only).
@@ -1541,6 +1551,8 @@ export function VisualiserClient({
                             showStandoffLocators={showStandoffLocators}
                             illuminationView={illuminationView}
                             illumination={params.illumination}
+                            showDimensions={showDimensions}
+                            onDimensionChange={handleDimensionChange}
                         />
                     )}
 
@@ -1595,11 +1607,13 @@ export function VisualiserClient({
                                             on={showReference}
                                             setOn={setShowReference}
                                         />
-                                        <DisplayRow
-                                            label="Dimensions"
-                                            on={showDimensions}
-                                            setOn={setShowDimensions}
-                                        />
+                                        {tab !== 'flat' && (
+                                            <DisplayRow
+                                                label="Dimensions"
+                                                on={showDimensions}
+                                                setOn={setShowDimensions}
+                                            />
+                                        )}
                                     </div>
                                     {tab !== 'flat' && standoffPresent && (
                                         <>
@@ -1657,60 +1671,6 @@ export function VisualiserClient({
                                     Display
                                 </span>
                             </button>
-                        </div>
-                    )}
-
-                    {/* Dimension HUD — config widgets pinned to the
-                        edges they describe: width along the bottom,
-                        height up the left, a spec chip top-left. Faint
-                        frosted chips so they read as annotation over
-                        both the light panel and the dark lit scene.
-                        Toggled by the Dimensions row in the Display
-                        panel; off by default. */}
-                    {development && showDimensions && (
-                        <div className="pointer-events-none absolute inset-0 z-10">
-                            {/* Width — bottom edge, centred. Lifted clear
-                                of the unfold slider on that tab. */}
-                            <div
-                                className={`absolute left-1/2 -translate-x-1/2 ${
-                                    tab === 'unfold'
-                                        ? 'bottom-16'
-                                        : 'bottom-3'
-                                }`}
-                            >
-                                <span className="rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-medium tabular-nums text-neutral-700 ring-1 ring-black/5 shadow-sm">
-                                    <span className="text-neutral-400">
-                                        W&nbsp;
-                                    </span>
-                                    {Math.round(params.panelWidthMm)} mm
-                                </span>
-                            </div>
-                            {/* Height — left edge, centred vertically. */}
-                            <div className="absolute left-3 top-1/2 -translate-y-1/2">
-                                <span className="rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-medium tabular-nums text-neutral-700 ring-1 ring-black/5 shadow-sm">
-                                    <span className="text-neutral-400">
-                                        H&nbsp;
-                                    </span>
-                                    {Math.round(params.panelHeightMm)} mm
-                                </span>
-                            </div>
-                            {/* Spec chip — return depth, thickness, gap. */}
-                            <div className="absolute left-3 top-3">
-                                <span className="flex items-center gap-1 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-medium tabular-nums text-neutral-600 ring-1 ring-black/5 shadow-sm">
-                                    <Ruler
-                                        size={11}
-                                        aria-hidden
-                                        style={{ color: ACCENT }}
-                                    />
-                                    {params.returnDepthMm > 0
-                                        ? `return ${Math.round(params.returnDepthMm)} · `
-                                        : ''}
-                                    {params.materialThicknessMm} mm
-                                    {params.shadowGapMm > 0
-                                        ? ` · gap ${Math.round(params.shadowGapMm)}`
-                                        : ''}
-                                </span>
-                            </div>
                         </div>
                     )}
 

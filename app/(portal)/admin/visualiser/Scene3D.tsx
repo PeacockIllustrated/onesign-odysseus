@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
-import { OrbitControls, Edges } from '@react-three/drei';
+import { OrbitControls, Edges, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import type {
     PanelParams,
@@ -1236,6 +1236,154 @@ function Path3DHitTargets({
     );
 }
 
+const DIM_LINE_COLOR = '#64748b'; // slate-500 — reads on light + dark
+
+/**
+ * Editable dimension label anchored at a 3D point. drei's Html renders
+ * a DOM chip that tracks the projected screen position of `position`,
+ * so the label stays crisp and clickable while living in scene space
+ * next to the geometry it measures. Clicking turns it into a numeric
+ * input; Enter / blur commits and propagates the change upstream.
+ */
+function DimensionEditLabel({
+    position,
+    label,
+    valueMm,
+    onCommit,
+}: {
+    position: [number, number, number];
+    label: string;
+    valueMm: number;
+    onCommit: (v: number) => void;
+}) {
+    const [editing, setEditing] = useState(false);
+    const [draft, setDraft] = useState(String(Math.round(valueMm)));
+    useEffect(() => {
+        // Re-seed the draft from the live value whenever we're not
+        // actively editing (e.g. the operator changed it elsewhere).
+        if (!editing) setDraft(String(Math.round(valueMm)));
+    }, [valueMm, editing]);
+    const commit = () => {
+        const v = parseFloat(draft);
+        if (Number.isFinite(v) && v > 0) onCommit(v);
+        setEditing(false);
+    };
+    return (
+        <Html position={position} center zIndexRange={[30, 0]}>
+            {editing ? (
+                <div className="flex items-center gap-1 rounded-full bg-white px-1.5 py-0.5 shadow ring-1 ring-black/10">
+                    <input
+                        autoFocus
+                        type="number"
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onBlur={commit}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') commit();
+                            else if (e.key === 'Escape') setEditing(false);
+                        }}
+                        className="w-14 rounded bg-transparent text-center text-[11px] font-medium tabular-nums text-neutral-800 focus:outline-none"
+                    />
+                    <span className="pr-0.5 text-[9px] text-neutral-400">
+                        mm
+                    </span>
+                </div>
+            ) : (
+                <button
+                    type="button"
+                    onClick={() => setEditing(true)}
+                    title={`Edit ${label} — click to change`}
+                    className="flex items-center gap-1 whitespace-nowrap rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium tabular-nums text-neutral-700 shadow-sm ring-1 ring-black/5 hover:bg-white hover:ring-black/20"
+                >
+                    <span className="text-neutral-400">{label}</span>
+                    {Math.round(valueMm)} mm
+                </button>
+            )}
+        </Html>
+    );
+}
+
+/**
+ * In-scene dimension annotations for the face — width along the bottom
+ * edge, height up the left edge — each with extension lines, a
+ * dimension line, end ticks, and an editable label at the midpoint.
+ * Editing a label propagates straight back to the panel params.
+ */
+function Dimensions3D({
+    W,
+    H,
+    onDimensionChange,
+}: {
+    W: number;
+    H: number;
+    onDimensionChange?: (
+        field: 'width' | 'height',
+        valueMm: number,
+    ) => void;
+}) {
+    const hw = (W / 2) * S;
+    const hh = (H / 2) * S;
+    // Offset the dimension lines clear of the face, scaled to the sign
+    // so they sit a sensible distance away on both small and large
+    // panels.
+    const offMm = Math.max(30, Math.max(W, H) * 0.06);
+    const off = offMm * S;
+    const tick = Math.max(offMm * 0.22, 6) * S;
+    const z = 0.4 * S;
+
+    const lineGeom = useMemo(() => {
+        const yDim = -hh - off;
+        const xDim = -hw - off;
+        const seg: number[] = [];
+        const push = (
+            ax: number,
+            ay: number,
+            bx: number,
+            by: number,
+        ) => {
+            seg.push(ax, ay, z, bx, by, z);
+        };
+        // Width (bottom): extension lines, dimension line, end ticks.
+        push(-hw, -hh, -hw, yDim - tick);
+        push(hw, -hh, hw, yDim - tick);
+        push(-hw, yDim, hw, yDim);
+        push(-hw - tick, yDim - tick, -hw + tick, yDim + tick);
+        push(hw - tick, yDim - tick, hw + tick, yDim + tick);
+        // Height (left): extension lines, dimension line, end ticks.
+        push(-hw, -hh, xDim - tick, -hh);
+        push(-hw, hh, xDim - tick, hh);
+        push(xDim, -hh, xDim, hh);
+        push(xDim - tick, -hh - tick, xDim + tick, -hh + tick);
+        push(xDim - tick, hh - tick, xDim + tick, hh + tick);
+        const g = new THREE.BufferGeometry();
+        g.setAttribute(
+            'position',
+            new THREE.Float32BufferAttribute(seg, 3),
+        );
+        return g;
+    }, [hw, hh, off, tick, z]);
+
+    return (
+        <group>
+            <lineSegments geometry={lineGeom}>
+                <lineBasicMaterial color={DIM_LINE_COLOR} />
+            </lineSegments>
+            <DimensionEditLabel
+                position={[0, -hh - off, z]}
+                label="W"
+                valueMm={W}
+                onCommit={(v) => onDimensionChange?.('width', v)}
+            />
+            <DimensionEditLabel
+                position={[-hw - off, 0, z]}
+                label="H"
+                valueMm={H}
+                onCommit={(v) => onDimensionChange?.('height', v)}
+            />
+        </group>
+    );
+}
+
 function Panel({
     params,
     development: dev,
@@ -1267,6 +1415,8 @@ function Panel({
     showStandoffLocators = true,
     illuminationView = false,
     illumination,
+    showDimensions = false,
+    onDimensionChange,
 }: {
     params: PanelParams;
     development: PanelDevelopment;
@@ -1298,6 +1448,11 @@ function Panel({
     showStandoffLocators?: boolean;
     illuminationView?: boolean;
     illumination?: PanelParams['illumination'];
+    showDimensions?: boolean;
+    onDimensionChange?: (
+        field: 'width' | 'height',
+        valueMm: number,
+    ) => void;
 }) {
     const W = dev.faceNominalWMm;
     const H = dev.faceNominalHMm;
@@ -1703,6 +1858,17 @@ function Panel({
                     />
                 </lineSegments>
             )}
+
+            {/* Editable dimension annotations in scene space — width
+                below the face, height up the left, each propagating
+                edits straight to the panel params. */}
+            {showDimensions && (
+                <Dimensions3D
+                    W={W}
+                    H={H}
+                    onDimensionChange={onDimensionChange}
+                />
+            )}
         </group>
     );
 }
@@ -1742,6 +1908,12 @@ export default function Scene3D(props: {
     /** Dark illumination preview — darkens the scene + lights configured glow. */
     illuminationView?: boolean;
     illumination?: PanelParams['illumination'];
+    /** Editable in-scene dimension annotations (width / height). */
+    showDimensions?: boolean;
+    onDimensionChange?: (
+        field: 'width' | 'height',
+        valueMm: number,
+    ) => void;
 }) {
     const fold = props.fold ?? 1;
     const autoFixings = props.autoFixings ?? [];
