@@ -56,7 +56,18 @@ const BRAND_DARK_RGB: [number, number, number] = [58, 95, 106];
  * fallback for an offline shop.
  */
 function txt(s: string): string {
-    return s;
+    // Normalise the few "fancy" glyphs that creep into labels (em/en
+    // dashes, smart quotes, ellipsis) to ASCII. With Gilroy embedded
+    // these render fine, but if the font fails to load jsPDF falls back
+    // to WinAnsi helvetica where U+2014 & friends become empty boxes —
+    // and a box in the middle of a cut-file label is a production
+    // hazard. Latin-1 marks the fallback DOES cover (· × ÷ °) are left
+    // alone.
+    return s
+        .replace(/[—–]/g, '-') // em / en dash → hyphen
+        .replace(/[‘’]/g, "'") // smart single quotes
+        .replace(/[“”]/g, '"') // smart double quotes
+        .replace(/…/g, '...'); // ellipsis
 }
 
 /** Short, stable document ID for the header strap. */
@@ -290,14 +301,27 @@ function drawDocStrap(
     );
     doc.setTextColor(0);
 
-    // Optional subtitle below the strap (page-specific context like
-    // "Overview", "Flat layout", or the material name). Sits in the
-    // top margin between strap and content.
+    // Page title below the strap — the operator's "what is this page"
+    // cue when flipping a stack. Bold + dark so it wins over the
+    // geometry; the first clause (up to the dash) is the headline, any
+    // trailing detail stays lighter so the title reads at a glance.
     if (subtitle) {
-        doc.setFont(font, 'normal');
-        doc.setFontSize(9);
-        doc.setTextColor(110);
-        doc.text(txt(subtitle), margin, STRAP_H + 4);
+        // Split "Headline — trailing detail" at the first dash
+        // (em / en / hyphen) so the headline can be emphasised.
+        const m = subtitle.match(/^(.*?)\s[—–-]\s(.*)$/);
+        const head = m ? m[1] : subtitle;
+        const tail = m ? m[2] : '';
+        doc.setFont(font, 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(40);
+        doc.text(txt(head), margin, STRAP_H + 5.5);
+        if (tail) {
+            const headW = doc.getTextWidth(txt(head));
+            doc.setFont(font, 'normal');
+            doc.setFontSize(8.5);
+            doc.setTextColor(120);
+            doc.text(txt(tail), margin + headW + 3, STRAP_H + 5.5);
+        }
         doc.setTextColor(0);
     }
 }
@@ -2475,7 +2499,7 @@ export async function generateProductionPdfBlob(
     // ---- Phase 2: compute single fixed sheet size ------------------
     // The whole bundle uses one paper size so office printers can't
     // silently mis-scale a page that's smaller than the others.
-    const M_TOP = STRAP_H + 5; // strap (9 mm) + breathing room
+    const M_TOP = STRAP_H + 9; // strap (9 mm) + bold page title + breathing room
     const M_BOTTOM = 28; // QR (16 mm) + label + warning + breathing
     const M_SIDE = 14;
     let maxPartW = 0;
