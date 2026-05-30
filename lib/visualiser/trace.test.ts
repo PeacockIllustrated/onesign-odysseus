@@ -144,4 +144,39 @@ describe('traceToSvg', () => {
         const rgba = whiteImage(w, h); // all white, nothing dark
         expect(traceToSvg(rgba, w, h)).toBeNull();
     });
+
+    it('keeps a square faceted (corners → straight lines, no curves)', () => {
+        const w = 12;
+        const h = 12;
+        const rgba = whiteImage(w, h);
+        fillBlack(rgba, w, 4, 4, 8, 8);
+        const res = traceToSvg(rgba, w, h, { minAreaPx: 1 });
+        expect(res).not.toBeNull();
+        // 90° corners exceed the corner threshold → only straight segs.
+        expect(res!.svg).toContain(' L ');
+        expect(res!.svg).not.toContain(' C ');
+    });
+
+    it('emits bezier curves for a round shape', () => {
+        const w = 40;
+        const h = 40;
+        const rgba = whiteImage(w, h);
+        const cx = 20;
+        const cy = 20;
+        const radius = 14;
+        for (let y = 0; y < h; y++)
+            for (let x = 0; x < w; x++) {
+                const dx = x + 0.5 - cx;
+                const dy = y + 0.5 - cy;
+                if (dx * dx + dy * dy <= radius * radius) {
+                    const i = (y * w + x) * 4;
+                    rgba[i] = rgba[i + 1] = rgba[i + 2] = 0;
+                }
+            }
+        const res = traceToSvg(rgba, w, h, { minAreaPx: 4, smoothing: 60 });
+        expect(res).not.toBeNull();
+        expect(res!.loopCount).toBe(1);
+        // A disc's gently-turning vertices flow as curves, not facets.
+        expect(res!.svg).toContain(' C ');
+    });
 });

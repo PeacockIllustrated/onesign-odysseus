@@ -240,12 +240,71 @@ function simplifyClosed(loop: Pt[], eps: number): Pt[] {
     return out;
 }
 
-/** One `d` string for a closed loop (rounded to 0.1 px). */
+// Turn angle (radians) beyond which a vertex is treated as a hard
+// corner — the curve breaks and meets it sharply rather than rounding
+// through it. ~85° keeps letter corners crisp while letting genuine
+// curves (whose simplified vertices turn more gently) flow smoothly,
+// even when high smoothing has thinned the points right down.
+const CORNER_TURN = (85 * Math.PI) / 180;
+
+/**
+ * One `d` string for a closed loop as cubic Béziers. Smooth vertices
+ * get Catmull-Rom tangents (so the contour reads as a real curve, not
+ * a faceted polyline — important once smoothing has reduced the point
+ * count); hard corners collapse their tangents so the join stays
+ * sharp. A run between two corners with no curvature is emitted as a
+ * straight line. After import the curves flatten back to a dense, but
+ * genuinely smooth, polyline.
+ */
 function loopToPathD(loop: Pt[]): string {
-    if (loop.length < 3) return '';
-    const r = (n: number) => Math.round(n * 10) / 10;
+    const n = loop.length;
+    if (n < 3) return '';
+    const r = (v: number) => Math.round(v * 10) / 10;
+
+    // Per-vertex corner flag from the turn angle.
+    const corner: boolean[] = new Array(n);
+    for (let i = 0; i < n; i++) {
+        const prev = loop[(i - 1 + n) % n];
+        const cur = loop[i];
+        const next = loop[(i + 1) % n];
+        const ax = cur[0] - prev[0];
+        const ay = cur[1] - prev[1];
+        const bx = next[0] - cur[0];
+        const by = next[1] - cur[1];
+        const la = Math.hypot(ax, ay);
+        const lb = Math.hypot(bx, by);
+        if (la < 1e-9 || lb < 1e-9) {
+            corner[i] = true;
+            continue;
+        }
+        const dot = (ax * bx + ay * by) / (la * lb);
+        const turn = Math.acos(Math.max(-1, Math.min(1, dot)));
+        corner[i] = turn > CORNER_TURN;
+    }
+
     let d = `M ${r(loop[0][0])} ${r(loop[0][1])}`;
-    for (let i = 1; i < loop.length; i++) d += ` L ${r(loop[i][0])} ${r(loop[i][1])}`;
+    for (let i = 0; i < n; i++) {
+        const i1 = i;
+        const i2 = (i + 1) % n;
+        const p0 = loop[(i - 1 + n) % n];
+        const p1 = loop[i1];
+        const p2 = loop[i2];
+        const p3 = loop[(i + 2) % n];
+        // Corner-corner span with nothing to curve through → straight.
+        if (corner[i1] && corner[i2]) {
+            d += ` L ${r(p2[0])} ${r(p2[1])}`;
+            continue;
+        }
+        // Catmull-Rom control points; a corner zeroes the tangent on
+        // its own side so the curve meets it crisply.
+        const c1x = corner[i1] ? p1[0] : p1[0] + (p2[0] - p0[0]) / 6;
+        const c1y = corner[i1] ? p1[1] : p1[1] + (p2[1] - p0[1]) / 6;
+        const c2x = corner[i2] ? p2[0] : p2[0] - (p3[0] - p1[0]) / 6;
+        const c2y = corner[i2] ? p2[1] : p2[1] - (p3[1] - p1[1]) / 6;
+        d +=
+            ` C ${r(c1x)} ${r(c1y)}, ${r(c2x)} ${r(c2y)}, ` +
+            `${r(p2[0])} ${r(p2[1])}`;
+    }
     return d + ' Z';
 }
 
