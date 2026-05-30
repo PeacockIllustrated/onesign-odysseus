@@ -1,7 +1,7 @@
 'use client';
 
-import { ChevronDown } from 'lucide-react';
 import { useVisualiser } from './store';
+import { Section } from './Section';
 import { MAX_PANEL_WIDTH_MM, type PanelEdge } from '@/lib/visualiser/types';
 
 const ACCENT = '#4e7e8c';
@@ -74,39 +74,6 @@ function NumberField({
     );
 }
 
-/**
- * Collapsible section — `<details>`-based so it's keyboard-accessible
- * for free. Operators can fold sections they've finished configuring
- * to reduce the visual load of the side rail.
- */
-function Section({
-    title,
-    defaultOpen = true,
-    children,
-}: {
-    title: string;
-    defaultOpen?: boolean;
-    children: React.ReactNode;
-}) {
-    return (
-        <details
-            open={defaultOpen}
-            className="group rounded-md border border-neutral-200 bg-white"
-        >
-            <summary className="flex cursor-pointer items-center justify-between px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-500 [&::-webkit-details-marker]:hidden">
-                <span>{title}</span>
-                <ChevronDown
-                    size={14}
-                    aria-hidden
-                    className="text-neutral-400 transition-transform group-open:rotate-180"
-                />
-            </summary>
-            <div className="border-t border-neutral-100 px-3 py-3 space-y-3">
-                {children}
-            </div>
-        </details>
-    );
-}
 
 export function ControlsPanel() {
     const { params, setParam, setReturn, setShadowGapEdge } = useVisualiser();
@@ -131,7 +98,7 @@ export function ControlsPanel() {
                 />
             </div>
 
-            <Section title="Panel dimensions">
+            <Section title="Panel dimensions" step={1}>
                 <div className="grid grid-cols-2 gap-3">
                     <NumberField
                         label="Width"
@@ -263,7 +230,7 @@ export function ControlsPanel() {
                 )}
             </Section>
 
-            <Section title="Material spec" defaultOpen={false}>
+            <Section title="Material spec" step={2} defaultOpen={false}>
                 <NumberField
                     label="Material thickness"
                     value={params.materialThicknessMm}

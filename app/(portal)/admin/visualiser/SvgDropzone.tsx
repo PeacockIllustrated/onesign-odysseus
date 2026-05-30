@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { useVisualiser } from './store';
 import { importSvg } from '@/lib/visualiser/svg-import';
 import { TraceImage } from './TraceImage';
+import { Section } from './Section';
 import {
     GROUP_HIGHLIGHT_PALETTE,
     type AlignH,
@@ -763,7 +764,14 @@ export function SvgDropzone() {
     return (
         <div className="space-y-3">
             <div className="flex items-center justify-between">
-                <h3 className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                <h3 className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                    <span
+                        className="flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold text-white"
+                        style={{ background: hasArtwork ? '#4e7e8c' : '#9ca3af' }}
+                        aria-hidden
+                    >
+                        3
+                    </span>
                     Artwork
                 </h3>
                 {hasArtwork && (
@@ -1072,36 +1080,34 @@ export function SvgDropzone() {
                       </>
                     )}
 
-                    {/* Path materials & fixings — unified card. Every
-                        ungrouped path is cut from the panel by default;
-                        operator opts paths out into explicit material
-                        groups. (The old apertureMode segmented control
-                        for "all stand-off by default" is gone — legacy
-                        designs that loaded with apertureMode='standoff'
-                        still flow through Standoff defaults below.) */}
-                    <div className="pt-2 border-t border-neutral-100 space-y-3">
-                        <div>
-                            <h3 className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
-                                Path materials &amp; fixings
-                            </h3>
-                            <p className="mt-1 text-[10px] text-neutral-500">
-                                Every artwork path is cut from the panel by
-                                default. Group paths below to reassign them.
-                            </p>
-                        </div>
+                    {/* Path materials & fixings — each a collapsible
+                        section so the rail isn't a wall of always-open
+                        panels. Every ungrouped path is cut from the
+                        panel by default; the operator opts paths out
+                        into explicit material groups. */}
+                    <div className="space-y-2">
                         {hasArtwork && (
-                            <MaterialGroupsPanel
-                                groups={params.materialGroups ?? []}
-                                editingGroupId={editingGroupId}
-                                pendingPaths={pendingPaths}
-                                panelColor={params.panelColor ?? '#d6d6d6'}
-                                startNewGroupEdit={startNewGroupEdit}
-                                startEditingGroup={startEditingGroup}
-                                cancelGroupEdit={cancelGroupEdit}
-                                applyEditMaterial={applyEditMaterial}
-                                updateGroupProps={updateGroupProps}
-                                deleteGroup={deleteGroup}
-                            />
+                            <Section title="Path materials" step={4}>
+                                <p className="text-[10px] text-neutral-500">
+                                    Every artwork path is cut from the panel
+                                    by default. Group paths below to reassign
+                                    them.
+                                </p>
+                                <MaterialGroupsPanel
+                                    groups={params.materialGroups ?? []}
+                                    editingGroupId={editingGroupId}
+                                    pendingPaths={pendingPaths}
+                                    panelColor={
+                                        params.panelColor ?? '#d6d6d6'
+                                    }
+                                    startNewGroupEdit={startNewGroupEdit}
+                                    startEditingGroup={startEditingGroup}
+                                    cancelGroupEdit={cancelGroupEdit}
+                                    applyEditMaterial={applyEditMaterial}
+                                    updateGroupProps={updateGroupProps}
+                                    deleteGroup={deleteGroup}
+                                />
+                            </Section>
                         )}
                         {/* Standoff defaults + fixings — shown whenever any
                             path is rendered as stood off, regardless of
@@ -1111,7 +1117,10 @@ export function SvgDropzone() {
                             shop only configures the diameter / density
                             once per sign. */}
                         {anyStandoffPath && (
-                            <>
+                            <Section
+                                title="Stand-off & fixings"
+                                defaultOpen={false}
+                            >
                                 {/* Lettering defaults — applied to standoff
                                     paths that are NOT in an explicit group
                                     (i.e. the quick default = Stood off
@@ -1486,25 +1495,20 @@ export function SvgDropzone() {
                                         follow placement edits.
                                     </p>
                                 </div>
-                            </>
+                            </Section>
                         )}
-                    </div>
 
-                    {/* Cable holes — available for any illuminated sign,
-                        independent of material. A pure positioner: there
-                        are only one or two per letter and the fabricator
-                        wants them exactly where the cable run dictates, so
-                        there's no auto-placement or density. */}
-                    {hasArtwork && (
-                        <div className="pt-2 border-t border-neutral-100 space-y-2">
-                            <h3 className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
-                                Cable holes
-                            </h3>
-                            <p className="text-[10px] text-neutral-500">
-                                Holes cut in the panel face to feed cables
-                                into illuminated letters. Click to place;
-                                one or two per letter is typical.
-                            </p>
+                        {/* Cable holes — available for any illuminated
+                            sign, independent of material. A pure
+                            positioner: only one or two per letter, placed
+                            exactly where the cable run dictates. */}
+                        {hasArtwork && (
+                            <Section title="Cable holes" defaultOpen={false}>
+                                <p className="text-[10px] text-neutral-500">
+                                    Holes cut in the panel face to feed
+                                    cables into illuminated letters. Click to
+                                    place; one or two per letter is typical.
+                                </p>
                             <NumField
                                 label="Diameter (mm)"
                                 step={0.5}
@@ -1578,8 +1582,9 @@ export function SvgDropzone() {
                                     </button>
                                 )}
                             </div>
-                        </div>
-                    )}
+                            </Section>
+                        )}
+                    </div>
                 </div>
             )}
         </div>
