@@ -1625,19 +1625,17 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
                         );
                 }
             } else if (spec.kind === 'pushthrough') {
-                // Outer letter + each counter as SEPARATE filled
-                // shapes — never compound-with-hole. Production
-                // reality: counters are real pieces of acrylic
-                // sitting beside the outer piece on the backing
-                // board.
-                doc.setFillColor(
-                    fillForPiece[0],
-                    fillForPiece[1],
-                    fillForPiece[2],
-                );
+                // Acrylic DONUT: outer letter filled in its real colour,
+                // counter filled WHITE (the retained metal island shows
+                // through it — see the panel-cut page). Both edges keep a
+                // cut stroke. Mirrors the production insert page exactly
+                // so the two documents never disagree on what's acrylic.
                 doc.setDrawColor(strokeRgb[0], strokeRgb[1], strokeRgb[2]);
                 doc.setLineWidth(0.35);
-                const drawShape = (ring: FlatPath) => {
+                const drawShape = (
+                    ring: FlatPath,
+                    fill: [number, number, number],
+                ) => {
                     if (!ring.closed || ring.points.length < 3) return;
                     const head = ring.points[0];
                     const tail = ring.points[ring.points.length - 1];
@@ -1654,6 +1652,7 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
                             pts[k][1] - pts[k - 1][1],
                         ]);
                     }
+                    doc.setFillColor(fill[0], fill[1], fill[2]);
                     doc.lines(
                         deltas,
                         px(pts[0][0]),
@@ -1663,8 +1662,9 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
                         true,
                     );
                 };
-                drawShape(piece.path);
-                for (const h of piece.holes ?? []) drawShape(h);
+                drawShape(piece.path, fillForPiece);
+                for (const h of piece.holes ?? [])
+                    drawShape(h, [255, 255, 255]);
             } else {
                 drawMaterialPiece(
                     doc,
@@ -2111,42 +2111,78 @@ export async function generateProductionPdfBlob(
             draw: (dX, dY) => {
                 const ipx = (x: number) => dX + (x - minX);
                 const ipy = (y: number) => dY + (y - minY);
+                // Each acrylic letter is a DONUT: the outer outline is
+                // filled in its real acrylic colour, the counter is a
+                // hole filled WHITE (the retained metal island shows
+                // through it — see the panel-cut page). Filling the body
+                // makes it unmistakable that the whole coloured shape is
+                // the acrylic part to cut, not just an outline; the white
+                // counter keeps the donut honest so production never cuts
+                // a spurious acrylic disc. BOTH edges keep the hairline
+                // cut stroke — the counter's inner edge is a real cut.
                 doc.setDrawColor(0);
                 doc.setLineWidth(productionStroke);
-                for (const ap of insertOuters) {
-                    const pts = ap.points.map(
-                        ([x, y]) =>
-                            [ipx(x), ipy(y)] as [number, number],
+                for (const p of pushThroughPiecesAll) {
+                    if (!p.path.closed || p.path.points.length < 3) continue;
+                    const outer = p.path.points.map(
+                        ([x, y]) => [ipx(x), ipy(y)] as [number, number],
                     );
-                    if (ap.closed) drawClosedPolyline(doc, pts, 'S');
-                    else if (pts.length >= 2) {
-                        const deltas: number[][] = [];
-                        for (let k = 1; k < pts.length; k++) {
-                            deltas.push([
-                                pts[k][0] - pts[k - 1][0],
-                                pts[k][1] - pts[k - 1][1],
-                            ]);
-                        }
-                        doc.lines(
-                            deltas,
-                            pts[0][0],
-                            pts[0][1],
-                            [1, 1],
-                            'S',
-                            false,
+                    const fill = hexToRgb(p.color);
+                    doc.setFillColor(fill[0], fill[1], fill[2]);
+                    drawClosedPolyline(doc, outer, 'FD');
+                    // White-fill + cut-stroke each counter on top.
+                    doc.setFillColor(255, 255, 255);
+                    for (const h of p.holes ?? []) {
+                        if (!h.closed || h.points.length < 3) continue;
+                        const hp = h.points.map(
+                            ([x, y]) => [ipx(x), ipy(y)] as [number, number],
                         );
+                        drawClosedPolyline(doc, hp, 'FD');
                     }
                 }
-                // Counters — emitted as SEPARATE closed contours
-                // (NOT compound holes in the outer). The cutter
-                // produces each as its own piece, the operator glues
-                // it next to the outer piece on the backing board.
-                for (const sp of insertCounters) {
-                    const pts = sp.points.map(
-                        ([x, y]) =>
-                            [ipx(x), ipy(y)] as [number, number],
-                    );
-                    drawClosedPolyline(doc, pts, 'S');
+                // Legacy global-keyline apertures carry no per-piece
+                // colour or hole grouping. Fill each aperture body in a
+                // neutral acrylic tint (or the first group's colour),
+                // then punch every counter white on top so they still
+                // read as donuts.
+                if (hasGlobalKeyline) {
+                    const legacyFill: [number, number, number] =
+                        pushThroughPiecesAll[0]
+                            ? hexToRgb(pushThroughPiecesAll[0].color)
+                            : [225, 228, 232];
+                    doc.setDrawColor(0);
+                    doc.setLineWidth(productionStroke);
+                    for (const ap of allApertures) {
+                        const pts = ap.points.map(
+                            ([x, y]) =>
+                                [ipx(x), ipy(y)] as [number, number],
+                        );
+                        doc.setFillColor(
+                            legacyFill[0],
+                            legacyFill[1],
+                            legacyFill[2],
+                        );
+                        if (ap.closed && pts.length >= 3) {
+                            drawClosedPolyline(doc, pts, 'FD');
+                        } else if (pts.length >= 2) {
+                            const deltas: number[][] = [];
+                            for (let k = 1; k < pts.length; k++) {
+                                deltas.push([
+                                    pts[k][0] - pts[k - 1][0],
+                                    pts[k][1] - pts[k - 1][1],
+                                ]);
+                            }
+                            doc.lines(deltas, pts[0][0], pts[0][1], [1, 1], 'S', false);
+                        }
+                    }
+                    doc.setFillColor(255, 255, 255);
+                    for (const sp of apertureHolesFlat) {
+                        const pts = sp.points.map(
+                            ([x, y]) =>
+                                [ipx(x), ipy(y)] as [number, number],
+                        );
+                        drawClosedPolyline(doc, pts, 'FD');
+                    }
                 }
             },
         });
@@ -2296,23 +2332,32 @@ export async function generateProductionPdfBlob(
             draw: (dX, dY) => {
                 const px = (x: number) => dX + (x - minX);
                 const py = (y: number) => dY + (y - minY);
+                // Fill each piece in its real colour with the hairline
+                // cut stroke on top (FD). The fill makes it unmistakable
+                // that the WHOLE shape is the part — not just an outline
+                // to follow — while the crisp stroke stays the cut path.
+                // Counters are filled WHITE so donuts read, but KEEP
+                // their cut stroke: the inner edge is a real cut too.
                 doc.setDrawColor(0);
                 doc.setLineWidth(productionStroke);
                 for (const piece of bundle.pieces) {
                     if (piece.path.closed && piece.path.points.length >= 3) {
+                        const fill = hexToRgb(piece.color);
+                        doc.setFillColor(fill[0], fill[1], fill[2]);
                         const pts = piece.path.points.map(
                             ([x, y]) =>
                                 [px(x), py(y)] as [number, number],
                         );
-                        drawClosedPolyline(doc, pts, 'S');
+                        drawClosedPolyline(doc, pts, 'FD');
                     }
+                    doc.setFillColor(255, 255, 255);
                     for (const hole of piece.holes ?? []) {
                         if (!hole.closed || hole.points.length < 3) continue;
                         const pts = hole.points.map(
                             ([x, y]) =>
                                 [px(x), py(y)] as [number, number],
                         );
-                        drawClosedPolyline(doc, pts, 'S');
+                        drawClosedPolyline(doc, pts, 'FD');
                     }
                 }
             },
