@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import { useVisualiser } from './store';
 import { importSvg } from '@/lib/visualiser/svg-import';
+import { TraceImage } from './TraceImage';
 import {
     GROUP_HIGHLIGHT_PALETTE,
     type AlignH,
@@ -14,6 +15,7 @@ import {
     Check,
     Crosshair,
     Eraser,
+    ImageUp,
     Plus,
     Sparkles,
     Trash2,
@@ -716,6 +718,7 @@ export function SvgDropzone() {
     } = useVisualiser();
     const inputRef = useRef<HTMLInputElement>(null);
     const [error, setError] = useState<string | null>(null);
+    const [traceMode, setTraceMode] = useState(false);
 
     // Any path rendered as stood off — either the quick default is set
     // to standoff (so ungrouped paths land there) or at least one
@@ -762,14 +765,35 @@ export function SvgDropzone() {
             </div>
 
             {!svgSource ? (
-                <button
-                    type="button"
-                    onClick={() => inputRef.current?.click()}
-                    className="flex w-full flex-col items-center gap-1 rounded-lg border-2 border-dashed border-neutral-300 px-4 py-6 text-neutral-400 hover:border-neutral-400 hover:text-neutral-600"
-                >
-                    <Upload size={20} />
-                    <span className="text-xs">Upload an SVG to cut from the panel</span>
-                </button>
+                traceMode ? (
+                    <TraceImage onClose={() => setTraceMode(false)} />
+                ) : (
+                    <div className="space-y-2">
+                        <button
+                            type="button"
+                            onClick={() => inputRef.current?.click()}
+                            className="flex w-full flex-col items-center gap-1 rounded-lg border-2 border-dashed border-neutral-300 px-4 py-6 text-neutral-400 hover:border-neutral-400 hover:text-neutral-600"
+                        >
+                            <Upload size={20} />
+                            <span className="text-xs">
+                                Upload an SVG to cut from the panel
+                            </span>
+                        </button>
+                        {/* Tracer entry — concept aid for ballparking from
+                            a raster. Hidden once artwork is loaded. */}
+                        <button
+                            type="button"
+                            onClick={() => setTraceMode(true)}
+                            className="flex w-full items-center justify-center gap-1.5 rounded-md border border-neutral-200 px-3 py-2 text-[11px] font-medium text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700"
+                        >
+                            <ImageUp size={13} aria-hidden />
+                            or trace a PNG / JPG
+                            <span className="rounded bg-neutral-100 px-1 text-[9px] uppercase tracking-wide text-neutral-400">
+                                beta
+                            </span>
+                        </button>
+                    </div>
+                )
             ) : (
                 <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-600">
                     {imported && (
