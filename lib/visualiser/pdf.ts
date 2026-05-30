@@ -1318,21 +1318,37 @@ function drawFlatLayoutPage(ctx: PageContext): void {
         for (const h of p.holes ?? []) drawShape(h, [255, 255, 255]);
     }
 
-    // Standoff pieces — outlined dashed, not filled (they sit OFF the panel)
+    // Standoff pieces — filled in their real colour (counters punched
+    // white) so the body reads as the part to cut, not just an outline,
+    // then a DASHED dark outline on top to keep the "sits OFF the panel"
+    // cue that the flush face-stuck pieces don't carry.
     for (const p of opts.standoffPieces ?? []) {
-        doc.setDrawColor(...hexToRgb(p.color));
+        drawMaterialPiece(
+            doc,
+            p,
+            px,
+            py,
+            scale,
+            hexToRgb(p.color),
+            [60, 60, 60],
+            0.15,
+            'F',
+        );
+        doc.setDrawColor(60, 60, 60);
         doc.setLineWidth(0.35);
         doc.setLineDashPattern([1.2, 0.8], 0);
-        const pl = pathDPolyline(p.path.points, p.path.closed);
-        if (pl) {
-            doc.lines(
-                pl.deltas,
-                px(pl.start[0]),
-                py(pl.start[1]),
-                [scale, scale],
-                'S',
-                p.path.closed,
-            );
+        for (const ring of [p.path, ...(p.holes ?? [])]) {
+            const pl = pathDPolyline(ring.points, ring.closed);
+            if (pl) {
+                doc.lines(
+                    pl.deltas,
+                    px(pl.start[0]),
+                    py(pl.start[1]),
+                    [scale, scale],
+                    'S',
+                    ring.closed,
+                );
+            }
         }
         doc.setLineDashPattern([], 0);
     }
@@ -1593,37 +1609,22 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
             const fillForPiece = hexToRgb(piece.color);
             const strokeRgb: [number, number, number] = [20, 20, 20];
             if (spec.kind === 'standoff') {
-                doc.setDrawColor(
-                    fillForPiece[0],
-                    fillForPiece[1],
-                    fillForPiece[2],
+                // Stood-off letters filled in their real colour (counters
+                // punched white) so the whole body reads as the part to
+                // cut, not just an outline — same intent as the acrylic
+                // pages. This dedicated page's title already flags that
+                // the letters sit OFF the panel, so no dashed cue here.
+                drawMaterialPiece(
+                    doc,
+                    piece,
+                    px,
+                    py,
+                    scale,
+                    fillForPiece,
+                    strokeRgb,
+                    0.4,
+                    'FD',
                 );
-                doc.setLineWidth(0.6);
-                const pl = pathDPolyline(
-                    piece.path.points,
-                    piece.path.closed,
-                );
-                if (pl)
-                    doc.lines(
-                        pl.deltas,
-                        px(pl.start[0]),
-                        py(pl.start[1]),
-                        [scale, scale],
-                        'S',
-                        piece.path.closed,
-                    );
-                for (const h of piece.holes ?? []) {
-                    const pl2 = pathDPolyline(h.points, h.closed);
-                    if (pl2)
-                        doc.lines(
-                            pl2.deltas,
-                            px(pl2.start[0]),
-                            py(pl2.start[1]),
-                            [scale, scale],
-                            'S',
-                            h.closed,
-                        );
-                }
             } else if (spec.kind === 'pushthrough') {
                 // Acrylic DONUT: outer letter filled in its real colour,
                 // counter filled WHITE (the retained metal island shows
