@@ -34,6 +34,7 @@ import {
 } from '@/lib/visualiser/geometry';
 import { splitPanels } from '@/lib/visualiser/split';
 import { importSvg, buildKeyline } from '@/lib/visualiser/svg-import';
+import { composeLayers, composeLayersSvg } from '@/lib/visualiser/compose';
 import {
     PanelParamsSchema,
     DEFAULT_PLACEMENT,
@@ -123,7 +124,10 @@ export function VisualiserClient({
 }) {
     const {
         params,
-        imported,
+        imported: storeImported,
+        selectedLayerId,
+        selectLayer,
+        updateArtworkLayer,
         applyPrefill,
         loadDesign,
         designId,
@@ -239,11 +243,43 @@ export function VisualiserClient({
 
     const valid = PanelParamsSchema.safeParse(params);
 
+    // Geometry-only key for the development / section memos — excludes
+    // the (potentially large) artwork-layer SVG strings so adding or
+    // moving a layer doesn't needlessly re-stringify + rebuild the
+    // panel development.
+    const paramsGeomKey = JSON.stringify({
+        ...params,
+        artworkLayers: undefined,
+    });
+
     const development = useMemo(() => {
         if (!valid.success) return null;
         return buildDevelopment(params);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [JSON.stringify(params), valid.success]);
+    }, [paramsGeomKey, valid.success]);
+
+    // Multi-layer artwork. When layers exist they composite into one
+    // artwork laid out in a panel-sized frame (so each layer's mm
+    // position lands 1:1 on the face via the normal placement path);
+    // the composite's bbox IS the frame, so the rest of the pipeline —
+    // which already reads `imported.bbox` — needs no special-casing.
+    // No layers → the legacy single upload (storeImported) is used.
+    const artworkLayers = params.artworkLayers ?? [];
+    const composite = useMemo(() => {
+        if (artworkLayers.length === 0) return null;
+        return composeLayers(
+            artworkLayers,
+            params.panelWidthMm,
+            params.panelHeightMm,
+        );
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+        JSON.stringify(artworkLayers),
+        params.panelWidthMm,
+        params.panelHeightMm,
+    ]);
+    const imported = composite ?? storeImported;
+    const isComposite = composite !== null;
 
     const split = useMemo(
         () =>
@@ -739,6 +775,38 @@ export function VisualiserClient({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [development, imported, JSON.stringify(placement)]);
 
+    // Draggable handles for each artwork layer — placed at the layer's
+    // centre in flat-development coords so the operator can grab and
+    // move a layer directly on the flat preview.
+    const layerMarkers = useMemo(() => {
+        if (!isComposite || !placementXf) return [];
+        return artworkLayers.map((l) => {
+            const cx = l.xMm + (l.wMm * l.scale) / 2;
+            const cy = l.yMm + (l.hMm * l.scale) / 2;
+            const [xDev, yDev] = placementXf.toFlat([cx, cy]);
+            return {
+                id: l.id,
+                label: l.label ?? 'Layer',
+                xDev,
+                yDev,
+                selected: l.id === selectedLayerId,
+            };
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isComposite, placementXf, JSON.stringify(artworkLayers), selectedLayerId]);
+
+    // Drop a layer so its centre lands at a flat-dev point (drag target).
+    const handleLayerMoveTo = (id: string, devPoint: [number, number]) => {
+        if (!placementXf) return;
+        const layer = artworkLayers.find((l) => l.id === id);
+        if (!layer) return;
+        const [fx, fy] = placementXf.toLocal(devPoint);
+        updateArtworkLayer(id, {
+            xMm: fx - (layer.wMm * layer.scale) / 2,
+            yMm: fy - (layer.hMm * layer.scale) / 2,
+        });
+    };
+
     // Manual fixings — user clicks on the canvases to drop pins exactly
     // where they're needed. Persisted in SVG-local coords so they follow
     // the lettering across placement edits; converted to flat-dev coords
@@ -1013,7 +1081,7 @@ export function VisualiserClient({
         () =>
             development ? buildSectionedExport(params, split) : null,
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [development, JSON.stringify(params), split],
+        [development, paramsGeomKey, split],
     );
 
     const apertureBySection = useMemo(() => {
@@ -1524,6 +1592,9 @@ export function VisualiserClient({
                             cableMode={cableMode}
                             cableHoles={cableHoles}
                             onFixingClick={handleFixingClick}
+                            layerMarkers={layerMarkers}
+                            onLayerSelect={selectLayer}
+                            onLayerMoveTo={handleLayerMoveTo}
                         />
                     ) : (
                         <Scene3D

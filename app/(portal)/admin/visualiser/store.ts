@@ -8,6 +8,15 @@ import {
     type ImportedSvg,
     type VisualiserDesignRow,
 } from '@/lib/visualiser/types';
+import { importSvg } from '@/lib/visualiser/svg-import';
+
+type ArtworkLayer = NonNullable<PanelParams['artworkLayers']>[number];
+
+let layerCounter = 0;
+function nextLayerId(): string {
+    layerCounter += 1;
+    return `L${Date.now().toString(36)}${layerCounter}`;
+}
 
 export const DEFAULT_PARAMS: PanelParams = {
     name: 'Untitled panel',
@@ -121,6 +130,8 @@ interface VisualiserState {
      */
     editingGroupId: string | null;
     pendingPaths: number[];
+    /** Selected artwork layer (multi-layer composition). */
+    selectedLayerId: string | null;
 
     setParam: <K extends keyof PanelParams>(k: K, v: PanelParams[K]) => void;
     setReturn: (edge: PanelEdge, on: boolean) => void;
@@ -136,6 +147,16 @@ interface VisualiserState {
     removeManualFixing: (index: number) => void;
     clearManualFixings: () => void;
     setFixingMode: (m: 'off' | 'place' | 'delete') => void;
+
+    /* Artwork-layer actions (multi-layer composition) */
+    addArtworkLayer: (svgSource: string, label?: string) => void;
+    updateArtworkLayer: (
+        id: string,
+        patch: Partial<Pick<ArtworkLayer, 'xMm' | 'yMm' | 'scale' | 'label'>>,
+    ) => void;
+    removeArtworkLayer: (id: string) => void;
+    reorderArtworkLayer: (id: string, dir: 'up' | 'down') => void;
+    selectLayer: (id: string | null) => void;
 
     /* Cable-hole actions (positioner — manual place/delete only) */
     addCableHole: (p: [number, number]) => void;
@@ -202,6 +223,7 @@ export const useVisualiser = create<VisualiserState>((set) => ({
     cableMode: 'off',
     editingGroupId: null,
     pendingPaths: [],
+    selectedLayerId: null,
 
     setParam: (k, v) =>
         set((s) => ({ params: { ...s.params, [k]: v }, dirty: true })),
@@ -276,9 +298,11 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                 ...s.params,
                 aperturePlacement: null,
                 materialGroups: [],
+                artworkLayers: [],
             },
             editingGroupId: null,
             pendingPaths: [],
+            selectedLayerId: null,
             dirty: true,
         })),
 
@@ -292,6 +316,7 @@ export const useVisualiser = create<VisualiserState>((set) => ({
             quoteItemId: row.quote_item_id,
             editingGroupId: null,
             pendingPaths: [],
+            selectedLayerId: null,
             dirty: false,
         }),
 
@@ -344,6 +369,100 @@ export const useVisualiser = create<VisualiserState>((set) => ({
             fixingMode: m,
             cableMode: m === 'off' ? s.cableMode : 'off',
         })),
+
+    /* ------------------------------------------------------------------ *
+     * Artwork layers (multi-layer composition)
+     * ------------------------------------------------------------------ */
+
+    addArtworkLayer: (svgSource, label) =>
+        set((s) => {
+            // Native size from the import; default to a tidy fit (~45%
+            // of the smaller panel dimension) centred on the face.
+            let wMm = 100;
+            let hMm = 100;
+            try {
+                const imp = importSvg(svgSource);
+                wMm = Math.max(1, imp.bbox.w);
+                hMm = Math.max(1, imp.bbox.h);
+            } catch {
+                /* keep defaults */
+            }
+            const panelW = s.params.panelWidthMm;
+            const panelH = s.params.panelHeightMm;
+            const targetMm = 0.45 * Math.min(panelW, panelH);
+            const scale = Math.max(
+                0.01,
+                Math.min(20, targetMm / Math.max(wMm, hMm)),
+            );
+            const sw = wMm * scale;
+            const sh = hMm * scale;
+            const existing = s.params.artworkLayers ?? [];
+            // Stagger new layers a touch so they don't stack exactly.
+            const offset = existing.length * 0.04 * Math.min(panelW, panelH);
+            const id = nextLayerId();
+            const layer: ArtworkLayer = {
+                id,
+                label: label ?? `Layer ${existing.length + 1}`,
+                svgSource,
+                xMm: panelW / 2 - sw / 2 + offset,
+                yMm: panelH / 2 - sh / 2 + offset,
+                scale,
+                wMm,
+                hMm,
+            };
+            return {
+                params: {
+                    ...s.params,
+                    artworkLayers: [...existing, layer],
+                    // Composite mode supersedes the legacy single
+                    // placement; make sure it's a clean identity.
+                    aperturePlacement: DEFAULT_PLACEMENT,
+                },
+                selectedLayerId: id,
+                dirty: true,
+            };
+        }),
+
+    updateArtworkLayer: (id, patch) =>
+        set((s) => ({
+            params: {
+                ...s.params,
+                artworkLayers: (s.params.artworkLayers ?? []).map((l) =>
+                    l.id === id ? { ...l, ...patch } : l,
+                ),
+            },
+            dirty: true,
+        })),
+
+    removeArtworkLayer: (id) =>
+        set((s) => {
+            const next = (s.params.artworkLayers ?? []).filter(
+                (l) => l.id !== id,
+            );
+            return {
+                params: { ...s.params, artworkLayers: next },
+                selectedLayerId:
+                    s.selectedLayerId === id ? null : s.selectedLayerId,
+                dirty: true,
+            };
+        }),
+
+    reorderArtworkLayer: (id, dir) =>
+        set((s) => {
+            const list = [...(s.params.artworkLayers ?? [])];
+            const i = list.findIndex((l) => l.id === id);
+            if (i < 0) return {} as Partial<VisualiserState>;
+            const j = dir === 'up' ? i - 1 : i + 1;
+            if (j < 0 || j >= list.length)
+                return {} as Partial<VisualiserState>;
+            [list[i], list[j]] = [list[j], list[i]];
+            return {
+                params: { ...s.params, artworkLayers: list },
+                dirty: true,
+            };
+        }),
+
+    selectLayer: (id) => set({ selectedLayerId: id }),
 
     /* ------------------------------------------------------------------ *
      * Cable holes (manual positioner)

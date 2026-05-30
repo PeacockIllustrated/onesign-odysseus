@@ -224,6 +224,33 @@ export const PanelParamsSchema = z.object({
         })
         .optional(),
     /**
+     * Artwork layers — multiple independently-placed pieces of artwork
+     * on one sign (an icon + a wordmark uploaded separately, say). Each
+     * layer carries its own SVG (PNG/JPG are traced to SVG before
+     * adding) and a position + scale in PANEL-FACE millimetres
+     * (origin top-left of the face). At render the layers composite
+     * into a single artwork in a panel-sized frame, which flows through
+     * the normal pipeline unchanged. Empty / absent → the legacy
+     * single-upload artwork (svg_source) is used instead.
+     */
+    artworkLayers: z
+        .array(
+            z.object({
+                id: z.string().min(1),
+                label: z.string().optional(),
+                svgSource: z.string().max(2_000_000),
+                /** Top-left position on the face, mm. */
+                xMm: z.number(),
+                yMm: z.number(),
+                /** Multiplier on the layer's native units. */
+                scale: z.number().positive(),
+                /** Native bbox size (mm) — cached for sizing / the UI. */
+                wMm: z.number().nonnegative(),
+                hMm: z.number().nonnegative(),
+            }),
+        )
+        .optional(),
+    /**
      * Material groups — the heart of the mixed-material model. Each
      * group bundles a set of imported SVG paths under a shared
      * material. A single sign can mix any combination of materials

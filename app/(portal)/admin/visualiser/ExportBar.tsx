@@ -18,6 +18,7 @@ import {
     pdfFilename,
 } from '@/lib/visualiser/pdf';
 import { saveDesign } from '@/lib/visualiser/actions';
+import { composeLayersSvg } from '@/lib/visualiser/compose';
 import {
     PanelParamsSchema,
     type FlatPath,
@@ -231,11 +232,24 @@ export function ExportBar({
 
     const onSave = () => {
         setMsg(null);
+        // With multi-layer artwork the editable layers live in
+        // params.artworkLayers; persist a flattened composite SVG as
+        // svg_source too so the design still renders for any consumer
+        // that only reads svg_source.
+        const layers = params.artworkLayers ?? [];
+        const effectiveSvg =
+            layers.length > 0
+                ? composeLayersSvg(
+                      layers,
+                      params.panelWidthMm,
+                      params.panelHeightMm,
+                  )
+                : svgSource;
         startSaveTransition(async () => {
             const res = await saveDesign({
                 id: designId ?? undefined,
                 params,
-                svgSource,
+                svgSource: effectiveSvg,
                 quoteId,
                 quoteItemId,
             });

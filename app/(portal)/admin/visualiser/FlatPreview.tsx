@@ -10,6 +10,7 @@ import type {
 } from '@/lib/visualiser/types';
 
 const DEFAULT_PANEL_COLOR = '#d6d6d6';
+const ACCENT = '#4e7e8c';
 
 /**
  * Per-path clickable overlay. Always picks up clicks so the operator
@@ -140,6 +141,9 @@ export function FlatPreview({
     fixingMode = 'off',
     cableMode = 'off',
     onFixingClick,
+    layerMarkers = [],
+    onLayerSelect,
+    onLayerMoveTo,
 }: {
     development: PanelDevelopment;
     split: PanelSplit;
@@ -203,32 +207,69 @@ export function FlatPreview({
     cableMode?: 'off' | 'place' | 'delete';
     /** Called with the click point in flat-development mm coords. */
     onFixingClick?: (p: [number, number]) => void;
+    /**
+     * Draggable handles for multi-layer artwork — one per layer at its
+     * centre, in flat-development mm coords. Drag to reposition the
+     * layer; click to select.
+     */
+    layerMarkers?: Array<{
+        id: string;
+        label: string;
+        xDev: number;
+        yDev: number;
+        selected: boolean;
+    }>;
+    onLayerSelect?: (id: string) => void;
+    /** Called while dragging — the layer's new centre in flat-dev mm. */
+    onLayerMoveTo?: (id: string, p: [number, number]) => void;
 }) {
     const svgRef = useRef<SVGSVGElement | null>(null);
+    const [draggingLayer, setDraggingLayer] = useState<string | null>(null);
+
+    /** Screen px → flat-development mm. */
+    const screenToDev = (
+        clientX: number,
+        clientY: number,
+    ): [number, number] | null => {
+        const svg = svgRef.current;
+        if (!svg) return null;
+        const ctm = svg.getScreenCTM();
+        if (!ctm) return null;
+        const pt = svg.createSVGPoint();
+        pt.x = clientX;
+        pt.y = clientY;
+        const local = pt.matrixTransform(ctm.inverse());
+        return [local.x, local.y];
+    };
 
     const placementActive = fixingMode !== 'off' || cableMode !== 'off';
     const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
         if (!placementActive) return;
-        if (!onFixingClick || !svgRef.current) return;
-        const ctm = svgRef.current.getScreenCTM();
-        if (!ctm) return;
-        const pt = svgRef.current.createSVGPoint();
-        pt.x = e.clientX;
-        pt.y = e.clientY;
-        const local = pt.matrixTransform(ctm.inverse());
+        if (!onFixingClick) return;
+        const local = screenToDev(e.clientX, e.clientY);
+        if (!local) return;
         // Only register clicks that land inside the face — outside it
         // there's no panel to fix into, so silently ignore.
-        const face = dev.segments.find((s) => s.role === 'face');
-        if (!face) return;
+        const f = dev.segments.find((s) => s.role === 'face');
+        if (!f) return;
         if (
-            local.x < face.xMm ||
-            local.x > face.xMm + face.wMm ||
-            local.y < face.yMm ||
-            local.y > face.yMm + face.hMm
+            local[0] < f.xMm ||
+            local[0] > f.xMm + f.wMm ||
+            local[1] < f.yMm ||
+            local[1] > f.yMm + f.hMm
         )
             return;
-        onFixingClick([local.x, local.y]);
+        onFixingClick([local[0], local[1]]);
     };
+
+    // Layer drag (multi-layer artwork) — moves the grabbed layer's
+    // centre to follow the pointer across the flat preview.
+    const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+        if (!draggingLayer || !onLayerMoveTo) return;
+        const p = screenToDev(e.clientX, e.clientY);
+        if (p) onLayerMoveTo(draggingLayer, p);
+    };
+    const endLayerDrag = () => setDraggingLayer(null);
     const pad = Math.max(20, dev.totalFlatWMm * 0.06);
     const vb = useMemo(
         () =>
@@ -283,6 +324,9 @@ export function FlatPreview({
                 }`}
                 preserveAspectRatio="xMidYMid meet"
                 onClick={handleClick}
+                onPointerMove={handlePointerMove}
+                onPointerUp={endLayerDrag}
+                onPointerLeave={endLayerDrag}
             >
                 {/* Non-face segments — returns + shadow lips, all in the
                     same panel colour, edges in technical-drawing black. */}
@@ -567,6 +611,51 @@ export function FlatPreview({
                                 x2={cx}
                                 y2={cy + xh}
                                 stroke={ringColor}
+                                strokeWidth={stroke}
+                            />
+                        </g>
+                    );
+                })}
+
+                {/* Artwork-layer handles — drag to move a layer, click to
+                    select. One marker at each layer's centre. */}
+                {layerMarkers.map((m) => {
+                    const r = Math.max(dev.totalFlatWMm * 0.014, 7);
+                    const xh = r * 0.9;
+                    return (
+                        <g
+                            key={`layer-${m.id}`}
+                            style={{ cursor: 'move' }}
+                            onPointerDown={(e) => {
+                                e.stopPropagation();
+                                onLayerSelect?.(m.id);
+                                setDraggingLayer(m.id);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <circle
+                                cx={m.xDev}
+                                cy={m.yDev}
+                                r={r}
+                                fill={m.selected ? ACCENT : '#ffffff'}
+                                fillOpacity={m.selected ? 0.9 : 0.75}
+                                stroke={ACCENT}
+                                strokeWidth={stroke * 1.4}
+                            />
+                            <line
+                                x1={m.xDev - xh}
+                                y1={m.yDev}
+                                x2={m.xDev + xh}
+                                y2={m.yDev}
+                                stroke={m.selected ? '#ffffff' : ACCENT}
+                                strokeWidth={stroke}
+                            />
+                            <line
+                                x1={m.xDev}
+                                y1={m.yDev - xh}
+                                x2={m.xDev}
+                                y2={m.yDev + xh}
+                                stroke={m.selected ? '#ffffff' : ACCENT}
                                 strokeWidth={stroke}
                             />
                         </g>

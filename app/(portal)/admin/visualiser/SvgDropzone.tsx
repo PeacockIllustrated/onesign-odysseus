@@ -697,7 +697,6 @@ export function SvgDropzone() {
         svgSource,
         imported,
         params,
-        setSvg,
         clearSvg,
         setPlacement,
         setParam,
@@ -715,10 +714,20 @@ export function SvgDropzone() {
         applyEditMaterial,
         updateGroupProps,
         deleteGroup,
+        addArtworkLayer,
+        updateArtworkLayer,
+        removeArtworkLayer,
+        reorderArtworkLayer,
+        selectLayer,
+        selectedLayerId,
     } = useVisualiser();
     const inputRef = useRef<HTMLInputElement>(null);
     const [error, setError] = useState<string | null>(null);
     const [traceMode, setTraceMode] = useState(false);
+
+    const layers = params.artworkLayers ?? [];
+    const composite = layers.length > 0;
+    const hasArtwork = !!svgSource || composite;
 
     // Any path rendered as stood off — either the quick default is set
     // to standoff (so ungrouped paths land there) or at least one
@@ -739,7 +748,11 @@ export function SvgDropzone() {
                 setError('No usable vector shapes found in that SVG.');
                 return;
             }
-            setSvg(text, result);
+            // Each upload is an artwork layer — add it to the
+            // composition so several pieces (icon + wordmark, …) can sit
+            // on the sign and move independently.
+            const cleanName = file.name.replace(/\.svg$/i, '');
+            addArtworkLayer(text, cleanName || undefined);
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Could not read SVG');
         }
@@ -753,47 +766,169 @@ export function SvgDropzone() {
                 <h3 className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
                     Artwork
                 </h3>
-                {svgSource && (
+                {hasArtwork && (
                     <button
                         type="button"
                         onClick={clearSvg}
                         className="flex min-h-[28px] items-center gap-1 text-xs text-neutral-500 hover:text-red-600"
                     >
-                        <X size={12} aria-hidden /> Remove
+                        <X size={12} aria-hidden /> Clear all
                     </button>
                 )}
             </div>
 
-            {!svgSource ? (
-                traceMode ? (
-                    <TraceImage onClose={() => setTraceMode(false)} />
-                ) : (
-                    <div className="space-y-2">
+            {traceMode ? (
+                <TraceImage onClose={() => setTraceMode(false)} />
+            ) : !hasArtwork ? (
+                <div className="space-y-2">
+                    <button
+                        type="button"
+                        onClick={() => inputRef.current?.click()}
+                        className="flex w-full flex-col items-center gap-1 rounded-lg border-2 border-dashed border-neutral-300 px-4 py-6 text-neutral-400 hover:border-neutral-400 hover:text-neutral-600"
+                    >
+                        <Upload size={20} />
+                        <span className="text-xs">
+                            Upload an SVG (icon, wordmark…)
+                        </span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setTraceMode(true)}
+                        className="flex w-full items-center justify-center gap-1.5 rounded-md border border-neutral-200 px-3 py-2 text-[11px] font-medium text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700"
+                    >
+                        <ImageUp size={13} aria-hidden />
+                        or trace a PNG / JPG
+                        <span className="rounded bg-neutral-100 px-1 text-[9px] uppercase tracking-wide text-neutral-400">
+                            beta
+                        </span>
+                    </button>
+                </div>
+            ) : composite ? (
+                <div className="space-y-2">
+                    {/* Layer list — select to edit, drag the handle on the
+                        Flat development to move, or nudge with the fields. */}
+                    <ul className="space-y-1.5">
+                        {layers.map((l, i) => {
+                            const sel = l.id === selectedLayerId;
+                            return (
+                                <li
+                                    key={l.id}
+                                    className={`rounded-md border bg-white p-2 ${
+                                        sel
+                                            ? 'border-[#4e7e8c] ring-1 ring-[#b8d0d8]'
+                                            : 'border-neutral-200'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-1">
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                selectLayer(sel ? null : l.id)
+                                            }
+                                            className="min-w-0 flex-1 truncate text-left text-[11px] font-medium text-neutral-700"
+                                        >
+                                            {l.label ?? `Layer ${i + 1}`}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                reorderArtworkLayer(l.id, 'up')
+                                            }
+                                            disabled={i === 0}
+                                            aria-label="Bring forward"
+                                            className="flex min-h-[24px] min-w-[20px] items-center justify-center rounded text-neutral-400 hover:bg-neutral-100 disabled:opacity-30"
+                                        >
+                                            ↑
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                reorderArtworkLayer(
+                                                    l.id,
+                                                    'down',
+                                                )
+                                            }
+                                            disabled={i === layers.length - 1}
+                                            aria-label="Send back"
+                                            className="flex min-h-[24px] min-w-[20px] items-center justify-center rounded text-neutral-400 hover:bg-neutral-100 disabled:opacity-30"
+                                        >
+                                            ↓
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                removeArtworkLayer(l.id)
+                                            }
+                                            aria-label="Remove layer"
+                                            className="flex min-h-[24px] min-w-[24px] items-center justify-center rounded text-neutral-500 hover:bg-red-50 hover:text-red-600"
+                                        >
+                                            <Trash2 size={13} aria-hidden />
+                                        </button>
+                                    </div>
+                                    {sel && (
+                                        <div className="mt-2 grid grid-cols-3 gap-1.5">
+                                            <NumField
+                                                label="X (mm)"
+                                                step={5}
+                                                value={Math.round(l.xMm)}
+                                                onChange={(n) =>
+                                                    updateArtworkLayer(l.id, {
+                                                        xMm: n,
+                                                    })
+                                                }
+                                            />
+                                            <NumField
+                                                label="Y (mm)"
+                                                step={5}
+                                                value={Math.round(l.yMm)}
+                                                onChange={(n) =>
+                                                    updateArtworkLayer(l.id, {
+                                                        yMm: n,
+                                                    })
+                                                }
+                                            />
+                                            <NumField
+                                                label="Scale %"
+                                                step={5}
+                                                value={Math.round(
+                                                    l.scale * 100,
+                                                )}
+                                                onChange={(n) =>
+                                                    updateArtworkLayer(l.id, {
+                                                        scale:
+                                                            n > 0
+                                                                ? n / 100
+                                                                : 0.01,
+                                                    })
+                                                }
+                                            />
+                                        </div>
+                                    )}
+                                </li>
+                            );
+                        })}
+                    </ul>
+                    <div className="flex gap-2">
                         <button
                             type="button"
                             onClick={() => inputRef.current?.click()}
-                            className="flex w-full flex-col items-center gap-1 rounded-lg border-2 border-dashed border-neutral-300 px-4 py-6 text-neutral-400 hover:border-neutral-400 hover:text-neutral-600"
+                            className="flex min-h-[32px] flex-1 items-center justify-center gap-1 rounded-md border border-neutral-300 px-2 py-1.5 text-[11px] font-medium text-neutral-600 hover:bg-neutral-100"
                         >
-                            <Upload size={20} />
-                            <span className="text-xs">
-                                Upload an SVG to cut from the panel
-                            </span>
+                            <Upload size={12} aria-hidden /> Add SVG
                         </button>
-                        {/* Tracer entry — concept aid for ballparking from
-                            a raster. Hidden once artwork is loaded. */}
                         <button
                             type="button"
                             onClick={() => setTraceMode(true)}
-                            className="flex w-full items-center justify-center gap-1.5 rounded-md border border-neutral-200 px-3 py-2 text-[11px] font-medium text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700"
+                            className="flex min-h-[32px] flex-1 items-center justify-center gap-1 rounded-md border border-neutral-300 px-2 py-1.5 text-[11px] font-medium text-neutral-600 hover:bg-neutral-100"
                         >
-                            <ImageUp size={13} aria-hidden />
-                            or trace a PNG / JPG
-                            <span className="rounded bg-neutral-100 px-1 text-[9px] uppercase tracking-wide text-neutral-400">
-                                beta
-                            </span>
+                            <ImageUp size={12} aria-hidden /> Trace
                         </button>
                     </div>
-                )
+                    <p className="text-[10px] text-neutral-400">
+                        Select a layer, then drag its handle on the Flat
+                        development tab to move it.
+                    </p>
+                </div>
             ) : (
                 <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-600">
                     {imported && (
@@ -837,6 +972,13 @@ export function SvgDropzone() {
 
             {placement && (
                 <div className="space-y-2.5">
+                    {/* Global placement (align / size / nudge) — for the
+                        legacy single artwork. In composite mode each
+                        layer is positioned individually, so these are
+                        hidden and the whole composite maps 1:1 to the
+                        face. */}
+                    {!composite && (
+                      <>
                     <div className="grid grid-cols-2 gap-2">
                         <div>
                             <span className="text-[10px] text-neutral-500">
@@ -927,6 +1069,8 @@ export function SvgDropzone() {
                         Size in mm — aspect locked, edit width or height.
                         Anchored to the artwork centre; default is dead centre.
                     </p>
+                      </>
+                    )}
 
                     {/* Path materials & fixings — unified card. Every
                         ungrouped path is cut from the panel by default;
@@ -945,7 +1089,7 @@ export function SvgDropzone() {
                                 default. Group paths below to reassign them.
                             </p>
                         </div>
-                        {imported && (
+                        {hasArtwork && (
                             <MaterialGroupsPanel
                                 groups={params.materialGroups ?? []}
                                 editingGroupId={editingGroupId}
@@ -1351,7 +1495,7 @@ export function SvgDropzone() {
                         are only one or two per letter and the fabricator
                         wants them exactly where the cable run dictates, so
                         there's no auto-placement or density. */}
-                    {imported && (
+                    {hasArtwork && (
                         <div className="pt-2 border-t border-neutral-100 space-y-2">
                             <h3 className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
                                 Cable holes

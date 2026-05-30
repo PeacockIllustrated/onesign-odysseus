@@ -28,7 +28,7 @@ type LoadedImage = { rgba: Uint8ClampedArray; w: number; h: number };
  * cutter unreviewed.
  */
 export function TraceImage({ onClose }: { onClose: () => void }) {
-    const { setSvg } = useVisualiser();
+    const { addArtworkLayer } = useVisualiser();
     const inputRef = useRef<HTMLInputElement>(null);
     const [img, setImg] = useState<LoadedImage | null>(null);
     const [busy, setBusy] = useState(false);
@@ -113,7 +113,9 @@ export function TraceImage({ onClose }: { onClose: () => void }) {
                 );
                 return;
             }
-            setSvg(trace.svg, result);
+            // Add as an artwork layer so traced art composes alongside
+            // any uploaded SVGs and can be moved independently.
+            addArtworkLayer(trace.svg, 'Traced image');
             onClose();
         } catch {
             setError('Could not import the trace.');
