@@ -1,161 +1,310 @@
 /**
  * Raster → SVG silhouette tracer.
  *
- * A deliberately simple, dependency-free image tracer for *ballparking*
- * signage ideas in the builder — drop a PNG/JPG, get rough vector
- * outlines that feed straight into the existing `importSvg` pipeline.
+ * A dependency-free image tracer for *ballparking* signage ideas in the
+ * builder — drop a PNG/JPG, get rough vector outlines that feed straight
+ * into the existing `importSvg` pipeline. NOT a production cut path: the
+ * output is a threshold silhouette (one shape, counters as holes) — a
+ * concept aid. Anything destined for the cutter should still be a clean,
+ * designer-approved vector.
  *
- * It is NOT a production cut path. The output is a threshold silhouette
- * (one shape, optional counters as holes), smoothed with Douglas–
- * Peucker. Great for high-contrast logos and lettering; poor for
- * photos. Anything destined for the cutter should still be a clean,
- * designer-approved vector — the trace is a concept aid.
+ * Quality pipeline:
+ *   1. luminanceField — RGBA → luminance, alpha composited over the
+ *      "outside" background, so transparent logos AND anti-aliased
+ *      edges both become a smooth scalar field.
+ *   2. boxBlur (optional) — knock back JPEG noise / aliasing.
+ *   3. threshold — explicit, or Otsu auto.
+ *   4. marchingSquares — trace the iso-contour at the threshold with
+ *      linear interpolation, so contour vertices land at SUB-PIXEL
+ *      positions on the true edge (not a 90° pixel staircase).
+ *   5. simplify — dedupe, collinear-merge, Douglas–Peucker.
+ *   6. loopsToSvg — fit cubic Béziers (smooth vertices) with hard
+ *      corners preserved; one <path> per loop so enclosed loops read
+ *      as counters.
  *
- * Pipeline:
- *   1. buildMask  — luminance/alpha threshold → binary inside/outside.
- *   2. traceMask  — walk pixel-boundary edges into closed loops (outer
- *                   contours + hole contours), then simplify each.
- *   3. loopsToSvg — emit one <path> per loop. The visualiser's
- *                   nesting logic turns enclosed loops into counters.
- *
- * All functions are pure and take raw RGBA + dimensions (no ImageData /
- * canvas), so they unit-test in plain node.
+ * Field/contour functions are pure and take raw RGBA + dimensions (no
+ * ImageData / canvas), so they unit-test in plain node.
  */
 
 export interface TraceOptions {
-    /** Luminance cutoff 0..255. Pixels darker than this are "inside"
-     *  (unless inverted). Default 128. */
+    /** Luminance cutoff 0..255. Omit to auto-pick via Otsu. */
     threshold?: number;
     /** Trace the LIGHT regions instead of the dark ones. Default false. */
     invert?: boolean;
     /** 0..100 — higher drops more detail (rougher, fewer points).
      *  Maps to the Douglas–Peucker epsilon. Default 40. */
     smoothing?: number;
+    /** Box-blur radius (px) applied to the luminance field before
+     *  tracing — smooths aliasing / noise. Default 1. */
+    blurRadius?: number;
     /** Loops with absolute area below this (px²) are dropped as specks.
      *  Default 24. */
     minAreaPx?: number;
 }
 
-/** Map smoothing 0..100 → DP epsilon in pixels (~0.5 fine … ~6 rough). */
+type Pt = [number, number];
+
+/** Map smoothing 0..100 → DP epsilon in pixels (~0.4 fine … ~5 rough). */
 function smoothingToEpsilon(smoothing: number): number {
     const s = Math.max(0, Math.min(100, smoothing));
-    return 0.5 + (s / 100) * 5.5;
+    return 0.4 + (s / 100) * 4.6;
 }
 
 /**
- * Binary inside/outside mask. A pixel is "inside" (1) when it's
- * sufficiently opaque AND on the chosen side of the luminance cutoff.
- * Transparent pixels are always outside, so logos on a transparent
- * background trace by their alpha silhouette.
+ * Luminance field with alpha folded in. Each pixel is composited over
+ * the background we treat as "outside" (white for a dark trace, black
+ * for an inverted/light trace), so transparent and semi-transparent
+ * pixels resolve to the right side of the threshold and AA edges become
+ * a smooth ramp the contour can cut through sub-pixel.
  */
-export function buildMask(
+export function luminanceField(
     rgba: Uint8ClampedArray | number[],
     w: number,
     h: number,
-    opts: { threshold?: number; invert?: boolean } = {},
-): Uint8Array {
-    const threshold = opts.threshold ?? 128;
-    const invert = opts.invert ?? false;
-    const mask = new Uint8Array(w * h);
+    invert = false,
+): Float32Array {
+    const bg = invert ? 0 : 255;
+    const field = new Float32Array(w * h);
     for (let i = 0; i < w * h; i++) {
         const r = rgba[i * 4];
         const g = rgba[i * 4 + 1];
         const b = rgba[i * 4 + 2];
-        const a = rgba[i * 4 + 3];
-        if (a < 128) continue; // transparent → outside
+        const a = rgba[i * 4 + 3] / 255;
         const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-        const dark = lum <= threshold;
-        mask[i] = (invert ? !dark : dark) ? 1 : 0;
+        field[i] = lum * a + bg * (1 - a);
     }
-    return mask;
+    return field;
 }
 
-type Pt = [number, number];
-
-/**
- * Trace the mask boundary into closed loops. Each filled pixel
- * contributes its boundary edges (the sides facing an empty neighbour)
- * as directed unit segments; the segments chain head-to-tail into
- * closed loops — outer contours one way, holes the other. The result
- * is a staircase polygon per loop, then collinear-merged + DP-
- * simplified, and specks dropped by area.
- */
-export function traceMask(
-    mask: Uint8Array,
+/** Separable box blur (edge-clamped). radius 0 → returns a copy. */
+export function boxBlur(
+    field: Float32Array,
     w: number,
     h: number,
-    opts: { smoothing?: number; minAreaPx?: number } = {},
-): Pt[][] {
-    const eps = smoothingToEpsilon(opts.smoothing ?? 40);
-    const minArea = opts.minAreaPx ?? 24;
-    const at = (x: number, y: number): number =>
-        x < 0 || y < 0 || x >= w || y >= h ? 0 : mask[y * w + x];
-
-    // Grid corners are indexed 0..w / 0..h. Segments are stored as
-    // directed edges keyed by their start corner so the stitcher can
-    // follow head-to-tail.
-    const key = (x: number, y: number) => y * (w + 1) + x;
-    const segA: number[] = []; // start key
-    const segBx: number[] = [];
-    const segBy: number[] = [];
-    const segAx: number[] = [];
-    const segAy: number[] = [];
-    const startMap = new Map<number, number[]>();
-    const addSeg = (ax: number, ay: number, bx: number, by: number) => {
-        const idx = segA.length;
-        segA.push(key(ax, ay));
-        segAx.push(ax);
-        segAy.push(ay);
-        segBx.push(bx);
-        segBy.push(by);
-        const k = key(ax, ay);
-        const list = startMap.get(k);
-        if (list) list.push(idx);
-        else startMap.set(k, [idx]);
-    };
-
+    radius: number,
+): Float32Array {
+    const r = Math.max(0, Math.floor(radius));
+    if (r === 0) return field.slice();
+    const tmp = new Float32Array(w * h);
+    const out = new Float32Array(w * h);
+    const win = r * 2 + 1;
+    // Horizontal
     for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
-            if (!at(x, y)) continue;
-            // Edges face empty neighbours; directions chosen so the
-            // four edges of an isolated pixel form one consistent loop.
-            if (!at(x, y - 1)) addSeg(x, y, x + 1, y); // top →
-            if (!at(x + 1, y)) addSeg(x + 1, y, x + 1, y + 1); // right ↓
-            if (!at(x, y + 1)) addSeg(x + 1, y + 1, x, y + 1); // bottom ←
-            if (!at(x - 1, y)) addSeg(x, y + 1, x, y); // left ↑
+            let sum = 0;
+            for (let k = -r; k <= r; k++) {
+                const xx = Math.max(0, Math.min(w - 1, x + k));
+                sum += field[y * w + xx];
+            }
+            tmp[y * w + x] = sum / win;
+        }
+    }
+    // Vertical
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            let sum = 0;
+            for (let k = -r; k <= r; k++) {
+                const yy = Math.max(0, Math.min(h - 1, y + k));
+                sum += tmp[yy * w + x];
+            }
+            out[y * w + x] = sum / win;
+        }
+    }
+    return out;
+}
+
+/** Otsu's method — the luminance cutoff that best separates the two
+ *  brightness populations. Robust default when the operator hasn't
+ *  dialled a threshold in by hand. */
+export function otsuThreshold(field: Float32Array): number {
+    const hist = new Array(256).fill(0);
+    for (let i = 0; i < field.length; i++) {
+        const v = Math.max(0, Math.min(255, Math.round(field[i])));
+        hist[v]++;
+    }
+    const total = field.length;
+    let sum = 0;
+    for (let t = 0; t < 256; t++) sum += t * hist[t];
+
+    // Between-class variance per t.
+    const between = new Array(256).fill(-1);
+    let sumB = 0;
+    let wB = 0;
+    for (let t = 0; t < 256; t++) {
+        wB += hist[t];
+        if (wB === 0) continue;
+        const wF = total - wB;
+        if (wF === 0) break;
+        sumB += t * hist[t];
+        const mB = sumB / wB;
+        const mF = (sum - sumB) / wF;
+        between[t] = wB * wF * (mB - mF) * (mB - mF);
+    }
+
+    // When the histogram is two well-separated spikes, a whole range of
+    // t maximises the variance equally. Return the CENTRE of that
+    // plateau so the cut sits between the populations rather than hard
+    // up against the darker one.
+    let maxVar = -1;
+    for (let t = 0; t < 256; t++) if (between[t] > maxVar) maxVar = between[t];
+    if (maxVar <= 0) return 128;
+    let acc = 0;
+    let cnt = 0;
+    for (let t = 0; t < 256; t++) {
+        if (between[t] >= 0 && between[t] >= maxVar * (1 - 1e-9)) {
+            acc += t;
+            cnt++;
+        }
+    }
+    return cnt > 0 ? Math.round(acc / cnt) : 128;
+}
+
+/**
+ * Marching squares iso-contour at `threshold`. Samples are the pixel
+ * values; cell-edge crossings are linearly interpolated for sub-pixel
+ * vertices. The field is padded by one cell of "outside" so shapes
+ * touching the image border still close. Returns raw closed loops
+ * (outer contours + holes, opposite winding).
+ */
+export function marchingSquares(
+    field: Float32Array,
+    w: number,
+    h: number,
+    threshold: number,
+    invert = false,
+): Pt[][] {
+    // Pad with a 1px border of "outside" luminance so border-touching
+    // shapes close along the crop edge.
+    const outside = invert ? 0 : 255;
+    const W = w + 2;
+    const H = h + 2;
+    const F = new Float32Array(W * H);
+    F.fill(outside);
+    for (let y = 0; y < h; y++)
+        for (let x = 0; x < w; x++) F[(y + 1) * W + (x + 1)] = field[y * w + x];
+
+    const isInside = (v: number) => (invert ? v >= threshold : v <= threshold);
+
+    // Crossing point on a grid edge, in unpadded coords. Edge ids:
+    //   h:x:y  → horizontal edge (x,y)–(x+1,y)
+    //   v:x:y  → vertical edge   (x,y)–(x,y+1)
+    const pointForId = (id: string): Pt => {
+        const [kind, sx, sy] = id.split(':');
+        const x = Number(sx);
+        const y = Number(sy);
+        let a: number;
+        let b: number;
+        let px: number;
+        let py: number;
+        if (kind === 'h') {
+            a = F[y * W + x];
+            b = F[y * W + x + 1];
+            const denom = b - a;
+            const t = Math.abs(denom) < 1e-9 ? 0.5 : (threshold - a) / denom;
+            const tc = Math.max(0, Math.min(1, t));
+            px = x + tc;
+            py = y;
+        } else {
+            a = F[y * W + x];
+            b = F[(y + 1) * W + x];
+            const denom = b - a;
+            const t = Math.abs(denom) < 1e-9 ? 0.5 : (threshold - a) / denom;
+            const tc = Math.max(0, Math.min(1, t));
+            px = x;
+            py = y + tc;
+        }
+        return [px - 1, py - 1]; // unpad
+    };
+
+    // Directed edge pairs per case (TL=1,TR=2,BR=4,BL=8), walked so the
+    // segments chain head-to-tail across cells into closed loops.
+    const TABLE: Record<number, Array<[string, string]>> = {
+        0: [],
+        1: [['L', 'T']],
+        2: [['T', 'R']],
+        3: [['L', 'R']],
+        4: [['R', 'B']],
+        5: [
+            ['L', 'T'],
+            ['R', 'B'],
+        ],
+        6: [['T', 'B']],
+        7: [['L', 'B']],
+        8: [['B', 'L']],
+        9: [['B', 'T']],
+        10: [
+            ['T', 'R'],
+            ['B', 'L'],
+        ],
+        11: [['B', 'R']],
+        12: [['R', 'L']],
+        13: [['R', 'T']],
+        14: [['T', 'L']],
+        15: [],
+    };
+    const edgeId = (name: string, x: number, y: number): string => {
+        switch (name) {
+            case 'T':
+                return `h:${x}:${y}`;
+            case 'B':
+                return `h:${x}:${y + 1}`;
+            case 'L':
+                return `v:${x}:${y}`;
+            default:
+                return `v:${x + 1}:${y}`;
+        }
+    };
+
+    const segFrom: string[] = [];
+    const segTo: string[] = [];
+    const startMap = new Map<string, number[]>();
+    for (let y = 0; y < H - 1; y++) {
+        for (let x = 0; x < W - 1; x++) {
+            const tl = isInside(F[y * W + x]) ? 1 : 0;
+            const tr = isInside(F[y * W + x + 1]) ? 2 : 0;
+            const br = isInside(F[(y + 1) * W + x + 1]) ? 4 : 0;
+            const bl = isInside(F[(y + 1) * W + x]) ? 8 : 0;
+            const c = tl | tr | br | bl;
+            const pairs = TABLE[c];
+            if (pairs.length === 0) continue;
+            for (const [from, to] of pairs) {
+                const idx = segFrom.length;
+                const fid = edgeId(from, x, y);
+                segFrom.push(fid);
+                segTo.push(edgeId(to, x, y));
+                const list = startMap.get(fid);
+                if (list) list.push(idx);
+                else startMap.set(fid, [idx]);
+            }
         }
     }
 
-    const used = new Array(segA.length).fill(false);
+    const used = new Array(segFrom.length).fill(false);
     const loops: Pt[][] = [];
-    for (let i = 0; i < segA.length; i++) {
+    for (let i = 0; i < segFrom.length; i++) {
         if (used[i]) continue;
-        const loop: Pt[] = [];
+        const ids: string[] = [];
         let cur = i;
-        const startKey = segA[i];
+        const startId = segFrom[i];
         let guard = 0;
-        while (cur !== -1 && !used[cur] && guard++ < segA.length + 8) {
+        while (cur !== -1 && !used[cur] && guard++ < segFrom.length + 8) {
             used[cur] = true;
-            loop.push([segAx[cur], segAy[cur]]);
-            const endKey = key(segBx[cur], segBy[cur]);
-            if (endKey === startKey) break; // closed
-            const cands = startMap.get(endKey);
-            let next = -1;
+            ids.push(segFrom[cur]);
+            const next = segTo[cur];
+            if (next === startId) break;
+            const cands = startMap.get(next);
+            let nx = -1;
             if (cands) {
-                for (const c of cands) {
+                for (const c of cands)
                     if (!used[c]) {
-                        next = c;
+                        nx = c;
                         break;
                     }
-                }
             }
-            cur = next;
+            cur = nx;
         }
-        if (loop.length < 4) continue;
-        const simplified = simplifyClosed(mergeCollinear(loop), eps);
-        if (simplified.length < 3) continue;
-        if (Math.abs(polygonArea(simplified)) < minArea) continue;
-        loops.push(simplified);
+        if (ids.length < 3) continue;
+        loops.push(ids.map(pointForId));
     }
     return loops;
 }
@@ -169,8 +318,25 @@ export function polygonArea(pts: Pt[]): number {
     return a / 2;
 }
 
-/** Drop the middle of any three collinear points (staircase runs that
- *  happen to be straight). Keeps the staircase corners for DP to chew. */
+/** Drop consecutive near-duplicate points. */
+function dedupe(pts: Pt[], eps = 1e-4): Pt[] {
+    const out: Pt[] = [];
+    for (const p of pts) {
+        const q = out[out.length - 1];
+        if (!q || Math.hypot(p[0] - q[0], p[1] - q[1]) > eps) out.push(p);
+    }
+    while (
+        out.length > 1 &&
+        Math.hypot(
+            out[0][0] - out[out.length - 1][0],
+            out[0][1] - out[out.length - 1][1],
+        ) <= eps
+    )
+        out.pop();
+    return out;
+}
+
+/** Drop the middle of any three collinear points. */
 function mergeCollinear(pts: Pt[]): Pt[] {
     const n = pts.length;
     if (n < 3) return pts;
@@ -182,12 +348,11 @@ function mergeCollinear(pts: Pt[]): Pt[] {
         const cross =
             (cur[0] - prev[0]) * (next[1] - prev[1]) -
             (cur[1] - prev[1]) * (next[0] - prev[0]);
-        if (Math.abs(cross) > 1e-9) out.push(cur);
+        if (Math.abs(cross) > 1e-6) out.push(cur);
     }
     return out.length >= 3 ? out : pts;
 }
 
-/** Perpendicular distance from p to segment a–b. */
 function perpDist(p: Pt, a: Pt, b: Pt): number {
     const dx = b[0] - a[0];
     const dy = b[1] - a[1];
@@ -196,7 +361,6 @@ function perpDist(p: Pt, a: Pt, b: Pt): number {
     return Math.abs((p[0] - a[0]) * dy - (p[1] - a[1]) * dx) / len;
 }
 
-/** Douglas–Peucker on an open polyline. */
 function douglasPeucker(pts: Pt[], eps: number): Pt[] {
     if (pts.length < 3) return pts.slice();
     let maxD = 0;
@@ -216,11 +380,9 @@ function douglasPeucker(pts: Pt[], eps: number): Pt[] {
     return left.slice(0, -1).concat(right);
 }
 
-/** DP a closed loop by anchoring at the point farthest from the start,
- *  simplifying the two halves, and recombining. */
+/** DP a closed loop by anchoring at the farthest point and recombining. */
 function simplifyClosed(loop: Pt[], eps: number): Pt[] {
     if (loop.length < 4) return loop;
-    // Anchor at the most extreme point so the split is stable.
     let far = 0;
     let farD = -1;
     for (let i = 1; i < loop.length; i++) {
@@ -235,33 +397,44 @@ function simplifyClosed(loop: Pt[], eps: number): Pt[] {
     const b = loop.slice(far).concat([loop[0]]);
     const sa = douglasPeucker(a, eps);
     const sb = douglasPeucker(b, eps);
-    // Recombine, dropping shared/duplicate endpoints.
-    const out = sa.slice(0, -1).concat(sb.slice(0, -1));
+    return sa.slice(0, -1).concat(sb.slice(0, -1));
+}
+
+/** Clean + simplify raw marching-squares loops, dropping specks. */
+export function simplifyLoops(
+    rawLoops: Pt[][],
+    opts: { smoothing?: number; minAreaPx?: number } = {},
+): Pt[][] {
+    const eps = smoothingToEpsilon(opts.smoothing ?? 40);
+    const minArea = opts.minAreaPx ?? 24;
+    const out: Pt[][] = [];
+    for (const raw of rawLoops) {
+        const cleaned = simplifyClosed(mergeCollinear(dedupe(raw)), eps);
+        if (cleaned.length < 3) continue;
+        if (Math.abs(polygonArea(cleaned)) < minArea) continue;
+        out.push(cleaned);
+    }
     return out;
 }
 
-// Turn angle (radians) beyond which a vertex is treated as a hard
-// corner — the curve breaks and meets it sharply rather than rounding
-// through it. ~85° keeps letter corners crisp while letting genuine
-// curves (whose simplified vertices turn more gently) flow smoothly,
-// even when high smoothing has thinned the points right down.
+// Turn angle (radians) beyond which a vertex is a hard corner — the
+// curve breaks and meets it sharply rather than rounding. ~85° keeps
+// letter corners crisp while genuine curves flow smoothly even after
+// heavy point reduction.
 const CORNER_TURN = (85 * Math.PI) / 180;
 
 /**
  * One `d` string for a closed loop as cubic Béziers. Smooth vertices
- * get Catmull-Rom tangents (so the contour reads as a real curve, not
- * a faceted polyline — important once smoothing has reduced the point
- * count); hard corners collapse their tangents so the join stays
- * sharp. A run between two corners with no curvature is emitted as a
- * straight line. After import the curves flatten back to a dense, but
- * genuinely smooth, polyline.
+ * get Catmull-Rom tangents (real curves, not facets); hard corners
+ * collapse their tangents so joins stay sharp; a corner-to-corner span
+ * with no curvature is a straight line. After import the curves flatten
+ * back to a dense, genuinely smooth polyline.
  */
 function loopToPathD(loop: Pt[]): string {
     const n = loop.length;
     if (n < 3) return '';
     const r = (v: number) => Math.round(v * 10) / 10;
 
-    // Per-vertex corner flag from the turn angle.
     const corner: boolean[] = new Array(n);
     for (let i = 0; i < n; i++) {
         const prev = loop[(i - 1 + n) % n];
@@ -290,13 +463,10 @@ function loopToPathD(loop: Pt[]): string {
         const p1 = loop[i1];
         const p2 = loop[i2];
         const p3 = loop[(i + 2) % n];
-        // Corner-corner span with nothing to curve through → straight.
         if (corner[i1] && corner[i2]) {
             d += ` L ${r(p2[0])} ${r(p2[1])}`;
             continue;
         }
-        // Catmull-Rom control points; a corner zeroes the tangent on
-        // its own side so the curve meets it crisply.
         const c1x = corner[i1] ? p1[0] : p1[0] + (p2[0] - p0[0]) / 6;
         const c1y = corner[i1] ? p1[1] : p1[1] + (p2[1] - p0[1]) / 6;
         const c2x = corner[i2] ? p2[0] : p2[0] - (p3[0] - p1[0]) / 6;
@@ -308,17 +478,14 @@ function loopToPathD(loop: Pt[]): string {
     return d + ' Z';
 }
 
-/** Wrap loops as separate <path> elements in an SVG document. Separate
- *  paths (not one compound) so the visualiser's nesting logic can spot
- *  enclosed loops and treat them as counters. */
+/** Wrap loops as separate <path> elements. Separate paths (not one
+ *  compound) so the visualiser's nesting logic can spot enclosed loops
+ *  and treat them as counters. */
 export function loopsToSvg(loops: Pt[][], w: number, h: number): string {
     const paths = loops
         .map((l) => loopToPathD(l))
         .filter(Boolean)
-        .map(
-            (d) =>
-                `<path d="${d}" fill="#000000" stroke="none"/>`,
-        )
+        .map((d) => `<path d="${d}" fill="#000000" stroke="none"/>`)
         .join('');
     return (
         `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" ` +
@@ -333,10 +500,28 @@ export function traceToSvg(
     w: number,
     h: number,
     opts: TraceOptions = {},
-): { svg: string; loopCount: number; pointCount: number } | null {
-    const mask = buildMask(rgba, w, h, opts);
-    const loops = traceMask(mask, w, h, opts);
+): {
+    svg: string;
+    loopCount: number;
+    pointCount: number;
+    threshold: number;
+} | null {
+    const invert = opts.invert ?? false;
+    let field = luminanceField(rgba, w, h, invert);
+    const blur = opts.blurRadius ?? 1;
+    if (blur > 0) field = boxBlur(field, w, h, blur);
+    const threshold = opts.threshold ?? otsuThreshold(field);
+    const raw = marchingSquares(field, w, h, threshold, invert);
+    const loops = simplifyLoops(raw, {
+        smoothing: opts.smoothing,
+        minAreaPx: opts.minAreaPx,
+    });
     if (loops.length === 0) return null;
     const pointCount = loops.reduce((n, l) => n + l.length, 0);
-    return { svg: loopsToSvg(loops, w, h), loopCount: loops.length, pointCount };
+    return {
+        svg: loopsToSvg(loops, w, h),
+        loopCount: loops.length,
+        pointCount,
+        threshold,
+    };
 }

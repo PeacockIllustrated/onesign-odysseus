@@ -4,7 +4,11 @@ import { useMemo, useRef, useState } from 'react';
 import { Check, ImageUp, Loader2, X } from 'lucide-react';
 import { useVisualiser } from './store';
 import { importSvg } from '@/lib/visualiser/svg-import';
-import { traceToSvg } from '@/lib/visualiser/trace';
+import {
+    luminanceField,
+    otsuThreshold,
+    traceToSvg,
+} from '@/lib/visualiser/trace';
 
 const ACCENT = '#4e7e8c';
 const ACCENT_DARK = '#3a5f6a';
@@ -31,7 +35,13 @@ export function TraceImage({ onClose }: { onClose: () => void }) {
     const [error, setError] = useState<string | null>(null);
     const [threshold, setThreshold] = useState(128);
     const [smoothing, setSmoothing] = useState(40);
+    const [blurRadius, setBlurRadius] = useState(1);
     const [invert, setInvert] = useState(false);
+
+    // Otsu auto-threshold for the current image + invert — the cut that
+    // best separates the two brightness populations.
+    const autoThreshold = (image: LoadedImage, inv: boolean) =>
+        otsuThreshold(luminanceField(image.rgba, image.w, image.h, inv));
 
     const handleImageFile = (file: File) => {
         setError(null);
@@ -53,7 +63,10 @@ export function TraceImage({ onClose }: { onClose: () => void }) {
                 if (!ctx) throw new Error('no 2d context');
                 ctx.drawImage(image, 0, 0, cw, ch);
                 const data = ctx.getImageData(0, 0, cw, ch);
-                setImg({ rgba: data.data, w: cw, h: ch });
+                const loaded = { rgba: data.data, w: cw, h: ch };
+                setImg(loaded);
+                // Pick a sensible threshold automatically on load.
+                setThreshold(autoThreshold(loaded, invert));
             } catch {
                 setError('Could not read that image.');
             } finally {
@@ -77,9 +90,10 @@ export function TraceImage({ onClose }: { onClose: () => void }) {
             threshold,
             invert,
             smoothing,
+            blurRadius,
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [img, threshold, invert, smoothing]);
+    }, [img, threshold, invert, smoothing, blurRadius]);
 
     const previewSrc = useMemo(
         () =>
@@ -177,8 +191,23 @@ export function TraceImage({ onClose }: { onClose: () => void }) {
                                 <span className="text-[10px] text-neutral-500">
                                     Threshold
                                 </span>
-                                <span className="text-[10px] tabular-nums text-neutral-400">
-                                    {threshold}
+                                <span className="flex items-center gap-1.5">
+                                    {img && (
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setThreshold(
+                                                    autoThreshold(img, invert),
+                                                )
+                                            }
+                                            className="rounded px-1 text-[9px] font-semibold uppercase tracking-wide text-[#4e7e8c] hover:underline"
+                                        >
+                                            Auto
+                                        </button>
+                                    )}
+                                    <span className="text-[10px] tabular-nums text-neutral-400">
+                                        {threshold}
+                                    </span>
                                 </span>
                             </div>
                             <input
@@ -212,6 +241,27 @@ export function TraceImage({ onClose }: { onClose: () => void }) {
                                 }
                                 className="mt-1 h-1 w-full accent-black"
                                 aria-label="Trace smoothing"
+                            />
+                        </label>
+                        <label className="block">
+                            <div className="flex items-baseline justify-between">
+                                <span className="text-[10px] text-neutral-500">
+                                    Smooth edges
+                                </span>
+                                <span className="text-[10px] tabular-nums text-neutral-400">
+                                    {blurRadius} px
+                                </span>
+                            </div>
+                            <input
+                                type="range"
+                                min={0}
+                                max={3}
+                                value={blurRadius}
+                                onChange={(e) =>
+                                    setBlurRadius(Number(e.target.value))
+                                }
+                                className="mt-1 h-1 w-full accent-black"
+                                aria-label="Edge smoothing (blur)"
                             />
                         </label>
                         <div className="flex items-center justify-between">
