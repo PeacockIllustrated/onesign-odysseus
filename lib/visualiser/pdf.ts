@@ -1289,14 +1289,14 @@ function drawFlatLayoutPage(ctx: PageContext): void {
             'FD',
         );
     }
-    // Push-through inserts — outer + each counter drawn as separate
-    // filled shapes (production reality is two acrylic pieces glued to
-    // a backing board behind the panel, NOT one compound piece with a
-    // hole). Drawn before standoff so any dashed standoff outlines
-    // overlay cleanly.
+    // Push-through inserts — acrylic DONUT: outer letter filled in its
+    // real colour, counter filled WHITE (the retained metal island shows
+    // through it). Matches the per-material page and the production PDF
+    // so the documents never disagree on what's acrylic vs hole. Drawn
+    // before standoff so any dashed standoff outlines overlay cleanly.
     for (const p of opts.pushThroughPieces ?? []) {
         const fillRgb = hexToRgb(p.color);
-        const drawShape = (ring: FlatPath) => {
+        const drawShape = (ring: FlatPath, fill: [number, number, number]) => {
             if (!ring.closed || ring.points.length < 3) return;
             drawMaterialPiece(
                 doc,
@@ -1308,14 +1308,14 @@ function drawFlatLayoutPage(ctx: PageContext): void {
                 px,
                 py,
                 scale,
-                fillRgb,
+                fill,
                 [20, 20, 20],
                 0.3,
                 'FD',
             );
         };
-        drawShape(p.path);
-        for (const h of p.holes ?? []) drawShape(h);
+        drawShape(p.path, fillRgb);
+        for (const h of p.holes ?? []) drawShape(h, [255, 255, 255]);
     }
 
     // Standoff pieces — outlined dashed, not filled (they sit OFF the panel)
