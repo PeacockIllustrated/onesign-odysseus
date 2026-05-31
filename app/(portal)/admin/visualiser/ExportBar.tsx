@@ -20,6 +20,7 @@ import {
 } from '@/lib/visualiser/pdf';
 import { saveDesign } from '@/lib/visualiser/actions';
 import { addToBackshop, isDesignOnBackshop } from '@/lib/backshop/actions';
+import { projectingSpecLine } from '@/lib/visualiser/projecting';
 import { composeLayersSvg } from '@/lib/visualiser/compose';
 import { trimImageDataUrl } from '@/lib/visualiser/image';
 import {
@@ -337,10 +338,23 @@ export function ExportBar({
             });
             const pdfBase64 = await blobToBase64(blob);
 
+            // Each panel pushes as its own board item (separate sheets per
+            // panel). When the active panel is the projecting blade, surface
+            // its spec on the Build column + add the contextual Wall-fixing
+            // (bracket) stage.
+            const bladeActive = projectingEnabled && activeTab === 'projecting';
+            const projDesc = bladeActive
+                ? projectingSpecLine(params, mount)
+                : null;
+            const description =
+                [projDesc, params.materialLabel || null]
+                    .filter(Boolean)
+                    .join(' — ') || null;
+
             const res = await addToBackshop({
                 designId: id,
                 name: params.name,
-                description: params.materialLabel || null,
+                description,
                 widthMm: params.panelWidthMm,
                 heightMm: params.panelHeightMm,
                 returnsMm: params.returnDepthMm,
@@ -353,6 +367,7 @@ export function ExportBar({
                     vinyl: vinylPieces.length > 0,
                     standoff: standoffPieces.length > 0,
                     illumination: !!params.illumination?.keyline?.enabled,
+                    bracket: bladeActive,
                 },
             });
             if (res.ok) {

@@ -50,8 +50,14 @@ store state (`mount`).
     for both panels. Deferred deliberately — that extraction is the highest-risk
     change in the codebase and is best done as its own focused pass. You see
     each panel's full artwork by switching to its tab.
-- **Change-set 9 (next):** per-panel PDF + backshop export (main + blade as
-  separate sheets / board items).
+- **Change-set 9 (done):** per-panel export. Exports are **per active tab** —
+  the reference/production PDF and backshop push all act on the panel of the
+  current tab (its own derived geometry + `name`, so the blade's sheets are
+  named "… — projecting"). To export both, push/print from each tab. When the
+  blade tab is active, the backshop item carries the projecting spec line on
+  its Build column and the contextual **Wall fixing** (bracket) stage. This is
+  the "separate sheets per panel" decision — each panel is an independent
+  fabrication item.
 
 ---
 
