@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation';
 import { CheckCircle2, Circle, MonitorPlay } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase';
 import {
-    BACKSHOP_STAGES,
     backshopStatus,
+    stagesForChecks,
     type BackshopItemRow,
     type BackshopStatus,
 } from '@/lib/backshop/types';
@@ -14,9 +14,9 @@ import {
 const ACCENT = '#4e7e8c';
 
 const STATUS_STYLE: Record<BackshopStatus, { label: string; cls: string }> = {
-    queued: { label: 'Queued', cls: 'bg-neutral-700 text-neutral-200' },
-    in_progress: { label: 'In progress', cls: 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/40' },
-    ready: { label: 'Ready', cls: 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/40' },
+    queued: { label: 'Queued', cls: 'bg-neutral-200 text-neutral-600' },
+    in_progress: { label: 'In progress', cls: 'bg-amber-100 text-amber-700' },
+    ready: { label: 'Ready', cls: 'bg-emerald-100 text-emerald-700' },
 };
 
 function specLine(item: BackshopItemRow): string[] {
@@ -73,14 +73,14 @@ export function BackshopBoard({ items }: { items: BackshopItemRow[] }) {
 
     if (items.length === 0) {
         return (
-            <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 text-center text-neutral-400">
+            <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 text-center text-neutral-500">
                 <MonitorPlay size={48} aria-hidden style={{ color: ACCENT }} />
-                <p className="text-xl font-medium text-neutral-200">
+                <p className="text-xl font-medium text-neutral-700">
                     Nothing on the board yet
                 </p>
                 <p className="max-w-md text-sm">
                     Designs pushed from the visualiser with{' '}
-                    <span className="font-medium text-neutral-300">
+                    <span className="font-medium text-neutral-800">
                         Add to backshop screen
                     </span>{' '}
                     appear here, ready for production.
@@ -99,6 +99,7 @@ export function BackshopBoard({ items }: { items: BackshopItemRow[] }) {
                 const status = backshopStatus(item.checks);
                 const st = STATUS_STYLE[status];
                 const specs = specLine(item);
+                const stages = stagesForChecks(item.checks);
                 return (
                     <button
                         key={item.id}
@@ -108,71 +109,74 @@ export function BackshopBoard({ items }: { items: BackshopItemRow[] }) {
                         type="button"
                         role="listitem"
                         onClick={() => router.push(`/backshop/${item.id}`)}
-                        className="group flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4 text-left outline-none transition-colors hover:bg-white/[0.06] focus:border-transparent focus:ring-4 focus:ring-[#4e7e8c] sm:flex-row sm:items-center sm:gap-5 sm:px-6 sm:py-5"
+                        className="group flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white px-5 py-4 text-left shadow-sm outline-none transition-colors hover:bg-neutral-50 focus:border-transparent focus:ring-4 focus:ring-[#4e7e8c] sm:flex-row sm:items-center sm:gap-6 sm:px-6 sm:py-5"
                     >
-                        {/* Visual + name + specs */}
-                        <div className="flex min-w-0 flex-1 items-center gap-4">
-                            <div className="flex h-16 w-28 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-black/40 sm:h-20 sm:w-40">
-                                {item.thumbnail ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img
-                                        src={item.thumbnail}
-                                        alt=""
-                                        className="h-full w-full object-contain"
-                                    />
-                                ) : (
-                                    <MonitorPlay
-                                        size={26}
-                                        aria-hidden
-                                        className="text-neutral-600"
-                                    />
-                                )}
+                        {/* Name + specs */}
+                        <div className="min-w-0 sm:w-60 sm:shrink-0">
+                            <div className="truncate text-xl font-bold text-neutral-900 sm:text-2xl">
+                                {item.name}
                             </div>
-                            <div className="min-w-0 flex-1">
-                                <div className="truncate text-xl font-bold text-white sm:text-2xl">
-                                    {item.name}
+                            {item.description && (
+                                <div className="truncate text-xs text-neutral-500 sm:text-sm">
+                                    {item.description}
                                 </div>
-                                {item.description && (
-                                    <div className="truncate text-xs text-neutral-400 sm:text-sm">
-                                        {item.description}
-                                    </div>
-                                )}
-                                {specs.length > 0 && (
-                                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-neutral-300 sm:text-xs">
-                                        {specs.map((s, j) => (
-                                            <span
-                                                key={j}
-                                                className={
-                                                    j === 0
-                                                        ? 'font-semibold text-white'
-                                                        : ''
-                                                }
-                                            >
-                                                {s}
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
+                            )}
+                            {specs.length > 0 && (
+                                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-neutral-600 sm:text-xs">
+                                    {specs.map((s, j) => (
+                                        <span
+                                            key={j}
+                                            className={
+                                                j === 0
+                                                    ? 'font-semibold text-neutral-900'
+                                                    : ''
+                                            }
+                                        >
+                                            {s}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
-                        {/* Status + stage checks */}
+                        {/* Sign visual — a wide banner that spans the slack
+                            between the text and the checks, sized to show the
+                            whole sign clearly (panoramic fascias are otherwise
+                            a tiny strip in a small box). */}
+                        <div className="flex h-20 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-lg border border-neutral-200 bg-neutral-100 sm:h-24">
+                            {item.thumbnail ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                    src={item.thumbnail}
+                                    alt=""
+                                    className="max-h-full max-w-full object-contain"
+                                />
+                            ) : (
+                                <MonitorPlay
+                                    size={30}
+                                    aria-hidden
+                                    className="text-neutral-300"
+                                />
+                            )}
+                        </div>
+
+                        {/* Status + contextual stage checks */}
                         <div className="flex shrink-0 items-center gap-3 sm:flex-col sm:items-end sm:gap-2">
                             <span
                                 className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${st.cls}`}
                             >
                                 {st.label}
                             </span>
-                            <div className="flex flex-wrap gap-1.5 sm:justify-end">
-                                {BACKSHOP_STAGES.map((stage) => {
+                            <div className="flex flex-wrap gap-1.5 sm:max-w-[15rem] sm:justify-end">
+                                {stages.map((stage) => {
                                     const done = item.checks[stage.key];
                                     return (
                                         <span
                                             key={stage.key}
                                             className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${
                                                 done
-                                                    ? 'bg-emerald-500/15 text-emerald-300'
-                                                    : 'bg-white/5 text-neutral-500'
+                                                    ? 'bg-emerald-100 text-emerald-700'
+                                                    : 'bg-neutral-100 text-neutral-400'
                                             }`}
                                         >
                                             {done ? (

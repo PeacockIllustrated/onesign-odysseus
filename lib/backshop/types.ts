@@ -6,54 +6,95 @@ import { z } from 'zod';
 //
 // The backshop screen is the workshop TV board. A designer pushes a finished
 // visualiser design to it; the floor ticks production stages off as the sign
-// moves through the shop. Stages are a fixed four-gate set — single source of
-// truth here so the UI, the checks JSON shape, and the status derivation all
-// agree.
+// moves through the shop.
+//
+// Stages are CONTEXTUAL. Every sign carries the base gates (Designed / Cut /
+// Painted / Assembled); a sign also picks up the extra gates that match how
+// it's actually built — push-through acrylic, vinyl appliqué, illumination,
+// stood-off lettering. The applicable set is frozen onto the item at push time
+// (the keys present in its `checks` object ARE its stages), so the board only
+// shows what's relevant to each job.
 
-export const BACKSHOP_STAGES = [
+export type BackshopFeature =
+    | 'pushThrough'
+    | 'vinyl'
+    | 'illumination'
+    | 'standoff';
+
+export interface BackshopStage {
+    key: string;
+    label: string;
+    /** When set, the stage only applies if the design has this feature. */
+    feature?: BackshopFeature;
+}
+
+/**
+ * Ordered production catalog. Featureless stages always apply; the rest only
+ * when the pushed design has that construction. Order = rough shop sequence.
+ */
+export const BACKSHOP_STAGE_CATALOG: BackshopStage[] = [
     { key: 'designed', label: 'Designed' },
     { key: 'cut', label: 'Cut' },
+    { key: 'pushthrough', label: 'Push-through', feature: 'pushThrough' },
+    { key: 'vinyl', label: 'Vinyl', feature: 'vinyl' },
     { key: 'painted', label: 'Painted' },
+    { key: 'illumination', label: 'Illumination', feature: 'illumination' },
+    { key: 'standoff', label: 'Stood-off', feature: 'standoff' },
     { key: 'assembled', label: 'Assembled' },
-] as const;
+];
 
-export type BackshopStageKey = (typeof BACKSHOP_STAGES)[number]['key'];
+/** Which construction features a pushed design has. */
+export type BackshopFeatures = Partial<Record<BackshopFeature, boolean>>;
 
-/** Tick state per production stage. */
-export type BackshopChecks = Record<BackshopStageKey, boolean>;
-
-/** Default (nothing ticked) — matches the DB column default. */
-export const EMPTY_CHECKS: BackshopChecks = {
-    designed: false,
-    cut: false,
-    painted: false,
-    assembled: false,
-};
+/** Tick state, keyed by stage. The KEYS define which stages the item has. */
+export type BackshopChecks = Record<string, boolean>;
 
 export type BackshopStatus = 'queued' | 'in_progress' | 'ready';
 
-/**
- * Derive the board status from the check gates: nothing ticked = queued,
- * some = in progress, all = ready. Tolerates a partial / unknown-shaped
- * `checks` object (only the known stage keys count).
- */
-export function backshopStatus(checks: Partial<BackshopChecks> | null | undefined): BackshopStatus {
-    const done = BACKSHOP_STAGES.filter((s) => checks?.[s.key]).length;
-    if (done === 0) return 'queued';
-    if (done >= BACKSHOP_STAGES.length) return 'ready';
-    return 'in_progress';
+/** Stages that apply to a feature set, in catalog order. */
+export function stagesForFeatures(f: BackshopFeatures): BackshopStage[] {
+    return BACKSHOP_STAGE_CATALOG.filter((s) => !s.feature || f[s.feature]);
 }
 
-/** Normalise an arbitrary stored value into a full BackshopChecks object. */
+/** Fresh (all-false) checks for a feature set. */
+export function checksForFeatures(f: BackshopFeatures): BackshopChecks {
+    const out: BackshopChecks = {};
+    for (const s of stagesForFeatures(f)) out[s.key] = false;
+    return out;
+}
+
+/** The stages an item actually carries, in catalog order. */
+export function stagesForChecks(
+    checks: BackshopChecks | null | undefined,
+): BackshopStage[] {
+    if (!checks) return [];
+    return BACKSHOP_STAGE_CATALOG.filter((s) => s.key in checks);
+}
+
+/** Coerce a stored value into a plain boolean-valued checks object. */
 export function normaliseChecks(
-    raw: Partial<BackshopChecks> | null | undefined,
+    raw: Record<string, unknown> | null | undefined,
 ): BackshopChecks {
-    return {
-        designed: !!raw?.designed,
-        cut: !!raw?.cut,
-        painted: !!raw?.painted,
-        assembled: !!raw?.assembled,
-    };
+    const out: BackshopChecks = {};
+    if (raw && typeof raw === 'object') {
+        for (const [k, v] of Object.entries(raw)) out[k] = !!v;
+    }
+    return out;
+}
+
+/**
+ * Board status from the check gates the item carries: nothing ticked = queued,
+ * some = in progress, all = ready. An item with no stages reads as queued.
+ */
+export function backshopStatus(
+    checks: BackshopChecks | null | undefined,
+): BackshopStatus {
+    const keys = checks ? Object.keys(checks) : [];
+    if (keys.length === 0) return 'queued';
+    const done = keys.filter((k) => checks![k]).length;
+    if (done === 0) return 'queued';
+    if (done >= keys.length) return 'ready';
+    return 'in_progress';
 }
 
 /** A row of `public.backshop_items`. */
@@ -95,5 +136,14 @@ export const AddToBackshopInputSchema = z.object({
     shadowGapMm: z.number().nonnegative().nullable().optional(),
     thumbnailDataUrl: z.string().max(MAX_DATA_URL).nullable().optional(),
     pdfBase64: z.string().max(MAX_PDF_BASE64).nullable().optional(),
+    // Construction features → contextual production stages.
+    features: z
+        .object({
+            pushThrough: z.boolean().optional(),
+            vinyl: z.boolean().optional(),
+            illumination: z.boolean().optional(),
+            standoff: z.boolean().optional(),
+        })
+        .optional(),
 });
 export type AddToBackshopInput = z.infer<typeof AddToBackshopInputSchema>;

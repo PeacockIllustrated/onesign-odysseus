@@ -26,7 +26,7 @@ export function BackshopHeader() {
     }, []);
 
     return (
-        <header className="flex items-center justify-between border-b border-white/10 px-8 py-4">
+        <header className="flex items-center justify-between border-b border-neutral-200 bg-white px-8 py-4">
             <div className="flex items-center gap-3">
                 <span
                     className="flex h-7 w-7 items-center justify-center rounded-full text-sm font-black text-white"
@@ -36,7 +36,7 @@ export function BackshopHeader() {
                     1
                 </span>
                 <div className="leading-tight">
-                    <div className="text-lg font-bold tracking-tight text-white">
+                    <div className="text-lg font-bold tracking-tight text-neutral-900">
                         Production board
                     </div>
                     <div className="text-[11px] uppercase tracking-widest text-neutral-400">
@@ -45,7 +45,7 @@ export function BackshopHeader() {
                 </div>
             </div>
             <div className="text-right tabular-nums">
-                <div className="text-2xl font-semibold text-white">
+                <div className="text-2xl font-semibold text-neutral-900">
                     {now
                         ? now.toLocaleTimeString([], {
                               hour: '2-digit',

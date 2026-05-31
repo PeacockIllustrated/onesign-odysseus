@@ -8,9 +8,9 @@ import {
     setBackshopArchived,
 } from '@/lib/backshop/actions';
 import {
-    BACKSHOP_STAGES,
     backshopStatus,
     normaliseChecks,
+    stagesForChecks,
     type BackshopChecks,
     type BackshopItemWithPdf,
 } from '@/lib/backshop/types';
@@ -75,7 +75,7 @@ export function BackshopDetail({
             ?.focus();
     }, []);
 
-    const toggle = (key: keyof BackshopChecks) => {
+    const toggle = (key: string) => {
         const value = !checks[key];
         setChecks((c) => ({ ...c, [key]: value })); // optimistic
         startTransition(async () => {
@@ -92,6 +92,7 @@ export function BackshopDetail({
     };
 
     const status = backshopStatus(checks);
+    const stages = stagesForChecks(checks);
     const specs: string[] = [];
     if (item.width_mm && item.height_mm)
         specs.push(`${item.width_mm}mm × ${item.height_mm}mm`);
@@ -102,11 +103,11 @@ export function BackshopDetail({
         <div ref={containerRef} className="px-8 py-6">
             <div className="mb-6 flex items-start justify-between gap-6">
                 <div className="min-w-0">
-                    <h1 className="truncate text-4xl font-black text-white">
+                    <h1 className="truncate text-4xl font-black text-neutral-900">
                         {item.name}
                     </h1>
                     {item.description && (
-                        <p className="mt-1 text-lg text-neutral-400">
+                        <p className="mt-1 text-lg text-neutral-500">
                             {item.description}
                         </p>
                     )}
@@ -114,10 +115,10 @@ export function BackshopDetail({
                 <span
                     className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-semibold ${
                         status === 'ready'
-                            ? 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/40'
+                            ? 'bg-emerald-100 text-emerald-700'
                             : status === 'in_progress'
-                              ? 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/40'
-                              : 'bg-neutral-700 text-neutral-200'
+                              ? 'bg-amber-100 text-amber-700'
+                              : 'bg-neutral-200 text-neutral-600'
                     }`}
                 >
                     {status === 'ready'
@@ -131,7 +132,7 @@ export function BackshopDetail({
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.4fr_1fr]">
                 {/* Visual + specs */}
                 <div className="space-y-4">
-                    <div className="flex items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-black/40 p-4">
+                    <div className="flex items-center justify-center overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-100 p-4">
                         {item.thumbnail ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
@@ -140,18 +141,20 @@ export function BackshopDetail({
                                 className="max-h-[42vh] w-full object-contain"
                             />
                         ) : (
-                            <div className="py-20 text-neutral-600">
+                            <div className="py-20 text-neutral-400">
                                 No preview
                             </div>
                         )}
                     </div>
                     {specs.length > 0 && (
-                        <div className="flex flex-wrap gap-x-6 gap-y-1 text-lg text-neutral-200">
+                        <div className="flex flex-wrap gap-x-6 gap-y-1 text-lg text-neutral-700">
                             {specs.map((s, i) => (
                                 <span
                                     key={i}
                                     className={
-                                        i === 0 ? 'font-bold text-white' : ''
+                                        i === 0
+                                            ? 'font-bold text-neutral-900'
+                                            : ''
                                     }
                                 >
                                     {s}
@@ -161,10 +164,10 @@ export function BackshopDetail({
                     )}
                 </div>
 
-                {/* Checks + actions */}
+                {/* Contextual checks + actions */}
                 <div className="space-y-4">
                     <div className="space-y-2">
-                        {BACKSHOP_STAGES.map((stage) => {
+                        {stages.map((stage) => {
                             const done = checks[stage.key];
                             return (
                                 <button
@@ -175,8 +178,8 @@ export function BackshopDetail({
                                     aria-pressed={done}
                                     className={`flex min-h-[60px] w-full items-center justify-between rounded-xl border px-5 text-xl font-semibold outline-none transition-colors focus:ring-4 focus:ring-[#4e7e8c] ${
                                         done
-                                            ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-200'
-                                            : 'border-white/10 bg-white/[0.03] text-neutral-300 hover:bg-white/[0.06]'
+                                            ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                                            : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50'
                                     }`}
                                 >
                                     <span>{stage.label}</span>
@@ -186,7 +189,7 @@ export function BackshopDetail({
                                         <Circle
                                             size={28}
                                             aria-hidden
-                                            className="text-neutral-600"
+                                            className="text-neutral-300"
                                         />
                                     )}
                                 </button>
@@ -196,13 +199,13 @@ export function BackshopDetail({
 
                     {/* Reference PDF + QR */}
                     {item.pdfUrl ? (
-                        <div className="flex items-center gap-4 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                        <div className="flex items-center gap-4 rounded-xl border border-neutral-200 bg-white p-4">
                             {qrDataUrl && (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img
                                     src={qrDataUrl}
                                     alt="QR code to open the reference PDF"
-                                    className="h-24 w-24 shrink-0 rounded bg-white p-1"
+                                    className="h-24 w-24 shrink-0 rounded border border-neutral-200"
                                 />
                             )}
                             <div className="min-w-0">
@@ -217,13 +220,13 @@ export function BackshopDetail({
                                     <FileText size={18} aria-hidden />
                                     Open reference PDF
                                 </a>
-                                <p className="mt-2 text-xs text-neutral-400">
+                                <p className="mt-2 text-xs text-neutral-500">
                                     Scan the code to open it on a phone.
                                 </p>
                             </div>
                         </div>
                     ) : (
-                        <p className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-neutral-500">
+                        <p className="rounded-xl border border-neutral-200 bg-white p-4 text-sm text-neutral-400">
                             No reference PDF stored for this item.
                         </p>
                     )}
@@ -234,7 +237,7 @@ export function BackshopDetail({
                             type="button"
                             data-nav
                             onClick={goBack}
-                            className="inline-flex min-h-[48px] items-center gap-2 rounded-lg border border-white/15 px-5 text-base font-medium text-neutral-200 outline-none hover:bg-white/[0.06] focus:ring-4 focus:ring-[#4e7e8c]"
+                            className="inline-flex min-h-[48px] items-center gap-2 rounded-lg border border-neutral-300 px-5 text-base font-medium text-neutral-700 outline-none hover:bg-neutral-50 focus:ring-4 focus:ring-[#4e7e8c]"
                         >
                             <ArrowLeft size={18} aria-hidden />
                             Back to board
@@ -243,7 +246,7 @@ export function BackshopDetail({
                             type="button"
                             data-nav
                             onClick={markDone}
-                            className="inline-flex min-h-[48px] items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-5 text-base font-semibold text-emerald-200 outline-none hover:bg-emerald-500/25 focus:ring-4 focus:ring-emerald-400 disabled:opacity-50"
+                            className="inline-flex min-h-[48px] items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-5 text-base font-semibold text-emerald-700 outline-none hover:bg-emerald-100 focus:ring-4 focus:ring-emerald-400 disabled:opacity-50"
                         >
                             <CheckCircle2 size={18} aria-hidden />
                             Mark done &amp; clear

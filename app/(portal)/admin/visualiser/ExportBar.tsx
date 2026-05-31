@@ -21,6 +21,7 @@ import {
 import { saveDesign } from '@/lib/visualiser/actions';
 import { addToBackshop } from '@/lib/backshop/actions';
 import { composeLayersSvg } from '@/lib/visualiser/compose';
+import { trimImageDataUrl } from '@/lib/visualiser/image';
 import {
     PanelParamsSchema,
     type FlatPath,
@@ -250,7 +251,13 @@ export function ExportBar({
 
             // 2. 3D thumbnail (board visual) + reference PDF (same opts as the
             //    Reference PDF button), base64-encoded for the server action.
+            //    The PDF keeps the full framed shot; the board thumbnail is
+            //    trimmed to the sign so it fills its banner instead of
+            //    floating in empty space.
             const thumb = sceneCapture.fn?.() ?? undefined;
+            const boardThumb = thumb
+                ? await trimImageDataUrl(thumb)
+                : undefined;
             const blob = await generateReferencePdfBlob({
                 sectionExport,
                 params,
@@ -279,8 +286,15 @@ export function ExportBar({
                 heightMm: params.panelHeightMm,
                 returnsMm: params.returnDepthMm,
                 shadowGapMm: params.shadowGapMm,
-                thumbnailDataUrl: thumb ?? null,
+                thumbnailDataUrl: boardThumb ?? null,
                 pdfBase64,
+                // Contextual production stages follow the construction.
+                features: {
+                    pushThrough: pushThroughPieces.length > 0,
+                    vinyl: vinylPieces.length > 0,
+                    standoff: standoffPieces.length > 0,
+                    illumination: !!params.illumination?.keyline?.enabled,
+                },
             });
             if (res.ok) setExported('Added to backshop screen');
             else setMsg(res.error);

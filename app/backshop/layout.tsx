@@ -17,7 +17,7 @@ export default async function BackshopLayout({
 }) {
     await requireAuth();
     return (
-        <div className="min-h-screen bg-[#0d0f11] text-neutral-100">
+        <div className="min-h-screen bg-neutral-50 text-neutral-900">
             <BackshopHeader />
             <main>{children}</main>
         </div>

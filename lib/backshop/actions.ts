@@ -6,18 +6,13 @@ import { getUser, requireSuperAdminOrError } from '@/lib/auth';
 import { ok, err, okVoid, type Result } from '@/lib/result';
 import {
     AddToBackshopInputSchema,
-    BACKSHOP_STAGES,
+    checksForFeatures,
     normaliseChecks,
     type AddToBackshopInput,
-    type BackshopStageKey,
 } from './types';
 
 const TABLE = 'backshop_items';
 const BUCKET = 'backshop';
-
-function isStageKey(k: string): k is BackshopStageKey {
-    return BACKSHOP_STAGES.some((s) => s.key === k);
-}
 
 /**
  * Push a visualiser design onto the workshop TV board. Snapshots the display
@@ -61,10 +56,22 @@ export async function addToBackshop(
     // design is already on the board, else insert a fresh card.
     const { data: existing, error: findErr } = await supabase
         .from(TABLE)
-        .select('id')
+        .select('id, checks')
         .eq('design_id', d.designId)
         .maybeSingle();
     if (findErr) return err(findErr.message);
+
+    // Contextual stages from the design's construction. On a re-push, keep the
+    // tick state of any stage that still applies; add new stages as unticked;
+    // drop stages that no longer apply.
+    const applicable = checksForFeatures(d.features ?? {});
+    const prevChecks = existing
+        ? normaliseChecks(existing.checks as Record<string, unknown> | null)
+        : {};
+    const checks: Record<string, boolean> = {};
+    for (const k of Object.keys(applicable)) {
+        checks[k] = prevChecks[k] ?? false;
+    }
 
     const snapshot = {
         design_id: d.designId,
@@ -76,6 +83,7 @@ export async function addToBackshop(
         shadow_gap_mm: d.shadowGapMm ?? null,
         thumbnail: d.thumbnailDataUrl ?? null,
         pdf_path: pdfPath,
+        checks,
         // Re-surfacing a finished card brings it back onto the active board.
         archived: false,
         updated_at: now,
@@ -111,7 +119,6 @@ export async function toggleBackshopCheck(
 ): Promise<Result<null>> {
     const user = await getUser();
     if (!user) return err('not authenticated');
-    if (!isStageKey(stageKey)) return err('unknown stage');
 
     const supabase = createAdminClient();
     const { data: row, error: findErr } = await supabase
@@ -125,6 +132,8 @@ export async function toggleBackshopCheck(
     const checks = normaliseChecks(
         row.checks as Record<string, boolean> | null,
     );
+    // Only toggle a stage the item actually carries.
+    if (!(stageKey in checks)) return err('unknown stage');
     checks[stageKey] = value;
 
     const { error } = await supabase
