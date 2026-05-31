@@ -312,6 +312,27 @@ export function VisualiserClient({
         [params.panelWidthMm, params.centrePanelOverrideMm],
     );
 
+    // Secondary (the other) panel geometry for the 3D composite. A projecting
+    // sign is just a tray — width / height / returns — so we only need its
+    // development + split, no artwork pipeline. Rendered perpendicular to the
+    // fascia in Scene3D.
+    const secondaryParams = projectingEnabled && inactive ? inactive.params : null;
+    const secondaryDevelopment = useMemo(
+        () => (secondaryParams ? buildDevelopment(secondaryParams) : null),
+        [secondaryParams],
+    );
+    const secondarySplit = useMemo(
+        () =>
+            secondaryParams
+                ? splitPanels(
+                      secondaryParams.panelWidthMm,
+                      undefined,
+                      secondaryParams.centrePanelOverrideMm ?? undefined,
+                  )
+                : null,
+        [secondaryParams],
+    );
+
     const placement = params.aperturePlacement ?? DEFAULT_PLACEMENT;
 
     // The placed + clipped lettering outline. In aperture mode this is what
@@ -1718,11 +1739,15 @@ export function VisualiserClient({
                             showDimensions={showDimensions}
                             onDimensionChange={handleDimensionChange}
                             secondaryPanel={
-                                projectingEnabled && inactive
+                                secondaryParams &&
+                                secondaryDevelopment &&
+                                secondarySplit
                                     ? {
-                                          params: inactive.params,
+                                          params: secondaryParams,
+                                          development: secondaryDevelopment,
+                                          split: secondarySplit,
                                           // active tab 'main' ⇒ the stashed
-                                          // panel is the projecting blade.
+                                          // panel is the projecting sign.
                                           isBlade: activeTab === 'main',
                                       }
                                     : null

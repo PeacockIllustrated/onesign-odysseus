@@ -81,6 +81,13 @@ export function seedProjectingFromMain(main: PanelParams): ProjectingSign {
         name: `${main.name} — projecting`,
         panelWidthMm: DEFAULT_PROJECTING_SIZE_MM,
         panelHeightMm: DEFAULT_PROJECTING_SIZE_MM,
+        // A projecting sign is a simple folded box: width, height, returns.
+        // No shadow gap / keyline on these.
+        returns: { top: true, bottom: true, left: true, right: true },
+        shadowGapMm: 0,
+        shadowGapEdges: { top: false, bottom: false },
+        keylineMm: 0,
+        centrePanelOverrideMm: null,
         // Fresh artwork on the smaller sign (keep the main's look, not its
         // fascia-scale artwork placement).
         artworkLayers: [],

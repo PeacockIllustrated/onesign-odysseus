@@ -2075,6 +2075,72 @@ function CompositeGhost({
     );
 }
 
+/**
+ * The projecting (square) sign rendered as a REAL folded tray — the same
+ * construction as the fascia (face + returns), just small — mounted on the
+ * fascia FACE and rotated so it projects straight out perpendicular toward the
+ * street (its width = the protrusion, its returns = the box depth). This is the
+ * "sits like that, not flat" arrangement from the shopfront top-view. The
+ * fascia is at the origin (face +Z); this is positioned at the mount point.
+ */
+function SecondaryTray({
+    fascia,
+    params,
+    development,
+    split,
+    mount,
+    night,
+    showOutlines,
+}: {
+    fascia: PanelParams;
+    params: PanelParams;
+    development: PanelDevelopment;
+    split: PanelSplit;
+    mount: ResolvedMount;
+    night: boolean;
+    showOutlines: boolean;
+}) {
+    const Wf = fascia.panelWidthMm * S;
+    const Hf = fascia.panelHeightMm * S;
+    const Wp = params.panelWidthMm * S; // protrusion off the face (+Z)
+    const Hp = params.panelHeightMm * S; // vertical
+    const ax = -Wf / 2 + mount.offsetXMm * S; // attach X on the face
+    const ayTop = Hf / 2 - mount.offsetYMm * S; // sign top
+    return (
+        // Rotate -90° about Y: the tray's width runs out along +Z (protrusion),
+        // its face reads from the side (−X), returns fold back toward the wall.
+        <group rotation={[0, -HALF_PI, 0]} position={[ax, ayTop - Hp / 2, Wp / 2]}>
+            <Panel
+                params={params}
+                development={development}
+                split={split}
+                fold={1}
+                aperture={[]}
+                keyline={[]}
+                pushThroughKeyline={[]}
+                pushThroughIslands={[]}
+                autoFixings={[]}
+                manualFixings={[]}
+                cableHoles={[]}
+                reference={[]}
+                vinylPieces={[]}
+                acrylicPieces={[]}
+                solidPieces={[]}
+                standoffPieces={[]}
+                pushThroughPieces={[]}
+                placedPathsByIndex={null}
+                pathGroupColors={null}
+                showOutlines={showOutlines}
+                showStandoffLetters={false}
+                showStandoffLocators={false}
+                illuminationView={night}
+                illumination={params.illumination}
+                showDimensions={false}
+            />
+        </group>
+    );
+}
+
 export default function Scene3D(props: {
     params: PanelParams;
     development: PanelDevelopment;
@@ -2123,7 +2189,12 @@ export default function Scene3D(props: {
      * blade; false ⇒ the active panel is the blade and this ghost is the
      * fascia it mounts to.
      */
-    secondaryPanel?: { params: PanelParams; isBlade: boolean } | null;
+    secondaryPanel?: {
+        params: PanelParams;
+        development: PanelDevelopment;
+        split: PanelSplit;
+        isBlade: boolean;
+    } | null;
     mount?: ResolvedMount;
 }) {
     const fold = props.fold ?? 1;
@@ -2211,14 +2282,28 @@ export default function Scene3D(props: {
                 showStandoffLocators={showStandoffLocators}
             />
 
-            {showGhost && mount && (
-                <CompositeGhost
-                    fascia={ghostFascia}
-                    blade={ghostBlade}
-                    mount={mount}
-                    ghost={secondary!.isBlade ? 'blade' : 'fascia'}
-                    night={illuminationView}
-                />
+            {showGhost && mount && secondary && (
+                secondary.isBlade && mount.shape === 'square' ? (
+                    // The projecting square is a real perpendicular tray.
+                    <SecondaryTray
+                        fascia={props.params}
+                        params={secondary.params}
+                        development={secondary.development}
+                        split={secondary.split}
+                        mount={mount}
+                        night={illuminationView}
+                        showOutlines={showOutlines}
+                    />
+                ) : (
+                    // Circle blade → disc; fascia-as-context → slab.
+                    <CompositeGhost
+                        fascia={ghostFascia}
+                        blade={ghostBlade}
+                        mount={mount}
+                        ghost={secondary.isBlade ? 'blade' : 'fascia'}
+                        night={illuminationView}
+                    />
+                )
             )}
             <OrbitControls enablePan makeDefault />
         </Canvas>
