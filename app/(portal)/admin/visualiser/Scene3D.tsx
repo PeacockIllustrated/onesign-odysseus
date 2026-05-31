@@ -15,6 +15,7 @@ import type {
     StandoffPiece,
     PushThroughPiece,
 } from '@/lib/visualiser/types';
+import type { ResolvedMount } from '@/lib/visualiser/projecting';
 
 /**
  * Set by the scene on mount so ExportBar can grab thumbnails. `fn` is the
@@ -1986,6 +1987,71 @@ function Panel({
 }
 
 
+/**
+ * The other panel of a projecting-sign design, drawn as a positioned ghost
+ * slab so both signs read together in real space without needing the full
+ * artwork pipeline for the inactive panel (you edit each panel's artwork on
+ * its own tab; this shows footprint + placement). A blade's WIDTH is its
+ * protrusion off the wall and its HEIGHT is vertical, so it sits perpendicular
+ * to the fascia.
+ */
+function CompositeGhost({
+    fascia,
+    blade,
+    mount,
+    ghost,
+    night,
+}: {
+    fascia: PanelParams;
+    blade: PanelParams;
+    mount: ResolvedMount;
+    ghost: 'blade' | 'fascia';
+    night: boolean;
+}) {
+    const Wf = fascia.panelWidthMm * S;
+    const Hf = fascia.panelHeightMm * S;
+    const Df = Math.max(fascia.returnDepthMm, 30) * S;
+    const Wb = blade.panelWidthMm * S; // blade protrusion (out from wall)
+    const Hb = blade.panelHeightMm * S;
+    const Tb = Math.max(blade.returnDepthMm, 30) * S; // blade thickness
+    const ox = mount.offsetXMm * S;
+    const oy = mount.offsetYMm * S;
+    const color = displayColor(
+        (ghost === 'blade' ? blade.panelColor : fascia.panelColor) ??
+            DEFAULT_PANEL_COLOR,
+        night,
+    );
+
+    let size: [number, number, number];
+    let position: [number, number, number];
+    if (ghost === 'blade') {
+        // Fascia is at the origin (face +Z); the blade ghost mounts near an
+        // edge and protrudes toward the street (+Z).
+        size = [Tb, Hb, Wb];
+        const bx =
+            mount.side === 'left' ? -Wf / 2 + ox + Tb / 2 : Wf / 2 - ox - Tb / 2;
+        position = [bx, Hf / 2 - oy - Hb / 2, Wb / 2];
+    } else {
+        // Blade is at the origin (face +Z, width along X); the fascia ghost is
+        // the wall it mounts to — a perpendicular slab at the blade's near end.
+        size = [Df, Hf, Wf];
+        position = [-Wb / 2 - Df / 2, 0, Wf / 2 - Wb / 2];
+    }
+
+    return (
+        <mesh position={position}>
+            <boxGeometry args={size} />
+            <meshBasicMaterial
+                color={color}
+                transparent
+                opacity={0.45}
+                side={THREE.DoubleSide}
+            />
+            <Edges color={EDGE_COLOR} lineWidth={1} />
+        </mesh>
+    );
+}
+
 export default function Scene3D(props: {
     params: PanelParams;
     development: PanelDevelopment;
@@ -2027,6 +2093,15 @@ export default function Scene3D(props: {
         field: 'width' | 'height' | 'return' | 'shadowGap',
         valueMm: number,
     ) => void;
+    /**
+     * The OTHER panel in a projecting-sign design, shown as a positioned ghost
+     * slab (footprint + colour) so both signs read together in real space.
+     * `isBlade` true ⇒ the active panel is the fascia and this ghost is the
+     * blade; false ⇒ the active panel is the blade and this ghost is the
+     * fascia it mounts to.
+     */
+    secondaryPanel?: { params: PanelParams; isBlade: boolean } | null;
+    mount?: ResolvedMount;
 }) {
     const fold = props.fold ?? 1;
     const autoFixings = props.autoFixings ?? [];
@@ -2045,11 +2120,27 @@ export default function Scene3D(props: {
     const showStandoffLocators = props.showStandoffLocators ?? true;
     const illuminationView = props.illuminationView ?? false;
 
-    // Frame the flat blank so both folded and unfolded states stay in view.
+    // Composite ghost — the other panel of a projecting-sign design, shown only
+    // on the folded view (the unfold view stays a plain flat blank).
+    const secondary = props.secondaryPanel ?? null;
+    const mount = props.mount;
+    const folded = fold >= 0.5;
+    const showGhost = !!(secondary && mount && folded);
+    // fascia / blade resolve by which panel is active (props.params).
+    const ghostFascia =
+        secondary && !secondary.isBlade ? secondary.params : props.params;
+    const ghostBlade =
+        secondary && secondary.isBlade ? secondary.params : props.params;
+
+    // Frame the flat blank so both folded and unfolded states stay in view,
+    // widening for the projecting blade's protrusion so it never clips.
     const reach =
         Math.max(
             props.development.totalFlatWMm,
             props.development.totalFlatHMm,
+            showGhost
+                ? ghostBlade.panelWidthMm + ghostFascia.panelWidthMm * 0.5
+                : 0,
         ) *
         S *
         1.5;
@@ -2096,6 +2187,16 @@ export default function Scene3D(props: {
                 showStandoffLetters={showStandoffLetters}
                 showStandoffLocators={showStandoffLocators}
             />
+
+            {showGhost && mount && (
+                <CompositeGhost
+                    fascia={ghostFascia}
+                    blade={ghostBlade}
+                    mount={mount}
+                    ghost={secondary!.isBlade ? 'blade' : 'fascia'}
+                    night={illuminationView}
+                />
+            )}
             <OrbitControls enablePan makeDefault />
         </Canvas>
     );

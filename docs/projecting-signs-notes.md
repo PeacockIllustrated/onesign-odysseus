@@ -35,9 +35,23 @@ store state (`mount`).
   Each panel edits + renders + saves/loads on its own tab. The old single-panel
   3D wall/bracket + PDF/backshop projecting additions were reverted (they
   belonged to the replaced model).
-- **Change-set 8 (next):** composite 3D — render both panels together (blade
-  perpendicular, mounted on the fascia), double-sided.
-- **Change-set 9:** per-panel PDF + backshop export.
+- **Change-set 8 (done):** composite 3D. The active panel renders in full
+  (editable); the other panel is drawn as a positioned, correctly-sized ghost
+  slab (`CompositeGhost` in Scene3D) so both signs read together in real space.
+  From the Main tab the blade ghost protrudes perpendicular at the mounted
+  edge (shopfront arrangement); from the Projecting tab the fascia ghost is the
+  wall the blade mounts to. Position (mount side/offsets) + scale (each panel's
+  own dimensions) drive it live. Verified in the live app (both tabs, no
+  console errors).
+  - **Known follow-up:** the ghost shows footprint + colour, not the inactive
+    panel's artwork. Full artwork on BOTH panels simultaneously needs the
+    Scene3D geometry pipeline (the ~30 derivation useMemos in VisualiserClient)
+    extracted into a reusable `derivePanelScene(params, imported, svg)` and run
+    for both panels. Deferred deliberately — that extraction is the highest-risk
+    change in the codebase and is best done as its own focused pass. You see
+    each panel's full artwork by switching to its tab.
+- **Change-set 9 (next):** per-panel PDF + backshop export (main + blade as
+  separate sheets / board items).
 
 ---
 

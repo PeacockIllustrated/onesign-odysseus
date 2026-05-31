@@ -34,6 +34,7 @@ import {
     circlePoly,
 } from '@/lib/visualiser/geometry';
 import { splitPanels } from '@/lib/visualiser/split';
+import { resolveMount } from '@/lib/visualiser/projecting';
 import { importSvg, buildKeyline } from '@/lib/visualiser/svg-import';
 import { composeLayers, composeLayersSvg } from '@/lib/visualiser/compose';
 import {
@@ -147,6 +148,10 @@ export function VisualiserClient({
         startGroupEditFromPath,
         cancelGroupEdit,
         setParam,
+        projectingEnabled,
+        activeTab,
+        inactive,
+        mount,
     } = useVisualiser();
     const [tab, setTab] = useState<Tab>('folded');
     const [mobilePane, setMobilePane] = useState<MobilePane>('preview');
@@ -1712,6 +1717,17 @@ export function VisualiserClient({
                             illumination={params.illumination}
                             showDimensions={showDimensions}
                             onDimensionChange={handleDimensionChange}
+                            secondaryPanel={
+                                projectingEnabled && inactive
+                                    ? {
+                                          params: inactive.params,
+                                          // active tab 'main' ⇒ the stashed
+                                          // panel is the projecting blade.
+                                          isBlade: activeTab === 'main',
+                                      }
+                                    : null
+                            }
+                            mount={resolveMount(mount)}
                         />
                     )}
 
