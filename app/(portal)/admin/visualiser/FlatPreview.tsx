@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Crosshair, Maximize, Minus, Plus } from 'lucide-react';
 import type {
     PanelDevelopment,
     PanelSplit,
@@ -271,14 +272,122 @@ export function FlatPreview({
     };
     const endLayerDrag = () => setDraggingLayer(null);
     const pad = Math.max(20, dev.totalFlatWMm * 0.06);
-    const vb = useMemo(
-        () =>
-            `${-pad} ${-pad} ${dev.totalFlatWMm + pad * 2} ${
-                dev.totalFlatHMm + pad * 2
-            }`,
-        [dev.totalFlatWMm, dev.totalFlatHMm, pad],
-    );
-    const stroke = Math.max(0.6, dev.totalFlatWMm / 800);
+    // Base (fit-the-whole-sheet) viewBox. Zoom/pan derive from this so a
+    // small logo on a 2.4 m panel can be magnified for path-picking.
+    const bw = dev.totalFlatWMm + pad * 2;
+    const bh = dev.totalFlatHMm + pad * 2;
+    const baseCx = dev.totalFlatWMm / 2;
+    const baseCy = dev.totalFlatHMm / 2;
+    // zoom = 1 fits the sheet; higher zooms in. center is the mm point
+    // the view is centred on (null = sheet centre).
+    const [zoom, setZoom] = useState(1);
+    const [center, setCenter] = useState<[number, number] | null>(null);
+    const MAX_ZOOM = 24;
+
+    // Reset the view when the sheet size changes (panel resized) so a
+    // stale centre can't strand the artwork off-screen. Uses React's
+    // sanctioned "adjust state during render" pattern (a stored previous
+    // key) rather than an effect, which would cascade-render.
+    const sizeKey = `${dev.totalFlatWMm}x${dev.totalFlatHMm}`;
+    const [prevSizeKey, setPrevSizeKey] = useState(sizeKey);
+    if (sizeKey !== prevSizeKey) {
+        setPrevSizeKey(sizeKey);
+        setZoom(1);
+        setCenter(null);
+    }
+
+    const cx = center ? center[0] : baseCx;
+    const cy = center ? center[1] : baseCy;
+    const vw = bw / zoom;
+    const vh = bh / zoom;
+    const vb = `${cx - vw / 2} ${cy - vh / 2} ${vw} ${vh}`;
+
+    // Artwork footprint (apertures / keylines / placed paths / inserts)
+    // for "fit to artwork".
+    const artworkBBox = useMemo(() => {
+        let minX = Infinity,
+            minY = Infinity,
+            maxX = -Infinity,
+            maxY = -Infinity,
+            any = false;
+        const consider = (arr: Array<FlatPath | null>) => {
+            for (const p of arr) {
+                if (!p) continue;
+                for (const [x, y] of p.points) {
+                    any = true;
+                    if (x < minX) minX = x;
+                    if (y < minY) minY = y;
+                    if (x > maxX) maxX = x;
+                    if (y > maxY) maxY = y;
+                }
+            }
+        };
+        consider(aperture);
+        consider(keyline);
+        consider(pushThroughKeyline);
+        consider(reference);
+        if (placedPathsByIndex) consider(placedPathsByIndex);
+        for (const p of pushThroughPieces) {
+            consider([p.path]);
+            if (p.holes) consider(p.holes);
+        }
+        return any ? { minX, minY, maxX, maxY } : null;
+    }, [
+        aperture,
+        keyline,
+        pushThroughKeyline,
+        reference,
+        placedPathsByIndex,
+        pushThroughPieces,
+    ]);
+
+    const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(1, z));
+    const zoomBy = (factor: number) => setZoom((z) => clampZoom(z * factor));
+    const resetView = () => {
+        setZoom(1);
+        setCenter(null);
+    };
+    const fitArtwork = () => {
+        if (!artworkBBox) return resetView();
+        const aw = Math.max(1, artworkBBox.maxX - artworkBBox.minX);
+        const ah = Math.max(1, artworkBBox.maxY - artworkBBox.minY);
+        const margin = Math.max(aw, ah) * 0.3 + 15;
+        const nz = clampZoom(
+            Math.min(bw / (aw + margin * 2), bh / (ah + margin * 2)),
+        );
+        setZoom(nz);
+        setCenter([
+            (artworkBBox.minX + artworkBBox.maxX) / 2,
+            (artworkBBox.minY + artworkBBox.maxY) / 2,
+        ]);
+    };
+
+    // Wheel-zoom toward the cursor. Native non-passive listener so we can
+    // preventDefault and stop the page scrolling under the canvas.
+    useEffect(() => {
+        const svg = svgRef.current;
+        if (!svg) return;
+        const onWheel = (e: WheelEvent) => {
+            e.preventDefault();
+            const nz = clampZoom(zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
+            if (nz === zoom) return;
+            const p = screenToDev(e.clientX, e.clientY);
+            const oldCx = center ? center[0] : baseCx;
+            const oldCy = center ? center[1] : baseCy;
+            if (p) {
+                // Keep the point under the cursor fixed as we zoom.
+                setCenter([
+                    p[0] - (p[0] - oldCx) * (zoom / nz),
+                    p[1] - (p[1] - oldCy) * (zoom / nz),
+                ]);
+            }
+            setZoom(nz);
+        };
+        svg.addEventListener('wheel', onWheel, { passive: false });
+        return () => svg.removeEventListener('wheel', onWheel);
+    }, [zoom, center, baseCx, baseCy, bw, bh]);
+
+    const stroke = Math.max(0.6, dev.totalFlatWMm / 800) / Math.sqrt(zoom);
     const face = dev.segments.find((s) => s.role === 'face');
     const k = face ? face.wMm / dev.faceNominalWMm : 1;
 
@@ -315,7 +424,60 @@ export function FlatPreview({
     }, [face, aperture, pushThroughKeyline, fixings, cableHoles]);
 
     return (
-        <div className="h-full w-full bg-neutral-50">
+        <div className="relative h-full w-full bg-neutral-50">
+            {/* Zoom controls — a small logo on a big panel is otherwise
+                tiny to click; scroll to zoom toward the cursor, or use
+                these. "Fit artwork" frames just the lettering. */}
+            <div className="pointer-events-none absolute left-2 top-2 z-10 flex flex-col items-start gap-1">
+                <div className="pointer-events-auto flex overflow-hidden rounded-md border border-neutral-200 bg-white/95 shadow-sm backdrop-blur">
+                    <button
+                        type="button"
+                        onClick={() => zoomBy(1.3)}
+                        title="Zoom in"
+                        aria-label="Zoom in"
+                        className="flex min-h-[28px] min-w-[28px] items-center justify-center text-neutral-600 hover:bg-neutral-100"
+                    >
+                        <Plus size={14} aria-hidden />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => zoomBy(1 / 1.3)}
+                        disabled={zoom <= 1}
+                        title="Zoom out"
+                        aria-label="Zoom out"
+                        className="flex min-h-[28px] min-w-[28px] items-center justify-center border-l border-neutral-200 text-neutral-600 hover:bg-neutral-100 disabled:opacity-40"
+                    >
+                        <Minus size={14} aria-hidden />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={resetView}
+                        disabled={zoom === 1 && !center}
+                        title="Fit the whole sheet"
+                        aria-label="Fit the whole sheet"
+                        className="flex min-h-[28px] min-w-[28px] items-center justify-center border-l border-neutral-200 text-neutral-600 hover:bg-neutral-100 disabled:opacity-40"
+                    >
+                        <Maximize size={13} aria-hidden />
+                    </button>
+                    {artworkBBox && (
+                        <button
+                            type="button"
+                            onClick={fitArtwork}
+                            title="Fit to artwork"
+                            aria-label="Fit to artwork"
+                            className="flex min-h-[28px] min-w-[28px] items-center justify-center border-l border-neutral-200 text-neutral-600 hover:bg-neutral-100"
+                            style={{ color: ACCENT }}
+                        >
+                            <Crosshair size={13} aria-hidden />
+                        </button>
+                    )}
+                </div>
+                {zoom > 1 && (
+                    <span className="pointer-events-none rounded bg-neutral-900/70 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-white">
+                        {zoom.toFixed(1)}×
+                    </span>
+                )}
+            </div>
             <svg
                 ref={svgRef}
                 viewBox={vb}

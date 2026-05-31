@@ -6,6 +6,7 @@ import {
     AlertTriangle,
     Bookmark,
     ChevronDown,
+    ChevronRight,
     Crosshair,
     Eye,
     EyeOff,
@@ -44,6 +45,7 @@ import {
     type MaterialPiece,
     type StandoffPiece,
     type PushThroughPiece,
+    type ExportWarning,
 } from '@/lib/visualiser/types';
 
 const ACCENT = '#4e7e8c';
@@ -170,6 +172,10 @@ export function VisualiserClient({
     // on, the scene goes dark and any configured illumination
     // (keyline halo, etc.) lights up. Pure view state, not saved.
     const [illuminationView, setIlluminationView] = useState(false);
+    // Saved-designs rail collapse (desktop only) — mirrors the portal
+    // sidebar so the operator can reclaim canvas width when they're not
+    // loading designs. On mobile the rail is a full pane via the tab bar.
+    const [designsOpen, setDesignsOpen] = useState(true);
 
     // Auto-play the unfold (folded → flat) when the tab opens or on replay.
     useEffect(() => {
@@ -240,6 +246,16 @@ export function VisualiserClient({
         setFixingMode,
         setCableMode,
     ]);
+
+    // Steer path-picking to the flat development view. Material grouping
+    // means clicking individual paths, which is far easier on the 2D
+    // flat layout than on the angled 3D model — so when group-edit mode
+    // begins (from the "New material group" button or a path click on a
+    // 3D tab) hop to the flat tab automatically.
+    useEffect(() => {
+        if (editingGroupId !== null) setTab('flat');
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editingGroupId]);
 
     const valid = PanelParamsSchema.safeParse(params);
 
@@ -1061,11 +1077,6 @@ export function VisualiserClient({
     const pushThroughKeyline = pushThrough.keyline;
     const pushThroughIslands = pushThrough.islands;
 
-    const apertureClipNotice =
-        placedClip.anyOutside || keylineClip.anyOutside
-            ? 'Some artwork (or its keyline) extended past the face and was clipped at the edge — reposition or reduce the size so every cut stays inside the face.'
-            : null;
-
     const geometryWarning =
         development &&
         development.segments.some((s) => s.wMm <= 0 || s.hMm <= 0)
@@ -1182,18 +1193,36 @@ export function VisualiserClient({
               } detected. They won't survive a panel-only cut — the counter falls out with the letter-piece during fabrication. Enable a keyline to switch to push-through (counters become holes in the acrylic insert).`
             : null;
 
-    const exportWarnings = useMemo(() => {
-        if (!development) return [];
-        return validateExport({
-            params,
-            split,
-            development,
-            aperture,
-            fixings,
-            apertureClipped:
-                placedClip.anyOutside || keylineClip.anyOutside,
-        });
+    // Single advisory list feeding BOTH the canvas tray and the export
+    // ready-checklist, so the two can never disagree on the count.
+    // Order = severity-ish: geometry (blocks a sane flat) → export
+    // checks (clip / material / fold / seam from validateExport) →
+    // counter-survival (carries the inline "Enable keyline" fix).
+    const advisories = useMemo<ExportWarning[]>(() => {
+        const out: ExportWarning[] = [];
+        if (geometryWarning)
+            out.push({ kind: 'geometry', message: geometryWarning });
+        if (development) {
+            out.push(
+                ...validateExport({
+                    params,
+                    split,
+                    development,
+                    aperture,
+                    fixings,
+                    apertureClipped:
+                        placedClip.anyOutside || keylineClip.anyOutside,
+                }),
+            );
+        }
+        if (counterSurvivalWarning)
+            out.push({
+                kind: 'counter_survival',
+                message: counterSurvivalWarning,
+            });
+        return out;
     }, [
+        geometryWarning,
         development,
         params,
         split,
@@ -1201,6 +1230,7 @@ export function VisualiserClient({
         fixings,
         placedClip.anyOutside,
         keylineClip.anyOutside,
+        counterSurvivalWarning,
     ]);
 
     // Unified path-click dispatcher for the previews. In edit mode a
@@ -1248,6 +1278,26 @@ export function VisualiserClient({
             setParam('panelHeightMm', valueMm);
         else if (field === 'return') setParam('returnDepthMm', valueMm);
         else if (field === 'shadowGap') setParam('shadowGapMm', valueMm);
+    };
+
+    // Lit-view support. The "Lit" toggle only darkens the scene; the
+    // halo itself is the keyline emissive, which is off by default
+    // (designs ship un-illuminated). Without this, clicking Lit on a
+    // fresh design shows a near-black panel that reads as broken — so
+    // when the lit view is active and no glow is on we surface a
+    // one-click enable (mirroring the counter-survival fix idiom).
+    const keylineGlowOn = !!params.illumination?.keyline?.enabled;
+    const hasPushThrough = pushThroughPieces.length > 0;
+    const enableKeylineGlow = () => {
+        const kl = params.illumination?.keyline ?? {
+            enabled: false,
+            color: '#ffffff',
+            intensity: 1,
+        };
+        setParam('illumination', {
+            ...params.illumination,
+            keyline: { ...kl, enabled: true },
+        });
     };
 
     // Annotation gating — the Display panel toggles these view layers.
@@ -1443,9 +1493,7 @@ export function VisualiserClient({
                         The counter-survival entry carries an inline
                         "Enable keyline" action that switches the sign
                         to push-through assembly. */}
-                    {(geometryWarning ||
-                        apertureClipNotice ||
-                        counterSurvivalWarning) && (
+                    {advisories.length > 0 && (
                         <div className="pointer-events-none absolute inset-x-3 top-14 z-10">
                             <details
                                 className="pointer-events-auto group rounded-md border border-amber-300 bg-amber-50/95 shadow-sm"
@@ -1461,21 +1509,8 @@ export function VisualiserClient({
                                         className="text-amber-600"
                                     />
                                     <span>
-                                        {
-                                            [
-                                                geometryWarning,
-                                                apertureClipNotice,
-                                                counterSurvivalWarning,
-                                            ].filter(Boolean).length
-                                        }{' '}
-                                        advisory warning
-                                        {[
-                                            geometryWarning,
-                                            apertureClipNotice,
-                                            counterSurvivalWarning,
-                                        ].filter(Boolean).length === 1
-                                            ? ''
-                                            : 's'}
+                                        {advisories.length} advisory warning
+                                        {advisories.length === 1 ? '' : 's'}
                                     </span>
                                     <ChevronDown
                                         size={14}
@@ -1484,56 +1519,103 @@ export function VisualiserClient({
                                     />
                                 </summary>
                                 <ul className="space-y-1.5 border-t border-amber-200 px-3 py-2 text-[11px] text-amber-800">
-                                    {geometryWarning && (
-                                        <li>{geometryWarning}</li>
-                                    )}
-                                    {apertureClipNotice && (
-                                        <li>{apertureClipNotice}</li>
-                                    )}
-                                    {counterSurvivalWarning && (
-                                        <li className="flex flex-col gap-1.5">
-                                            <span>
-                                                {counterSurvivalWarning}
-                                            </span>
-                                            <div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        // 1.5 mm
-                                                        // keyline gives
-                                                        // a tidy
-                                                        // press-fit
-                                                        // shoulder for
-                                                        // a typical
-                                                        // 3 mm acrylic
-                                                        // insert.
-                                                        setParam(
-                                                            'keylineMm',
-                                                            1.5,
-                                                        );
-                                                    }}
-                                                    className="inline-flex min-h-[28px] items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm transition-colors"
-                                                    style={{
-                                                        background: ACCENT,
-                                                    }}
-                                                    onMouseEnter={(e) => {
-                                                        e.currentTarget.style.background =
-                                                            ACCENT_DARK;
-                                                    }}
-                                                    onMouseLeave={(e) => {
-                                                        e.currentTarget.style.background =
-                                                            ACCENT;
-                                                    }}
-                                                >
-                                                    Enable keyline (1.5 mm)
-                                                </button>
-                                            </div>
+                                    {advisories.map((w, i) => (
+                                        <li
+                                            key={i}
+                                            className="flex flex-col gap-1.5"
+                                        >
+                                            <span>{w.message}</span>
+                                            {w.kind === 'counter_survival' && (
+                                                <div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            // 1.5 mm keyline
+                                                            // gives a tidy
+                                                            // press-fit
+                                                            // shoulder for a
+                                                            // typical 3 mm
+                                                            // acrylic insert.
+                                                            setParam(
+                                                                'keylineMm',
+                                                                1.5,
+                                                            );
+                                                        }}
+                                                        className="inline-flex min-h-[28px] items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm transition-colors"
+                                                        style={{
+                                                            background: ACCENT,
+                                                        }}
+                                                        onMouseEnter={(e) => {
+                                                            e.currentTarget.style.background =
+                                                                ACCENT_DARK;
+                                                        }}
+                                                        onMouseLeave={(e) => {
+                                                            e.currentTarget.style.background =
+                                                                ACCENT;
+                                                        }}
+                                                    >
+                                                        Enable keyline (1.5 mm)
+                                                    </button>
+                                                </div>
+                                            )}
                                         </li>
-                                    )}
+                                    ))}
                                 </ul>
                             </details>
                         </div>
                     )}
+
+                    {/* Lit-view nudge — the dark scene with no glow on
+                        reads as broken, so explain it and offer the
+                        one-click enable (or point at what's missing
+                        when there's nothing to light yet). */}
+                    {illuminationView &&
+                        tab !== 'flat' &&
+                        !keylineGlowOn && (
+                            <div className="pointer-events-none absolute inset-x-3 top-1/2 z-10 flex -translate-y-1/2 justify-center">
+                                <div className="pointer-events-auto max-w-xs rounded-lg border border-white/15 bg-[#1a1f23]/90 px-4 py-3 text-center shadow-lg backdrop-blur">
+                                    <p className="flex items-center justify-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+                                        <Lightbulb size={12} aria-hidden /> Lit
+                                        preview
+                                    </p>
+                                    {hasPushThrough ? (
+                                        <>
+                                            <p className="mt-1 text-[11px] text-neutral-300">
+                                                No illumination is switched on
+                                                yet, so the scene stays dark.
+                                            </p>
+                                            <button
+                                                type="button"
+                                                onClick={enableKeylineGlow}
+                                                className="mt-2 inline-flex min-h-[32px] items-center gap-1 rounded-md px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition-colors"
+                                                style={{ background: ACCENT }}
+                                                onMouseEnter={(e) => {
+                                                    e.currentTarget.style.background =
+                                                        ACCENT_DARK;
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                    e.currentTarget.style.background =
+                                                        ACCENT;
+                                                }}
+                                            >
+                                                <Lightbulb
+                                                    size={12}
+                                                    aria-hidden
+                                                />
+                                                Enable keyline glow
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <p className="mt-1 text-[11px] text-neutral-300">
+                                            Nothing to light yet — add a
+                                            push-through group under Path
+                                            materials, then switch the keyline
+                                            halo on here.
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        )}
 
                     {/* Empty-state walkthrough — only shown on the
                         preview tabs when the operator hasn't uploaded
@@ -1804,21 +1886,61 @@ export function VisualiserClient({
                             solidPieces={materialPieces.solid}
                             standoffPieces={standoffPieces}
                             pushThroughPieces={pushThroughPieces}
-                            warnings={exportWarnings}
+                            warnings={advisories}
                             pathCount={imported?.paths.length ?? 0}
                         />
                     )}
                 </footer>
             </section>
 
-                {/* Right: saved designs (independently scrollable) */}
+                {/* Right: saved designs (independently scrollable;
+                    collapsible to a thin rail on desktop). */}
                 <aside
-                    className={`${paneShow('designs')} md:w-[15rem] md:shrink-0 md:flex-none overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm`}
+                    className={`${paneShow('designs')} ${
+                        designsOpen ? 'md:w-[15rem]' : 'md:w-11'
+                    } md:shrink-0 md:flex-none overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm transition-[width] duration-200`}
                 >
-                <div className="shrink-0 border-b border-neutral-100 px-4 py-2.5">
+                {/* Collapsed desktop rail — a single button to reopen. */}
+                {!designsOpen && (
+                    <button
+                        type="button"
+                        onClick={() => setDesignsOpen(true)}
+                        title="Show saved designs"
+                        aria-label="Show saved designs"
+                        className="hidden md:flex h-full w-full flex-col items-center gap-2 py-3 text-neutral-500 hover:bg-neutral-50 hover:text-neutral-700"
+                    >
+                        <Bookmark size={16} aria-hidden />
+                        <span
+                            className="text-[10px] font-semibold uppercase tracking-widest text-neutral-400"
+                            style={{ writingMode: 'vertical-rl' }}
+                        >
+                            Saved designs
+                        </span>
+                        {designs.length > 0 && (
+                            <span className="rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-neutral-500">
+                                {designs.length}
+                            </span>
+                        )}
+                    </button>
+                )}
+                <div
+                    className={`${
+                        designsOpen ? 'flex flex-col' : 'flex md:hidden flex-col'
+                    } h-full min-h-0`}
+                >
+                <div className="shrink-0 flex items-center justify-between gap-1 border-b border-neutral-100 px-3 py-2.5">
                     <h2 className="text-[10px] font-semibold uppercase tracking-widest text-neutral-500">
                         Saved designs
                     </h2>
+                    <button
+                        type="button"
+                        onClick={() => setDesignsOpen(false)}
+                        title="Collapse saved designs"
+                        aria-label="Collapse saved designs"
+                        className="hidden md:flex min-h-[24px] min-w-[24px] items-center justify-center rounded text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+                    >
+                        <ChevronRight size={14} aria-hidden />
+                    </button>
                 </div>
                 <ul className="flex-1 min-h-0 overflow-y-auto p-2 space-y-1">
                     {designs.length === 0 && (
@@ -1860,6 +1982,7 @@ export function VisualiserClient({
                         );
                     })}
                 </ul>
+                </div>
                 </aside>
             </div>
 

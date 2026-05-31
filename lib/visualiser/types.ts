@@ -458,7 +458,12 @@ export interface ExportWarning {
         | 'aperture_clipped'
         | 'fixing_on_seam'
         | 'aperture_near_fold'
-        | 'aperture_on_seam';
+        | 'aperture_on_seam'
+        // Viewport-side advisories merged into the same list so the
+        // canvas tray and the export ready-checklist never disagree on
+        // the count.
+        | 'geometry'
+        | 'counter_survival';
     message: string;
 }
 
