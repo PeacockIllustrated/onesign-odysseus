@@ -61,6 +61,28 @@ store state (`mount`).
 
 ---
 
+### Change-set 10 — shape + small default + off-the-face mount
+
+Refinements from the Wallsend shopfront photo:
+- The projecting sign **defaults to a small square** (`DEFAULT_PROJECTING_SIZE_MM`
+  = 500mm), not a clone of the fascia size. `seedProjectingFromMain` now mirrors
+  the main panel's **look** (colour, material, thickness) but starts with
+  **fresh artwork** and small square dims — the fascia-scale artwork can't
+  sensibly transfer to a small sign, so you add the sign's own artwork on its
+  tab.
+- It **always mounts on the fascia FACE and projects perpendicular** out toward
+  the street — the left/right `side` mount was removed. `mount` is now
+  `{ offsetXMm (across the face), offsetYMm (down from top), shape, doubleSided,
+  bracketStyle }`.
+- **Shape: square | circle** (`mount.shape`, default square). The composite
+  ghost renders a thin box (square) or a thin disc with its axis along X
+  (circle), positioned on the face and protruding +Z. Verified live for both.
+- **Known follow-up (unchanged):** the active-tab full render still uses the
+  rectangular Panel pipeline, so a circle is edited on a rectangular face and
+  the shape is conveyed in the composite; the inactive panel is still a colour
+  ghost (no artwork). Full shaped + artworked panels need the geometry-pipeline
+  extraction noted under change-set 8.
+
 ## v1 — single-panel toggle (REPLACED, kept for history)
 
 Implemented from `docs/projecting-signs-handoff.md`. Run autonomously per the

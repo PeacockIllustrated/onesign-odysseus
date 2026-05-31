@@ -190,24 +190,25 @@ export function ControlsPanel() {
             {onProjectingTab && (
                 <Section title="Mounting" accent>
                     <p className="text-[10px] text-neutral-500">
-                        How the blade attaches to the fascia. Its width (in Panel
-                        dimensions) is how far it protrudes; its height is
-                        vertical. The bracket is bought-in — specified on the
-                        PDFs, not fabricated.
+                        Mounts on the fascia face and projects straight out
+                        toward the street (read from the side). Width (in Panel
+                        dimensions) is how far it protrudes; for a circle it is
+                        the diameter. The bracket is bought-in — specified on
+                        the PDFs, not fabricated.
                     </p>
 
                     <div>
                         <span className="text-[11px] font-medium text-neutral-600">
-                            Projects from
+                            Shape
                         </span>
                         <div className="mt-1.5 grid grid-cols-2 gap-1">
-                            {(['left', 'right'] as const).map((sd) => {
-                                const active = m.side === sd;
+                            {(['square', 'circle'] as const).map((sh) => {
+                                const active = m.shape === sh;
                                 return (
                                     <button
-                                        key={sd}
+                                        key={sh}
                                         type="button"
-                                        onClick={() => setMount({ side: sd })}
+                                        onClick={() => setMount({ shape: sh })}
                                         aria-pressed={active}
                                         className={`min-h-[36px] rounded-md px-2 py-2 text-xs font-medium capitalize transition-colors ${
                                             active
@@ -220,13 +221,13 @@ export function ControlsPanel() {
                                                 : undefined
                                         }
                                     >
-                                        {sd}
+                                        {sh}
                                     </button>
                                 );
                             })}
                         </div>
                         <span className="mt-1 block text-[10px] text-neutral-400">
-                            Which side of the fascia the blade sits on.
+                            Square (shopfront style) or a round disc.
                         </span>
                     </div>
 
@@ -236,14 +237,14 @@ export function ControlsPanel() {
                             value={m.offsetXMm}
                             onChange={(n) => setMount({ offsetXMm: n })}
                             min={0}
-                            hint="From the fascia edge"
+                            hint="On the face, from the left"
                         />
                         <NumberField
                             label="Height from top"
                             value={m.offsetYMm}
                             onChange={(n) => setMount({ offsetYMm: n })}
                             min={0}
-                            hint="Blade top, from fascia top"
+                            hint="Sign top, from fascia top"
                         />
                     </div>
 
@@ -266,7 +267,8 @@ export function ControlsPanel() {
                         </span>
                     </button>
                     <p className="text-[10px] text-neutral-400">
-                        Artwork on both faces — the usual case for a blade sign.
+                        Artwork on both faces — the usual case for a projecting
+                        sign.
                     </p>
 
                     <div>

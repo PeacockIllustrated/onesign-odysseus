@@ -1988,12 +1988,13 @@ function Panel({
 
 
 /**
- * The other panel of a projecting-sign design, drawn as a positioned ghost
- * slab so both signs read together in real space without needing the full
- * artwork pipeline for the inactive panel (you edit each panel's artwork on
- * its own tab; this shows footprint + placement). A blade's WIDTH is its
- * protrusion off the wall and its HEIGHT is vertical, so it sits perpendicular
- * to the fascia.
+ * The other panel of a projecting-sign design, drawn as a positioned ghost so
+ * both signs read together in real space without needing the full artwork
+ * pipeline for the inactive panel (you edit each panel's artwork on its own
+ * tab; this shows footprint + placement). The projecting sign ALWAYS mounts on
+ * the fascia FACE and projects straight out (+Z) toward the street — never off
+ * an edge. Its WIDTH is the protrusion (or the diameter, for a circle) and its
+ * HEIGHT is vertical. Square → a thin box; circle → a thin disc (axis along X).
  */
 function CompositeGhost({
     fascia,
@@ -2010,10 +2011,9 @@ function CompositeGhost({
 }) {
     const Wf = fascia.panelWidthMm * S;
     const Hf = fascia.panelHeightMm * S;
-    const Df = Math.max(fascia.returnDepthMm, 30) * S;
-    const Wb = blade.panelWidthMm * S; // blade protrusion (out from wall)
-    const Hb = blade.panelHeightMm * S;
-    const Tb = Math.max(blade.returnDepthMm, 30) * S; // blade thickness
+    const Wb = blade.panelWidthMm * S; // protrusion off the face (Z), or diameter
+    const Hb = blade.panelHeightMm * S; // vertical extent (Y)
+    const Tb = Math.max(blade.returnDepthMm, 25) * S; // sign thickness (X)
     const ox = mount.offsetXMm * S;
     const oy = mount.offsetYMm * S;
     const color = displayColor(
@@ -2021,32 +2021,55 @@ function CompositeGhost({
             DEFAULT_PANEL_COLOR,
         night,
     );
+    const material = (
+        <meshBasicMaterial
+            color={color}
+            transparent
+            opacity={0.45}
+            side={THREE.DoubleSide}
+        />
+    );
 
-    let size: [number, number, number];
-    let position: [number, number, number];
-    if (ghost === 'blade') {
-        // Fascia is at the origin (face +Z); the blade ghost mounts near an
-        // edge and protrudes toward the street (+Z).
-        size = [Tb, Hb, Wb];
-        const bx =
-            mount.side === 'left' ? -Wf / 2 + ox + Tb / 2 : Wf / 2 - ox - Tb / 2;
-        position = [bx, Hf / 2 - oy - Hb / 2, Wb / 2];
-    } else {
-        // Blade is at the origin (face +Z, width along X); the fascia ghost is
-        // the wall it mounts to — a perpendicular slab at the blade's near end.
-        size = [Df, Hf, Wf];
-        position = [-Wb / 2 - Df / 2, 0, Wf / 2 - Wb / 2];
+    if (ghost === 'fascia') {
+        // Editing the projecting sign (head-on at origin); the fascia ghost is
+        // the wall it mounts to — a slab behind it.
+        const Df = Math.max(fascia.returnDepthMm, 30) * S;
+        const Db = Math.max(blade.returnDepthMm, 25) * S;
+        return (
+            <mesh position={[0, 0, -Db - Df / 2]}>
+                <boxGeometry args={[Wf, Hf, Df]} />
+                {material}
+                <Edges color={EDGE_COLOR} lineWidth={1} />
+            </mesh>
+        );
+    }
+
+    // Fascia at the origin (face +Z). The sign mounts at (offsetX from left,
+    // offsetY from top) ON the face and protrudes +Z. Its top aligns with the
+    // attach point and it hangs down by its height/diameter.
+    const ax = -Wf / 2 + ox; // attach X on the face
+    const ayTop = Hf / 2 - oy; // attach Y (sign top)
+
+    if (mount.shape === 'circle') {
+        const r = Wb / 2; // diameter = blade width
+        return (
+            // Cylinder default axis is Y; rotate 90° about Z so the disc faces
+            // ±X (read from the side), spanning Y (vertical) and Z (protrusion).
+            <mesh
+                position={[ax, ayTop - r, r]}
+                rotation={[0, 0, Math.PI / 2]}
+            >
+                <cylinderGeometry args={[r, r, Tb, 48]} />
+                {material}
+                <Edges color={EDGE_COLOR} lineWidth={1} />
+            </mesh>
+        );
     }
 
     return (
-        <mesh position={position}>
-            <boxGeometry args={size} />
-            <meshBasicMaterial
-                color={color}
-                transparent
-                opacity={0.45}
-                side={THREE.DoubleSide}
-            />
+        <mesh position={[ax, ayTop - Hb / 2, Wb / 2]}>
+            <boxGeometry args={[Tb, Hb, Wb]} />
+            {material}
             <Edges color={EDGE_COLOR} lineWidth={1} />
         </mesh>
     );

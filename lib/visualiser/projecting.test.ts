@@ -3,11 +3,12 @@ import {
     DEFAULT_MOUNT,
     bracketSpecNote,
     hasProjecting,
+    projectingDimsLabel,
     projectingSpecLine,
     resolveMount,
     seedProjectingFromMain,
 } from './projecting';
-import type { PanelParams } from './types';
+import { DEFAULT_PROJECTING_SIZE_MM, type PanelParams } from './types';
 
 const MAIN: PanelParams = {
     name: 'Acme fascia',
@@ -19,6 +20,7 @@ const MAIN: PanelParams = {
     keylineMm: 0,
     materialThicknessMm: 5,
     panelColor: '#d6d6d6',
+    materialLabel: 'Aluminium, satin white',
     artworkLayers: [
         { id: 'L1', svgSource: '<svg/>', xMm: 10, yMm: 10, scale: 1, wMm: 100, hMm: 50 },
     ],
@@ -28,81 +30,96 @@ describe('hasProjecting', () => {
     it('is false without a projecting sign, true with one', () => {
         expect(hasProjecting(MAIN)).toBe(false);
         expect(
-            hasProjecting({ projectingSign: seedProjectingFromMain(MAIN, null) }),
+            hasProjecting({ projectingSign: seedProjectingFromMain(MAIN) }),
         ).toBe(true);
     });
 });
 
 describe('resolveMount', () => {
-    it('applies all defaults when absent', () => {
+    it('applies all defaults when absent (square, off-the-face)', () => {
         expect(resolveMount(undefined)).toEqual(DEFAULT_MOUNT);
+        expect(DEFAULT_MOUNT.shape).toBe('square');
     });
 
     it('keeps caller-supplied values and fills the rest', () => {
-        const r = resolveMount({ offsetXMm: 120, doubleSided: false, side: 'right' });
+        const r = resolveMount({ offsetXMm: 120, doubleSided: false, shape: 'circle' });
         expect(r.offsetXMm).toBe(120);
         expect(r.doubleSided).toBe(false);
-        expect(r.side).toBe('right');
+        expect(r.shape).toBe('circle');
         expect(r.bracketStyle).toBe(DEFAULT_MOUNT.bracketStyle);
     });
 });
 
 describe('seedProjectingFromMain', () => {
-    it('mirrors the main artwork/colours and carries the svg', () => {
-        const seed = seedProjectingFromMain(MAIN, '<svg id="main"/>');
-        expect(seed.panel.panelColor).toBe('#d6d6d6');
-        expect(seed.panel.artworkLayers).toHaveLength(1);
-        expect(seed.svgSource).toBe('<svg id="main"/>');
-        expect(seed.mount).toEqual(DEFAULT_MOUNT);
+    it('defaults to a small square, not the main panel size', () => {
+        const seed = seedProjectingFromMain(MAIN);
+        expect(seed.panel.panelWidthMm).toBe(DEFAULT_PROJECTING_SIZE_MM);
+        expect(seed.panel.panelHeightMm).toBe(DEFAULT_PROJECTING_SIZE_MM);
+        expect(seed.mount.shape).toBe('square');
     });
 
-    it('names the blade after the main panel', () => {
-        expect(seedProjectingFromMain(MAIN, null).panel.name).toBe(
+    it('mirrors the main look (colour, material) but starts with fresh artwork', () => {
+        const seed = seedProjectingFromMain(MAIN);
+        expect(seed.panel.panelColor).toBe('#d6d6d6');
+        expect(seed.panel.materialLabel).toBe('Aluminium, satin white');
+        expect(seed.panel.artworkLayers).toEqual([]);
+        expect(seed.svgSource).toBeNull();
+    });
+
+    it('names the sign after the main panel', () => {
+        expect(seedProjectingFromMain(MAIN).panel.name).toBe(
             'Acme fascia — projecting',
         );
     });
 
-    it('is a deep copy — editing the blade never mutates the main', () => {
-        const seed = seedProjectingFromMain(MAIN, null);
-        seed.panel.panelWidthMm = 450;
-        seed.panel.artworkLayers![0].xMm = 999;
-        expect(MAIN.panelWidthMm).toBe(2400);
+    it('is a deep copy — editing the sign never mutates the main', () => {
+        const seed = seedProjectingFromMain(MAIN);
+        seed.panel.panelColor = '#000000';
+        expect(MAIN.panelColor).toBe('#d6d6d6');
         expect(MAIN.artworkLayers![0].xMm).toBe(10);
     });
 
-    it('strips any nested projectingSign so a blade cannot carry its own', () => {
+    it('strips any nested projectingSign so a sign cannot carry its own', () => {
         const nested: PanelParams = {
             ...MAIN,
-            projectingSign: seedProjectingFromMain(MAIN, null),
+            projectingSign: seedProjectingFromMain(MAIN),
         };
-        const seed = seedProjectingFromMain(nested, null);
+        const seed = seedProjectingFromMain(nested);
         expect(
             (seed.panel as { projectingSign?: unknown }).projectingSign,
         ).toBeUndefined();
     });
 });
 
-describe('spec strings', () => {
-    it('projectingSpecLine reads naturally with defaults', () => {
-        expect(projectingSpecLine({ panelWidthMm: 450, panelHeightMm: 1200 }, undefined)).toBe(
-            'Projecting blade · 450×1200mm · double-sided · box-arm bracket',
+describe('dimension + spec strings', () => {
+    it('projectingDimsLabel reads square vs circle', () => {
+        expect(projectingDimsLabel({ panelWidthMm: 500, panelHeightMm: 500 }, 'square')).toBe(
+            '500×500mm',
+        );
+        expect(projectingDimsLabel({ panelWidthMm: 500, panelHeightMm: 500 }, 'circle')).toBe(
+            '500mm dia',
         );
     });
 
-    it('projectingSpecLine reflects single-sided + style', () => {
-        expect(
-            projectingSpecLine(
-                { panelWidthMm: 500, panelHeightMm: 900 },
-                { doubleSided: false, bracketStyle: 'scroll' },
-            ),
-        ).toBe('Projecting blade · 500×900mm · single-sided · scroll bracket');
+    it('projectingSpecLine reads naturally with defaults', () => {
+        expect(projectingSpecLine({ panelWidthMm: 500, panelHeightMm: 500 }, undefined)).toBe(
+            'Projecting square · 500×500mm · double-sided · box-arm bracket',
+        );
     });
 
-    it('bracketSpecNote includes protrusion, side + sidedness', () => {
-        const note = bracketSpecNote({ panelWidthMm: 450 }, { side: 'right' });
+    it('projectingSpecLine reflects circle + single-sided + style', () => {
+        expect(
+            projectingSpecLine(
+                { panelWidthMm: 600, panelHeightMm: 600 },
+                { shape: 'circle', doubleSided: false, bracketStyle: 'scroll' },
+            ),
+        ).toBe('Projecting circle · 600mm dia · single-sided · scroll bracket');
+    });
+
+    it('bracketSpecNote notes perpendicular projection + shape', () => {
+        const note = bracketSpecNote({ panelWidthMm: 500 }, { shape: 'circle' });
         expect(note).toContain('bought-in box-arm');
-        expect(note).toContain('protrudes 450mm');
-        expect(note).toContain('mounted right');
-        expect(note).toContain('Double-sided');
+        expect(note).toContain('projects 500mm perpendicular from the face');
+        expect(note).toContain('Double-sided circle');
     });
 });

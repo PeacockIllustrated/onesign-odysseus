@@ -334,17 +334,16 @@ export const useVisualiser = create<VisualiserState>((set) => ({
             // Seed from whichever panel is the main one right now. We only ever
             // enable from the main tab, but resolve defensively.
             const { main } = splitPanels(s);
-            const seed = seedProjectingFromMain(main.params, main.svgSource);
-            const seedImported = seed.svgSource
-                ? safeImport(seed.svgSource)
-                : null;
+            const seed = seedProjectingFromMain(main.params);
             return {
                 projectingEnabled: true,
                 mount: seed.mount,
                 inactive: {
                     params: seed.panel as PanelParams,
                     svgSource: seed.svgSource ?? null,
-                    imported: seedImported,
+                    imported: seed.svgSource
+                        ? safeImport(seed.svgSource)
+                        : null,
                 },
                 activeTab: 'main',
             };

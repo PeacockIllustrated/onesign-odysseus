@@ -346,27 +346,35 @@ const PanelCoreSchema = z.object({
 });
 export type PanelCore = z.infer<typeof PanelCoreSchema>;
 
+/** Projecting-sign silhouette. Square (the Wallsend shopfront style) or a round disc. */
+export type ProjectingShape = 'square' | 'circle';
+
+/** Default size (mm) of a new projecting sign — small, like a real shopfront blade. */
+export const DEFAULT_PROJECTING_SIZE_MM = 500;
+
 /**
- * How a projecting (blade) sign attaches to the main fascia. The blade is
- * the SAME folded tray, mounted perpendicular: its panel WIDTH runs out from
- * the wall (the protrusion) and its HEIGHT is vertical. The mount positions
- * it on the fascia and records the bought-in bracket spec.
+ * How a projecting (blade) sign attaches to the main fascia. It ALWAYS sits
+ * perpendicular to the fascia FACE — it mounts somewhere on the front face and
+ * projects straight out toward the street (read from the side as you approach),
+ * never off an edge / top / bottom / back. Its panel WIDTH is how far it
+ * protrudes and its HEIGHT is vertical. The mount positions the attachment
+ * point on the face and records shape + the bought-in bracket spec.
  */
 export const ProjectingMountSchema = z.object({
     /**
-     * Horizontal position of the blade's mounted (near) edge along the
-     * fascia, measured in mm from the fascia's LEFT edge. Default: near the
-     * left, like a typical shopfront blade.
+     * Horizontal position of the attachment point on the fascia FACE, measured
+     * in mm from the fascia's LEFT edge. Default 0 (near the left, like the
+     * Wallsend shopfront).
      */
     offsetXMm: z.number().optional(),
     /**
-     * Vertical position of the blade's TOP, measured in mm down from the
-     * fascia's top edge. Default: aligned near the fascia top.
+     * Vertical position of the sign's TOP, measured in mm down from the
+     * fascia's top edge. Default 0 (aligned near the fascia top).
      */
     offsetYMm: z.number().optional(),
-    /** Which side of the fascia the blade projects toward. Default 'left'. */
-    side: z.enum(['left', 'right']).optional(),
-    /** Artwork on both faces (the usual case for a blade sign). */
+    /** Sign silhouette. Default 'square'. */
+    shape: z.enum(['square', 'circle']).optional(),
+    /** Artwork on both faces (the usual case for a projecting sign). */
     doubleSided: z.boolean().optional(),
     /** Bought-in bracket family — spec note + 3D representation only. */
     bracketStyle: z.enum(['flat-plate', 'box-arm', 'scroll']).optional(),
