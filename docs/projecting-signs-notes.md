@@ -45,6 +45,14 @@ than reverse-engineered.
    about Y and offset by the tray depth so both artwork faces sit on the box.
    `sceneCapture.faceOn` hides the mount during capture so the backshop
    thumbnail frames the sign face alone; the angled reference shot keeps it.
+4. **PDFs** — reference spec block gains Sign type + Projection/Sides/Bracket
+   rows; production panel-cut page gains a teal bracket-spec info band (bought-
+   in, height-reserved so it never collides with the footer/warning). Tray cut
+   unchanged.
+5. **Backshop** — new `bracket` feature → contextual "Wall fixing" stage
+   (appended last) + "Projecting (bracket)" Build-column element; ExportBar
+   passes `bracket: isProjecting` and prefixes the board description with the
+   projecting spec line. No migration (checks is JSONB; TS catalog only).
 
 ## 3D geometry notes
 

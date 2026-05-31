@@ -51,6 +51,23 @@ describe('contextual stages', () => {
         ]);
     });
 
+    it('appends the bracket (Wall fixing) stage last for projecting signs', () => {
+        const keys = stagesForFeatures({ bracket: true }).map((s) => s.key);
+        expect(keys).toEqual(['designed', 'cut', 'painted', 'assembled', 'bracket']);
+    });
+
+    it('surfaces the projecting bracket as a Build-column element', () => {
+        expect(
+            elementsForChecks({
+                designed: false,
+                cut: false,
+                painted: false,
+                assembled: false,
+                bracket: false,
+            }),
+        ).toEqual(['Projecting (bracket)']);
+    });
+
     it('builds all-false checks for the applicable stages', () => {
         const checks = checksForFeatures({ standoff: true, vinyl: true });
         expect(checks).toEqual({

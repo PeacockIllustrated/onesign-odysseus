@@ -19,7 +19,8 @@ export type BackshopFeature =
     | 'pushThrough'
     | 'vinyl'
     | 'illumination'
-    | 'standoff';
+    | 'standoff'
+    | 'bracket';
 
 export interface BackshopStage {
     key: string;
@@ -41,6 +42,8 @@ export const BACKSHOP_STAGE_CATALOG: BackshopStage[] = [
     { key: 'illumination', label: 'Illumination', feature: 'illumination' },
     { key: 'standoff', label: 'Stood-off', feature: 'standoff' },
     { key: 'assembled', label: 'Assembled' },
+    // Projecting signs only — fit the bought-in wall bracket last.
+    { key: 'bracket', label: 'Wall fixing', feature: 'bracket' },
 ];
 
 /** Which construction features a pushed design has. */
@@ -79,6 +82,7 @@ const ELEMENT_LABELS: Record<string, string> = {
     vinyl: 'Vinyl appliqué',
     illumination: 'Illuminated',
     standoff: 'Stood-off letters',
+    bracket: 'Projecting (bracket)',
 };
 
 /** The distinguishing elements/processes an item carries, in catalog order. */
@@ -163,6 +167,7 @@ export const AddToBackshopInputSchema = z.object({
             vinyl: z.boolean().optional(),
             illumination: z.boolean().optional(),
             standoff: z.boolean().optional(),
+            bracket: z.boolean().optional(),
         })
         .optional(),
 });

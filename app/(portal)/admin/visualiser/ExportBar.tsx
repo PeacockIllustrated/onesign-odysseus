@@ -20,6 +20,11 @@ import {
 } from '@/lib/visualiser/pdf';
 import { saveDesign } from '@/lib/visualiser/actions';
 import { addToBackshop, isDesignOnBackshop } from '@/lib/backshop/actions';
+import {
+    isProjecting,
+    projectingSpecLine,
+    resolveProjecting,
+} from '@/lib/visualiser/projecting';
 import { composeLayersSvg } from '@/lib/visualiser/compose';
 import { trimImageDataUrl } from '@/lib/visualiser/image';
 import {
@@ -296,10 +301,22 @@ export function ExportBar({
             });
             const pdfBase64 = await blobToBase64(blob);
 
+            // Projecting signs surface their spec on the board's Build column
+            // (alongside the material) and pick up the contextual Wall-fixing
+            // gate via the bracket feature.
+            const projecting = isProjecting(params);
+            const projDesc = projecting
+                ? projectingSpecLine(resolveProjecting(params.projecting))
+                : null;
+            const description =
+                [projDesc, params.materialLabel || null]
+                    .filter(Boolean)
+                    .join(' — ') || null;
+
             const res = await addToBackshop({
                 designId: id,
                 name: params.name,
-                description: params.materialLabel || null,
+                description,
                 widthMm: params.panelWidthMm,
                 heightMm: params.panelHeightMm,
                 returnsMm: params.returnDepthMm,
@@ -312,6 +329,7 @@ export function ExportBar({
                     vinyl: vinylPieces.length > 0,
                     standoff: standoffPieces.length > 0,
                     illumination: !!params.illumination?.keyline?.enabled,
+                    bracket: projecting,
                 },
             });
             if (res.ok) {
