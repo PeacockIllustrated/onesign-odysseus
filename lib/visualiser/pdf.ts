@@ -985,8 +985,12 @@ function drawOverviewPage(ctx: PageContext): void {
     const proj = isProjecting(params)
         ? resolveProjecting(params.projecting)
         : null;
+    // The "Sign type" row is projecting-only: a fascia drawing is unchanged
+    // from before projecting signs existed (the tool has always been fascia).
     const spec: Array<[string, string]> = [
-        ['Sign type', proj ? 'Projecting (blade)' : 'Fascia'],
+        ...(proj
+            ? ([['Sign type', 'Projecting (blade)']] as Array<[string, string]>)
+            : []),
         ['Sign face', `${params.panelWidthMm} × ${params.panelHeightMm} mm`],
         ['Returns', returnsLabelCompact(params)],
         ['Return depth', `${params.returnDepthMm} mm`],

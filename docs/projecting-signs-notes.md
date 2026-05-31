@@ -54,6 +54,17 @@ than reverse-engineered.
    passes `bracket: isProjecting` and prefixes the board description with the
    projecting spec line. No migration (checks is JSONB; TS catalog only).
 
+## Polish pass (post design-critique)
+
+A /design-critique round flagged small clarity/consistency items, applied in
+change-set 6:
+- Reference PDF "Sign type" row is now **projecting-only** — a fascia drawing
+  is byte-identical to before projecting signs existed (the tool was always
+  fascia). Tightens the "fascia unchanged" guarantee.
+- Double-sided toggle gained a helper line (matching the keyline-toggle
+  pattern); bracket-style buttons gained a "bought-in, box-arm default" helper.
+- Projection field hint now states the 150–1500 mm range.
+
 ## 3D geometry notes
 
 - The sign keeps its native +Z-facing orientation (so faceOn + the default

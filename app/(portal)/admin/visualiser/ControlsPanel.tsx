@@ -162,7 +162,7 @@ export function ControlsPanel() {
                         onChange={(n) => setProjecting({ projectionMm: n })}
                         min={150}
                         max={1500}
-                        hint="Distance the near face stands off the wall"
+                        hint="Distance the near face stands off the wall (150–1500 mm)"
                     />
 
                     <button
@@ -183,6 +183,9 @@ export function ControlsPanel() {
                             {proj.doubleSided ? 'On' : 'Off'}
                         </span>
                     </button>
+                    <p className="text-[10px] text-neutral-400">
+                        Artwork on both faces — the usual case for a blade sign.
+                    </p>
 
                     <div>
                         <span className="text-[11px] font-medium text-neutral-600">
@@ -217,6 +220,9 @@ export function ControlsPanel() {
                                 );
                             })}
                         </div>
+                        <span className="mt-1 block text-[10px] text-neutral-400">
+                            Bought-in — box-arm is the sturdy default.
+                        </span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
