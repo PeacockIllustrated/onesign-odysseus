@@ -90,10 +90,65 @@ export const DEFAULT_PLACEMENT: AperturePlacement = {
  */
 export type ApertureMode = 'aperture' | 'standoff';
 
+/**
+ * Sign type discriminator. A 'fascia' is the original flat tray that mounts
+ * flush against a wall facing forward. A 'projecting' (blade / fin) sign is
+ * the SAME folded-aluminium tray construction, but mounted perpendicular to
+ * the wall on a bracket so it reads from the street — typically double-sided.
+ *
+ * Absent ⇒ 'fascia', so every design saved before projecting signs existed
+ * loads unchanged. No fascia code path ever reads the projecting fields.
+ */
+export type SignType = 'fascia' | 'projecting';
+
+/**
+ * Bracket family for a projecting sign. The bracket is BOUGHT-IN for v1 —
+ * we only spec it on the PDFs, we don't fabricate a cut drawing. The style
+ * drives the 3D representation and the spec note only.
+ *   - 'flat-plate' — a single wall plate with a flat arm.
+ *   - 'box-arm'    — a boxed/square-section arm off a wall plate (default).
+ *   - 'scroll'     — a decorative scrolled wrought-iron style bracket.
+ */
+export type BracketStyle = 'flat-plate' | 'box-arm' | 'scroll';
+
+export const ProjectingParamsSchema = z.object({
+    /** How far the tray stands off the wall, measured to the near face (mm). */
+    projectionMm: z.number().min(150).max(1500).optional(),
+    /** Artwork on both faces (the usual case for a blade sign). */
+    doubleSided: z.boolean().optional(),
+    bracketStyle: z.enum(['flat-plate', 'box-arm', 'scroll']).optional(),
+    /** Bought-in wall plate footprint, for the spec note. */
+    wallPlate: z
+        .object({
+            widthMm: z.number().positive().max(2000),
+            heightMm: z.number().positive().max(2000),
+        })
+        .optional(),
+});
+export type ProjectingParams = z.infer<typeof ProjectingParamsSchema>;
+
+/** Defaults applied wherever a projecting field is read but absent (§5 of the handoff). */
+export const DEFAULT_PROJECTING: Required<
+    Pick<ProjectingParams, 'projectionMm' | 'doubleSided' | 'bracketStyle'>
+> & { wallPlate: { widthMm: number; heightMm: number } } = {
+    projectionMm: 600,
+    doubleSided: true,
+    bracketStyle: 'box-arm',
+    wallPlate: { widthMm: 300, heightMm: 300 },
+};
+
 export const PanelParamsSchema = z.object({
     name: z.string().min(1, 'name is required').max(120),
     panelWidthMm: z.number().positive('width must be > 0').max(20000),
     panelHeightMm: z.number().positive('height must be > 0').max(20000),
+    /**
+     * Sign type. Absent ⇒ 'fascia' (backward compatible). When 'projecting',
+     * the same folded tray is mounted perpendicular on a bracket; the extra
+     * spec lives in `projecting`. See SignType.
+     */
+    signType: z.enum(['fascia', 'projecting']).optional(),
+    /** Projecting-sign spec. Only read when signType === 'projecting'. */
+    projecting: ProjectingParamsSchema.optional(),
     /**
      * Optional override for the centre panel width when the sign is split
      * across multiple sheets. Default is "use the max sheet width" — set
