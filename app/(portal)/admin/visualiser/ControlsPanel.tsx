@@ -7,7 +7,7 @@ import {
     type BracketStyle,
     type PanelEdge,
 } from '@/lib/visualiser/types';
-import { resolveProjecting, signTypeOf } from '@/lib/visualiser/projecting';
+import { resolveMount } from '@/lib/visualiser/projecting';
 
 const ACCENT = '#4e7e8c';
 
@@ -87,14 +87,25 @@ const BRACKET_STYLES: { value: BracketStyle; label: string }[] = [
 ];
 
 export function ControlsPanel() {
-    const { params, setParam, setProjecting, setReturn, setShadowGapEdge } =
-        useVisualiser();
+    const {
+        params,
+        setParam,
+        setReturn,
+        setShadowGapEdge,
+        mount,
+        setMount,
+        activeTab,
+        projectingEnabled,
+        setActiveTab,
+        enableProjecting,
+        disableProjecting,
+    } = useVisualiser();
     const edges: PanelEdge[] = ['top', 'bottom', 'left', 'right'];
     const shadowGapEdges = params.shadowGapEdges ?? { top: true, bottom: true };
-    const signType = signTypeOf(params);
-    // Resolve once so the controls show the same defaults the rest of the
-    // pipeline applies when a field is left absent.
-    const proj = resolveProjecting(params.projecting);
+    const onProjectingTab = activeTab === 'projecting';
+    // Resolve the mount once so the controls show the same defaults the rest
+    // of the pipeline applies when a field is left absent.
+    const m = resolveMount(mount);
 
     return (
         <div className="space-y-3">
@@ -114,73 +125,144 @@ export function ControlsPanel() {
                 />
             </div>
 
+            {/* Sign tabs — a design is a main fascia panel plus an optional
+                projecting (blade) sign. Each tab edits its own full panel;
+                everything below (dimensions, material, artwork) applies to the
+                panel of the active tab. */}
             <div>
                 <span className="text-[11px] font-medium text-neutral-600">
-                    Sign type
+                    Sign
                 </span>
                 <div className="mt-1.5 grid grid-cols-2 gap-1">
-                    {(['fascia', 'projecting'] as const).map((t) => {
-                        const active = signType === t;
-                        return (
-                            <button
-                                key={t}
-                                type="button"
-                                onClick={() =>
-                                    setParam(
-                                        'signType',
-                                        // Drop the field entirely for fascia so
-                                        // designs stay clean / backward-identical.
-                                        t === 'fascia' ? undefined : 'projecting',
-                                    )
-                                }
-                                aria-pressed={active}
-                                className={`min-h-[36px] rounded-md px-2 py-2 text-xs font-medium capitalize transition-colors ${
-                                    active
-                                        ? 'text-white'
-                                        : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'
-                                }`}
-                                style={active ? { background: ACCENT } : undefined}
-                            >
-                                {t}
-                            </button>
-                        );
-                    })}
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('main')}
+                        aria-pressed={!onProjectingTab}
+                        className={`min-h-[36px] rounded-md px-2 py-2 text-xs font-medium transition-colors ${
+                            !onProjectingTab
+                                ? 'text-white'
+                                : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'
+                        }`}
+                        style={!onProjectingTab ? { background: ACCENT } : undefined}
+                    >
+                        Main panel
+                    </button>
+                    {projectingEnabled ? (
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('projecting')}
+                            aria-pressed={onProjectingTab}
+                            className={`min-h-[36px] rounded-md px-2 py-2 text-xs font-medium transition-colors ${
+                                onProjectingTab
+                                    ? 'text-white'
+                                    : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'
+                            }`}
+                            style={
+                                onProjectingTab ? { background: ACCENT } : undefined
+                            }
+                        >
+                            Projecting sign
+                        </button>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                enableProjecting();
+                                setActiveTab('projecting');
+                            }}
+                            className="min-h-[36px] rounded-md border border-dashed border-neutral-300 px-2 py-2 text-xs font-medium text-neutral-500 transition-colors hover:border-neutral-400 hover:text-neutral-700"
+                        >
+                            + Add projecting sign
+                        </button>
+                    )}
                 </div>
+                {onProjectingTab && (
+                    <button
+                        type="button"
+                        onClick={disableProjecting}
+                        className="mt-1.5 text-[10px] font-medium text-red-600 hover:underline"
+                    >
+                        Remove projecting sign
+                    </button>
+                )}
             </div>
 
-            {signType === 'projecting' && (
-                <Section title="Projecting" accent>
+            {onProjectingTab && (
+                <Section title="Mounting" accent>
                     <p className="text-[10px] text-neutral-500">
-                        Same folded tray, mounted perpendicular on a bracket.
-                        Bracket is bought-in — specified on the PDFs, not
-                        fabricated.
+                        How the blade attaches to the fascia. Its width (in Panel
+                        dimensions) is how far it protrudes; its height is
+                        vertical. The bracket is bought-in — specified on the
+                        PDFs, not fabricated.
                     </p>
 
-                    <NumberField
-                        label="Projection (off wall)"
-                        value={proj.projectionMm}
-                        onChange={(n) => setProjecting({ projectionMm: n })}
-                        min={150}
-                        max={1500}
-                        hint="Distance the near face stands off the wall (150–1500 mm)"
-                    />
+                    <div>
+                        <span className="text-[11px] font-medium text-neutral-600">
+                            Projects from
+                        </span>
+                        <div className="mt-1.5 grid grid-cols-2 gap-1">
+                            {(['left', 'right'] as const).map((sd) => {
+                                const active = m.side === sd;
+                                return (
+                                    <button
+                                        key={sd}
+                                        type="button"
+                                        onClick={() => setMount({ side: sd })}
+                                        aria-pressed={active}
+                                        className={`min-h-[36px] rounded-md px-2 py-2 text-xs font-medium capitalize transition-colors ${
+                                            active
+                                                ? 'text-white'
+                                                : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'
+                                        }`}
+                                        style={
+                                            active
+                                                ? { background: ACCENT }
+                                                : undefined
+                                        }
+                                    >
+                                        {sd}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <span className="mt-1 block text-[10px] text-neutral-400">
+                            Which side of the fascia the blade sits on.
+                        </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <NumberField
+                            label="Position across"
+                            value={m.offsetXMm}
+                            onChange={(n) => setMount({ offsetXMm: n })}
+                            min={0}
+                            hint="From the fascia edge"
+                        />
+                        <NumberField
+                            label="Height from top"
+                            value={m.offsetYMm}
+                            onChange={(n) => setMount({ offsetYMm: n })}
+                            min={0}
+                            hint="Blade top, from fascia top"
+                        />
+                    </div>
 
                     <button
                         type="button"
                         onClick={() =>
-                            setProjecting({ doubleSided: !proj.doubleSided })
+                            setMount({ doubleSided: !m.doubleSided })
                         }
-                        aria-pressed={proj.doubleSided}
+                        aria-pressed={m.doubleSided}
                         className={`flex min-h-[36px] w-full items-center justify-between rounded-md px-3 py-2 text-xs font-medium transition-colors ${
-                            proj.doubleSided
+                            m.doubleSided
                                 ? 'text-white'
                                 : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
                         }`}
-                        style={proj.doubleSided ? { background: ACCENT } : undefined}
+                        style={m.doubleSided ? { background: ACCENT } : undefined}
                     >
                         <span>Double-sided</span>
                         <span className="text-[10px] uppercase tracking-wide">
-                            {proj.doubleSided ? 'On' : 'Off'}
+                            {m.doubleSided ? 'On' : 'Off'}
                         </span>
                     </button>
                     <p className="text-[10px] text-neutral-400">
@@ -193,15 +275,13 @@ export function ControlsPanel() {
                         </span>
                         <div className="mt-1.5 grid grid-cols-3 gap-1">
                             {BRACKET_STYLES.map((b) => {
-                                const active = proj.bracketStyle === b.value;
+                                const active = m.bracketStyle === b.value;
                                 return (
                                     <button
                                         key={b.value}
                                         type="button"
                                         onClick={() =>
-                                            setProjecting({
-                                                bracketStyle: b.value,
-                                            })
+                                            setMount({ bracketStyle: b.value })
                                         }
                                         aria-pressed={active}
                                         className={`min-h-[36px] rounded-md px-1 py-2 text-[11px] font-medium transition-colors ${
@@ -223,35 +303,6 @@ export function ControlsPanel() {
                         <span className="mt-1 block text-[10px] text-neutral-400">
                             Bought-in — box-arm is the sturdy default.
                         </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                        <NumberField
-                            label="Wall plate width"
-                            value={proj.wallPlate.widthMm}
-                            onChange={(n) =>
-                                setProjecting({
-                                    wallPlate: {
-                                        ...proj.wallPlate,
-                                        widthMm: n,
-                                    },
-                                })
-                            }
-                            min={1}
-                        />
-                        <NumberField
-                            label="Wall plate height"
-                            value={proj.wallPlate.heightMm}
-                            onChange={(n) =>
-                                setProjecting({
-                                    wallPlate: {
-                                        ...proj.wallPlate,
-                                        heightMm: n,
-                                    },
-                                })
-                            }
-                            min={1}
-                        />
                     </div>
                 </Section>
             )}

@@ -1,49 +1,54 @@
 /**
  * Projecting-sign helpers — pure, unit-tested.
  *
- * A projecting (blade / fin) sign reuses the fascia folded-aluminium tray
- * verbatim; the only difference is that the tray is mounted perpendicular to
- * the wall on a bracket. These helpers resolve the optional `projecting`
- * params to concrete values (applying the §5 defaults) and produce the
- * human-readable spec strings shared by the PDFs and the backshop snapshot,
- * so those surfaces can never disagree on wording.
+ * A design is a main fascia panel that may also carry a projecting (blade)
+ * sign. The blade is a full PanelCore mounted perpendicular to the fascia:
+ * its panel WIDTH runs out from the wall (the protrusion) and its HEIGHT is
+ * vertical. These helpers resolve the optional mount to concrete values,
+ * seed a blade as a mirror of the main panel (the user then edits it), and
+ * produce the spec strings shared by the PDFs and the backshop snapshot so
+ * those surfaces can never disagree on wording.
  */
 
 import {
-    DEFAULT_PROJECTING,
     type BracketStyle,
+    type PanelCore,
     type PanelParams,
-    type ProjectingParams,
-    type SignType,
+    type ProjectingMount,
+    type ProjectingSign,
 } from './types';
 
-/** All projecting fields made concrete (defaults filled in). */
-export interface ResolvedProjecting {
-    projectionMm: number;
+/** Does this design carry a projecting sign? */
+export function hasProjecting(
+    params: Pick<PanelParams, 'projectingSign'>,
+): boolean {
+    return !!params.projectingSign;
+}
+
+export interface ResolvedMount {
+    offsetXMm: number;
+    offsetYMm: number;
+    side: 'left' | 'right';
     doubleSided: boolean;
     bracketStyle: BracketStyle;
-    wallPlate: { widthMm: number; heightMm: number };
 }
 
-/** Absent signType ⇒ fascia. The single place that rule is encoded. */
-export function signTypeOf(params: Pick<PanelParams, 'signType'>): SignType {
-    return params.signType === 'projecting' ? 'projecting' : 'fascia';
-}
+/** Defaults applied wherever a mount field is read but absent. */
+export const DEFAULT_MOUNT: ResolvedMount = {
+    offsetXMm: 0,
+    offsetYMm: 0,
+    side: 'left',
+    doubleSided: true,
+    bracketStyle: 'box-arm',
+};
 
-export function isProjecting(params: Pick<PanelParams, 'signType'>): boolean {
-    return signTypeOf(params) === 'projecting';
-}
-
-/** Fill any absent projecting field from DEFAULT_PROJECTING. */
-export function resolveProjecting(
-    projecting: ProjectingParams | undefined,
-): ResolvedProjecting {
+export function resolveMount(mount: ProjectingMount | undefined): ResolvedMount {
     return {
-        projectionMm: projecting?.projectionMm ?? DEFAULT_PROJECTING.projectionMm,
-        doubleSided: projecting?.doubleSided ?? DEFAULT_PROJECTING.doubleSided,
-        bracketStyle:
-            projecting?.bracketStyle ?? DEFAULT_PROJECTING.bracketStyle,
-        wallPlate: projecting?.wallPlate ?? DEFAULT_PROJECTING.wallPlate,
+        offsetXMm: mount?.offsetXMm ?? DEFAULT_MOUNT.offsetXMm,
+        offsetYMm: mount?.offsetYMm ?? DEFAULT_MOUNT.offsetYMm,
+        side: mount?.side ?? DEFAULT_MOUNT.side,
+        doubleSided: mount?.doubleSided ?? DEFAULT_MOUNT.doubleSided,
+        bracketStyle: mount?.bracketStyle ?? DEFAULT_MOUNT.bracketStyle,
     };
 }
 
@@ -58,29 +63,56 @@ export function bracketStyleLabel(style: BracketStyle): string {
 }
 
 /**
- * One-line spec for the reference PDF / backshop, e.g.
- * "Projecting · 600mm projection · double-sided · box-arm bracket".
+ * Seed a projecting sign as a mirror of the main panel: the blade starts as a
+ * full copy of the fascia's artwork, materials, colours and dimensions (the
+ * user then edits it on its own tab). Strips any nested projectingSign so a
+ * blade can't carry its own.
  */
-export function projectingSpecLine(r: ResolvedProjecting): string {
+export function seedProjectingFromMain(
+    main: PanelParams,
+    mainSvg: string | null,
+): ProjectingSign {
+    const clone = structuredClone(main) as PanelParams;
+    delete (clone as { projectingSign?: unknown }).projectingSign;
+    const panel: PanelCore = { ...(clone as PanelCore) };
+    panel.name = `${main.name} — projecting`;
+    return {
+        panel,
+        mount: { ...DEFAULT_MOUNT },
+        svgSource: mainSvg,
+    };
+}
+
+/**
+ * One-line spec for the reference PDF / backshop, e.g.
+ * "Projecting blade · 450×1200mm · double-sided · box-arm bracket".
+ * The blade's WIDTH is the protrusion off the wall; HEIGHT is vertical.
+ */
+export function projectingSpecLine(
+    panel: Pick<PanelCore, 'panelWidthMm' | 'panelHeightMm'>,
+    mount: ProjectingMount | undefined,
+): string {
+    const r = resolveMount(mount);
     return [
-        'Projecting',
-        `${Math.round(r.projectionMm)}mm projection`,
+        'Projecting blade',
+        `${Math.round(panel.panelWidthMm)}×${Math.round(panel.panelHeightMm)}mm`,
         r.doubleSided ? 'double-sided' : 'single-sided',
         `${bracketStyleLabel(r.bracketStyle)} bracket`,
     ].join(' · ');
 }
 
 /**
- * Bracket procurement note for the production PDF. The bracket is bought-in
- * for v1, so this is a spec to order against rather than a fabrication
- * drawing.
+ * Bracket procurement note for the production PDF. The bracket is bought-in,
+ * so this is a spec to order against rather than a fabrication drawing.
  */
-export function bracketSpecNote(r: ResolvedProjecting): string {
+export function bracketSpecNote(
+    panel: Pick<PanelCore, 'panelWidthMm'>,
+    mount: ProjectingMount | undefined,
+): string {
+    const r = resolveMount(mount);
     return (
         `Bracket: bought-in ${bracketStyleLabel(r.bracketStyle)}, ` +
-        `${Math.round(r.projectionMm)}mm projection, ` +
-        `wall plate ${Math.round(r.wallPlate.widthMm)}×${Math.round(
-            r.wallPlate.heightMm,
-        )}mm. ${r.doubleSided ? 'Double-sided' : 'Single-sided'} sign.`
+        `blade protrudes ${Math.round(panel.panelWidthMm)}mm, mounted ${r.side}. ` +
+        `${r.doubleSided ? 'Double-sided' : 'Single-sided'}.`
     );
 }

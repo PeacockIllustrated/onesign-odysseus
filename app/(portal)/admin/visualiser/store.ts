@@ -6,9 +6,30 @@ import {
     type PanelParams,
     type PanelEdge,
     type ImportedSvg,
+    type ProjectingMount,
     type VisualiserDesignRow,
 } from '@/lib/visualiser/types';
 import { importSvg } from '@/lib/visualiser/svg-import';
+import { seedProjectingFromMain } from '@/lib/visualiser/projecting';
+
+/** Import an SVG, swallowing parse errors (returns null on failure). */
+function safeImport(svg: string): ImportedSvg | null {
+    try {
+        return importSvg(svg);
+    } catch {
+        return null;
+    }
+}
+
+/** Which panel the controls + flat editor are currently editing. */
+export type SignTab = 'main' | 'projecting';
+
+/** The editable state of one panel: its params + its uploaded aperture SVG. */
+export interface PanelSlot {
+    params: PanelParams;
+    svgSource: string | null;
+    imported: ImportedSvg | null;
+}
 
 type ArtworkLayer = NonNullable<PanelParams['artworkLayers']>[number];
 
@@ -133,11 +154,27 @@ interface VisualiserState {
     /** Selected artwork layer (multi-layer composition). */
     selectedLayerId: string | null;
 
+    /**
+     * A design is a main fascia panel that may also carry a projecting (blade)
+     * sign. To keep every existing per-panel action operating on a single
+     * `params`/`svgSource`/`imported` target, only ONE panel is "live" at a
+     * time (the active tab); the other is stashed in `inactive` and swapped in
+     * on tab change. `mount` is the projecting sign's attachment spec.
+     */
+    activeTab: SignTab;
+    projectingEnabled: boolean;
+    inactive: PanelSlot | null;
+    mount: ProjectingMount;
+
     setParam: <K extends keyof PanelParams>(k: K, v: PanelParams[K]) => void;
-    /** Merge a patch into params.projecting (projecting-sign spec). */
-    setProjecting: (
-        patch: Partial<NonNullable<PanelParams['projecting']>>,
-    ) => void;
+    /** Merge a patch into the projecting sign's mount spec. */
+    setMount: (patch: Partial<ProjectingMount>) => void;
+    /** Switch which panel the editor is editing (stashes/swaps the other). */
+    setActiveTab: (tab: SignTab) => void;
+    /** Add a projecting sign, seeded as a mirror of the main panel. */
+    enableProjecting: () => void;
+    /** Remove the projecting sign (returns to editing the main panel). */
+    disableProjecting: () => void;
     setReturn: (edge: PanelEdge, on: boolean) => void;
     setShadowGapEdge: (edge: 'top' | 'bottom', on: boolean) => void;
     setPlacement: (
@@ -215,6 +252,31 @@ interface VisualiserState {
     markSaved: (id: string) => void;
 }
 
+/**
+ * Resolve the two panels from store state regardless of which tab is live.
+ * The active tab's editing state is the "live" slot; the other (if any) is
+ * stashed in `inactive`. Shared by the 3D composite + the save/export path so
+ * they always agree on which panel is main and which is projecting.
+ */
+export function splitPanels(s: {
+    activeTab: SignTab;
+    projectingEnabled: boolean;
+    params: PanelParams;
+    svgSource: string | null;
+    imported: ImportedSvg | null;
+    inactive: PanelSlot | null;
+}): { main: PanelSlot; projecting: PanelSlot | null } {
+    const live: PanelSlot = {
+        params: s.params,
+        svgSource: s.svgSource,
+        imported: s.imported,
+    };
+    if (!s.projectingEnabled || !s.inactive) return { main: live, projecting: null };
+    return s.activeTab === 'main'
+        ? { main: live, projecting: s.inactive }
+        : { main: s.inactive, projecting: live };
+}
+
 export const useVisualiser = create<VisualiserState>((set) => ({
     params: DEFAULT_PARAMS,
     svgSource: null,
@@ -228,18 +290,94 @@ export const useVisualiser = create<VisualiserState>((set) => ({
     editingGroupId: null,
     pendingPaths: [],
     selectedLayerId: null,
+    activeTab: 'main',
+    projectingEnabled: false,
+    inactive: null,
+    mount: {},
 
     setParam: (k, v) =>
         set((s) => ({ params: { ...s.params, [k]: v }, dirty: true })),
 
-    setProjecting: (patch) =>
-        set((s) => ({
-            params: {
-                ...s.params,
-                projecting: { ...(s.params.projecting ?? {}), ...patch },
-            },
-            dirty: true,
-        })),
+    setMount: (patch) =>
+        set((s) => ({ mount: { ...s.mount, ...patch }, dirty: true })),
+
+    setActiveTab: (tab) =>
+        set((s) => {
+            if (tab === s.activeTab) return {};
+            // Can't edit a projecting panel that doesn't exist.
+            if (!s.projectingEnabled || !s.inactive) return {};
+            // Swap: stash the live panel, promote the stashed one. All other
+            // per-panel edit modes reset so a half-finished pick on one panel
+            // doesn't bleed onto the other.
+            const stash: PanelSlot = {
+                params: s.params,
+                svgSource: s.svgSource,
+                imported: s.imported,
+            };
+            return {
+                activeTab: tab,
+                params: s.inactive.params,
+                svgSource: s.inactive.svgSource,
+                imported: s.inactive.imported,
+                inactive: stash,
+                fixingMode: 'off',
+                cableMode: 'off',
+                editingGroupId: null,
+                pendingPaths: [],
+                selectedLayerId: null,
+            };
+        }),
+
+    enableProjecting: () =>
+        set((s) => {
+            if (s.projectingEnabled) return {};
+            // Seed from whichever panel is the main one right now. We only ever
+            // enable from the main tab, but resolve defensively.
+            const { main } = splitPanels(s);
+            const seed = seedProjectingFromMain(main.params, main.svgSource);
+            const seedImported = seed.svgSource
+                ? safeImport(seed.svgSource)
+                : null;
+            return {
+                projectingEnabled: true,
+                mount: seed.mount,
+                inactive: {
+                    params: seed.panel as PanelParams,
+                    svgSource: seed.svgSource ?? null,
+                    imported: seedImported,
+                },
+                activeTab: 'main',
+            };
+        }),
+
+    disableProjecting: () =>
+        set((s) => {
+            if (!s.projectingEnabled) return {};
+            // If we're editing the blade, restore the main panel as live first.
+            if (s.activeTab === 'projecting' && s.inactive) {
+                return {
+                    projectingEnabled: false,
+                    activeTab: 'main',
+                    params: s.inactive.params,
+                    svgSource: s.inactive.svgSource,
+                    imported: s.inactive.imported,
+                    inactive: null,
+                    mount: {},
+                    dirty: true,
+                    fixingMode: 'off',
+                    cableMode: 'off',
+                    editingGroupId: null,
+                    pendingPaths: [],
+                };
+            }
+            return {
+                projectingEnabled: false,
+                activeTab: 'main',
+                inactive: null,
+                mount: {},
+                dirty: true,
+            };
+        }),
 
     setReturn: (edge, on) =>
         set((s) => ({
@@ -320,17 +458,36 @@ export const useVisualiser = create<VisualiserState>((set) => ({
         })),
 
     loadDesign: (row, imported) =>
-        set({
-            params: row.params_json,
-            svgSource: row.svg_source,
-            imported,
-            designId: row.id,
-            quoteId: row.quote_id,
-            quoteItemId: row.quote_item_id,
-            editingGroupId: null,
-            pendingPaths: [],
-            selectedLayerId: null,
-            dirty: false,
+        set(() => {
+            // Split the nested projecting sign (if any) out of params_json into
+            // its own stashed slot, so the main panel becomes the live editor.
+            const { projectingSign, ...mainCore } = row.params_json;
+            const main = mainCore as PanelParams;
+            const projecting = projectingSign
+                ? {
+                      params: projectingSign.panel as PanelParams,
+                      svgSource: projectingSign.svgSource ?? null,
+                      imported: projectingSign.svgSource
+                          ? safeImport(projectingSign.svgSource)
+                          : null,
+                  }
+                : null;
+            return {
+                params: main,
+                svgSource: row.svg_source,
+                imported,
+                designId: row.id,
+                quoteId: row.quote_id,
+                quoteItemId: row.quote_item_id,
+                activeTab: 'main',
+                projectingEnabled: !!projecting,
+                inactive: projecting,
+                mount: projectingSign?.mount ?? {},
+                editingGroupId: null,
+                pendingPaths: [],
+                selectedLayerId: null,
+                dirty: false,
+            };
         }),
 
     applyPrefill: (patch, quoteId, quoteItemId) =>

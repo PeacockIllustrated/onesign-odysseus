@@ -91,64 +91,34 @@ export const DEFAULT_PLACEMENT: AperturePlacement = {
 export type ApertureMode = 'aperture' | 'standoff';
 
 /**
- * Sign type discriminator. A 'fascia' is the original flat tray that mounts
- * flush against a wall facing forward. A 'projecting' (blade / fin) sign is
- * the SAME folded-aluminium tray construction, but mounted perpendicular to
- * the wall on a bracket so it reads from the street — typically double-sided.
- *
- * Absent ⇒ 'fascia', so every design saved before projecting signs existed
- * loads unchanged. No fascia code path ever reads the projecting fields.
- */
-export type SignType = 'fascia' | 'projecting';
-
-/**
  * Bracket family for a projecting sign. The bracket is BOUGHT-IN for v1 —
  * we only spec it on the PDFs, we don't fabricate a cut drawing. The style
  * drives the 3D representation and the spec note only.
  *   - 'flat-plate' — a single wall plate with a flat arm.
- *   - 'box-arm'    — a boxed/square-section arm off a wall plate (default).
+ *   - 'box-arm'    — a boxed/square-section arm off the fascia (default).
  *   - 'scroll'     — a decorative scrolled wrought-iron style bracket.
  */
 export type BracketStyle = 'flat-plate' | 'box-arm' | 'scroll';
 
-export const ProjectingParamsSchema = z.object({
-    /** How far the tray stands off the wall, measured to the near face (mm). */
-    projectionMm: z.number().min(150).max(1500).optional(),
-    /** Artwork on both faces (the usual case for a blade sign). */
-    doubleSided: z.boolean().optional(),
-    bracketStyle: z.enum(['flat-plate', 'box-arm', 'scroll']).optional(),
-    /** Bought-in wall plate footprint, for the spec note. */
-    wallPlate: z
-        .object({
-            widthMm: z.number().positive().max(2000),
-            heightMm: z.number().positive().max(2000),
-        })
-        .optional(),
-});
-export type ProjectingParams = z.infer<typeof ProjectingParamsSchema>;
-
-/** Defaults applied wherever a projecting field is read but absent (§5 of the handoff). */
-export const DEFAULT_PROJECTING: Required<
-    Pick<ProjectingParams, 'projectionMm' | 'doubleSided' | 'bracketStyle'>
-> & { wallPlate: { widthMm: number; heightMm: number } } = {
-    projectionMm: 600,
-    doubleSided: true,
-    bracketStyle: 'box-arm',
-    wallPlate: { widthMm: 300, heightMm: 300 },
-};
-
-export const PanelParamsSchema = z.object({
+/**
+ * PanelCoreSchema is every field that describes a single folded-aluminium
+ * panel — dimensions, returns, artwork, materials, illumination, fixings.
+ *
+ * A *design* is a main fascia panel (PanelParams, below) that may also carry
+ * a second, projecting (blade) sign. The projecting sign is itself a full
+ * PanelCore — it has its own artwork, materials and dimensions, designed on
+ * its own tab — plus a `mount` describing where it attaches to the fascia and
+ * how far it protrudes. The two are composited in one 3D scene (fascia on the
+ * wall, blade protruding perpendicular, like a real shopfront) but fabricated
+ * and exported as separate items.
+ *
+ * PanelCore deliberately has NO `projectingSign` field — only the main panel
+ * (PanelParams) does, so a projecting sign can't itself carry another.
+ */
+const PanelCoreSchema = z.object({
     name: z.string().min(1, 'name is required').max(120),
     panelWidthMm: z.number().positive('width must be > 0').max(20000),
     panelHeightMm: z.number().positive('height must be > 0').max(20000),
-    /**
-     * Sign type. Absent ⇒ 'fascia' (backward compatible). When 'projecting',
-     * the same folded tray is mounted perpendicular on a bracket; the extra
-     * spec lives in `projecting`. See SignType.
-     */
-    signType: z.enum(['fascia', 'projecting']).optional(),
-    /** Projecting-sign spec. Only read when signType === 'projecting'. */
-    projecting: ProjectingParamsSchema.optional(),
     /**
      * Optional override for the centre panel width when the sign is split
      * across multiple sheets. Default is "use the max sheet width" — set
@@ -373,6 +343,57 @@ export const PanelParamsSchema = z.object({
             }),
         )
         .optional(),
+});
+export type PanelCore = z.infer<typeof PanelCoreSchema>;
+
+/**
+ * How a projecting (blade) sign attaches to the main fascia. The blade is
+ * the SAME folded tray, mounted perpendicular: its panel WIDTH runs out from
+ * the wall (the protrusion) and its HEIGHT is vertical. The mount positions
+ * it on the fascia and records the bought-in bracket spec.
+ */
+export const ProjectingMountSchema = z.object({
+    /**
+     * Horizontal position of the blade's mounted (near) edge along the
+     * fascia, measured in mm from the fascia's LEFT edge. Default: near the
+     * left, like a typical shopfront blade.
+     */
+    offsetXMm: z.number().optional(),
+    /**
+     * Vertical position of the blade's TOP, measured in mm down from the
+     * fascia's top edge. Default: aligned near the fascia top.
+     */
+    offsetYMm: z.number().optional(),
+    /** Which side of the fascia the blade projects toward. Default 'left'. */
+    side: z.enum(['left', 'right']).optional(),
+    /** Artwork on both faces (the usual case for a blade sign). */
+    doubleSided: z.boolean().optional(),
+    /** Bought-in bracket family — spec note + 3D representation only. */
+    bracketStyle: z.enum(['flat-plate', 'box-arm', 'scroll']).optional(),
+});
+export type ProjectingMount = z.infer<typeof ProjectingMountSchema>;
+
+/**
+ * A projecting sign attached to a design: a full panel (its own artwork,
+ * materials, dimensions) plus the mount, plus the blade's own uploaded
+ * aperture SVG (the main panel's lives in the `svg_source` column; the
+ * blade's rides here inside params_json).
+ */
+export const ProjectingSignSchema = z.object({
+    panel: PanelCoreSchema,
+    mount: ProjectingMountSchema,
+    svgSource: z.string().max(5_000_000).nullable().optional(),
+});
+export type ProjectingSign = z.infer<typeof ProjectingSignSchema>;
+
+/**
+ * The main fascia panel — a PanelCore that may also carry a projecting sign.
+ * The whole projecting blade (its panel + mount + svg) nests inside
+ * params_json, so adding it needs no DB migration and old designs (no
+ * `projectingSign`) load as a main panel only.
+ */
+export const PanelParamsSchema = PanelCoreSchema.extend({
+    projectingSign: ProjectingSignSchema.optional(),
 });
 export type PanelParams = z.infer<typeof PanelParamsSchema>;
 

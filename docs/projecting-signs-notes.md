@@ -1,5 +1,48 @@
 # Projecting signs — implementation notes & assumptions
 
+## v2 — two-tab composite model (current)
+
+The original single-panel `signType: fascia | projecting` toggle (v1, below)
+was **replaced** at the user's direction after they shared a shopfront photo:
+a projecting sign that protrudes directly off the fascia, like a real blade
+sign. The new model:
+
+- A **design = a main fascia panel + an optional projecting (blade) sign**,
+  edited on **two tabs** ("Main panel" / "Projecting sign"). Each tab is a full
+  panel with its own dimensions, artwork (SVG), materials and colours.
+- The blade is **seeded as a mirror of the main panel** (`seedProjectingFromMain`)
+  then fully editable — decision: *mirrors main, then editable*.
+- Both panels are **visualised together** in one 3D scene (fascia on the wall,
+  blade protruding perpendicular), with the blade positioned/scaled via its own
+  dimensions + a **Mounting** section (side, position across, height from top,
+  double-sided, bracket style).
+- **Separate exports per panel** — each panel gets its own PDF / backshop item.
+- **No DB migration**: the whole blade (`panel` + `mount` + its `svgSource`)
+  nests inside `params_json.projectingSign`. Old designs (no `projectingSign`)
+  load as a main panel only.
+
+### Store design (the key mechanism)
+Only ONE panel is "live" at a time (the active tab); the other is stashed in
+`inactive` and swapped in on tab change (`setActiveTab`). This keeps every
+existing per-panel edit action operating on a single `params`/`svgSource`/
+`imported` target untouched. `splitPanels(state)` resolves main-vs-projecting
+regardless of which tab is live; the save path (`assembleMain` in ExportBar)
+and the 3D composite both go through it. The blade's mount lives in top-level
+store state (`mount`).
+
+### Staged delivery
+- **Change-set 7 (this):** data model + store tabs + controls + helpers/tests.
+  Each panel edits + renders + saves/loads on its own tab. The old single-panel
+  3D wall/bracket + PDF/backshop projecting additions were reverted (they
+  belonged to the replaced model).
+- **Change-set 8 (next):** composite 3D — render both panels together (blade
+  perpendicular, mounted on the fascia), double-sided.
+- **Change-set 9:** per-panel PDF + backshop export.
+
+---
+
+## v1 — single-panel toggle (REPLACED, kept for history)
+
 Implemented from `docs/projecting-signs-handoff.md`. Run autonomously per the
 handoff's §8 brief; the user pre-approved **fully autonomous** execution and a
 **bought-in bracket (spec note only, no fabrication drawing)** for v1.

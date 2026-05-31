@@ -44,7 +44,9 @@
       "Bash(find /c/Users/peaco/Documents/onesign-portal/app -type f \\\\\\(-name *.tsx -o -name *.ts -o -name *.jsx -o -name *.js \\\\\\))",
       "Bash(grep -E \"\\\\.tsx?$\")",
       "Bash(grep -i \"TODO\\\\|import\\\\|//\")",
-      "Bash(grep -n \"ALTER TABLE.*artwork_jobs\" /c/Users/peaco/Documents/onesign-odysseus/supabase/migrations/*.sql)"
+      "Bash(grep -n \"ALTER TABLE.*artwork_jobs\" /c/Users/peaco/Documents/onesign-odysseus/supabase/migrations/*.sql)",
+      "Bash(npx --no-install tsc --noEmit)",
+      "Bash(git pull *)"
     ]
   }
 }

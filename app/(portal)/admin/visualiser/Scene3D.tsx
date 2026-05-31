@@ -15,7 +15,6 @@ import type {
     StandoffPiece,
     PushThroughPiece,
 } from '@/lib/visualiser/types';
-import { isProjecting, resolveProjecting } from '@/lib/visualiser/projecting';
 
 /**
  * Set by the scene on mount so ExportBar can grab thumbnails. `fn` is the
@@ -40,12 +39,6 @@ function CaptureBinder() {
             }
         };
         sceneCapture.faceOn = () => {
-            // Hide the projecting wall/bracket for the face-on shot so the
-            // bounds frame the sign face alone (the mount is scene context,
-            // not artwork). Restored in the finally below.
-            const mount = scene.getObjectByName(PROJECTING_MOUNT_NAME);
-            const mountWasVisible = mount?.visible ?? true;
-            if (mount) mount.visible = false;
             try {
                 const box = new THREE.Box3().setFromObject(scene);
                 if (box.isEmpty()) {
@@ -80,11 +73,9 @@ function CaptureBinder() {
                 cam.updateProjectionMatrix();
                 gl.render(scene, cam);
                 const url = gl.domElement.toDataURL('image/png');
-                if (mount) mount.visible = mountWasVisible;
                 gl.render(scene, camera); // restore the operator's view
                 return url;
             } catch {
-                if (mount) mount.visible = mountWasVisible;
                 return null;
             }
         };
@@ -102,15 +93,6 @@ const DEFAULT_PANEL_COLOR = '#d6d6d6';
 const ACCENT = '#4e7e8c'; // brand steel teal — accents on overlay widgets
 const EDGE_COLOR = '#111111'; // technical-drawing black strokes
 const STANDOFF_STUD_COLOR = '#9aa0a4'; // brushed-metal grey for the studs
-const WALL_COLOR = '#dfe3e7'; // light masonry grey for the projecting-sign wall
-const BRACKET_COLOR = '#9aa0a4'; // brushed-metal grey for the bracket / wall plate
-/**
- * Name tag on the projecting wall + bracket group. The face-on capture
- * (used for the backshop thumbnail) hides anything under this name so the
- * thumbnail frames the sign FACE alone — the wall/bracket are scene context,
- * not part of the artwork shot. The angled reference-PDF capture keeps them.
- */
-const PROJECTING_MOUNT_NAME = 'projecting-mount';
 // When the operator is actively placing or deleting manual fixings,
 // recolour the manual circles so they pop out from the auto-placed
 // ones. Emerald = "place" (additive action), red = "delete" — both are
@@ -2003,139 +1985,6 @@ function Panel({
     );
 }
 
-/**
- * A grey box with crisp technical edges. The wall, wall plate and bracket
- * arms of a projecting sign are all built from these — kept deliberately
- * simple because the bracket is bought-in (we spec it on the PDF, we don't
- * fabricate it), so the 3D is indicative scene context, not a build model.
- */
-function MountBox({
-    size,
-    position,
-    rotation,
-    color,
-    night,
-}: {
-    size: [number, number, number];
-    position: [number, number, number];
-    rotation?: [number, number, number];
-    color: string;
-    night: boolean;
-}) {
-    return (
-        <mesh position={position} rotation={rotation}>
-            <boxGeometry args={size} />
-            <meshBasicMaterial color={displayColor(color, night)} />
-            <Edges color={EDGE_COLOR} lineWidth={1} />
-        </mesh>
-    );
-}
-
-/**
- * Wall + bracket for a projecting (blade) sign. The sign keeps its native
- * orientation (face toward +Z, so the existing face-on capture and default
- * orbit shot still frame the artwork correctly). The wall is therefore a
- * vertical slab perpendicular to the face, off to the left, with the sign
- * standing `projectionMm` proud of it on a bracket — physically the same
- * object as "panel rotated onto a facade", just expressed in the coordinate
- * frame the rest of the scene already uses.
- */
-function ProjectingMount({
-    faceWMm,
-    faceHMm,
-    projectionMm,
-    bracketStyle,
-    wallPlate,
-    night,
-}: {
-    faceWMm: number;
-    faceHMm: number;
-    projectionMm: number;
-    bracketStyle: 'flat-plate' | 'box-arm' | 'scroll';
-    wallPlate: { widthMm: number; heightMm: number };
-    night: boolean;
-}) {
-    const sw = faceWMm * S;
-    const sh = faceHMm * S;
-    const sp = projectionMm * S;
-    const nearEdgeX = -sw / 2; // sign edge closest to the wall
-    const wallFaceX = nearEdgeX - sp; // the wall surface the sign projects from
-    const wallThick = 40 * S;
-    const wallH = Math.max(sh * 1.8, sh + 0.8);
-    const wallDepth = Math.max(sw * 0.5, 800 * S);
-    const armMidX = (wallFaceX + nearEdgeX) / 2;
-    const plateThick = 15 * S;
-
-    const arms: React.ReactNode[] = [];
-    if (bracketStyle === 'flat-plate') {
-        // A single vertical flat blade running wall → sign.
-        arms.push(
-            <MountBox
-                key="arm"
-                size={[sp, sh * 0.6, 12 * S]}
-                position={[armMidX, 0, 0]}
-                color={BRACKET_COLOR}
-                night={night}
-            />,
-        );
-    } else if (bracketStyle === 'box-arm') {
-        // Two square-section arms top + bottom — the sturdy default.
-        for (const [i, y] of [sh * 0.3, -sh * 0.3].entries()) {
-            arms.push(
-                <MountBox
-                    key={`arm-${i}`}
-                    size={[sp, 60 * S, 60 * S]}
-                    position={[armMidX, y, 0]}
-                    color={BRACKET_COLOR}
-                    night={night}
-                />,
-            );
-        }
-    } else {
-        // Scroll — a top arm plus a diagonal brace, read schematically.
-        arms.push(
-            <MountBox
-                key="arm-top"
-                size={[sp, 18 * S, 18 * S]}
-                position={[armMidX, sh * 0.35, 0]}
-                color={BRACKET_COLOR}
-                night={night}
-            />,
-        );
-        const braceLen = Math.hypot(sp, sh * 0.7);
-        const braceAngle = Math.atan2(sh * 0.7, sp);
-        arms.push(
-            <MountBox
-                key="brace"
-                size={[braceLen, 14 * S, 14 * S]}
-                position={[armMidX, 0, 0]}
-                rotation={[0, 0, braceAngle]}
-                color={BRACKET_COLOR}
-                night={night}
-            />,
-        );
-    }
-
-    return (
-        <group name={PROJECTING_MOUNT_NAME}>
-            {/* Wall slab */}
-            <MountBox
-                size={[wallThick, wallH, wallDepth]}
-                position={[wallFaceX - wallThick / 2, 0, 0]}
-                color={WALL_COLOR}
-                night={night}
-            />
-            {/* Wall plate bolted to the wall face */}
-            <MountBox
-                size={[plateThick, wallPlate.heightMm * S, wallPlate.widthMm * S]}
-                position={[wallFaceX + plateThick / 2, 0, 0]}
-                color={BRACKET_COLOR}
-                night={night}
-            />
-            {arms}
-        </group>
-    );
-}
 
 export default function Scene3D(props: {
     params: PanelParams;
@@ -2196,25 +2045,11 @@ export default function Scene3D(props: {
     const showStandoffLocators = props.showStandoffLocators ?? true;
     const illuminationView = props.illuminationView ?? false;
 
-    // Projecting-sign scene context. The wall/bracket + double-sided back
-    // face only make sense on the folded representation, so the unfold view
-    // (fold≈0) stays a plain flat blank exactly as before.
-    const projecting = isProjecting(props.params);
-    const proj = projecting ? resolveProjecting(props.params.projecting) : null;
-    const folded = fold >= 0.5;
-    const showMount = projecting && folded;
-    const showBackFace = !!(proj?.doubleSided && folded);
-    const faceWMm = props.development.faceNominalWMm;
-    const faceHMm = props.development.faceNominalHMm;
-    const trayDepthMm = props.params.returnDepthMm;
-
-    // Frame the flat blank so both folded and unfolded states stay in view,
-    // and widen for the projecting wall/bracket so they don't clip the frame.
+    // Frame the flat blank so both folded and unfolded states stay in view.
     const reach =
         Math.max(
             props.development.totalFlatWMm,
             props.development.totalFlatHMm,
-            proj ? faceWMm + proj.projectionMm : 0,
         ) *
         S *
         1.5;
@@ -2261,58 +2096,6 @@ export default function Scene3D(props: {
                 showStandoffLetters={showStandoffLetters}
                 showStandoffLocators={showStandoffLocators}
             />
-
-            {/* Double-sided blade: a second, non-interactive copy of the same
-                tray rotated 180° about Y and pushed back by the tray depth, so
-                the two artwork faces sit on the outer surfaces of one box and
-                the back reads correctly when you orbit round. */}
-            {showBackFace && (
-                <group
-                    rotation={[0, Math.PI, 0]}
-                    position={[0, 0, -trayDepthMm * S]}
-                >
-                    <Panel
-                        {...props}
-                        autoFixings={autoFixings}
-                        manualFixings={manualFixings}
-                        cableHoles={cableHoles}
-                        reference={reference}
-                        vinylPieces={vinylPieces}
-                        acrylicPieces={acrylicPieces}
-                        solidPieces={solidPieces}
-                        standoffPieces={standoffPieces}
-                        pushThroughKeyline={pushThroughKeyline}
-                        pushThroughIslands={pushThroughIslands}
-                        pushThroughPieces={pushThroughPieces}
-                        fold={fold}
-                        showOutlines={showOutlines}
-                        showStandoffLetters={showStandoffLetters}
-                        showStandoffLocators={showStandoffLocators}
-                        // The back face is a visual mirror only — no edit
-                        // affordances, dimensions or hit targets on it.
-                        placedPathsByIndex={null}
-                        pathGroupColors={null}
-                        pendingPaths={undefined}
-                        isEditingGroup={false}
-                        onPathToggle={undefined}
-                        fixingMode="off"
-                        cableMode="off"
-                        onFixingClick={undefined}
-                        showDimensions={false}
-                    />
-                </group>
-            )}
-
-            {showMount && proj && (
-                <ProjectingMount
-                    faceWMm={faceWMm}
-                    faceHMm={faceHMm}
-                    projectionMm={proj.projectionMm}
-                    bracketStyle={proj.bracketStyle}
-                    wallPlate={proj.wallPlate}
-                    night={illuminationView}
-                />
-            )}
             <OrbitControls enablePan makeDefault />
         </Canvas>
     );

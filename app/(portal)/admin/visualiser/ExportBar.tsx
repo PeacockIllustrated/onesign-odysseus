@@ -11,7 +11,7 @@ import {
     Scissors,
     Tv,
 } from 'lucide-react';
-import { useVisualiser } from './store';
+import { useVisualiser, splitPanels } from './store';
 import { sceneCapture } from './Scene3D';
 import {
     generateReferencePdfBlob,
@@ -20,15 +20,11 @@ import {
 } from '@/lib/visualiser/pdf';
 import { saveDesign } from '@/lib/visualiser/actions';
 import { addToBackshop, isDesignOnBackshop } from '@/lib/backshop/actions';
-import {
-    isProjecting,
-    projectingSpecLine,
-    resolveProjecting,
-} from '@/lib/visualiser/projecting';
 import { composeLayersSvg } from '@/lib/visualiser/compose';
 import { trimImageDataUrl } from '@/lib/visualiser/image';
 import {
     PanelParamsSchema,
+    type PanelParams,
     type FlatPath,
     type SectionedExport,
     type ExportWarning,
@@ -164,12 +160,60 @@ export function ExportBar({
     const {
         params,
         svgSource,
+        imported,
         designId,
         quoteId,
         quoteItemId,
         dirty,
         markSaved,
+        activeTab,
+        projectingEnabled,
+        inactive,
+        mount,
     } = useVisualiser();
+
+    // Flatten a panel's artwork layers into a single aperture SVG, falling
+    // back to its raw uploaded SVG when there are no layers.
+    const flattenSvg = (
+        p: { artworkLayers?: PanelParams['artworkLayers']; panelWidthMm: number; panelHeightMm: number },
+        raw: string | null,
+    ): string | null => {
+        const layers = p.artworkLayers ?? [];
+        return layers.length
+            ? composeLayersSvg(layers, p.panelWidthMm, p.panelHeightMm)
+            : raw;
+    };
+
+    /**
+     * Assemble the full design for persistence regardless of which tab is
+     * live: the main panel is the row's params (with the projecting blade
+     * nested inside projectingSign), the blade carries its own flattened svg.
+     */
+    const assembleMain = (): { params: PanelParams; svgSource: string | null } => {
+        const { main, projecting } = splitPanels({
+            activeTab,
+            projectingEnabled,
+            params,
+            svgSource,
+            imported,
+            inactive,
+        });
+        const mainSvg = flattenSvg(main.params, main.svgSource);
+        let projectingSign: PanelParams['projectingSign'];
+        if (projecting) {
+            const bladeCore = { ...projecting.params };
+            delete (bladeCore as { projectingSign?: unknown }).projectingSign;
+            projectingSign = {
+                panel: bladeCore,
+                mount,
+                svgSource: flattenSvg(projecting.params, projecting.svgSource),
+            };
+        }
+        return {
+            params: { ...main.params, projectingSign },
+            svgSource: mainSvg,
+        };
+    };
     const [savePending, startSaveTransition] = useTransition();
     const [pdfPending, setPdfPending] = useState<'prod' | 'ref' | null>(null);
     const [backshopPending, setBackshopPending] = useState(false);
@@ -247,19 +291,11 @@ export function ExportBar({
             //    QR on the stored PDF should point at a real design.
             let id = designId;
             if (!id || dirty) {
-                const layers = params.artworkLayers ?? [];
-                const effectiveSvg =
-                    layers.length > 0
-                        ? composeLayersSvg(
-                              layers,
-                              params.panelWidthMm,
-                              params.panelHeightMm,
-                          )
-                        : svgSource;
+                const assembled = assembleMain();
                 const saved = await saveDesign({
                     id: designId ?? undefined,
-                    params,
-                    svgSource: effectiveSvg,
+                    params: assembled.params,
+                    svgSource: assembled.svgSource,
                     quoteId,
                     quoteItemId,
                 });
@@ -301,22 +337,10 @@ export function ExportBar({
             });
             const pdfBase64 = await blobToBase64(blob);
 
-            // Projecting signs surface their spec on the board's Build column
-            // (alongside the material) and pick up the contextual Wall-fixing
-            // gate via the bracket feature.
-            const projecting = isProjecting(params);
-            const projDesc = projecting
-                ? projectingSpecLine(resolveProjecting(params.projecting))
-                : null;
-            const description =
-                [projDesc, params.materialLabel || null]
-                    .filter(Boolean)
-                    .join(' — ') || null;
-
             const res = await addToBackshop({
                 designId: id,
                 name: params.name,
-                description,
+                description: params.materialLabel || null,
                 widthMm: params.panelWidthMm,
                 heightMm: params.panelHeightMm,
                 returnsMm: params.returnDepthMm,
@@ -329,7 +353,6 @@ export function ExportBar({
                     vinyl: vinylPieces.length > 0,
                     standoff: standoffPieces.length > 0,
                     illumination: !!params.illumination?.keyline?.enabled,
-                    bracket: projecting,
                 },
             });
             if (res.ok) {
@@ -385,24 +408,16 @@ export function ExportBar({
 
     const onSave = () => {
         setMsg(null);
-        // With multi-layer artwork the editable layers live in
-        // params.artworkLayers; persist a flattened composite SVG as
-        // svg_source too so the design still renders for any consumer
-        // that only reads svg_source.
-        const layers = params.artworkLayers ?? [];
-        const effectiveSvg =
-            layers.length > 0
-                ? composeLayersSvg(
-                      layers,
-                      params.panelWidthMm,
-                      params.panelHeightMm,
-                  )
-                : svgSource;
+        // Persist the full design: the main panel as the row params (with the
+        // projecting blade nested inside), each panel carrying a flattened
+        // composite SVG so any consumer that only reads svg_source still
+        // renders. Works from either tab.
+        const assembled = assembleMain();
         startSaveTransition(async () => {
             const res = await saveDesign({
                 id: designId ?? undefined,
-                params,
-                svgSource: effectiveSvg,
+                params: assembled.params,
+                svgSource: assembled.svgSource,
                 quoteId,
                 quoteItemId,
             });
