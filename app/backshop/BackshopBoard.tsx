@@ -116,9 +116,11 @@ export function BackshopBoard({ items }: { items: BackshopItemRow[] }) {
                         onClick={() => router.push(`/backshop/${item.id}`)}
                         className="group flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white px-5 py-4 text-left shadow-sm outline-none transition-colors hover:bg-neutral-50 focus:border-transparent focus:ring-4 focus:ring-[#4e7e8c] sm:flex-row sm:items-center sm:gap-6 sm:px-6 sm:py-5"
                     >
-                        {/* Name + specs */}
-                        <div className="min-w-0 sm:w-52 sm:shrink-0">
-                            <div className="truncate text-xl font-bold text-neutral-900 sm:text-2xl">
+                        {/* Name + specs — ~30% of the row (the banner has
+                            slack to spare) and no truncation, so titles wrap
+                            rather than getting clipped with an ellipsis. */}
+                        <div className="min-w-0 sm:w-[30%] sm:shrink-0">
+                            <div className="text-xl font-bold leading-tight text-neutral-900 sm:text-2xl">
                                 {item.name}
                             </div>
                             {specs.length > 0 && (
