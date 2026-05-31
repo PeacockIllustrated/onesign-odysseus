@@ -2,7 +2,12 @@
 
 import { useVisualiser } from './store';
 import { Section } from './Section';
-import { MAX_PANEL_WIDTH_MM, type PanelEdge } from '@/lib/visualiser/types';
+import {
+    MAX_PANEL_WIDTH_MM,
+    type BracketStyle,
+    type PanelEdge,
+} from '@/lib/visualiser/types';
+import { resolveProjecting, signTypeOf } from '@/lib/visualiser/projecting';
 
 const ACCENT = '#4e7e8c';
 
@@ -75,10 +80,21 @@ function NumberField({
 }
 
 
+const BRACKET_STYLES: { value: BracketStyle; label: string }[] = [
+    { value: 'flat-plate', label: 'Flat plate' },
+    { value: 'box-arm', label: 'Box arm' },
+    { value: 'scroll', label: 'Scroll' },
+];
+
 export function ControlsPanel() {
-    const { params, setParam, setReturn, setShadowGapEdge } = useVisualiser();
+    const { params, setParam, setProjecting, setReturn, setShadowGapEdge } =
+        useVisualiser();
     const edges: PanelEdge[] = ['top', 'bottom', 'left', 'right'];
     const shadowGapEdges = params.shadowGapEdges ?? { top: true, bottom: true };
+    const signType = signTypeOf(params);
+    // Resolve once so the controls show the same defaults the rest of the
+    // pipeline applies when a field is left absent.
+    const proj = resolveProjecting(params.projecting);
 
     return (
         <div className="space-y-3">
@@ -97,6 +113,142 @@ export function ControlsPanel() {
                     className="mt-1 w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm focus:border-black focus:outline-none"
                 />
             </div>
+
+            <div>
+                <span className="text-[11px] font-medium text-neutral-600">
+                    Sign type
+                </span>
+                <div className="mt-1.5 grid grid-cols-2 gap-1">
+                    {(['fascia', 'projecting'] as const).map((t) => {
+                        const active = signType === t;
+                        return (
+                            <button
+                                key={t}
+                                type="button"
+                                onClick={() =>
+                                    setParam(
+                                        'signType',
+                                        // Drop the field entirely for fascia so
+                                        // designs stay clean / backward-identical.
+                                        t === 'fascia' ? undefined : 'projecting',
+                                    )
+                                }
+                                aria-pressed={active}
+                                className={`min-h-[36px] rounded-md px-2 py-2 text-xs font-medium capitalize transition-colors ${
+                                    active
+                                        ? 'text-white'
+                                        : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'
+                                }`}
+                                style={active ? { background: ACCENT } : undefined}
+                            >
+                                {t}
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {signType === 'projecting' && (
+                <Section title="Projecting" accent>
+                    <p className="text-[10px] text-neutral-500">
+                        Same folded tray, mounted perpendicular on a bracket.
+                        Bracket is bought-in — specified on the PDFs, not
+                        fabricated.
+                    </p>
+
+                    <NumberField
+                        label="Projection (off wall)"
+                        value={proj.projectionMm}
+                        onChange={(n) => setProjecting({ projectionMm: n })}
+                        min={150}
+                        max={1500}
+                        hint="Distance the near face stands off the wall"
+                    />
+
+                    <button
+                        type="button"
+                        onClick={() =>
+                            setProjecting({ doubleSided: !proj.doubleSided })
+                        }
+                        aria-pressed={proj.doubleSided}
+                        className={`flex min-h-[36px] w-full items-center justify-between rounded-md px-3 py-2 text-xs font-medium transition-colors ${
+                            proj.doubleSided
+                                ? 'text-white'
+                                : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                        }`}
+                        style={proj.doubleSided ? { background: ACCENT } : undefined}
+                    >
+                        <span>Double-sided</span>
+                        <span className="text-[10px] uppercase tracking-wide">
+                            {proj.doubleSided ? 'On' : 'Off'}
+                        </span>
+                    </button>
+
+                    <div>
+                        <span className="text-[11px] font-medium text-neutral-600">
+                            Bracket style
+                        </span>
+                        <div className="mt-1.5 grid grid-cols-3 gap-1">
+                            {BRACKET_STYLES.map((b) => {
+                                const active = proj.bracketStyle === b.value;
+                                return (
+                                    <button
+                                        key={b.value}
+                                        type="button"
+                                        onClick={() =>
+                                            setProjecting({
+                                                bracketStyle: b.value,
+                                            })
+                                        }
+                                        aria-pressed={active}
+                                        className={`min-h-[36px] rounded-md px-1 py-2 text-[11px] font-medium transition-colors ${
+                                            active
+                                                ? 'text-white'
+                                                : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'
+                                        }`}
+                                        style={
+                                            active
+                                                ? { background: ACCENT }
+                                                : undefined
+                                        }
+                                    >
+                                        {b.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <NumberField
+                            label="Wall plate width"
+                            value={proj.wallPlate.widthMm}
+                            onChange={(n) =>
+                                setProjecting({
+                                    wallPlate: {
+                                        ...proj.wallPlate,
+                                        widthMm: n,
+                                    },
+                                })
+                            }
+                            min={1}
+                        />
+                        <NumberField
+                            label="Wall plate height"
+                            value={proj.wallPlate.heightMm}
+                            onChange={(n) =>
+                                setProjecting({
+                                    wallPlate: {
+                                        ...proj.wallPlate,
+                                        heightMm: n,
+                                    },
+                                })
+                            }
+                            min={1}
+                        />
+                    </div>
+                </Section>
+            )}
 
             <Section title="Panel dimensions" step={1}>
                 <div className="grid grid-cols-2 gap-3">

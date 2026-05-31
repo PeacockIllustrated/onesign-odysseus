@@ -134,6 +134,10 @@ interface VisualiserState {
     selectedLayerId: string | null;
 
     setParam: <K extends keyof PanelParams>(k: K, v: PanelParams[K]) => void;
+    /** Merge a patch into params.projecting (projecting-sign spec). */
+    setProjecting: (
+        patch: Partial<NonNullable<PanelParams['projecting']>>,
+    ) => void;
     setReturn: (edge: PanelEdge, on: boolean) => void;
     setShadowGapEdge: (edge: 'top' | 'bottom', on: boolean) => void;
     setPlacement: (
@@ -227,6 +231,15 @@ export const useVisualiser = create<VisualiserState>((set) => ({
 
     setParam: (k, v) =>
         set((s) => ({ params: { ...s.params, [k]: v }, dirty: true })),
+
+    setProjecting: (patch) =>
+        set((s) => ({
+            params: {
+                ...s.params,
+                projecting: { ...(s.params.projecting ?? {}), ...patch },
+            },
+            dirty: true,
+        })),
 
     setReturn: (edge, on) =>
         set((s) => ({
