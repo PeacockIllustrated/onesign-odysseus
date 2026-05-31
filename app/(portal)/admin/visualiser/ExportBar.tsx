@@ -19,7 +19,7 @@ import {
     pdfFilename,
 } from '@/lib/visualiser/pdf';
 import { saveDesign } from '@/lib/visualiser/actions';
-import { addToBackshop } from '@/lib/backshop/actions';
+import { addToBackshop, isDesignOnBackshop } from '@/lib/backshop/actions';
 import { composeLayersSvg } from '@/lib/visualiser/compose';
 import { trimImageDataUrl } from '@/lib/visualiser/image';
 import {
@@ -168,8 +168,25 @@ export function ExportBar({
     const [savePending, startSaveTransition] = useTransition();
     const [pdfPending, setPdfPending] = useState<'prod' | 'ref' | null>(null);
     const [backshopPending, setBackshopPending] = useState(false);
+    const [onBackshop, setOnBackshop] = useState(false);
     const [msg, setMsg] = useState<string | null>(null);
     const [exported, setExported] = useState<string | null>(null);
+
+    // Is the current design already on the board? Drives the Add / Update
+    // label. Re-checked whenever the loaded design changes.
+    useEffect(() => {
+        let cancelled = false;
+        if (!designId) {
+            setOnBackshop(false);
+            return;
+        }
+        isDesignOnBackshop(designId).then((on) => {
+            if (!cancelled) setOnBackshop(on);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [designId]);
 
     const valid = PanelParamsSchema.safeParse(params);
 
@@ -297,8 +314,14 @@ export function ExportBar({
                     illumination: !!params.illumination?.keyline?.enabled,
                 },
             });
-            if (res.ok) setExported('Added to backshop screen');
-            else setMsg(res.error);
+            if (res.ok) {
+                setExported(
+                    onBackshop
+                        ? 'Updated backshop screen'
+                        : 'Added to backshop screen',
+                );
+                setOnBackshop(true);
+            } else setMsg(res.error);
         } catch {
             setMsg('Could not add to the backshop screen.');
         } finally {
@@ -502,8 +525,12 @@ export function ExportBar({
                         <Tv size={14} aria-hidden />
                     )}
                     {backshopPending
-                        ? 'Sending…'
-                        : 'Add to backshop screen'}
+                        ? onBackshop
+                            ? 'Updating…'
+                            : 'Sending…'
+                        : onBackshop
+                          ? 'Update backshop screen'
+                          : 'Add to backshop screen'}
                 </button>
                 <div className="ml-auto flex items-center gap-2 text-xs text-neutral-500">
                     {exported && (

@@ -168,3 +168,19 @@ export async function setBackshopArchived(
     revalidatePath(`/backshop/${id}`);
     return okVoid();
 }
+
+/**
+ * Whether a design is already on the board — drives the visualiser's
+ * "Add / Update backshop screen" button label. Any authed user.
+ */
+export async function isDesignOnBackshop(designId: string): Promise<boolean> {
+    const user = await getUser();
+    if (!user) return false;
+    const supabase = createAdminClient();
+    const { data } = await supabase
+        .from(TABLE)
+        .select('id')
+        .eq('design_id', designId)
+        .maybeSingle();
+    return !!data;
+}
