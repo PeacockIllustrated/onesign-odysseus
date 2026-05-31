@@ -37,6 +37,11 @@ import {
 } from './types';
 import { outlinePerimeter } from './geometry';
 import { registerVisualiserFonts } from './pdf-fonts';
+import {
+    bracketSpecNote,
+    isProjecting,
+    resolveProjecting,
+} from './projecting';
 
 /** PDF media box limit is ~14400 user units; stay well under it. */
 const MAX_PAGE_MM = 14000;
@@ -977,7 +982,11 @@ function drawOverviewPage(ctx: PageContext): void {
         (a, arr) => a + arr.length,
         0,
     );
+    const proj = isProjecting(params)
+        ? resolveProjecting(params.projecting)
+        : null;
     const spec: Array<[string, string]> = [
+        ['Sign type', proj ? 'Projecting (blade)' : 'Fascia'],
         ['Sign face', `${params.panelWidthMm} × ${params.panelHeightMm} mm`],
         ['Returns', returnsLabelCompact(params)],
         ['Return depth', `${params.returnDepthMm} mm`],
@@ -985,6 +994,13 @@ function drawOverviewPage(ctx: PageContext): void {
             'Shadow gap',
             params.shadowGapMm > 0 ? `${params.shadowGapMm} mm` : '—',
         ],
+        ...(proj
+            ? ([
+                  ['Projection', `${Math.round(proj.projectionMm)} mm off wall`],
+                  ['Sides', proj.doubleSided ? 'Double-sided' : 'Single-sided'],
+                  ['Bracket', `${proj.bracketStyle} (bought-in)`],
+              ] as Array<[string, string]>)
+            : []),
         ['Material', matLabel],
         ['Thickness', `${params.materialThicknessMm} mm`],
         [
@@ -1817,6 +1833,11 @@ export async function generateProductionPdfBlob(
     const today = new Date().toLocaleDateString('en-GB');
     const jobs: ProdPageJob[] = [];
 
+    // Projecting signs reuse the same tray cut; the bracket is bought-in for
+    // v1, so it rides along as a spec note on the panel-cut page footer rather
+    // than a fabrication drawing.
+    const proj = isProjecting(params) ? resolveProjecting(params.projecting) : null;
+
     // Hairline stroke that scales mildly with part size, capped well
     // below any sensible kerf so no CAM interpretation widens the cut.
     const layoutW = Math.max(1, sectionExport.totalLayoutWMm);
@@ -1845,6 +1866,12 @@ export async function generateProductionPdfBlob(
             : null;
     const warningBandH = counterSurvivalWarning ? 18 : 0;
 
+    // Projecting signs: the bought-in bracket spec rides at the top of the
+    // panel-cut page as an informational band (below the counter warning if
+    // both are present). It is a procurement note, not a fabrication drawing.
+    const bracketNote = proj ? bracketSpecNote(proj) : null;
+    const bracketBandH = bracketNote ? 14 : 0;
+
     const cableHoleCount = (opts.cableHolesBySection ?? [])
         .flat()
         .filter((p) => p.points.length >= 3).length;
@@ -1859,7 +1886,7 @@ export async function generateProductionPdfBlob(
             ? 'Panel cut — perimeter + apertures + stand-off + cable holes'
             : 'Panel cut — perimeter + apertures + stand-off holes',
         partW: layoutW,
-        partH: layoutH + warningBandH,
+        partH: layoutH + warningBandH + bracketBandH,
         footerInfo: [
             `${params.materialLabel || 'material -'}  ·  ${params.materialThicknessMm} mm`,
             [
@@ -1901,7 +1928,32 @@ export async function generateProductionPdfBlob(
                 doc.setTextColor(0);
                 doc.setDrawColor(0);
             }
-            const yOffset = warningBandH;
+            // Bracket procurement note — teal info band beneath any warning.
+            if (bracketNote) {
+                const by = dY + warningBandH;
+                doc.setFillColor(232, 240, 243); // brand light
+                doc.setDrawColor(
+                    BRAND_RGB[0],
+                    BRAND_RGB[1],
+                    BRAND_RGB[2],
+                );
+                doc.setLineWidth(0.35);
+                doc.rect(dX, by, layoutW, bracketBandH - 3, 'FD');
+                doc.setTextColor(
+                    BRAND_DARK_RGB[0],
+                    BRAND_DARK_RGB[1],
+                    BRAND_DARK_RGB[2],
+                );
+                doc.setFont(font, 'bold');
+                doc.setFontSize(8.5);
+                doc.text(txt(bracketNote), dX + 4, by + 6, {
+                    maxWidth: layoutW - 8,
+                });
+                doc.setFont(font, 'normal');
+                doc.setTextColor(0);
+                doc.setDrawColor(0);
+            }
+            const yOffset = warningBandH + bracketBandH;
             const px = (x: number) => dX + x;
             const py = (y: number) => dY + yOffset + y;
             sectionExport.sections.forEach((section, i) => {
