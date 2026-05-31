@@ -7,6 +7,7 @@ import { createBrowserClient } from '@/lib/supabase';
 import {
     backshopStatus,
     stagesForChecks,
+    elementsForChecks,
     type BackshopItemRow,
     type BackshopStatus,
 } from '@/lib/backshop/types';
@@ -100,6 +101,10 @@ export function BackshopBoard({ items }: { items: BackshopItemRow[] }) {
                 const st = STATUS_STYLE[status];
                 const specs = specLine(item);
                 const stages = stagesForChecks(item.checks);
+                const build = [
+                    ...(item.description ? [item.description] : []),
+                    ...elementsForChecks(item.checks),
+                ];
                 return (
                     <button
                         key={item.id}
@@ -112,15 +117,10 @@ export function BackshopBoard({ items }: { items: BackshopItemRow[] }) {
                         className="group flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white px-5 py-4 text-left shadow-sm outline-none transition-colors hover:bg-neutral-50 focus:border-transparent focus:ring-4 focus:ring-[#4e7e8c] sm:flex-row sm:items-center sm:gap-6 sm:px-6 sm:py-5"
                     >
                         {/* Name + specs */}
-                        <div className="min-w-0 sm:w-60 sm:shrink-0">
+                        <div className="min-w-0 sm:w-52 sm:shrink-0">
                             <div className="truncate text-xl font-bold text-neutral-900 sm:text-2xl">
                                 {item.name}
                             </div>
-                            {item.description && (
-                                <div className="truncate text-xs text-neutral-500 sm:text-sm">
-                                    {item.description}
-                                </div>
-                            )}
                             {specs.length > 0 && (
                                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-neutral-600 sm:text-xs">
                                     {specs.map((s, j) => (
@@ -139,17 +139,41 @@ export function BackshopBoard({ items }: { items: BackshopItemRow[] }) {
                             )}
                         </div>
 
-                        {/* Sign visual — a wide banner that spans the slack
-                            between the text and the checks, sized to show the
-                            whole sign clearly (panoramic fascias are otherwise
-                            a tiny strip in a small box). */}
-                        <div className="flex h-20 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-lg border border-neutral-200 bg-neutral-100 sm:h-24">
+                        {/* Build — the sign's contents / processes, filling
+                            the gap that used to be empty. */}
+                        <div className="min-w-0 sm:w-48 sm:shrink-0">
+                            <div className="text-[10px] font-semibold uppercase tracking-widest text-neutral-400">
+                                Build
+                            </div>
+                            <div className="mt-1 flex flex-wrap gap-1.5">
+                                {build.length > 0 ? (
+                                    build.map((b, j) => (
+                                        <span
+                                            key={j}
+                                            className="rounded-md bg-neutral-100 px-2 py-0.5 text-[11px] text-neutral-600"
+                                        >
+                                            {b}
+                                        </span>
+                                    ))
+                                ) : (
+                                    <span className="text-[11px] text-neutral-400">
+                                        Standard build
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Sign visual — face-on capture spanning the slack,
+                            height capped to the row (flex-1 only in the row
+                            layout, else it would grow vertically when stacked). */}
+                        <div className="flex h-20 w-full min-w-0 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-neutral-200 bg-neutral-100 sm:h-24 sm:w-auto sm:flex-1 sm:shrink">
+
                             {item.thumbnail ? (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img
                                     src={item.thumbnail}
                                     alt=""
-                                    className="max-h-full max-w-full object-contain"
+                                    className="h-full w-full object-contain"
                                 />
                             ) : (
                                 <MonitorPlay

@@ -16,8 +16,16 @@ import type {
     PushThroughPiece,
 } from '@/lib/visualiser/types';
 
-/** Set by the scene on mount so ExportBar can grab a PDF thumbnail. */
-export const sceneCapture: { fn: (() => string | null) | null } = { fn: null };
+/**
+ * Set by the scene on mount so ExportBar can grab thumbnails. `fn` is the
+ * current orbit view (the nice angled shot used on the reference PDF);
+ * `faceOn` is a straight-on orthographic shot of the sign face, framed to its
+ * bounds — a clean wide rectangle that crops tightly for the backshop banner.
+ */
+export const sceneCapture: {
+    fn: (() => string | null) | null;
+    faceOn: (() => string | null) | null;
+} = { fn: null, faceOn: null };
 
 function CaptureBinder() {
     const { gl, scene, camera } = useThree();
@@ -30,8 +38,50 @@ function CaptureBinder() {
                 return null;
             }
         };
+        sceneCapture.faceOn = () => {
+            try {
+                const box = new THREE.Box3().setFromObject(scene);
+                if (box.isEmpty()) {
+                    gl.render(scene, camera);
+                    return gl.domElement.toDataURL('image/png');
+                }
+                const size = box.getSize(new THREE.Vector3());
+                const centre = box.getCenter(new THREE.Vector3());
+                const aspect =
+                    (gl.domElement.width || 1) / (gl.domElement.height || 1);
+                // Frame the face (XY) with a little padding, matched to the
+                // canvas aspect so nothing stretches.
+                const pad = 1.08;
+                let halfW = (size.x / 2) * pad;
+                let halfH = (size.y / 2) * pad;
+                if (halfW / halfH < aspect) halfW = halfH * aspect;
+                else halfH = halfW / aspect;
+                // Camera straight in front of the face (panel faces +Z).
+                const dist = size.z + Math.max(size.x, size.y, 1) + 10;
+                const cam = new THREE.OrthographicCamera(
+                    -halfW,
+                    halfW,
+                    halfH,
+                    -halfH,
+                    0.01,
+                    dist * 4,
+                );
+                cam.position.set(centre.x, centre.y, centre.z + dist);
+                cam.up.set(0, 1, 0);
+                cam.lookAt(centre.x, centre.y, centre.z);
+                cam.updateMatrixWorld();
+                cam.updateProjectionMatrix();
+                gl.render(scene, cam);
+                const url = gl.domElement.toDataURL('image/png');
+                gl.render(scene, camera); // restore the operator's view
+                return url;
+            } catch {
+                return null;
+            }
+        };
         return () => {
             sceneCapture.fn = null;
+            sceneCapture.faceOn = null;
         };
     }, [gl, scene, camera]);
     return null;

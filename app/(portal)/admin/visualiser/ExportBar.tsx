@@ -249,14 +249,15 @@ export function ExportBar({
                 markSaved(saved.data.id);
             }
 
-            // 2. 3D thumbnail (board visual) + reference PDF (same opts as the
-            //    Reference PDF button), base64-encoded for the server action.
-            //    The PDF keeps the full framed shot; the board thumbnail is
-            //    trimmed to the sign so it fills its banner instead of
-            //    floating in empty space.
+            // 2. Thumbnails + reference PDF (same opts as the Reference PDF
+            //    button), base64-encoded for the server action. The PDF keeps
+            //    the angled orbit shot; the board uses a straight-on face shot
+            //    trimmed to the sign, so it crops to a clean wide rectangle
+            //    that fills its banner instead of floating in empty space.
             const thumb = sceneCapture.fn?.() ?? undefined;
-            const boardThumb = thumb
-                ? await trimImageDataUrl(thumb)
+            const faceThumb = sceneCapture.faceOn?.() ?? thumb;
+            const boardThumb = faceThumb
+                ? await trimImageDataUrl(faceThumb)
                 : undefined;
             const blob = await generateReferencePdfBlob({
                 sectionExport,

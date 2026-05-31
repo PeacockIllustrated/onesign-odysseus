@@ -11,6 +11,7 @@ import {
     backshopStatus,
     normaliseChecks,
     stagesForChecks,
+    elementsForChecks,
     type BackshopChecks,
     type BackshopItemWithPdf,
 } from '@/lib/backshop/types';
@@ -93,6 +94,9 @@ export function BackshopDetail({
 
     const status = backshopStatus(checks);
     const stages = stagesForChecks(checks);
+    // Material already shows as the subtitle here, so Build lists just the
+    // distinguishing construction elements.
+    const build = elementsForChecks(checks);
     const specs: string[] = [];
     if (item.width_mm && item.height_mm)
         specs.push(`${item.width_mm}mm × ${item.height_mm}mm`);
@@ -160,6 +164,23 @@ export function BackshopDetail({
                                     {s}
                                 </span>
                             ))}
+                        </div>
+                    )}
+                    {build.length > 0 && (
+                        <div>
+                            <div className="text-[11px] font-semibold uppercase tracking-widest text-neutral-400">
+                                Build
+                            </div>
+                            <div className="mt-1.5 flex flex-wrap gap-2">
+                                {build.map((b, i) => (
+                                    <span
+                                        key={i}
+                                        className="rounded-md bg-neutral-100 px-3 py-1 text-sm text-neutral-700"
+                                    >
+                                        {b}
+                                    </span>
+                                ))}
+                            </div>
                         </div>
                     )}
                 </div>

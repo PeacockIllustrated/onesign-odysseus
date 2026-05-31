@@ -71,6 +71,26 @@ export function stagesForChecks(
     return BACKSHOP_STAGE_CATALOG.filter((s) => s.key in checks);
 }
 
+// Human descriptions of the contextual construction elements — what the sign
+// is physically made of / the processes it involves. Keyed by the contextual
+// stage keys (base stages are processes, not distinguishing elements).
+const ELEMENT_LABELS: Record<string, string> = {
+    pushthrough: 'Push-through acrylic',
+    vinyl: 'Vinyl appliqué',
+    illumination: 'Illuminated',
+    standoff: 'Stood-off letters',
+};
+
+/** The distinguishing elements/processes an item carries, in catalog order. */
+export function elementsForChecks(
+    checks: BackshopChecks | null | undefined,
+): string[] {
+    if (!checks) return [];
+    return BACKSHOP_STAGE_CATALOG.filter(
+        (s) => s.key in checks && ELEMENT_LABELS[s.key],
+    ).map((s) => ELEMENT_LABELS[s.key]);
+}
+
 /** Coerce a stored value into a plain boolean-valued checks object. */
 export function normaliseChecks(
     raw: Record<string, unknown> | null | undefined,

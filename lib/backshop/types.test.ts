@@ -5,6 +5,7 @@ import {
     stagesForFeatures,
     checksForFeatures,
     stagesForChecks,
+    elementsForChecks,
 } from './types';
 
 describe('backshopStatus', () => {
@@ -60,6 +61,23 @@ describe('contextual stages', () => {
             standoff: false,
             assembled: false,
         });
+    });
+
+    it('elementsForChecks lists only contextual construction, in order', () => {
+        expect(
+            elementsForChecks({
+                designed: true,
+                cut: false,
+                pushthrough: false,
+                painted: false,
+                illumination: false,
+                assembled: false,
+            }),
+        ).toEqual(['Push-through acrylic', 'Illuminated']);
+        // Base-only build has no distinguishing elements.
+        expect(
+            elementsForChecks({ designed: false, cut: false }),
+        ).toEqual([]);
     });
 
     it('stagesForChecks reflects the keys an item carries, in order', () => {
