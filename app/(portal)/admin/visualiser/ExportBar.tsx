@@ -9,6 +9,7 @@ import {
     Loader2,
     Save,
     Scissors,
+    Tv,
 } from 'lucide-react';
 import { useVisualiser } from './store';
 import { sceneCapture } from './Scene3D';
@@ -18,6 +19,7 @@ import {
     pdfFilename,
 } from '@/lib/visualiser/pdf';
 import { saveDesign } from '@/lib/visualiser/actions';
+import { addToBackshop } from '@/lib/backshop/actions';
 import { composeLayersSvg } from '@/lib/visualiser/compose';
 import {
     PanelParamsSchema,
@@ -39,6 +41,20 @@ function download(blob: Blob, filename: string) {
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+}
+
+/** Blob → bare base64 (no data-URL prefix) for sending to a server action. */
+function blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const res = (reader.result as string) ?? '';
+            const comma = res.indexOf(',');
+            resolve(comma >= 0 ? res.slice(comma + 1) : res);
+        };
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(blob);
+    });
 }
 
 /**
@@ -150,6 +166,7 @@ export function ExportBar({
     } = useVisualiser();
     const [savePending, startSaveTransition] = useTransition();
     const [pdfPending, setPdfPending] = useState<'prod' | 'ref' | null>(null);
+    const [backshopPending, setBackshopPending] = useState(false);
     const [msg, setMsg] = useState<string | null>(null);
     const [exported, setExported] = useState<string | null>(null);
 
@@ -191,6 +208,86 @@ export function ExportBar({
             setExported(`Reference PDF · ${fname}`);
         } finally {
             setPdfPending(null);
+        }
+    };
+
+    // Push this design onto the workshop TV board. We're the only place the
+    // reference-PDF geometry + 3D thumbnail exist, so capture both here and
+    // ship them to the server with the design id. Saves first if needed
+    // (the board snapshots a saved design).
+    const onAddToBackshop = async () => {
+        if (backshopPending) return;
+        setBackshopPending(true);
+        setMsg(null);
+        try {
+            // 1. Ensure the design is saved — we need a concrete id, and the
+            //    QR on the stored PDF should point at a real design.
+            let id = designId;
+            if (!id || dirty) {
+                const layers = params.artworkLayers ?? [];
+                const effectiveSvg =
+                    layers.length > 0
+                        ? composeLayersSvg(
+                              layers,
+                              params.panelWidthMm,
+                              params.panelHeightMm,
+                          )
+                        : svgSource;
+                const saved = await saveDesign({
+                    id: designId ?? undefined,
+                    params,
+                    svgSource: effectiveSvg,
+                    quoteId,
+                    quoteItemId,
+                });
+                if (!saved.ok) {
+                    setMsg(saved.error);
+                    return;
+                }
+                id = saved.data.id;
+                markSaved(saved.data.id);
+            }
+
+            // 2. 3D thumbnail (board visual) + reference PDF (same opts as the
+            //    Reference PDF button), base64-encoded for the server action.
+            const thumb = sceneCapture.fn?.() ?? undefined;
+            const blob = await generateReferencePdfBlob({
+                sectionExport,
+                params,
+                designId: id,
+                apertureBySection,
+                keylineBySection,
+                pushThroughKeylineBySection,
+                pushThroughIslandsBySection,
+                fixingsBySection,
+                cableHolesBySection,
+                referenceBySection,
+                vinylPieces,
+                acrylicPieces,
+                solidPieces,
+                standoffPieces,
+                pushThroughPieces,
+                thumbnailDataUrl: thumb || undefined,
+            });
+            const pdfBase64 = await blobToBase64(blob);
+
+            const res = await addToBackshop({
+                designId: id,
+                name: params.name,
+                description: params.materialLabel || null,
+                widthMm: params.panelWidthMm,
+                heightMm: params.panelHeightMm,
+                returnsMm: params.returnDepthMm,
+                shadowGapMm: params.shadowGapMm,
+                thumbnailDataUrl: thumb ?? null,
+                pdfBase64,
+            });
+            if (res.ok) setExported('Added to backshop screen');
+            else setMsg(res.error);
+        } catch {
+            setMsg('Could not add to the backshop screen.');
+        } finally {
+            setBackshopPending(false);
         }
     };
 
@@ -371,6 +468,27 @@ export function ExportBar({
                             aria-label="Unsaved changes"
                         />
                     )}
+                </button>
+                <button
+                    type="button"
+                    onClick={onAddToBackshop}
+                    disabled={!valid.success || backshopPending}
+                    aria-busy={backshopPending}
+                    title="Send this design to the workshop TV board (saves first, with its reference PDF + preview)."
+                    className="flex min-h-[36px] items-center gap-1.5 rounded-md border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                    {backshopPending ? (
+                        <Loader2
+                            size={14}
+                            className="animate-spin"
+                            aria-hidden
+                        />
+                    ) : (
+                        <Tv size={14} aria-hidden />
+                    )}
+                    {backshopPending
+                        ? 'Sending…'
+                        : 'Add to backshop screen'}
                 </button>
                 <div className="ml-auto flex items-center gap-2 text-xs text-neutral-500">
                     {exported && (

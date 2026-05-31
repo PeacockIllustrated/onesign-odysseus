@@ -203,6 +203,10 @@ Migration 031 is intentionally absent (numbering gap from an early draft that wa
 | 049 | `drivers` | Driver roster |
 | 050 | deliveries.driver_id | Links deliveries to drivers (ON DELETE SET NULL) |
 
+### Visualiser + backshop screen (058–059)
+| 058 | `visualiser_designs` | Saved folded-aluminium panel visualiser designs (params_json + flattened aperture SVG) |
+| 059 | `backshop_items` + `backshop` storage bucket | Workshop TV production board — snapshot of a pushed design (name / specs / 3D thumbnail / reference PDF) plus four check gates (Designed / Cut / Painted / Assembled). Realtime-published; PDF lives in the private `backshop` bucket |
+
 ## Key architectural decisions
 
 ### 1. Artwork is the spec-bearing record — it comes *before* production
@@ -214,6 +218,9 @@ Under the hood, production_jobs are still created at quote acceptance time (the 
 
 ### 2. Shop floor has its own minimal layout (inside the portal route group)
 `/shop-floor` lives under `app/(portal)/shop-floor/` — it's authenticated like the rest of the portal but the route segment owns its own layout with no sidebar or admin nav. Large touch targets for Start, Pause, Complete. Staff log in and see only their department's queue. Runs on shop-floor tablets. (Earlier drafts put this at the app root as a separate route group; the current placement keeps auth/session behaviour consistent with the rest of the staff-only UI.)
+
+### 2b. Backshop TV board is a top-level route (NOT under the portal)
+`/backshop` (workshop production board for the shop TV) lives at `app/backshop/`, deliberately **outside** the `(portal)` route group, with its own `layout.tsx` doing a plain `requireAuth()`. Two reasons it can't sit under `(portal)` like shop-floor: (1) the portal sidebar/topbar is useless on a wall-mounted TV, and (2) the portal layout's `getUserOrg()` redirects any user without org membership to `/login?error=no_org`, which would lock out floor staff. The board is read + tick for any authed user; pushing a design onto it (`addToBackshop`, from the visualiser's ExportBar) is super-admin only. Snapshot model: each `backshop_items` row freezes the design's name/specs/3D-thumbnail/reference-PDF at push time (PDF in the private `backshop` storage bucket, reached via short-lived signed URLs server-side). Stages are the fixed four in `lib/backshop/types.ts` (`BACKSHOP_STAGES`). Built for remote navigation (arrow-key roving focus + Enter), refreshed live via Supabase Realtime on `backshop_items`.
 
 ### 3. Single-tenant internal platform — clients are records, not users
 
