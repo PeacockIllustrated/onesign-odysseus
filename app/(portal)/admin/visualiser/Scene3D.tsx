@@ -2189,6 +2189,7 @@ function ProjectingMounted({
     night,
     showOutlines,
     artworkSvg,
+    backBundle,
     children,
 }: {
     fascia: PanelParams;
@@ -2199,6 +2200,13 @@ function ProjectingMounted({
     night: boolean;
     showOutlines: boolean;
     artworkSvg?: string | null;
+    /**
+     * The sign's full design, used to render a MIRRORED copy on the back face
+     * when the sign is double-sided — so the design reads from both sides. The
+     * front (children) is rendered open-backed (enclosed=false) so the two
+     * trays meet as one closed box.
+     */
+    backBundle?: PanelRenderBundle | null;
     /**
      * When provided (the sign is the one being edited), render this full Panel
      * IN PLACE instead of the lightweight tray+texture — so editing never
@@ -2284,6 +2292,20 @@ function ProjectingMounted({
                         </>
                     )}
                 </>
+            )}
+
+            {/* Double-sided: a mirrored copy of the full design on the back
+                face (rotated 180° about Y so it reads correctly from behind),
+                offset back by the box depth. Non-interactive. */}
+            {mount.doubleSided && backBundle && (
+                <group rotation={[0, Math.PI, 0]} position={[0, 0, -Dp]}>
+                    <BundlePanel
+                        params={params}
+                        bundle={backBundle}
+                        night={night}
+                        showOutlines={showOutlines}
+                    />
+                </group>
             )}
         </group>
     );
@@ -2527,6 +2549,26 @@ export default function Scene3D(props: {
         goalLook[2] + focusReach,
     ];
 
+    // The active panel's design as a bundle — used to mirror it onto the back
+    // face when the active panel is a double-sided projecting sign.
+    const activeBundle: PanelRenderBundle = {
+        development: props.development,
+        split: props.split,
+        aperture: props.aperture,
+        keyline: props.keyline,
+        pushThroughKeyline,
+        pushThroughIslands,
+        autoFixings,
+        manualFixings,
+        cableHoles,
+        reference,
+        vinylPieces,
+        acrylicPieces,
+        solidPieces,
+        standoffPieces,
+        pushThroughPieces,
+    };
+
     return (
         <Canvas
             camera={{ position: [reach, reach * 0.7, reach], fov: 45 }}
@@ -2610,12 +2652,14 @@ export default function Scene3D(props: {
                         mount={mount}
                         night={illuminationView}
                         showOutlines={showOutlines}
+                        backBundle={activeBundle}
                     >
                         {/* Full editing parity with the fascia — path picking,
                             material groups, fixings, outlines, effects and
                             dimensions all work in situ. FacePlane converts clicks
                             into face-local coords, so placement is correct even
-                            though the sign is mounted rotated. */}
+                            though the sign is mounted rotated. Open-backed when
+                            double-sided so the mirrored back design forms the box. */}
                         <Panel
                             {...props}
                             autoFixings={autoFixings}
@@ -2645,7 +2689,7 @@ export default function Scene3D(props: {
                             illumination={props.illumination}
                             showDimensions={props.showDimensions}
                             onDimensionChange={props.onDimensionChange}
-                            enclosed
+                            enclosed={!mount.doubleSided}
                         />
                     </ProjectingMounted>
                 ) : secondary?.bundle && mount.shape !== 'circle' ? (
@@ -2660,13 +2704,14 @@ export default function Scene3D(props: {
                         mount={mount}
                         night={illuminationView}
                         showOutlines={showOutlines}
+                        backBundle={secondary.bundle}
                     >
                         <BundlePanel
                             params={projParams}
                             bundle={secondary.bundle}
                             night={illuminationView}
                             showOutlines={showOutlines}
-                            enclosed
+                            enclosed={!mount.doubleSided}
                         />
                     </ProjectingMounted>
                 ) : mount.shape === 'circle' ? (
