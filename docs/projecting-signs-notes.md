@@ -277,6 +277,42 @@ changes are a text legend (unambiguous) + island drawing via the existing
 drawMaterialPiece helper. Open an exported reference + production PDF to confirm
 the island fill/ring + the legend read correctly before relying on them.
 
+### Change-set 20 — remove bracket styles; add standoff offset
+
+The bought-in bracket (flat-plate / box-arm / scroll) is removed — how the
+projecting sign physically connects to the fascia is a workshop decision we're
+not modelling yet. The sign stays mounted perpendicular off the face exactly as
+before, just without the grey bracket geometry.
+- `ProjectingMount` drops `bracketStyle`, gains `offsetZMm` — a standoff gap (mm)
+  between the fascia face and the sign's near edge. `ProjectingMounted` shifts
+  the sign +Z by `offsetZMm * S`.
+- Removed: `BracketStyle` type, `bracketStyleLabel`/`bracketSpecNote`,
+  `MountBracket` + `BRACKET_COLOR` (Scene3D), the bracket-style selector
+  (ControlsPanel). Added a "Standoff from fascia" number field.
+- `projectingSpecLine` now ends "· Nmm standoff" instead of "· … bracket".
+- Tests updated (projecting.test.ts).
+
+### Change-set 21 — projecting sign visualises on load (no tab-visit needed)
+
+Bug: a loaded design only showed its projecting sign's full material design once
+you selected the projecting tab — because the render bundle + PDF data were only
+captured while a panel was ACTIVE (cached per tab), so the inactive sign was null
+until first visited.
+
+Fix: extracted the pure geometry→bundle/PDF pipeline into a reusable hook
+`usePanelDerivation(params, storeImported)` (in the visualiser folder) — a
+faithful copy of VisualiserClient's inline pipeline. VisualiserClient now runs it
+LIVE for the OTHER (non-active) panel every render, so the projecting sign's real
+design + PDF data exist immediately on load. The per-tab `bundles`/`pdfData` store
+cache is superseded (the active panel's display + export still build from the
+inline memos; the now-dead store fields can be cleaned up later). The active-edit
+pipeline was deliberately left untouched to avoid regressing the trusted
+main-fascia path.
+
+tsc + 221 vitest green; no new eslint errors. NOTE: 3D + PDF can't be rendered in
+this environment — verify on load that a saved design's projecting sign shows its
+full design (and exports) without first clicking its tab.
+
 ## v1 — single-panel toggle (REPLACED, kept for history)
 
 Implemented from `docs/projecting-signs-handoff.md`. Run autonomously per the

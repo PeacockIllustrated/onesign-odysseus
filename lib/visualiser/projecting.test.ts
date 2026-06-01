@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
     DEFAULT_MOUNT,
-    bracketSpecNote,
     hasProjecting,
     projectingDimsLabel,
     projectingSpecLine,
@@ -46,7 +45,11 @@ describe('resolveMount', () => {
         expect(r.offsetXMm).toBe(120);
         expect(r.doubleSided).toBe(false);
         expect(r.shape).toBe('circle');
-        expect(r.bracketStyle).toBe(DEFAULT_MOUNT.bracketStyle);
+        expect(r.offsetZMm).toBe(DEFAULT_MOUNT.offsetZMm);
+    });
+
+    it('reads a caller-supplied standoff', () => {
+        expect(resolveMount({ offsetZMm: 40 }).offsetZMm).toBe(40);
     });
 });
 
@@ -103,23 +106,16 @@ describe('dimension + spec strings', () => {
 
     it('projectingSpecLine reads naturally with defaults', () => {
         expect(projectingSpecLine({ panelWidthMm: 500, panelHeightMm: 500 }, undefined)).toBe(
-            'Projecting square · 500×500mm · double-sided · box-arm bracket',
+            'Projecting square · 500×500mm · double-sided · 0mm standoff',
         );
     });
 
-    it('projectingSpecLine reflects circle + single-sided + style', () => {
+    it('projectingSpecLine reflects circle + single-sided + standoff', () => {
         expect(
             projectingSpecLine(
                 { panelWidthMm: 600, panelHeightMm: 600 },
-                { shape: 'circle', doubleSided: false, bracketStyle: 'scroll' },
+                { shape: 'circle', doubleSided: false, offsetZMm: 25 },
             ),
-        ).toBe('Projecting circle · 600mm dia · single-sided · scroll bracket');
-    });
-
-    it('bracketSpecNote notes perpendicular projection + shape', () => {
-        const note = bracketSpecNote({ panelWidthMm: 500 }, { shape: 'circle' });
-        expect(note).toContain('bought-in box-arm');
-        expect(note).toContain('projects 500mm perpendicular from the face');
-        expect(note).toContain('Double-sided circle');
+        ).toBe('Projecting circle · 600mm dia · single-sided · 25mm standoff');
     });
 });

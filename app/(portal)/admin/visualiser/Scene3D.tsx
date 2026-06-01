@@ -2137,111 +2137,6 @@ function Panel({
 }
 
 
-const BRACKET_COLOR = '#9aa0a4'; // brushed-metal grey for the bought-in bracket
-
-/**
- * The bought-in mounting bracket connecting the fascia to the projecting sign.
- * The sign reads from −X and projects +Z off the fascia face, so the bracket
- * sits on the +X (back) side where it won't obscure the artwork. Three styles:
- *   - flat-plate — a single backing plate the sign bolts to.
- *   - box-arm    — top + bottom square-section arms off a wall plate (sturdy).
- *   - scroll     — a top arm with a decorative diagonal brace.
- * Indicative only (it's a bought-in part, specified on the PDFs, not made).
- */
-function MountBracket({
-    fascia,
-    proj,
-    mount,
-    night,
-}: {
-    fascia: PanelParams;
-    proj: PanelParams;
-    mount: ResolvedMount;
-    night: boolean;
-}) {
-    const Wf = fascia.panelWidthMm * S;
-    const Hf = fascia.panelHeightMm * S;
-    const Wp = proj.panelWidthMm * S; // protrusion off the face (+Z)
-    const Hp = proj.panelHeightMm * S; // vertical
-    const Tb = Math.max(proj.returnDepthMm, 25) * S; // sign thickness (X)
-    const ax = -Wf / 2 + mount.offsetXMm * S;
-    const ayTop = Hf / 2 - mount.offsetYMm * S;
-    const yBot = ayTop - Hp;
-    const yMid = ayTop - Hp / 2;
-    const bx = ax + Tb / 2; // back face of the sign (+X side)
-    const grey = displayColor(BRACKET_COLOR, night);
-
-    // A grey box helper (a plain JSX factory, not a nested component).
-    const gbox = (
-        key: string,
-        size: [number, number, number],
-        position: [number, number, number],
-        rotation?: [number, number, number],
-    ) => (
-        <mesh key={key} position={position} rotation={rotation}>
-            <boxGeometry args={size} />
-            <meshBasicMaterial color={grey} />
-            <Edges color={EDGE_COLOR} lineWidth={1} />
-        </mesh>
-    );
-
-    const plateThk = 8 * S;
-    if (mount.bracketStyle === 'flat-plate') {
-        // One backing plate, flush to the fascia, slightly larger than the
-        // sign — the sign bolts to it.
-        return (
-            <group>
-                {gbox(
-                    'plate',
-                    [plateThk, Hp * 1.06, Wp * 1.06],
-                    [bx + plateThk / 2, yMid, Wp / 2],
-                )}
-            </group>
-        );
-    }
-
-    const arm = Math.min(Math.max(Hp * 0.14, 35 * S), 70 * S);
-    if (mount.bracketStyle === 'box-arm') {
-        return (
-            <group>
-                {/* wall plate on the fascia face */}
-                {gbox(
-                    'wall',
-                    [plateThk, Hp * 0.55, plateThk * 2.5],
-                    [bx + plateThk / 2, yMid, plateThk * 1.25],
-                )}
-                {/* top + bottom square-section arms out to the sign tip */}
-                {gbox('top', [arm, arm, Wp], [bx + arm / 2, ayTop - arm / 2, Wp / 2])}
-                {gbox(
-                    'bot',
-                    [arm, arm, Wp],
-                    [bx + arm / 2, yBot + arm / 2, Wp / 2],
-                )}
-            </group>
-        );
-    }
-
-    // Scroll — a slim top arm + a diagonal brace + a short wall curl.
-    const braceLen = Math.hypot(Wp, Hp);
-    const braceAngle = Math.atan2(Hp, Wp);
-    return (
-        <group>
-            {gbox('top', [12 * S, 12 * S, Wp], [bx + 6 * S, ayTop, Wp / 2])}
-            {gbox(
-                'brace',
-                [11 * S, 11 * S, braceLen],
-                [bx + 5 * S, yMid, Wp / 2],
-                [braceAngle, 0, 0],
-            )}
-            {gbox(
-                'curl',
-                [9 * S, Hp * 0.28, 9 * S],
-                [bx + 5 * S, yBot + Hp * 0.14, 7 * S],
-            )}
-        </group>
-    );
-}
-
 /**
  * The projecting (square) sign rendered as a REAL folded tray — the same
  * construction as the fascia (face + returns), just small — mounted on the
@@ -2318,7 +2213,7 @@ function ProjectingMounted({
         // drag, so it never moves unless you change those values.
         <group
             rotation={[0, -HALF_PI, 0]}
-            position={[ax, ayTop - Hp / 2, Wp / 2]}
+            position={[ax, ayTop - Hp / 2, mount.offsetZMm * S + Wp / 2]}
         >
             {children ?? (
                 <>
@@ -2827,16 +2722,6 @@ export default function Scene3D(props: {
                 )
             )}
 
-            {/* Bought-in mounting bracket connecting the fascia to the
-                projecting sign — flat plate / box arm / scroll. */}
-            {showProjecting && mount && projParams && (
-                <MountBracket
-                    fascia={fasciaParams}
-                    proj={projParams}
-                    mount={mount}
-                    night={illuminationView}
-                />
-            )}
             <OrbitControls enablePan makeDefault />
         </Canvas>
     );

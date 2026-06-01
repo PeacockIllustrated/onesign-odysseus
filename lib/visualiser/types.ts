@@ -91,16 +91,6 @@ export const DEFAULT_PLACEMENT: AperturePlacement = {
 export type ApertureMode = 'aperture' | 'standoff';
 
 /**
- * Bracket family for a projecting sign. The bracket is BOUGHT-IN for v1 —
- * we only spec it on the PDFs, we don't fabricate a cut drawing. The style
- * drives the 3D representation and the spec note only.
- *   - 'flat-plate' — a single wall plate with a flat arm.
- *   - 'box-arm'    — a boxed/square-section arm off the fascia (default).
- *   - 'scroll'     — a decorative scrolled wrought-iron style bracket.
- */
-export type BracketStyle = 'flat-plate' | 'box-arm' | 'scroll';
-
-/**
  * PanelCoreSchema is every field that describes a single folded-aluminium
  * panel — dimensions, returns, artwork, materials, illumination, fixings.
  *
@@ -358,7 +348,7 @@ export const DEFAULT_PROJECTING_SIZE_MM = 500;
  * projects straight out toward the street (read from the side as you approach),
  * never off an edge / top / bottom / back. Its panel WIDTH is how far it
  * protrudes and its HEIGHT is vertical. The mount positions the attachment
- * point on the face and records shape + the bought-in bracket spec.
+ * point on the face, records the shape, and how far it stands off the fascia.
  */
 export const ProjectingMountSchema = z.object({
     /**
@@ -376,8 +366,13 @@ export const ProjectingMountSchema = z.object({
     shape: z.enum(['square', 'circle']).optional(),
     /** Artwork on both faces (the usual case for a projecting sign). */
     doubleSided: z.boolean().optional(),
-    /** Bought-in bracket family — spec note + 3D representation only. */
-    bracketStyle: z.enum(['flat-plate', 'box-arm', 'scroll']).optional(),
+    /**
+     * Gap between the fascia FACE and the projecting sign's near edge, in mm.
+     * Default 0 (the sign's near edge meets the fascia face). Raise it to
+     * stand the sign off the fascia. How it physically mounts is decided in
+     * the workshop — we just record the standoff distance for now.
+     */
+    offsetZMm: z.number().optional(),
 });
 export type ProjectingMount = z.infer<typeof ProjectingMountSchema>;
 

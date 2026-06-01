@@ -22,6 +22,7 @@ import { ControlsPanel } from './ControlsPanel';
 import { SvgDropzone } from './SvgDropzone';
 import { FlatPreview } from './FlatPreview';
 import { ExportBar } from './ExportBar';
+import { usePanelDerivation } from './usePanelDerivation';
 import {
     buildDevelopment,
     placeAperture,
@@ -46,8 +47,6 @@ import {
     type MaterialPiece,
     type StandoffPiece,
     type PushThroughPiece,
-    type PanelRenderBundle,
-    type PanelPdfData,
     type ExportWarning,
 } from '@/lib/visualiser/types';
 
@@ -154,10 +153,6 @@ export function VisualiserClient({
         activeTab,
         inactive,
         mount,
-        bundles,
-        setRenderedBundle,
-        pdfData,
-        setPdfData,
     } = useVisualiser();
     const [tab, setTab] = useState<Tab>('folded');
     const [mobilePane, setMobilePane] = useState<MobilePane>('preview');
@@ -323,6 +318,17 @@ export function VisualiserClient({
     // development + split, no artwork pipeline. Rendered perpendicular to the
     // fascia in Scene3D.
     const secondaryParams = projectingEnabled && inactive ? inactive.params : null;
+    const secondaryStoreImported =
+        projectingEnabled && inactive ? inactive.imported : null;
+    // Full geometry pipeline for the OTHER (non-active) panel, run live every
+    // render. This is what lets a LOADED design show its projecting sign
+    // immediately — its real material-group design + PDF data are derived here
+    // rather than only being captured when its tab is first selected. Returns
+    // inert (null bundle/pdfData) when there's no projecting sign.
+    const secondaryDeriv = usePanelDerivation(
+        secondaryParams,
+        secondaryStoreImported,
+    );
     const secondaryDevelopment = useMemo(
         () => (secondaryParams ? buildDevelopment(secondaryParams) : null),
         [secondaryParams],
@@ -1126,50 +1132,10 @@ export function VisualiserClient({
     const pushThroughKeyline = pushThrough.keyline;
     const pushThroughIslands = pushThrough.islands;
 
-    // The active panel's full-design bundle. Cached to the store so the OTHER
-    // sign can be rendered with its real material-group geometry too (both
-    // signs show their proper design at once) — no second pipeline pass.
-    const activeBundle = useMemo<PanelRenderBundle | null>(() => {
-        if (!development) return null;
-        return {
-            development,
-            split,
-            aperture,
-            keyline,
-            pushThroughKeyline,
-            pushThroughIslands,
-            autoFixings,
-            manualFixings,
-            cableHoles,
-            reference,
-            vinylPieces: materialPieces.vinyl,
-            acrylicPieces: materialPieces.acrylic,
-            solidPieces: materialPieces.solid,
-            standoffPieces,
-            pushThroughPieces,
-        };
-    }, [
-        development,
-        split,
-        aperture,
-        keyline,
-        pushThroughKeyline,
-        pushThroughIslands,
-        autoFixings,
-        manualFixings,
-        cableHoles,
-        reference,
-        materialPieces,
-        standoffPieces,
-        pushThroughPieces,
-    ]);
-    useEffect(() => {
-        if (activeBundle) setRenderedBundle(activeTab, activeBundle);
-    }, [activeBundle, activeTab, setRenderedBundle]);
-    // The cached bundle for the OTHER sign (the one not being edited).
-    const secondaryBundle = projectingEnabled
-        ? bundles[activeTab === 'main' ? 'projecting' : 'main']
-        : null;
+    // The full-design bundle for the OTHER sign (the one not being edited),
+    // derived live (see secondaryDeriv) so it's present immediately on load —
+    // no need to select its tab first to populate a cache.
+    const secondaryBundle = projectingEnabled ? secondaryDeriv.bundle : null;
 
     const geometryWarning =
         development &&
@@ -1271,53 +1237,12 @@ export function VisualiserClient({
         );
     }, [development, sectionExport, apertureHoles]);
 
-    // The active panel's full PDF export data, cached per tab so a two-item
-    // (fascia + projecting) job can emit BOTH signs in one PDF without a second
-    // pipeline pass — mirrors the 3D render-bundle cache.
-    const activePdfData = useMemo<PanelPdfData | null>(() => {
-        if (!development || !sectionExport) return null;
-        return {
-            params,
-            sectionExport,
-            apertureBySection,
-            keylineBySection,
-            pushThroughKeylineBySection,
-            pushThroughIslandsBySection,
-            fixingsBySection,
-            cableHolesBySection,
-            referenceBySection,
-            apertureHolesBySection,
-            vinylPieces: materialPieces.vinyl,
-            acrylicPieces: materialPieces.acrylic,
-            solidPieces: materialPieces.solid,
-            standoffPieces,
-            pushThroughPieces,
-        };
-    }, [
-        params,
-        development,
-        sectionExport,
-        apertureBySection,
-        keylineBySection,
-        pushThroughKeylineBySection,
-        pushThroughIslandsBySection,
-        fixingsBySection,
-        cableHolesBySection,
-        referenceBySection,
-        apertureHolesBySection,
-        materialPieces,
-        standoffPieces,
-        pushThroughPieces,
-    ]);
-    useEffect(() => {
-        if (activePdfData) setPdfData(activeTab, activePdfData);
-    }, [activePdfData, activeTab, setPdfData]);
-    // The cached PDF data for the OTHER sign + a one-line summary of the
-    // projecting sign (used on the reference overview).
+    // The full PDF export data for the OTHER sign (derived live, see
+    // secondaryDeriv) + a one-line summary of the projecting sign (used on the
+    // reference overview). The active panel's own export builds straight from
+    // the inline memos passed to ExportBar.
     const mainIsActive = activeTab === 'main';
-    const companionPdf = projectingEnabled
-        ? pdfData[mainIsActive ? 'projecting' : 'main']
-        : null;
+    const companionPdf = projectingEnabled ? secondaryDeriv.pdfData : null;
     const projectingParams = mainIsActive ? secondaryParams : params;
     const projectingSummary =
         projectingEnabled && projectingParams

@@ -2,11 +2,7 @@
 
 import { useVisualiser } from './store';
 import { Section } from './Section';
-import {
-    MAX_PANEL_WIDTH_MM,
-    type BracketStyle,
-    type PanelEdge,
-} from '@/lib/visualiser/types';
+import { MAX_PANEL_WIDTH_MM, type PanelEdge } from '@/lib/visualiser/types';
 import { resolveMount } from '@/lib/visualiser/projecting';
 
 const ACCENT = '#4e7e8c';
@@ -79,12 +75,6 @@ function NumberField({
     );
 }
 
-
-const BRACKET_STYLES: { value: BracketStyle; label: string }[] = [
-    { value: 'flat-plate', label: 'Flat plate' },
-    { value: 'box-arm', label: 'Box arm' },
-    { value: 'scroll', label: 'Scroll' },
-];
 
 export function ControlsPanel() {
     const {
@@ -271,41 +261,13 @@ export function ControlsPanel() {
                         sign.
                     </p>
 
-                    <div>
-                        <span className="text-[11px] font-medium text-neutral-600">
-                            Bracket style
-                        </span>
-                        <div className="mt-1.5 grid grid-cols-3 gap-1">
-                            {BRACKET_STYLES.map((b) => {
-                                const active = m.bracketStyle === b.value;
-                                return (
-                                    <button
-                                        key={b.value}
-                                        type="button"
-                                        onClick={() =>
-                                            setMount({ bracketStyle: b.value })
-                                        }
-                                        aria-pressed={active}
-                                        className={`min-h-[36px] rounded-md px-1 py-2 text-[11px] font-medium transition-colors ${
-                                            active
-                                                ? 'text-white'
-                                                : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'
-                                        }`}
-                                        style={
-                                            active
-                                                ? { background: ACCENT }
-                                                : undefined
-                                        }
-                                    >
-                                        {b.label}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                        <span className="mt-1 block text-[10px] text-neutral-400">
-                            Bought-in — box-arm is the sturdy default.
-                        </span>
-                    </div>
+                    <NumberField
+                        label="Standoff from fascia"
+                        value={m.offsetZMm}
+                        onChange={(n) => setMount({ offsetZMm: n })}
+                        min={0}
+                        hint="Gap between the fascia face and the sign's near edge. How it mounts is decided in the workshop."
+                    />
                 </Section>
             )}
 

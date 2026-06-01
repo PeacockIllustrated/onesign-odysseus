@@ -13,7 +13,6 @@
 
 import {
     DEFAULT_PROJECTING_SIZE_MM,
-    type BracketStyle,
     type PanelCore,
     type PanelParams,
     type ProjectingMount,
@@ -33,7 +32,8 @@ export interface ResolvedMount {
     offsetYMm: number;
     shape: ProjectingShape;
     doubleSided: boolean;
-    bracketStyle: BracketStyle;
+    /** Gap between the fascia face and the sign's near edge, in mm. */
+    offsetZMm: number;
 }
 
 /** Defaults applied wherever a mount field is read but absent. */
@@ -42,7 +42,7 @@ export const DEFAULT_MOUNT: ResolvedMount = {
     offsetYMm: 0,
     shape: 'square',
     doubleSided: true,
-    bracketStyle: 'box-arm',
+    offsetZMm: 0,
 };
 
 export function resolveMount(mount: ProjectingMount | undefined): ResolvedMount {
@@ -51,18 +51,8 @@ export function resolveMount(mount: ProjectingMount | undefined): ResolvedMount 
         offsetYMm: mount?.offsetYMm ?? DEFAULT_MOUNT.offsetYMm,
         shape: mount?.shape ?? DEFAULT_MOUNT.shape,
         doubleSided: mount?.doubleSided ?? DEFAULT_MOUNT.doubleSided,
-        bracketStyle: mount?.bracketStyle ?? DEFAULT_MOUNT.bracketStyle,
+        offsetZMm: mount?.offsetZMm ?? DEFAULT_MOUNT.offsetZMm,
     };
-}
-
-const BRACKET_LABELS: Record<BracketStyle, string> = {
-    'flat-plate': 'flat-plate',
-    'box-arm': 'box-arm',
-    scroll: 'scroll',
-};
-
-export function bracketStyleLabel(style: BracketStyle): string {
-    return BRACKET_LABELS[style];
 }
 
 /**
@@ -115,7 +105,7 @@ export function projectingDimsLabel(
 
 /**
  * One-line spec for the reference PDF / backshop, e.g.
- * "Projecting square · 500×500mm · double-sided · box-arm bracket".
+ * "Projecting square · 500×500mm · double-sided · 0mm standoff".
  */
 export function projectingSpecLine(
     panel: Pick<PanelCore, 'panelWidthMm' | 'panelHeightMm'>,
@@ -126,22 +116,6 @@ export function projectingSpecLine(
         `Projecting ${r.shape}`,
         projectingDimsLabel(panel, r.shape),
         r.doubleSided ? 'double-sided' : 'single-sided',
-        `${bracketStyleLabel(r.bracketStyle)} bracket`,
+        `${Math.round(r.offsetZMm)}mm standoff`,
     ].join(' · ');
-}
-
-/**
- * Bracket procurement note for the production PDF. The bracket is bought-in,
- * so this is a spec to order against rather than a fabrication drawing.
- */
-export function bracketSpecNote(
-    panel: Pick<PanelCore, 'panelWidthMm'>,
-    mount: ProjectingMount | undefined,
-): string {
-    const r = resolveMount(mount);
-    return (
-        `Bracket: bought-in ${bracketStyleLabel(r.bracketStyle)}, ` +
-        `projects ${Math.round(panel.panelWidthMm)}mm perpendicular from the face. ` +
-        `${r.doubleSided ? 'Double-sided' : 'Single-sided'} ${r.shape}.`
-    );
 }
