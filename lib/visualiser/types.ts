@@ -559,6 +559,30 @@ export interface PanelRenderBundle {
     pushThroughPieces: PushThroughPiece[];
 }
 
+/**
+ * The per-section export geometry + pieces for one panel — everything a PDF
+ * generator needs beyond doc-level fields. Captured for the active panel and
+ * cached so the OTHER panel of a two-item (fascia + projecting) job can be
+ * included in the same PDF export without re-running the pipeline.
+ */
+export interface PanelPdfData {
+    params: PanelParams;
+    sectionExport: SectionedExport;
+    apertureBySection: FlatPath[][];
+    keylineBySection: FlatPath[][];
+    pushThroughKeylineBySection: FlatPath[][];
+    pushThroughIslandsBySection: FlatPath[][];
+    fixingsBySection: FlatPath[][];
+    cableHolesBySection: FlatPath[][];
+    referenceBySection: FlatPath[][];
+    apertureHolesBySection: FlatPath[][];
+    vinylPieces: MaterialPiece[];
+    acrylicPieces: MaterialPiece[];
+    solidPieces: MaterialPiece[];
+    standoffPieces: StandoffPiece[];
+    pushThroughPieces: PushThroughPiece[];
+}
+
 /** A pre-export advisory warning. Never blocks the download. */
 export interface ExportWarning {
     kind:

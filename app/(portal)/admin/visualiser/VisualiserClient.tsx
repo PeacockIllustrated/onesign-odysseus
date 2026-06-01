@@ -34,7 +34,7 @@ import {
     circlePoly,
 } from '@/lib/visualiser/geometry';
 import { splitPanels } from '@/lib/visualiser/split';
-import { resolveMount } from '@/lib/visualiser/projecting';
+import { resolveMount, projectingSpecLine } from '@/lib/visualiser/projecting';
 import { importSvg, buildKeyline } from '@/lib/visualiser/svg-import';
 import { composeLayers, composeLayersSvg } from '@/lib/visualiser/compose';
 import {
@@ -47,6 +47,7 @@ import {
     type StandoffPiece,
     type PushThroughPiece,
     type PanelRenderBundle,
+    type PanelPdfData,
     type ExportWarning,
 } from '@/lib/visualiser/types';
 
@@ -155,6 +156,8 @@ export function VisualiserClient({
         mount,
         bundles,
         setRenderedBundle,
+        pdfData,
+        setPdfData,
     } = useVisualiser();
     const [tab, setTab] = useState<Tab>('folded');
     const [mobilePane, setMobilePane] = useState<MobilePane>('preview');
@@ -1264,6 +1267,61 @@ export function VisualiserClient({
         );
     }, [development, sectionExport, apertureHoles]);
 
+    // The active panel's full PDF export data, cached per tab so a two-item
+    // (fascia + projecting) job can emit BOTH signs in one PDF without a second
+    // pipeline pass — mirrors the 3D render-bundle cache.
+    const activePdfData = useMemo<PanelPdfData | null>(() => {
+        if (!development || !sectionExport) return null;
+        return {
+            params,
+            sectionExport,
+            apertureBySection,
+            keylineBySection,
+            pushThroughKeylineBySection,
+            pushThroughIslandsBySection,
+            fixingsBySection,
+            cableHolesBySection,
+            referenceBySection,
+            apertureHolesBySection,
+            vinylPieces: materialPieces.vinyl,
+            acrylicPieces: materialPieces.acrylic,
+            solidPieces: materialPieces.solid,
+            standoffPieces,
+            pushThroughPieces,
+        };
+    }, [
+        params,
+        development,
+        sectionExport,
+        apertureBySection,
+        keylineBySection,
+        pushThroughKeylineBySection,
+        pushThroughIslandsBySection,
+        fixingsBySection,
+        cableHolesBySection,
+        referenceBySection,
+        apertureHolesBySection,
+        materialPieces,
+        standoffPieces,
+        pushThroughPieces,
+    ]);
+    useEffect(() => {
+        if (activePdfData) setPdfData(activeTab, activePdfData);
+    }, [activePdfData, activeTab, setPdfData]);
+    // The cached PDF data for the OTHER sign + a one-line summary of the
+    // projecting sign (used on the reference overview).
+    const mainIsActive = activeTab === 'main';
+    const companionPdf = projectingEnabled
+        ? pdfData[mainIsActive ? 'projecting' : 'main']
+        : null;
+    const projectingParams = mainIsActive ? secondaryParams : params;
+    const projectingSummary =
+        projectingEnabled && projectingParams
+            ? `${projectingSpecLine(projectingParams, mount)} · mounted ${Math.round(
+                  resolveMount(mount).offsetXMm,
+              )}mm across, ${Math.round(resolveMount(mount).offsetYMm)}mm down`
+            : null;
+
     // When aperture letters have inner counters (R / O / A / e etc.)
     // AND the operator hasn't enabled a keyline, the counter cannot
     // survive panel-only cutting — no bridges hold it in place, so
@@ -1992,6 +2050,9 @@ export function VisualiserClient({
                             pushThroughPieces={pushThroughPieces}
                             warnings={advisories}
                             pathCount={imported?.paths.length ?? 0}
+                            companionPdf={companionPdf}
+                            mainIsActive={mainIsActive}
+                            projectingSummary={projectingSummary}
                         />
                     )}
                 </footer>

@@ -188,6 +188,35 @@ tsc + 102 vitest + eslint green (only the pre-existing DimensionEditLabel
 error). Preview environment wedged — not verified live; the values are easy to
 tune once seen.
 
+### Change-set 16 — PDFs cover both signs (after /design-critique)
+
+Both exports now include the projecting sign alongside the fascia, one
+document, professional + unambiguous on a workshop floor. Critique priorities
+applied: per-item page labelling (anti-mix-up), scope-up-front, mount stated
+once.
+- `PdfOptions` gains `secondary?` (the other item's full opts), `itemLabel?`
+  (shown on every page of a two-item job) and `companionNote?` (reference
+  overview callout).
+- **Production**: the 720-line job-builder was wrapped in a per-item `buildJobs`
+  (by ALIASING opts/params/sectionExport — body byte-identical, zero risk to the
+  single-panel output). Jobs for the fascia then the projecting sign are
+  concatenated; every page's subtitle + footer is prefixed with the item name.
+- **Reference**: loops over the item(s), emitting the same overview/flat/
+  material pages per item with the item name in the header; the fascia overview
+  shows an "ALSO IN THIS JOB" callout with the projecting spec + mount.
+- **Data**: a per-tab `pdfData` cache (mirrors the render-bundle cache) holds
+  each panel's sectioned export geometry; VisualiserClient caches the active
+  panel's, ExportBar passes the OTHER panel's as `secondary`. Single-item
+  designs are unchanged (no secondary, no labels). The per-item board PDF (the
+  backshop snapshot) stays single-item.
+
+NOTE: PDFs cannot be rendered/verified in this environment (client-side jsPDF
+downloads). The single-panel path is byte-identical (production logic untouched
+via aliasing; reference 1-item loop = original pages, no label). The two-item
+path reuses the identical per-panel logic. Still needs a hands-on check of an
+actual exported PDF before relying on it for fabrication. tsc + 102 vitest +
+eslint green (only the pre-existing DimensionEditLabel error).
+
 ## v1 — single-panel toggle (REPLACED, kept for history)
 
 Implemented from `docs/projecting-signs-handoff.md`. Run autonomously per the

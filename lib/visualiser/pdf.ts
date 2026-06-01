@@ -83,7 +83,7 @@ function docId(designId: string | null | undefined, fallbackName: string): strin
     return `UNSAVED-${hex.slice(0, 6)}`;
 }
 
-interface PdfOptions {
+export interface PdfOptions {
     sectionExport: SectionedExport;
     params: PanelParams;
     /** Supabase design row id (null for unsaved designs). Drives the
@@ -158,6 +158,19 @@ interface PdfOptions {
     apertureHolesBySection?: FlatPath[][];
     /** PNG/JPEG data URL of the 3D preview, optional. */
     thumbnailDataUrl?: string;
+    /**
+     * Two-item job support. When a design has a projecting sign as well as the
+     * main fascia, `secondary` carries the OTHER item's full options so both
+     * generators emit both items in one document (each behind an item divider,
+     * every page labelled with `itemLabel` so the workshop never confuses which
+     * cut sheet belongs to which sign). `companionNote` is a one-line summary of
+     * the other item + its mount, shown on the reference overview.
+     */
+    secondary?: PdfOptions;
+    /** Item name shown on every page when this is part of a two-item job. */
+    itemLabel?: string;
+    /** Reference-overview callout describing the companion item + its mount. */
+    companionNote?: string;
 }
 
 /**
@@ -226,6 +239,8 @@ type PageContext = {
     font: string;
     /** Pre-baked QR-back-to-design URL data URL, or null on failure. */
     qrDataUrl: string | null;
+    /** Item name for a two-item job (e.g. "Main fascia"), shown in the header. */
+    itemLabel?: string;
 };
 
 /**
@@ -337,7 +352,9 @@ function drawHeaderBar(ctx: PageContext, title: string): void {
         pageNumber: ctx.pageNumber,
         totalPages: ctx.totalPages,
         font: ctx.font,
-        subtitle: title,
+        // Prefix the item name on a two-item job so each page is clearly the
+        // fascia's or the projecting sign's.
+        subtitle: ctx.itemLabel ? `${ctx.itemLabel} · ${title}` : title,
     });
 }
 
@@ -1040,10 +1057,35 @@ function drawOverviewPage(ctx: PageContext): void {
         doc.rect(thumbX, thumbTop + 4, thumbW, thumbH);
     }
 
+    // Companion-item callout — only on the main fascia's overview when the job
+    // also has a projecting sign. States the relationship + mount once, where
+    // the office/client reads it, so the rest of the document is unambiguous.
+    let companionBottom = thumbTop + thumbH + 4;
+    if (opts.companionNote) {
+        const cy = thumbTop + thumbH + 9;
+        const cH = 16;
+        doc.setFillColor(232, 240, 243); // brand light
+        doc.setDrawColor(BRAND_RGB[0], BRAND_RGB[1], BRAND_RGB[2]);
+        doc.setLineWidth(0.3);
+        doc.rect(thumbX, cy, thumbW, cH, 'FD');
+        doc.setTextColor(BRAND_DARK_RGB[0], BRAND_DARK_RGB[1], BRAND_DARK_RGB[2]);
+        doc.setFont(ctx.font, 'bold');
+        doc.setFontSize(8.5);
+        doc.text(T('ALSO IN THIS JOB'), thumbX + 3, cy + 5);
+        doc.setFont(ctx.font, 'normal');
+        doc.setFontSize(8);
+        doc.text(T(opts.companionNote), thumbX + 3, cy + 10, {
+            maxWidth: thumbW - 6,
+        });
+        doc.setTextColor(0);
+        doc.setDrawColor(0);
+        companionBottom = cy + cH;
+    }
+
     // Materials table (bottom of page)
     const matY = Math.max(
         top + 6 + spec.length * 5.5 + 6,
-        thumbTop + thumbH + 14,
+        companionBottom + 10,
     );
     doc.setFont(ctx.font, 'bold');
     doc.setFontSize(10);
@@ -1724,38 +1766,55 @@ export async function generateReferencePdfBlob(
         keywords: 'reference, drawing, signage, onesign',
     });
 
-    const materialPages = buildMaterialPages(opts);
-    const totalPages = 2 + materialPages.length;
-    let pageNumber = 0;
+    // One item (main fascia) or two (fascia + projecting sign). Each item gets
+    // the SAME page set — overview, flat layout, one page per material — so the
+    // reader scans them identically; every page is labelled with the item name.
+    const items: PdfOptions[] = [
+        opts,
+        ...(opts.secondary ? [opts.secondary] : []),
+    ];
+    const itemMaterialPages = items.map((it) => buildMaterialPages(it));
+    const totalPages = items.reduce(
+        (n, _it, i) => n + 2 + itemMaterialPages[i].length,
+        0,
+    );
 
-    const nextCtx = (): PageContext => {
+    let pageNumber = 0;
+    let firstPage = true;
+    const newCtx = (itemOpts: PdfOptions, itemLabel?: string): PageContext => {
+        if (!firstPage) doc.addPage('a4', 'landscape');
+        firstPage = false;
         pageNumber += 1;
         return {
             doc,
             pageW: PAGE_W,
             pageH: PAGE_H,
             margin,
-            params: opts.params,
-            opts,
+            params: itemOpts.params,
+            opts: itemOpts,
             pageNumber,
             totalPages,
             font,
             qrDataUrl,
+            itemLabel,
         };
     };
 
-    // Page 1 — Overview
-    drawOverviewPage(nextCtx());
-
-    // Page 2 — Flat cutting layout
-    doc.addPage('a4', 'landscape');
-    drawFlatLayoutPage(nextCtx());
-
-    // Pages 3+ — one per material group
-    for (const page of materialPages) {
-        doc.addPage('a4', 'landscape');
-        drawMaterialPage(nextCtx(), page);
-    }
+    items.forEach((it, i) => {
+        const itemLabel =
+            items.length > 1
+                ? (it.itemLabel ?? (i === 0 ? 'Main fascia' : 'Projecting sign'))
+                : undefined;
+        // Page 1 — Overview (the main item's overview also carries the
+        // companion note describing the other item + its mount)
+        drawOverviewPage(newCtx(it, itemLabel));
+        // Page 2 — Flat cutting layout
+        drawFlatLayoutPage(newCtx(it, itemLabel));
+        // Pages 3+ — one per material group
+        for (const page of itemMaterialPages[i]) {
+            drawMaterialPage(newCtx(it, itemLabel), page);
+        }
+    });
 
     return doc.output('blob');
 }
@@ -1815,7 +1874,18 @@ export async function generateProductionPdfBlob(
     };
 
     const today = new Date().toLocaleDateString('en-GB');
-    const jobs: ProdPageJob[] = [];
+
+    // Build the page jobs for ONE item (panel). Run once for the main fascia
+    // and again for the projecting sign when present, so a two-item job emits
+    // both items' cut sheets in one document. The body below is the original
+    // single-panel logic verbatim — `opts`/`params`/`sectionExport` here alias
+    // the item passed in, so each call produces that item's sheets.
+    const buildJobs = (src: PdfOptions): ProdPageJob[] => {
+        const opts = src;
+        const params = src.params;
+        const sectionExport = src.sectionExport;
+        const itemLabel = src.itemLabel ?? null;
+        const jobs: ProdPageJob[] = [];
 
     // Hairline stroke that scales mildly with part size, capped well
     // below any sensible kerf so no CAM interpretation widens the cut.
@@ -2541,6 +2611,24 @@ export async function generateProductionPdfBlob(
             },
         });
     }
+
+        // Two-item job: tag every page with the item name so a loose cut
+        // sheet on the bench is never mistaken for the other sign.
+        if (itemLabel) {
+            for (const job of jobs) {
+                job.subtitle = `${itemLabel} · ${job.subtitle}`;
+                job.footerInfo = [itemLabel, ...job.footerInfo];
+            }
+        }
+        return jobs;
+    };
+
+    // Main fascia, then the projecting sign if the design has one. Labelled
+    // so the workshop can tell the cut sheets apart at a glance.
+    const jobs: ProdPageJob[] = [
+        ...buildJobs(opts),
+        ...(opts.secondary ? buildJobs(opts.secondary) : []),
+    ];
 
     // ---- Phase 2: compute single fixed sheet size ------------------
     // The whole bundle uses one paper size so office printers can't

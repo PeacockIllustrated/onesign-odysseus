@@ -17,6 +17,7 @@ import {
     generateReferencePdfBlob,
     generateProductionPdfBlob,
     pdfFilename,
+    type PdfOptions,
 } from '@/lib/visualiser/pdf';
 import { saveDesign } from '@/lib/visualiser/actions';
 import { addToBackshop, isDesignOnBackshop } from '@/lib/backshop/actions';
@@ -26,6 +27,7 @@ import { trimImageDataUrl } from '@/lib/visualiser/image';
 import {
     PanelParamsSchema,
     type PanelParams,
+    type PanelPdfData,
     type FlatPath,
     type SectionedExport,
     type ExportWarning,
@@ -139,6 +141,9 @@ export function ExportBar({
     pushThroughPieces,
     warnings = [],
     pathCount = 0,
+    companionPdf = null,
+    mainIsActive = true,
+    projectingSummary = null,
 }: {
     sectionExport: SectionedExport;
     apertureBySection: FlatPath[][];
@@ -157,6 +162,12 @@ export function ExportBar({
     warnings?: ExportWarning[];
     /** Total imported artwork paths (used for the ready checklist). */
     pathCount?: number;
+    /** The OTHER sign's cached PDF data, for a two-item (fascia+projecting) job. */
+    companionPdf?: PanelPdfData | null;
+    /** True when the active/primary panel is the main fascia. */
+    mainIsActive?: boolean;
+    /** One-line projecting-sign + mount summary for the reference overview. */
+    projectingSummary?: string | null;
 }) {
     const {
         params,
@@ -215,6 +226,27 @@ export function ExportBar({
             svgSource: mainSvg,
         };
     };
+
+    // Two-item PDF fields. When the design has a projecting sign, both PDFs
+    // cover BOTH items: every page is labelled with the item name and the
+    // OTHER sign rides along as `secondary`. The projecting-sign + mount
+    // summary (companionNote) sits on the FASCIA's overview.
+    const twoItem: Partial<PdfOptions> = companionPdf
+        ? {
+              itemLabel: mainIsActive ? 'Main fascia' : 'Projecting sign',
+              companionNote: mainIsActive
+                  ? (projectingSummary ?? undefined)
+                  : undefined,
+              secondary: {
+                  ...companionPdf,
+                  itemLabel: mainIsActive ? 'Projecting sign' : 'Main fascia',
+                  companionNote: mainIsActive
+                      ? undefined
+                      : (projectingSummary ?? undefined),
+              },
+          }
+        : {};
+
     const [savePending, startSaveTransition] = useTransition();
     const [pdfPending, setPdfPending] = useState<'prod' | 'ref' | null>(null);
     const [backshopPending, setBackshopPending] = useState(false);
@@ -270,6 +302,7 @@ export function ExportBar({
                 standoffPieces,
                 pushThroughPieces,
                 thumbnailDataUrl: thumb || undefined,
+                ...twoItem,
             });
             const fname = pdfFilename(params, 'reference');
             download(blob, fname);
@@ -412,6 +445,7 @@ export function ExportBar({
                 solidPieces,
                 standoffPieces,
                 pushThroughPieces,
+                ...twoItem,
             });
             const fname = pdfFilename(params, 'production');
             download(blob, fname);
