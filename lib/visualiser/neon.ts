@@ -27,6 +27,8 @@ export interface NeonElement {
     centroid: [number, number];
     bbox: { minX: number; minY: number; maxX: number; maxY: number };
     points: Array<[number, number]>;
+    /** Resolved source colour (stroke→fill) for the neon glow, if any. */
+    stroke?: string;
 }
 
 /** Length of a single path in mm (adds the closing segment when closed). */
@@ -90,6 +92,7 @@ export function measureNeon(
                 centroid: centroidOf(p.points),
                 bbox: bboxOf(p.points),
                 points: p.points,
+                stroke: p.stroke,
             };
         })
         .filter((m) => m.lengthMm >= minLengthMm && m.points.length >= 2);

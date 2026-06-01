@@ -465,16 +465,44 @@ export function importSvg(svgText: string): ImportedSvg {
     const paths: FlatPath[] = [];
     const SKIP = new Set(['DEFS', 'CLIPPATH', 'MASK', 'USE', 'SYMBOL', 'PATTERN']);
 
-    const walk = (el: Element, parent: Matrix) => {
+    // Resolve a presentation property (stroke / fill) from the element's
+    // inline style or attribute, falling back to the inherited value from
+    // ancestors. Empty string means "not set here" → inherit.
+    const cssProp = (el: Element, prop: string, inherited: string): string => {
+        const style = el.getAttribute('style') || '';
+        const m = new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`).exec(style);
+        const v = (m ? m[1] : el.getAttribute(prop) || '').trim();
+        return v ? v : inherited;
+    };
+    // A usable solid colour, or undefined for none / currentColor / gradients.
+    const asColor = (v: string): string | undefined => {
+        const s = v.trim().toLowerCase();
+        if (!s || s === 'none' || s === 'currentcolor' || s.startsWith('url('))
+            return undefined;
+        return v.trim();
+    };
+
+    const walk = (
+        el: Element,
+        parent: Matrix,
+        inhStroke: string,
+        inhFill: string,
+    ) => {
         const tag = el.tagName.toUpperCase();
         if (SKIP.has(tag)) return; // drop hidden/indirected geometry
         const m = mul(parent, parseTransform(el.getAttribute('transform')));
+
+        // Resolved colours for this element + everything below it. Neon runs
+        // are drawn as strokes, so prefer stroke; fall back to fill.
+        const stroke = cssProp(el, 'stroke', inhStroke);
+        const fill = cssProp(el, 'fill', inhFill);
+        const color = asColor(stroke) ?? asColor(fill);
 
         const push = (raw: number[][], closed: boolean) => {
             const points = raw.map(([x, y]) => apply(m, x, y)) as Array<
                 [number, number]
             >;
-            if (points.length > 1) paths.push({ points, closed });
+            if (points.length > 1) paths.push({ points, closed, stroke: color });
         };
         const n = (a: string) => parseFloat(el.getAttribute(a) || '0');
 
@@ -512,10 +540,11 @@ export function importSvg(svgText: string): ImportedSvg {
             push(ring, tag === 'POLYGON');
         }
 
-        for (const child of Array.from(el.children)) walk(child, m);
+        for (const child of Array.from(el.children))
+            walk(child, m, stroke, fill);
     };
 
-    walk(root, unitM);
+    walk(root, unitM, '', '');
 
     const bbox = boundingBox(paths);
     const warnings = thinFeatureScan(paths);

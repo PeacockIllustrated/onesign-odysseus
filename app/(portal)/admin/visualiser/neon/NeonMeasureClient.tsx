@@ -1,8 +1,16 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { ArrowLeft, Download, Ruler, Upload, X } from 'lucide-react';
+import {
+    ArrowLeft,
+    Download,
+    Ruler,
+    Sparkles,
+    Upload,
+    X,
+} from 'lucide-react';
 import { importSvg } from '@/lib/visualiser/svg-import';
 import {
     measureNeon,
@@ -14,6 +22,15 @@ import {
 import { generateNeonPdfBlob } from '@/lib/visualiser/neon-pdf';
 
 const ACCENT = '#4e7e8c';
+
+const NeonScene = dynamic(() => import('./NeonScene'), {
+    ssr: false,
+    loading: () => (
+        <div className="flex h-full items-center justify-center bg-[#07090d] text-sm text-neutral-500">
+            Lighting up…
+        </div>
+    ),
+});
 
 interface Loaded {
     name: string;
@@ -27,6 +44,9 @@ export function NeonMeasureClient() {
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     const [dragOver, setDragOver] = useState(false);
+    const [view, setView] = useState<'measure' | 'glow'>('measure');
+    const [boardOn, setBoardOn] = useState(true);
+    const [paddingMm, setPaddingMm] = useState(50);
 
     const handleFile = async (file: File) => {
         setError(null);
@@ -108,6 +128,40 @@ export function NeonMeasureClient() {
                 </div>
                 {loaded && (
                     <div className="flex items-center gap-2">
+                        <div className="flex rounded-md border border-neutral-300 p-0.5">
+                            <button
+                                type="button"
+                                onClick={() => setView('measure')}
+                                className={`flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium ${
+                                    view === 'measure'
+                                        ? 'text-white'
+                                        : 'text-neutral-600 hover:bg-neutral-100'
+                                }`}
+                                style={
+                                    view === 'measure'
+                                        ? { background: ACCENT }
+                                        : undefined
+                                }
+                            >
+                                <Ruler size={13} /> Measure
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setView('glow')}
+                                className={`flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium ${
+                                    view === 'glow'
+                                        ? 'text-white'
+                                        : 'text-neutral-600 hover:bg-neutral-100'
+                                }`}
+                                style={
+                                    view === 'glow'
+                                        ? { background: ACCENT }
+                                        : undefined
+                                }
+                            >
+                                <Sparkles size={13} /> Neon preview
+                            </button>
+                        </div>
                         <button
                             type="button"
                             onClick={() => {
@@ -182,7 +236,7 @@ export function NeonMeasureClient() {
                         </p>
                     )}
                 </button>
-            ) : (
+            ) : view === 'measure' ? (
                 <div className="flex flex-1 min-h-0 gap-3">
                     {/* Annotated preview */}
                     <div className="flex-1 min-w-0 overflow-hidden rounded-xl border border-neutral-200 bg-white p-3">
@@ -314,6 +368,64 @@ export function NeonMeasureClient() {
                                 </tbody>
                             </table>
                         </div>
+                    </div>
+                </div>
+            ) : (
+                <div className="relative flex-1 min-h-0 overflow-hidden rounded-xl border border-neutral-800 bg-[#07090d]">
+                    <NeonScene
+                        elements={loaded.elements}
+                        bbox={loaded.bbox}
+                        backboard={{ enabled: boardOn, paddingMm }}
+                    />
+                    {/* Backboard controls */}
+                    <div className="absolute left-3 top-3 flex w-52 flex-col gap-2 rounded-lg border border-white/10 bg-black/55 p-3 text-white shadow-lg backdrop-blur">
+                        <span className="text-[10px] font-semibold uppercase tracking-widest text-white/60">
+                            Clear acrylic backboard
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setBoardOn((v) => !v)}
+                            aria-pressed={boardOn}
+                            className="flex items-center justify-between rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors"
+                            style={{
+                                background: boardOn
+                                    ? ACCENT
+                                    : 'rgba(255,255,255,0.08)',
+                            }}
+                        >
+                            <span>Backboard</span>
+                            <span className="text-[10px] uppercase tracking-wide">
+                                {boardOn ? 'On' : 'Off'}
+                            </span>
+                        </button>
+                        <label
+                            className={`flex flex-col gap-1 ${
+                                boardOn ? '' : 'opacity-40'
+                            }`}
+                        >
+                            <span className="flex items-center justify-between text-[11px] text-white/70">
+                                <span>Padding</span>
+                                <span className="tabular-nums">
+                                    {paddingMm} mm
+                                </span>
+                            </span>
+                            <input
+                                type="range"
+                                min={0}
+                                max={300}
+                                step={5}
+                                value={paddingMm}
+                                disabled={!boardOn}
+                                onChange={(e) =>
+                                    setPaddingMm(parseInt(e.target.value, 10))
+                                }
+                                className="w-full accent-[#46e8ff]"
+                            />
+                        </label>
+                        <p className="text-[10px] leading-snug text-white/40">
+                            Drag to orbit. Colours come from each path&apos;s SVG
+                            stroke (fill if no stroke).
+                        </p>
                     </div>
                 </div>
             )}

@@ -602,6 +602,13 @@ export interface FlatPath {
     /** Absolute polyline points in the SVG's native units (mm). */
     points: Array<[number, number]>;
     closed: boolean;
+    /**
+     * Resolved display colour from the source SVG (stroke, falling back to
+     * fill), as a CSS colour string — e.g. '#ff2d95'. Optional: the cut/
+     * panel pipeline ignores it; the neon visualiser uses it to colour each
+     * glowing run. Absent when the importer couldn't resolve a colour.
+     */
+    stroke?: string;
 }
 
 export interface ImportedSvg {
