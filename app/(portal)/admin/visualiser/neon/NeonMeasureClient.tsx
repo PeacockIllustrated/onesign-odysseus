@@ -134,6 +134,7 @@ export function NeonMeasureClient() {
                 name: loaded.name,
                 elements,
                 bbox,
+                backboard: { enabled: boardOn, paddingMm },
             });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');

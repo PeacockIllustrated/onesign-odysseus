@@ -3,6 +3,7 @@ import {
     pathLengthMm,
     measureNeon,
     totalLengthMm,
+    colourBreakdown,
     formatMm,
     formatM,
 } from './neon';
@@ -111,6 +112,52 @@ describe('measureNeon', () => {
     it('totals every run', () => {
         const els = measureNeon([square(0, 0, 50), square(200, 0, 50)]);
         expect(totalLengthMm(els)).toBeCloseTo(400, 6);
+    });
+});
+
+describe('colourBreakdown', () => {
+    const run = (
+        stroke: string | undefined,
+        s: number,
+    ): FlatPath & { stroke?: string } => ({
+        closed: true,
+        stroke,
+        points: [
+            [0, 0],
+            [s, 0],
+            [s, s],
+            [0, s],
+        ],
+    });
+
+    it('groups runs by colour and totals each, longest first', () => {
+        const els = measureNeon([
+            run('#ff0000', 50), // 200mm red
+            run('#00ff00', 100), // 400mm green
+            run('#ff0000', 50), // 200mm red
+        ]);
+        const bd = colourBreakdown(els);
+        expect(bd).toHaveLength(2);
+        // Green (400mm) sorts before red (2×200=400)… tie — assert contents.
+        const red = bd.find((b) => b.color === '#ff0000')!;
+        const green = bd.find((b) => b.color === '#00ff00')!;
+        expect(red.runs).toBe(2);
+        expect(red.lengthMm).toBeCloseTo(400, 6);
+        expect(green.runs).toBe(1);
+        expect(green.lengthMm).toBeCloseTo(400, 6);
+    });
+
+    it('is case-insensitive on the colour key', () => {
+        const els = measureNeon([run('#FF0000', 50), run('#ff0000', 50)]);
+        expect(colourBreakdown(els)).toHaveLength(1);
+    });
+
+    it('buckets uncoloured runs together', () => {
+        const els = measureNeon([run(undefined, 50), run(undefined, 50)]);
+        const bd = colourBreakdown(els);
+        expect(bd).toHaveLength(1);
+        expect(bd[0].color).toBeUndefined();
+        expect(bd[0].runs).toBe(2);
     });
 });
 

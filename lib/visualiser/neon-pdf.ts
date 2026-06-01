@@ -12,7 +12,13 @@
 
 import { jsPDF } from 'jspdf';
 import { registerVisualiserFonts } from './pdf-fonts';
-import { formatMm, formatM, totalLengthMm, type NeonElement } from './neon';
+import {
+    formatMm,
+    formatM,
+    totalLengthMm,
+    colourBreakdown,
+    type NeonElement,
+} from './neon';
 
 const ACCENT: [number, number, number] = [78, 126, 140]; // #4e7e8c
 const INK: [number, number, number] = [26, 31, 35];
@@ -21,10 +27,34 @@ export interface NeonPdfOptions {
     name: string;
     elements: NeonElement[];
     bbox: { minX: number; minY: number; maxX: number; maxY: number };
+    backboard?: { enabled: boolean; paddingMm: number };
 }
 
 function fitScale(w: number, h: number, partW: number, partH: number): number {
     return Math.min(w / Math.max(partW, 1e-6), h / Math.max(partH, 1e-6));
+}
+
+/** Parse a CSS hex / rgb() colour to [r,g,b]; grey fallback for anything else. */
+function cssToRgb(c: string | undefined): [number, number, number] {
+    if (!c) return [150, 150, 150];
+    const s = c.trim();
+    const hex = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(s);
+    if (hex) {
+        let h = hex[1];
+        if (h.length === 3)
+            h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+        return [
+            parseInt(h.slice(0, 2), 16),
+            parseInt(h.slice(2, 4), 16),
+            parseInt(h.slice(4, 6), 16),
+        ];
+    }
+    const rgb = /rgba?\(([^)]+)\)/i.exec(s);
+    if (rgb) {
+        const n = rgb[1].split(',').map((v) => parseFloat(v));
+        if (n.length >= 3) return [n[0], n[1], n[2]];
+    }
+    return [150, 150, 150];
 }
 
 export async function generateNeonPdfBlob(opts: NeonPdfOptions): Promise<Blob> {
@@ -217,6 +247,191 @@ export async function generateNeonPdfBlob(opts: NeonPdfOptions): Promise<Blob> {
         PAGE_H - margin + 4,
     );
     doc.setTextColor(0);
+
+    // ====================================================================
+    // PAGE 2 — colour breakdown + backboard spec
+    // ====================================================================
+    doc.addPage('a4', 'landscape');
+
+    {
+    // Header bar
+    doc.setFillColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+    doc.rect(0, 0, PAGE_W, 18, 'F');
+    doc.setTextColor(255);
+    doc.setFont(font, 'bold');
+    doc.setFontSize(12);
+    doc.text(T('BACKBOARD & COLOURS'), margin, 11.5);
+    doc.setFont(font, 'normal');
+    doc.setFontSize(9);
+    doc.text(T(opts.name), PAGE_W - margin, 11.5, { align: 'right' });
+    doc.setTextColor(0);
+
+    const p2Top = 30;
+
+    // ---- Backboard (left column) ---------------------------------------
+    const artW = Math.max(0, opts.bbox.maxX - opts.bbox.minX);
+    const artH = Math.max(0, opts.bbox.maxY - opts.bbox.minY);
+    const board = opts.backboard;
+    const pad = board?.enabled ? Math.max(0, board.paddingMm) : 0;
+    const boardW = artW + pad * 2;
+    const boardH = artH + pad * 2;
+
+    doc.setFont(font, 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(INK[0], INK[1], INK[2]);
+    doc.text(T('BACKBOARD'), margin, p2Top);
+    doc.setTextColor(0);
+
+    if (board?.enabled) {
+        // Diagram: board rectangle with the artwork extent dashed inside.
+        const boxMaxW = 120;
+        const boxMaxH = 78;
+        const dgScale = fitScale(boxMaxW, boxMaxH, boardW, boardH);
+        const bw = boardW * dgScale;
+        const bh = boardH * dgScale;
+        const bx = margin + (boxMaxW - bw) / 2;
+        const by = p2Top + 8;
+        // board
+        doc.setFillColor(225, 240, 246);
+        doc.setDrawColor(120, 160, 175);
+        doc.setLineWidth(0.4);
+        doc.rect(bx, by, bw, bh, 'FD');
+        // artwork extent (dashed inset by padding)
+        const inset = pad * dgScale;
+        doc.setDrawColor(150);
+        doc.setLineWidth(0.25);
+        doc.setLineDashPattern([1.4, 1], 0);
+        doc.rect(bx + inset, by + inset, bw - inset * 2, bh - inset * 2, 'S');
+        doc.setLineDashPattern([], 0);
+        // dims
+        doc.setFont(font, 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(90);
+        doc.text(`${Math.round(boardW)} mm`, bx + bw / 2, by + bh + 4, {
+            align: 'center',
+        });
+        doc.text(`${Math.round(boardH)} mm`, bx - 2, by + bh / 2, {
+            align: 'right',
+            angle: 90,
+        });
+        doc.setTextColor(0);
+
+        // spec lines
+        let sy = by + bh + 12;
+        const specRow = (k: string, v: string, bold = false) => {
+            doc.setFont(font, 'normal');
+            doc.setFontSize(8.5);
+            doc.setTextColor(120);
+            doc.text(T(k), margin, sy);
+            doc.setTextColor(0);
+            doc.setFont(font, bold ? 'bold' : 'normal');
+            doc.setFontSize(bold ? 10 : 8.5);
+            doc.text(T(v), margin + 34, sy);
+            sy += bold ? 6.5 : 5.2;
+        };
+        specRow('Material', 'Clear acrylic');
+        specRow('Artwork', `${Math.round(artW)} × ${Math.round(artH)} mm`);
+        specRow('Padding', `${Math.round(pad)} mm all round`);
+        specRow(
+            'Board size',
+            `${Math.round(boardW)} × ${Math.round(boardH)} mm`,
+            true,
+        );
+        specRow(
+            'Sheet area',
+            `${((boardW * boardH) / 1_000_000).toFixed(2)} m²`,
+        );
+    } else {
+        doc.setFont(font, 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(90);
+        doc.text(
+            T('No backboard — runs mounted directly.'),
+            margin,
+            p2Top + 8,
+        );
+        doc.setTextColor(0);
+    }
+
+    // ---- Colours (right column) ----------------------------------------
+    const colX = margin + 150;
+    const colW = PAGE_W - margin - colX;
+    const breakdown = colourBreakdown(opts.elements);
+
+    doc.setFont(font, 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(INK[0], INK[1], INK[2]);
+    doc.text(T('NEON FLEX BY COLOUR'), colX, p2Top);
+    doc.setTextColor(0);
+
+    // column headers
+    let cy = p2Top + 8;
+    doc.setFont(font, 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(120);
+    doc.text(T('COLOUR'), colX + 8, cy);
+    doc.text(T('RUNS'), colX + colW - 44, cy, { align: 'right' });
+    doc.text(T('LENGTH'), colX + colW, cy, { align: 'right' });
+    doc.setDrawColor(180);
+    doc.setLineWidth(0.2);
+    doc.line(colX, cy + 2, colX + colW, cy + 2);
+    doc.setTextColor(0);
+    cy += 8;
+
+    for (const row of breakdown) {
+        const rgb = cssToRgb(row.color);
+        // swatch
+        doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+        doc.setDrawColor(180);
+        doc.setLineWidth(0.2);
+        doc.rect(colX, cy - 3.4, 5, 5, 'FD');
+        // label
+        doc.setFont(font, 'normal');
+        doc.setFontSize(9);
+        doc.text(T(row.color ? row.color.toUpperCase() : 'Not set'), colX + 8, cy);
+        // runs
+        doc.text(`${row.runs}`, colX + colW - 44, cy, { align: 'right' });
+        // length (m, with mm under)
+        doc.text(formatM(row.lengthMm), colX + colW, cy, { align: 'right' });
+        doc.setFontSize(7);
+        doc.setTextColor(140);
+        doc.text(formatMm(row.lengthMm), colX + colW, cy + 3.4, {
+            align: 'right',
+        });
+        doc.setTextColor(0);
+        cy += 9;
+    }
+
+    // total
+    const total = totalLengthMm(opts.elements);
+    doc.setDrawColor(INK[0], INK[1], INK[2]);
+    doc.setLineWidth(0.4);
+    doc.line(colX, cy - 3, colX + colW, cy - 3);
+    doc.setFont(font, 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(INK[0], INK[1], INK[2]);
+    doc.text(T('TOTAL'), colX, cy + 2);
+    doc.text(
+        `${formatM(total)}  ·  ${formatMm(total)}`,
+        colX + colW,
+        cy + 2,
+        { align: 'right' },
+    );
+    doc.setTextColor(0);
+
+    // footer
+    doc.setFont(font, 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(120);
+    doc.text(
+        T(
+            'Colours read from each path’s SVG stroke (fill if no stroke). Order neon flex per colour from the lengths above.',
+        ),
+        margin,
+        PAGE_H - margin + 4,
+    );
+    doc.setTextColor(0);
+    }
 
     return doc.output('blob');
 }

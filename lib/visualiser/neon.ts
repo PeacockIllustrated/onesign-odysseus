@@ -120,6 +120,30 @@ export function totalLengthMm(els: NeonElement[]): number {
     return els.reduce((sum, e) => sum + e.lengthMm, 0);
 }
 
+export interface ColourTotal {
+    /** Source colour string (undefined when the SVG carried none). */
+    color: string | undefined;
+    runs: number;
+    lengthMm: number;
+}
+
+/**
+ * Group runs by colour and total each — neon flex is ordered per colour, so
+ * this is the "how much of each colour to buy" breakdown. Sorted longest first;
+ * runs with no SVG colour collapse into a single "not set" bucket.
+ */
+export function colourBreakdown(els: NeonElement[]): ColourTotal[] {
+    const map = new Map<string, ColourTotal>();
+    for (const e of els) {
+        const key = (e.stroke ?? '').trim().toLowerCase();
+        const cur = map.get(key) ?? { color: e.stroke, runs: 0, lengthMm: 0 };
+        cur.runs += 1;
+        cur.lengthMm += e.lengthMm;
+        map.set(key, cur);
+    }
+    return [...map.values()].sort((a, b) => b.lengthMm - a.lengthMm);
+}
+
 /** "1,234 mm" — rounded to the nearest mm with a thousands separator. */
 export function formatMm(mm: number): string {
     return `${Math.round(mm).toLocaleString('en-GB')} mm`;
