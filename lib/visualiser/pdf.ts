@@ -1167,53 +1167,86 @@ function drawOverviewPage(ctx: PageContext): void {
     doc.text(T('LEGEND'), margin, stripY);
     doc.setFont(ctx.font, 'normal');
     doc.setFontSize(7.5);
+    // Conditional key — only the path types this design actually uses, with
+    // explicit CUT vs RETAIN vs NOT-CUT instructions so production can never
+    // misread a counter / island / stood-off footprint. Applies to every
+    // letter and any subtext (the same path types repeat across them all).
+    const panelRgb = hexToRgb(opts.params.panelColor ?? '#d6d6d6');
+    const swatch =
+        (fill: [number, number, number], stroke: [number, number, number]) =>
+        (x: number, y: number) => {
+            doc.setFillColor(fill[0], fill[1], fill[2]);
+            doc.setDrawColor(stroke[0], stroke[1], stroke[2]);
+            doc.setLineWidth(0.3);
+            doc.rect(x, y - 2.2, 9, 4.4, 'FD');
+        };
+    const hasAperture = (opts.apertureBySection ?? []).some((a) => a.length > 0);
+    const hasPush =
+        (opts.pushThroughKeylineBySection ?? []).some((a) => a.length > 0) ||
+        (opts.pushThroughPieces?.length ?? 0) > 0;
+    const hasIslands = (opts.pushThroughIslandsBySection ?? []).some(
+        (a) => a.length > 0,
+    );
+    const hasSolid = (opts.solidPieces?.length ?? 0) > 0;
+    const hasStandoff = (opts.standoffPieces?.length ?? 0) > 0;
     const legendItems: Array<{
         draw: (x: number, y: number) => void;
         label: string;
-    }> = [
-        {
-            label: 'Fold line',
-            draw: (x, y) => {
-                doc.setDrawColor(200, 0, 0);
-                doc.setLineWidth(0.3);
-                doc.setLineDashPattern([1.4, 1.0], 0);
-                doc.line(x, y, x + 10, y);
-                doc.setLineDashPattern([], 0);
-            },
+    }> = [];
+    legendItems.push({
+        label: 'Fold line (bend, not a cut)',
+        draw: (x, y) => {
+            doc.setDrawColor(200, 0, 0);
+            doc.setLineWidth(0.3);
+            doc.setLineDashPattern([1.4, 1.0], 0);
+            doc.line(x, y, x + 9, y);
+            doc.setLineDashPattern([], 0);
         },
-        {
-            label: 'Cut perimeter',
-            draw: (x, y) => {
-                doc.setDrawColor(20);
-                doc.setLineWidth(0.5);
-                doc.line(x, y, x + 10, y);
-            },
+    });
+    legendItems.push({
+        label: 'Cut line — perimeter',
+        draw: (x, y) => {
+            doc.setDrawColor(20);
+            doc.setLineWidth(0.5);
+            doc.line(x, y, x + 9, y);
         },
-        {
-            label: 'Aperture / push-through',
+    });
+    if (hasAperture || hasPush) {
+        legendItems.push({
+            label: hasPush
+                ? 'Cut line — aperture / keyline (hole cut through the panel)'
+                : 'Cut line — aperture (hole cut through the panel)',
             draw: (x, y) => {
                 doc.setDrawColor(30, 90, 200);
-                doc.setLineWidth(0.4);
-                doc.line(x, y, x + 10, y);
+                doc.setLineWidth(0.5);
+                doc.line(x, y, x + 9, y);
             },
-        },
-        {
-            label: 'Material outline (current page)',
+        });
+    }
+    if (hasIslands) {
+        legendItems.push({
+            label: 'Retained metal island — KEEP this panel piece; keyline cut rings it; remount on backing (do NOT discard)',
+            draw: swatch(panelRgb, [0, 150, 170]),
+        });
+    }
+    if (hasSolid) {
+        legendItems.push({
+            label: 'Retained panel piece — stays as panel material, NOT a cut-out',
+            draw: swatch(panelRgb, [90, 90, 90]),
+        });
+    }
+    if (hasStandoff) {
+        legendItems.push({
+            label: 'Stood-off lettering — fabricated separately, NOT cut from this panel',
             draw: (x, y) => {
-                doc.setDrawColor(20);
-                doc.setLineWidth(0.6);
-                doc.line(x, y, x + 10, y);
+                doc.setDrawColor(60, 60, 60);
+                doc.setLineWidth(0.35);
+                doc.setLineDashPattern([1.2, 0.8], 0);
+                doc.rect(x, y - 2.2, 9, 4.4, 'S');
+                doc.setLineDashPattern([], 0);
             },
-        },
-        {
-            label: 'Other materials (ghosted)',
-            draw: (x, y) => {
-                doc.setDrawColor(200);
-                doc.setLineWidth(0.2);
-                doc.line(x, y, x + 10, y);
-            },
-        },
-    ];
+        });
+    }
     legendItems.forEach((item, i) => {
         const y = stripY + 4 + i * 3.6;
         item.draw(margin, y);
@@ -1358,6 +1391,34 @@ function drawFlatLayoutPage(ctx: PageContext): void {
         };
         drawShape(p.path, fillRgb);
         for (const h of p.holes ?? []) drawShape(h, [255, 255, 255]);
+    }
+
+    // Retained metal islands — the counter centre that STAYS as panel metal.
+    // Drawn in the PANEL colour with the teal keyline-cut ring ON TOP of the
+    // white counter, so every counter (every letter + any subtext) reads as
+    // "metal island ringed by a keyline cut", not an open hole to remove.
+    {
+        const islandRgb = hexToRgb(params.panelColor ?? '#d6d6d6');
+        for (const arr of opts.pushThroughIslandsBySection ?? []) {
+            for (const isl of arr) {
+                if (!isl.closed || isl.points.length < 3) continue;
+                drawMaterialPiece(
+                    doc,
+                    {
+                        pathIndex: -1,
+                        path: isl,
+                        color: params.panelColor ?? '#d6d6d6',
+                    },
+                    px,
+                    py,
+                    scale,
+                    islandRgb,
+                    [0, 150, 170], // teal = the keyline cut around the island
+                    0.4,
+                    'FD',
+                );
+            }
+        }
     }
 
     // Standoff pieces — filled in their real colour (counters punched
@@ -2473,7 +2534,10 @@ export async function generateProductionPdfBlob(
                     .filter(Boolean)
                     .join('  ·  '),
                 `face ${Math.round(params.panelWidthMm)} × ${Math.round(params.panelHeightMm)} mm  ·  ${today}`,
-                'LEGEND: + stud hole  ·  O cable hole  ·  - - letter position  ·  .... aperture cut',
+                'LEGEND: + stud hole  ·  O cable hole  ·  - - letter position  ·  .... aperture cut' +
+                    (islandCount > 0
+                        ? '  ·  retained metal island = KEEP + remount on backing (keyline cut rings it)'
+                        : ''),
             ],
             draw: (dX, dY) => {
                 const px = (x: number) => dX + x;

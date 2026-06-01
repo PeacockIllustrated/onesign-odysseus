@@ -252,6 +252,31 @@ box vs round disc, and all three bracket styles, render distinctly on both the
 projecting tab and the main composite, no console errors. tsc + 106 vitest +
 eslint green (only the pre-existing DimensionEditLabel error).
 
+### Change-set 19 — PDF clarity: retained islands + full legend
+
+Production-safety fix after auditing EVERY contour type for misreads (not just
+islands):
+- **Retained metal islands** now drawn on the reference flat-layout in the PANEL
+  colour with a teal keyline ring, over the white push-through counters — so a
+  counter reads as "metal island ringed by a keyline cut", never a hole to
+  remove. Covers every letter + any subtext (iterates all island paths).
+- **Reference overview legend** rebuilt: conditional + explicit CUT vs RETAIN vs
+  NOT-CUT instructions — retained metal island (KEEP, remount on backing),
+  retained panel piece (not cut), stood-off lettering (not cut from panel),
+  aperture/keyline cut, cut perimeter, fold. Only the types the design uses
+  appear, so it stays compact.
+- **Production placement-template legend** gains the retained-island note; the
+  panel-cut footer already flagged "remount on backing".
+
+Audited cases: retained islands, push-through counters, solid retained pieces,
+stood-off footprints, aperture counters — across main text + subtext.
+tsc + 106 vitest + eslint green.
+
+CAVEAT: PDFs can't be rendered in this environment, so unverified visually. The
+changes are a text legend (unambiguous) + island drawing via the existing
+drawMaterialPiece helper. Open an exported reference + production PDF to confirm
+the island fill/ring + the legend read correctly before relying on them.
+
 ## v1 — single-panel toggle (REPLACED, kept for history)
 
 Implemented from `docs/projecting-signs-handoff.md`. Run autonomously per the
