@@ -113,6 +113,33 @@ error-free). The camera tween is frame-counted specifically so it cannot peg
 the renderer. Worth a hands-on pass: drag feel + the transition timing, and the
 artwork texture's appearance/orientation on the sign faces.
 
+### Change-set 13 — signs stay in situ; tab switch only shifts focus
+
+Fixes the "editing the projecting sign teleports it to the centre" flaw. The
+swap-to-origin render is gone. Now BOTH panels render in FIXED in-situ
+positions and never move on tab change:
+- The **fascia is always at the origin** — the full editable Panel when it is
+  the focus, a faded backdrop (`FadedFascia`: dim plane + faint design texture)
+  while the projecting sign is being edited.
+- The **projecting sign is always mounted perpendicular in situ** (at its mount
+  offset). `SecondaryTray` became `ProjectingMounted`, which always renders the
+  perpendicular, draggable mount; its content is either the full editable Panel
+  (when it's the focus — so editing keeps it in place) or the lightweight
+  tray + design texture (when the fascia is the focus). Circle stays a disc.
+- Switching tabs only **flies the camera** to the focused panel — to the
+  projecting sign's true in-situ centre when editing it (not the origin) — and
+  fades the other. Nothing repositions, so you can position the sign and see it
+  in situ while editing.
+- Rotated-in-situ editing disables the 3D click handlers (fixing/path-pick
+  coords assume a face at the origin); the sign is edited via the controls +
+  drag + artwork upload. Drag-to-position works in both focus states.
+
+**Verification:** tsc + 102 vitest + eslint green (only the pre-existing
+`DimensionEditLabel` error). Live verification was AGAIN blocked — the Claude
+Preview environment was wedged this session (routes 404'd / navigation stuck on
+a fresh server; not a code issue, tsc clean). Needs a hands-on pass to confirm
+the focus fly + the in-situ feel.
+
 ## v1 — single-panel toggle (REPLACED, kept for history)
 
 Implemented from `docs/projecting-signs-handoff.md`. Run autonomously per the

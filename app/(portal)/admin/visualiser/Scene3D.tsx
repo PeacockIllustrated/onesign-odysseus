@@ -2175,7 +2175,7 @@ function useSvgTexture(svg: string | null | undefined): THREE.Texture | null {
     return tex;
 }
 
-function SecondaryTray({
+function ProjectingMounted({
     fascia,
     params,
     development,
@@ -2185,6 +2185,7 @@ function SecondaryTray({
     showOutlines,
     artworkSvg,
     onReposition,
+    children,
 }: {
     fascia: PanelParams;
     params: PanelParams;
@@ -2195,6 +2196,12 @@ function SecondaryTray({
     showOutlines: boolean;
     artworkSvg?: string | null;
     onReposition?: (offsetXMm: number, offsetYMm: number) => void;
+    /**
+     * When provided (the sign is the one being edited), render this full Panel
+     * IN PLACE instead of the lightweight tray+texture — so editing never
+     * repositions the sign; it stays mounted in situ and we only shift focus.
+     */
+    children?: React.ReactNode;
 }) {
     const Wf = fascia.panelWidthMm * S;
     const Hf = fascia.panelHeightMm * S;
@@ -2261,60 +2268,102 @@ function SecondaryTray({
             onPointerMove={onMove}
             onPointerUp={onUp}
         >
-            <Panel
-                params={params}
-                development={development}
-                split={split}
-                fold={1}
-                aperture={[]}
-                keyline={[]}
-                pushThroughKeyline={[]}
-                pushThroughIslands={[]}
-                autoFixings={[]}
-                manualFixings={[]}
-                cableHoles={[]}
-                reference={[]}
-                vinylPieces={[]}
-                acrylicPieces={[]}
-                solidPieces={[]}
-                standoffPieces={[]}
-                pushThroughPieces={[]}
-                placedPathsByIndex={null}
-                pathGroupColors={null}
-                showOutlines={showOutlines}
-                showStandoffLetters={false}
-                showStandoffLocators={false}
-                illuminationView={night}
-                illumination={params.illumination}
-                showDimensions={false}
-                enclosed
-            />
-            {/* The projecting sign's design, shown on its face(s) so it reads
-                in the composite while you edit the main panel. */}
-            {artworkTex && (
+            {children ?? (
                 <>
-                    <mesh position={[0, 0, 0.8 * S]}>
-                        <planeGeometry args={[artW, artH]} />
-                        <meshBasicMaterial
-                            map={artworkTex}
-                            transparent
-                            opacity={night ? 0.6 : 1}
-                        />
-                    </mesh>
-                    {mount.doubleSided && (
-                        <mesh
-                            position={[0, 0, -Dp - 0.8 * S]}
-                            rotation={[0, Math.PI, 0]}
-                        >
-                            <planeGeometry args={[artW, artH]} />
-                            <meshBasicMaterial
-                                map={artworkTex}
-                                transparent
-                                opacity={night ? 0.6 : 1}
-                            />
-                        </mesh>
+                    <Panel
+                        params={params}
+                        development={development}
+                        split={split}
+                        fold={1}
+                        aperture={[]}
+                        keyline={[]}
+                        pushThroughKeyline={[]}
+                        pushThroughIslands={[]}
+                        autoFixings={[]}
+                        manualFixings={[]}
+                        cableHoles={[]}
+                        reference={[]}
+                        vinylPieces={[]}
+                        acrylicPieces={[]}
+                        solidPieces={[]}
+                        standoffPieces={[]}
+                        pushThroughPieces={[]}
+                        placedPathsByIndex={null}
+                        pathGroupColors={null}
+                        showOutlines={showOutlines}
+                        showStandoffLetters={false}
+                        showStandoffLocators={false}
+                        illuminationView={night}
+                        illumination={params.illumination}
+                        showDimensions={false}
+                        enclosed
+                    />
+                    {/* The projecting sign's design, shown on its face(s) so it
+                        reads in the composite while you edit the main panel. */}
+                    {artworkTex && (
+                        <>
+                            <mesh position={[0, 0, 0.8 * S]}>
+                                <planeGeometry args={[artW, artH]} />
+                                <meshBasicMaterial
+                                    map={artworkTex}
+                                    transparent
+                                    opacity={night ? 0.6 : 1}
+                                />
+                            </mesh>
+                            {mount.doubleSided && (
+                                <mesh
+                                    position={[0, 0, -Dp - 0.8 * S]}
+                                    rotation={[0, Math.PI, 0]}
+                                >
+                                    <planeGeometry args={[artW, artH]} />
+                                    <meshBasicMaterial
+                                        map={artworkTex}
+                                        transparent
+                                        opacity={night ? 0.6 : 1}
+                                    />
+                                </mesh>
+                            )}
+                        </>
                     )}
                 </>
+            )}
+        </group>
+    );
+}
+
+/**
+ * The fascia shown as a faded backdrop at the origin while the projecting sign
+ * is being edited — so the main panel stays visible (in situ) but recedes.
+ */
+function FadedFascia({
+    params,
+    development,
+    artworkSvg,
+}: {
+    params: PanelParams;
+    development: PanelDevelopment;
+    artworkSvg?: string | null;
+}) {
+    const tex = useSvgTexture(artworkSvg);
+    const w = development.faceNominalWMm * S;
+    const h = development.faceNominalHMm * S;
+    return (
+        <group>
+            <mesh>
+                <planeGeometry args={[w, h]} />
+                <meshBasicMaterial
+                    color={params.panelColor ?? DEFAULT_PANEL_COLOR}
+                    transparent
+                    opacity={0.22}
+                    side={THREE.DoubleSide}
+                />
+                <Edges color={EDGE_COLOR} lineWidth={1} />
+            </mesh>
+            {tex && (
+                <mesh position={[0, 0, 0.5 * S]}>
+                    <planeGeometry args={[w, h]} />
+                    <meshBasicMaterial map={tex} transparent opacity={0.3} />
+                </mesh>
             )}
         </group>
     );
@@ -2396,46 +2445,77 @@ export default function Scene3D(props: {
     const showStandoffLocators = props.showStandoffLocators ?? true;
     const illuminationView = props.illuminationView ?? false;
 
-    // Composite ghost — the other panel of a projecting-sign design, shown only
-    // on the folded view (the unfold view stays a plain flat blank).
+    // A projecting-sign design renders BOTH panels in fixed in-situ positions —
+    // the fascia at the origin, the projecting sign mounted perpendicular off
+    // its face — and NEVER repositions them on tab change. Switching tabs only
+    // moves the camera focus + fades the non-edited panel. The projecting tab
+    // is shown only on the folded view (the unfold view stays a flat blank).
     const secondary = props.secondaryPanel ?? null;
     const mount = props.mount;
     const folded = fold >= 0.5;
-    const showGhost = !!(secondary && mount && folded);
-    // The active panel is the projecting sign when the stashed secondary is the
-    // fascia (isBlade false). Projecting signs are enclosed boxes.
+    const showProjecting = !!(secondary && mount && folded);
     const activeIsProjecting = !!(secondary && !secondary.isBlade);
-    // fascia / blade resolve by which panel is active (props.params).
-    const ghostFascia =
-        secondary && !secondary.isBlade ? secondary.params : props.params;
-    const ghostBlade =
-        secondary && secondary.isBlade ? secondary.params : props.params;
 
-    // Frame the flat blank so both folded and unfolded states stay in view,
-    // widening for the projecting blade's protrusion so it never clips.
+    // Resolve fascia vs projecting regardless of which one is being edited.
+    const fasciaParams =
+        activeIsProjecting && secondary ? secondary.params : props.params;
+    const fasciaDev =
+        activeIsProjecting && secondary
+            ? secondary.development
+            : props.development;
+    const projParams = activeIsProjecting
+        ? props.params
+        : (secondary?.params ?? null);
+    const projDev = activeIsProjecting
+        ? props.development
+        : (secondary?.development ?? null);
+    const projSplit = activeIsProjecting
+        ? props.split
+        : (secondary?.split ?? null);
+
+    // The projecting sign's in-situ centre (mounted on the fascia face).
+    const Wf = fasciaParams.panelWidthMm * S;
+    const Hf = fasciaParams.panelHeightMm * S;
+    const Wp = (projParams?.panelWidthMm ?? 0) * S;
+    const Hp = (projParams?.panelHeightMm ?? 0) * S;
+    const axCentre = -Wf / 2 + (mount?.offsetXMm ?? 0) * S;
+    const ayTop = Hf / 2 - (mount?.offsetYMm ?? 0) * S;
+    const projCentre: [number, number, number] = [
+        axCentre,
+        ayTop - Hp / 2,
+        Wp / 2,
+    ];
+
+    // Frame the whole composite (fascia + projecting protrusion).
     const reach =
         Math.max(
-            props.development.totalFlatWMm,
-            props.development.totalFlatHMm,
-            showGhost
-                ? ghostBlade.panelWidthMm + ghostFascia.panelWidthMm * 0.5
+            fasciaDev.totalFlatWMm,
+            fasciaDev.totalFlatHMm,
+            showProjecting && projParams
+                ? projParams.panelWidthMm + fasciaParams.panelWidthMm * 0.5
                 : 0,
         ) *
         S *
         1.5;
 
-    // Camera focus distance: the whole composite on the main tab; tight on the
-    // (small) projecting sign when editing it. Drives the fly-to-focus.
-    const focusReach = activeIsProjecting
-        ? Math.max(props.params.panelWidthMm, props.params.panelHeightMm) *
-          S *
-          2.4
-        : reach;
+    // Camera: frame the whole composite on the main tab; fly tight to the
+    // projecting sign IN PLACE when editing it (never moving the sign itself).
     const focusKey = activeIsProjecting ? 'projecting' : 'main';
+    const focusReach = activeIsProjecting
+        ? Math.max(
+              projParams?.panelWidthMm ?? 500,
+              projParams?.panelHeightMm ?? 500,
+          ) *
+          S *
+          2.6
+        : reach;
+    const goalLook: [number, number, number] = activeIsProjecting
+        ? projCentre
+        : [0, 0, 0];
     const goalPos: [number, number, number] = [
-        focusReach,
-        focusReach * 0.7,
-        focusReach,
+        goalLook[0] + focusReach,
+        goalLook[1] + focusReach * 0.65,
+        goalLook[2] + focusReach,
     ];
 
     return (
@@ -2457,58 +2537,113 @@ export default function Scene3D(props: {
             <CameraFocus
                 focusKey={focusKey}
                 goalPos={goalPos}
-                goalLook={[0, 0, 0]}
-            />
-            <Panel
-                {...props}
-                autoFixings={autoFixings}
-                manualFixings={manualFixings}
-                cableHoles={cableHoles}
-                reference={reference}
-                vinylPieces={vinylPieces}
-                acrylicPieces={acrylicPieces}
-                solidPieces={solidPieces}
-                standoffPieces={standoffPieces}
-                pushThroughKeyline={pushThroughKeyline}
-                pushThroughIslands={pushThroughIslands}
-                pushThroughPieces={pushThroughPieces}
-                placedPathsByIndex={props.placedPathsByIndex ?? null}
-                pathGroupColors={props.pathGroupColors ?? null}
-                pendingPaths={props.pendingPaths}
-                isEditingGroup={props.isEditingGroup}
-                onPathToggle={props.onPathToggle}
-                fold={fold}
-                fixingMode={props.fixingMode}
-                cableMode={props.cableMode}
-                onFixingClick={props.onFixingClick}
-                showOutlines={showOutlines}
-                showStandoffLetters={showStandoffLetters}
-                showStandoffLocators={showStandoffLocators}
-                enclosed={activeIsProjecting}
+                goalLook={goalLook}
             />
 
-            {showGhost && mount && secondary && (
-                secondary.isBlade && mount.shape === 'square' ? (
-                    // The projecting square is a real perpendicular tray.
-                    <SecondaryTray
-                        fascia={props.params}
-                        params={secondary.params}
-                        development={secondary.development}
-                        split={secondary.split}
+            {/* Fascia at the origin — the full editable panel when it's the
+                focus, a faded backdrop while the projecting sign is edited. */}
+            {activeIsProjecting ? (
+                <FadedFascia
+                    params={fasciaParams}
+                    development={fasciaDev}
+                    artworkSvg={secondary?.artworkSvg}
+                />
+            ) : (
+                <Panel
+                    {...props}
+                    autoFixings={autoFixings}
+                    manualFixings={manualFixings}
+                    cableHoles={cableHoles}
+                    reference={reference}
+                    vinylPieces={vinylPieces}
+                    acrylicPieces={acrylicPieces}
+                    solidPieces={solidPieces}
+                    standoffPieces={standoffPieces}
+                    pushThroughKeyline={pushThroughKeyline}
+                    pushThroughIslands={pushThroughIslands}
+                    pushThroughPieces={pushThroughPieces}
+                    placedPathsByIndex={props.placedPathsByIndex ?? null}
+                    pathGroupColors={props.pathGroupColors ?? null}
+                    pendingPaths={props.pendingPaths}
+                    isEditingGroup={props.isEditingGroup}
+                    onPathToggle={props.onPathToggle}
+                    fold={fold}
+                    fixingMode={props.fixingMode}
+                    cableMode={props.cableMode}
+                    onFixingClick={props.onFixingClick}
+                    showOutlines={showOutlines}
+                    showStandoffLetters={showStandoffLetters}
+                    showStandoffLocators={showStandoffLocators}
+                />
+            )}
+
+            {/* Projecting sign — ALWAYS mounted perpendicular in situ; never
+                repositioned. When it's the focus it's the full editable Panel;
+                otherwise a lightweight tray + design texture (or a disc). */}
+            {showProjecting && mount && projParams && projDev && projSplit && (
+                activeIsProjecting ? (
+                    <ProjectingMounted
+                        fascia={fasciaParams}
+                        params={projParams}
+                        development={projDev}
+                        split={projSplit}
                         mount={mount}
                         night={illuminationView}
                         showOutlines={showOutlines}
-                        artworkSvg={secondary.artworkSvg}
                         onReposition={props.onRepositionProjecting}
+                    >
+                        <Panel
+                            {...props}
+                            autoFixings={autoFixings}
+                            manualFixings={manualFixings}
+                            cableHoles={cableHoles}
+                            reference={reference}
+                            vinylPieces={vinylPieces}
+                            acrylicPieces={acrylicPieces}
+                            solidPieces={solidPieces}
+                            standoffPieces={standoffPieces}
+                            pushThroughKeyline={pushThroughKeyline}
+                            pushThroughIslands={pushThroughIslands}
+                            pushThroughPieces={pushThroughPieces}
+                            fold={1}
+                            showOutlines={showOutlines}
+                            showStandoffLetters={showStandoffLetters}
+                            showStandoffLocators={showStandoffLocators}
+                            illuminationView={illuminationView}
+                            illumination={props.illumination}
+                            enclosed
+                            // Rotated in situ — disable 3D click editing (coords
+                            // assume a face at the origin); edit via the controls.
+                            placedPathsByIndex={null}
+                            pathGroupColors={null}
+                            pendingPaths={undefined}
+                            isEditingGroup={false}
+                            onPathToggle={undefined}
+                            fixingMode="off"
+                            cableMode="off"
+                            onFixingClick={undefined}
+                            showDimensions={false}
+                        />
+                    </ProjectingMounted>
+                ) : mount.shape === 'circle' ? (
+                    <CompositeGhost
+                        fascia={fasciaParams}
+                        blade={projParams}
+                        mount={mount}
+                        ghost="blade"
+                        night={illuminationView}
                     />
                 ) : (
-                    // Circle blade → disc; fascia-as-context → slab.
-                    <CompositeGhost
-                        fascia={ghostFascia}
-                        blade={ghostBlade}
+                    <ProjectingMounted
+                        fascia={fasciaParams}
+                        params={projParams}
+                        development={projDev}
+                        split={projSplit}
                         mount={mount}
-                        ghost={secondary.isBlade ? 'blade' : 'fascia'}
                         night={illuminationView}
+                        showOutlines={showOutlines}
+                        artworkSvg={secondary?.artworkSvg}
+                        onReposition={props.onRepositionProjecting}
                     />
                 )
             )}
