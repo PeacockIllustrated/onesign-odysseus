@@ -22,6 +22,9 @@ import {
 
 const ACCENT: [number, number, number] = [78, 126, 140]; // #4e7e8c
 const INK: [number, number, number] = [26, 31, 35];
+const PAGE_W = 297;
+const PAGE_H = 210;
+const margin = 14;
 
 export interface NeonPdfOptions {
     name: string;
@@ -57,22 +60,18 @@ function cssToRgb(c: string | undefined): [number, number, number] {
     return [150, 150, 150];
 }
 
-export async function generateNeonPdfBlob(opts: NeonPdfOptions): Promise<Blob> {
-    const PAGE_W = 297;
-    const PAGE_H = 210;
-    const margin = 14;
-    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
-    const fontRes = await registerVisualiserFonts(doc);
-    const font = fontRes.family;
+/**
+ * Run-length sheet: artwork (left) with a numbered balloon per run, and a table
+ * (right). `coloured` switches the strokes to each run's real SVG colour and
+ * adds a colour-code column, so the same layout doubles as a colour reference.
+ */
+function drawRunPage(
+    doc: jsPDF,
+    font: string,
+    opts: NeonPdfOptions,
+    coloured: boolean,
+) {
     const T = (s: string) => s;
-
-    doc.setProperties({
-        title: `${opts.name} — neon run lengths`,
-        subject: 'Neon flex run-length take-off',
-        author: 'Onesign Odysseus',
-        keywords: 'neon, flex, length, signage, onesign',
-    });
-
     const els = opts.elements;
     const total = totalLengthMm(els);
 
@@ -82,15 +81,14 @@ export async function generateNeonPdfBlob(opts: NeonPdfOptions): Promise<Blob> {
     doc.setTextColor(255);
     doc.setFont(font, 'bold');
     doc.setFontSize(12);
-    doc.text(T('NEON FLEX · RUN LENGTHS'), margin, 11.5);
+    doc.text(
+        coloured ? T('NEON FLEX · COLOURS') : T('NEON FLEX · RUN LENGTHS'),
+        margin,
+        11.5,
+    );
     doc.setFont(font, 'normal');
     doc.setFontSize(9);
-    doc.text(
-        T(opts.name),
-        PAGE_W - margin,
-        7.5,
-        { align: 'right' },
-    );
+    doc.text(T(opts.name), PAGE_W - margin, 7.5, { align: 'right' });
     doc.text(
         T(
             `${els.length} run${els.length === 1 ? '' : 's'}  ·  TOTAL ${formatMm(total)} (${formatM(total)})`,
@@ -102,7 +100,6 @@ export async function generateNeonPdfBlob(opts: NeonPdfOptions): Promise<Blob> {
     doc.setTextColor(0);
 
     // ---- Layout regions ----------------------------------------------
-    // Drawing on the left, length table on the right.
     const tableW = 96;
     const tableX = PAGE_W - margin - tableW;
     const top = 24;
@@ -118,10 +115,15 @@ export async function generateNeonPdfBlob(opts: NeonPdfOptions): Promise<Blob> {
     const px = (x: number) => dX + (x - opts.bbox.minX) * scale;
     const py = (y: number) => dY + (y - opts.bbox.minY) * scale;
 
-    // ---- Artwork --------------------------------------------------------
-    doc.setDrawColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+    // ---- Artwork (teal, or each run in its real colour) ----------------
     doc.setLineWidth(0.5);
     for (const el of els) {
+        if (coloured) {
+            const c = cssToRgb(el.stroke);
+            doc.setDrawColor(c[0], c[1], c[2]);
+        } else {
+            doc.setDrawColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+        }
         const pts = el.points;
         for (let i = 1; i < pts.length; i++) {
             doc.line(px(pts[i - 1][0]), py(pts[i - 1][1]), px(pts[i][0]), py(pts[i][1]));
@@ -134,24 +136,18 @@ export async function generateNeonPdfBlob(opts: NeonPdfOptions): Promise<Blob> {
     }
 
     // ---- Balloons + leaders --------------------------------------------
-    // A numbered balloon offset up-left of each element's centre with a thin
-    // leader back to a dot at the centre, so the number reads clear of the
-    // stroke yet still points at its run.
-    const R = 3.2; // balloon radius (mm)
+    const R = 3.2;
     doc.setFontSize(7.5);
     for (const el of els) {
         const cx = px(el.centroid[0]);
         const cy = py(el.centroid[1]);
         const bx = cx - 6;
         const by = cy - 6;
-        // leader
         doc.setDrawColor(INK[0], INK[1], INK[2]);
         doc.setLineWidth(0.2);
         doc.line(cx, cy, bx, by);
-        // centre dot
         doc.setFillColor(INK[0], INK[1], INK[2]);
         doc.circle(cx, cy, 0.5, 'F');
-        // balloon
         doc.setFillColor(ACCENT[0], ACCENT[1], ACCENT[2]);
         doc.circle(bx, by, R, 'F');
         doc.setTextColor(255);
@@ -160,53 +156,88 @@ export async function generateNeonPdfBlob(opts: NeonPdfOptions): Promise<Blob> {
     }
     doc.setTextColor(0);
 
-    // ---- Length table ---------------------------------------------------
+    // ---- Table divider --------------------------------------------------
     doc.setDrawColor(220);
     doc.setLineWidth(0.2);
-    doc.line(tableX - 4, top, tableX - 4, PAGE_H - margin); // divider
+    doc.line(tableX - 4, top, tableX - 4, PAGE_H - margin);
 
-    doc.setFont(font, 'bold');
-    doc.setFontSize(9);
-    doc.setTextColor(INK[0], INK[1], INK[2]);
-    doc.text(T('RUN'), tableX, top + 2);
-    doc.text(T('LENGTH'), tableX + 16, top + 2);
-    doc.text(T('METRES'), tableX + tableW - 2, top + 2, { align: 'right' });
-    doc.setDrawColor(180);
-    doc.line(tableX, top + 4, tableX + tableW, top + 4);
-
-    const rowH = 5.2;
     const headerBottom = top + 4;
-    const footerBlock = 16; // reserve for total
+    const footerBlock = 16;
     const availH = PAGE_H - margin - headerBottom - footerBlock;
-    const rowsPerCol = Math.max(1, Math.floor(availH / rowH));
-    // Two sub-columns inside the table strip if the list is long.
-    const cols = els.length > rowsPerCol ? 2 : 1;
-    const colW = tableW / cols;
-
-    doc.setFont(font, 'normal');
-    doc.setFontSize(8);
     let shown = 0;
-    for (let c = 0; c < cols; c++) {
-        const colX = tableX + c * colW;
-        for (let r = 0; r < rowsPerCol; r++) {
-            const idx = c * rowsPerCol + r;
-            if (idx >= els.length) break;
-            const el = els[idx];
-            const y = headerBottom + 4 + r * rowH;
-            doc.setTextColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+
+    if (!coloured) {
+        // RUN | LENGTH | METRES — two sub-columns when the list is long.
+        doc.setFont(font, 'bold');
+        doc.setFontSize(9);
+        doc.setTextColor(INK[0], INK[1], INK[2]);
+        doc.text(T('RUN'), tableX, top + 2);
+        doc.text(T('LENGTH'), tableX + 16, top + 2);
+        doc.text(T('METRES'), tableX + tableW - 2, top + 2, { align: 'right' });
+        doc.setDrawColor(180);
+        doc.line(tableX, top + 4, tableX + tableW, top + 4);
+
+        const rowH = 5.2;
+        const rowsPerCol = Math.max(1, Math.floor(availH / rowH));
+        const cols = els.length > rowsPerCol ? 2 : 1;
+        const colW = tableW / cols;
+        doc.setFont(font, 'normal');
+        doc.setFontSize(8);
+        for (let c = 0; c < cols; c++) {
+            const cX = tableX + c * colW;
+            for (let r = 0; r < rowsPerCol; r++) {
+                const idx = c * rowsPerCol + r;
+                if (idx >= els.length) break;
+                const el = els[idx];
+                const y = headerBottom + 4 + r * rowH;
+                doc.setTextColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+                doc.setFont(font, 'bold');
+                doc.text(`${el.index}`, cX, y);
+                doc.setTextColor(0);
+                doc.setFont(font, 'normal');
+                doc.text(formatMm(el.lengthMm), cX + 8, y);
+                doc.text(formatM(el.lengthMm), cX + colW - (cols > 1 ? 4 : 2), y, {
+                    align: 'right',
+                });
+                shown++;
+            }
+        }
+    } else {
+        // RUN | COLOUR (swatch + code) | LENGTH — single column.
+        doc.setFont(font, 'bold');
+        doc.setFontSize(9);
+        doc.setTextColor(INK[0], INK[1], INK[2]);
+        doc.text(T('RUN'), tableX, top + 2);
+        doc.text(T('COLOUR'), tableX + 12, top + 2);
+        doc.text(T('LENGTH'), tableX + tableW, top + 2, { align: 'right' });
+        doc.setDrawColor(180);
+        doc.line(tableX, top + 4, tableX + tableW, top + 4);
+
+        const rowH = 6;
+        const rowsPerCol = Math.max(1, Math.floor(availH / rowH));
+        for (let r = 0; r < rowsPerCol && r < els.length; r++) {
+            const el = els[r];
+            const y = headerBottom + 5 + r * rowH;
             doc.setFont(font, 'bold');
-            doc.text(`${el.index}`, colX, y);
-            doc.setTextColor(0);
+            doc.setFontSize(8);
+            doc.setTextColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+            doc.text(`${el.index}`, tableX, y);
+            const c = cssToRgb(el.stroke);
+            doc.setFillColor(c[0], c[1], c[2]);
+            doc.setDrawColor(180);
+            doc.setLineWidth(0.2);
+            doc.rect(tableX + 10, y - 3.2, 4.5, 4.5, 'FD');
             doc.setFont(font, 'normal');
-            doc.text(formatMm(el.lengthMm), colX + 8, y);
-            doc.text(formatM(el.lengthMm), colX + colW - (cols > 1 ? 4 : 2), y, {
+            doc.setTextColor(0);
+            doc.text(el.stroke ? el.stroke.toUpperCase() : '—', tableX + 17, y);
+            doc.text(formatMm(el.lengthMm), tableX + tableW, y, {
                 align: 'right',
             });
             shown++;
         }
     }
 
-    // Total
+    // ---- Total ----------------------------------------------------------
     const totalY = PAGE_H - margin - 6;
     doc.setDrawColor(INK[0], INK[1], INK[2]);
     doc.setLineWidth(0.4);
@@ -215,12 +246,9 @@ export async function generateNeonPdfBlob(opts: NeonPdfOptions): Promise<Blob> {
     doc.setFontSize(10);
     doc.setTextColor(INK[0], INK[1], INK[2]);
     doc.text(T('TOTAL'), tableX, totalY);
-    doc.text(
-        `${formatMm(total)}  ·  ${formatM(total)}`,
-        tableX + tableW,
-        totalY,
-        { align: 'right' },
-    );
+    doc.text(`${formatMm(total)}  ·  ${formatM(total)}`, tableX + tableW, totalY, {
+        align: 'right',
+    });
     doc.setTextColor(0);
 
     if (shown < els.length) {
@@ -241,15 +269,37 @@ export async function generateNeonPdfBlob(opts: NeonPdfOptions): Promise<Blob> {
     doc.setTextColor(120);
     doc.text(
         T(
-            'Lengths measured from the SVG path geometry (closed contours include the closing segment). Allow for joints / offcuts when ordering.',
+            coloured
+                ? 'Strokes shown in each run’s SVG colour; colour codes listed right — confirm against your neon-flex swatch book before ordering.'
+                : 'Lengths measured from the SVG path geometry (closed contours include the closing segment). Allow for joints / offcuts when ordering.',
         ),
         margin,
         PAGE_H - margin + 4,
     );
     doc.setTextColor(0);
+}
+
+export async function generateNeonPdfBlob(opts: NeonPdfOptions): Promise<Blob> {
+    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+    const fontRes = await registerVisualiserFonts(doc);
+    const font = fontRes.family;
+    const T = (s: string) => s;
+
+    doc.setProperties({
+        title: `${opts.name} — neon run lengths`,
+        subject: 'Neon flex run-length take-off',
+        author: 'Onesign Odysseus',
+        keywords: 'neon, flex, length, signage, onesign',
+    });
+
+    // Page 1: run lengths (teal). Page 2: same layout, coloured strokes
+    // + per-run colour codes. Page 3 (below): colour totals + backboard.
+    drawRunPage(doc, font, opts, false);
+    doc.addPage('a4', 'landscape');
+    drawRunPage(doc, font, opts, true);
 
     // ====================================================================
-    // PAGE 2 — colour breakdown + backboard spec
+    // PAGE 3 — colour breakdown (totals per colour) + backboard spec
     // ====================================================================
     doc.addPage('a4', 'landscape');
 
