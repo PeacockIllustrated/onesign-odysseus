@@ -83,6 +83,36 @@ Refinements from the Wallsend shopfront photo:
   ghost (no artwork). Full shaped + artworked panels need the geometry-pipeline
   extraction noted under change-set 8.
 
+### Change-set 12 — enclosed box, design-in-composite, drag, transition
+
+From the shopfront top-view feedback:
+- **Enclosed box** — `Panel` gains an `enclosed` prop that closes the tray back
+  (a panel at z = -returnDepth); passed wherever the projecting sign renders, so
+  it is a sealed box, not an open-backed tray. Fascia stays an open tray.
+- **Design remains in the composite** — the projecting sign's artwork is composed
+  to an SVG (`secondaryArtworkSvg`) and rasterised to a texture mapped on the
+  sign's face(s) in `SecondaryTray`, so its design shows on the main tab (and
+  the back face too when double-sided). Silhouette-quality (black shapes) — the
+  full apertured artwork shows when you edit the sign on its own tab.
+- **Drag to position** — the projecting sign is draggable in the viewer: pointer
+  events on its group raycast onto the fascia face (z=0) and update the mount
+  offsets (`onRepositionProjecting` → `setMount`), disabling orbit while
+  dragging. Numeric Position-across / Height controls remain.
+- **Mode transition** — `CameraFocus` flies the camera to frame the active
+  panel whenever the tab changes (tight on the small projecting sign, wide for
+  the composite), via a finite frame-counted easeOut tween that always
+  terminates (so the canvas goes idle). The fascia reads as a faded ghost slab
+  while editing the projecting sign.
+
+**Verification note:** tsc + 102 vitest + eslint all green (only the long-
+standing `DimensionEditLabel` set-state-in-effect error remains). The enclosed
+box was confirmed live; (B)/(C)/(D) could NOT be screenshot-verified this
+session — the Claude Preview capture pipeline wedged (screenshots timed out even
+on non-canvas pages while `preview_eval` stayed responsive and the console was
+error-free). The camera tween is frame-counted specifically so it cannot peg
+the renderer. Worth a hands-on pass: drag feel + the transition timing, and the
+artwork texture's appearance/orientation on the sign faces.
+
 ## v1 — single-panel toggle (REPLACED, kept for history)
 
 Implemented from `docs/projecting-signs-handoff.md`. Run autonomously per the

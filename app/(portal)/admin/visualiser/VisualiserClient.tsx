@@ -152,6 +152,7 @@ export function VisualiserClient({
         activeTab,
         inactive,
         mount,
+        setMount,
     } = useVisualiser();
     const [tab, setTab] = useState<Tab>('folded');
     const [mobilePane, setMobilePane] = useState<MobilePane>('preview');
@@ -332,6 +333,19 @@ export function VisualiserClient({
                 : null,
         [secondaryParams],
     );
+    // The secondary (projecting) sign's design as a composed SVG, so its
+    // artwork shows in the composite even while you're editing the main panel.
+    const secondaryArtworkSvg = useMemo(() => {
+        if (!secondaryParams || !inactive) return null;
+        const layers = secondaryParams.artworkLayers ?? [];
+        if (layers.length)
+            return composeLayersSvg(
+                layers,
+                secondaryParams.panelWidthMm,
+                secondaryParams.panelHeightMm,
+            );
+        return inactive.svgSource;
+    }, [secondaryParams, inactive]);
 
     const placement = params.aperturePlacement ?? DEFAULT_PLACEMENT;
 
@@ -1746,6 +1760,7 @@ export function VisualiserClient({
                                           params: secondaryParams,
                                           development: secondaryDevelopment,
                                           split: secondarySplit,
+                                          artworkSvg: secondaryArtworkSvg,
                                           // active tab 'main' ⇒ the stashed
                                           // panel is the projecting sign.
                                           isBlade: activeTab === 'main',
@@ -1753,6 +1768,9 @@ export function VisualiserClient({
                                     : null
                             }
                             mount={resolveMount(mount)}
+                            onRepositionProjecting={(offsetXMm, offsetYMm) =>
+                                setMount({ offsetXMm, offsetYMm })
+                            }
                         />
                     )}
 

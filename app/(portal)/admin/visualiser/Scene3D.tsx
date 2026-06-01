@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls, Edges, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import type {
@@ -85,6 +85,67 @@ function CaptureBinder() {
             sceneCapture.faceOn = null;
         };
     }, [gl, scene, camera]);
+    return null;
+}
+
+/**
+ * Smoothly fly the camera + orbit target to a goal whenever `focusKey` changes
+ * (e.g. switching into the projecting-sign editor), then RELEASE so the
+ * operator can orbit freely. We detect the key change during render with a
+ * stored-prev ref (no setState-in-effect), arm the animation, and lerp in
+ * useFrame until close enough.
+ */
+function CameraFocus({
+    focusKey,
+    goalPos,
+    goalLook,
+}: {
+    focusKey: string;
+    goalPos: [number, number, number];
+    goalLook: [number, number, number];
+}) {
+    const { camera, controls } = useThree() as unknown as {
+        camera: THREE.Camera;
+        controls: { target: THREE.Vector3; update: () => void } | null;
+    };
+    const prevKey = useRef<string | null>(null);
+    // A finite (frame-counted) tween so the animation ALWAYS terminates and
+    // the renderer goes idle afterwards (a never-ending lerp would peg the
+    // canvas). `frame` counts up to DURATION; <0 means inactive.
+    const DURATION = 36;
+    const frame = useRef(-1);
+    const startPos = useRef(new THREE.Vector3());
+    const startLook = useRef(new THREE.Vector3());
+    const goalPosV = useRef(new THREE.Vector3());
+    const goalLookV = useRef(new THREE.Vector3());
+    // Arm on key change (first mount does not animate — keeps the initial view).
+    useEffect(() => {
+        if (prevKey.current !== null && prevKey.current !== focusKey) {
+            startPos.current.copy(camera.position);
+            startLook.current.copy(
+                controls?.target ?? new THREE.Vector3(0, 0, 0),
+            );
+            goalPosV.current.set(goalPos[0], goalPos[1], goalPos[2]);
+            goalLookV.current.set(goalLook[0], goalLook[1], goalLook[2]);
+            frame.current = 0;
+        }
+        prevKey.current = focusKey;
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- arm only on focus change
+    }, [focusKey]);
+    useFrame(() => {
+        if (frame.current < 0) return; // idle — leave manual orbit alone
+        frame.current += 1;
+        const t = Math.min(1, frame.current / DURATION);
+        const e = 1 - Math.pow(1 - t, 3); // easeOutCubic
+        // eslint-disable-next-line react-hooks/immutability -- imperative three.js camera tween
+        camera.position.lerpVectors(startPos.current, goalPosV.current, e);
+        if (controls?.target) {
+            // eslint-disable-next-line react-hooks/immutability -- imperative three.js orbit tween
+            controls.target.lerpVectors(startLook.current, goalLookV.current, e);
+            controls.update();
+        }
+        if (t >= 1) frame.current = -1; // done — release to manual orbit
+    });
     return null;
 }
 
@@ -2100,6 +2161,20 @@ function CompositeGhost({
  * "sits like that, not flat" arrangement from the shopfront top-view. The
  * fascia is at the origin (face +Z); this is positioned at the mount point.
  */
+/** Rasterise an SVG string to a texture (memoised, disposed on change). */
+function useSvgTexture(svg: string | null | undefined): THREE.Texture | null {
+    const tex = useMemo(() => {
+        if (!svg) return null;
+        const url =
+            'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+        const t = new THREE.TextureLoader().load(url);
+        t.colorSpace = THREE.SRGBColorSpace;
+        return t;
+    }, [svg]);
+    useEffect(() => () => tex?.dispose(), [tex]);
+    return tex;
+}
+
 function SecondaryTray({
     fascia,
     params,
@@ -2108,6 +2183,8 @@ function SecondaryTray({
     mount,
     night,
     showOutlines,
+    artworkSvg,
+    onReposition,
 }: {
     fascia: PanelParams;
     params: PanelParams;
@@ -2116,6 +2193,8 @@ function SecondaryTray({
     mount: ResolvedMount;
     night: boolean;
     showOutlines: boolean;
+    artworkSvg?: string | null;
+    onReposition?: (offsetXMm: number, offsetYMm: number) => void;
 }) {
     const Wf = fascia.panelWidthMm * S;
     const Hf = fascia.panelHeightMm * S;
@@ -2123,10 +2202,65 @@ function SecondaryTray({
     const Hp = params.panelHeightMm * S; // vertical
     const ax = -Wf / 2 + mount.offsetXMm * S; // attach X on the face
     const ayTop = Hf / 2 - mount.offsetYMm * S; // sign top
+    const artworkTex = useSvgTexture(artworkSvg);
+    const Dp = Math.max(params.returnDepthMm, 25) * S; // box depth
+    const artW = development.faceNominalWMm * S;
+    const artH = development.faceNominalHMm * S;
+
+    // Drag-to-position on the fascia face (the z = 0 plane). Disables orbit
+    // while dragging and maps the pointer ray onto the face to set the mount.
+    const { controls } = useThree() as unknown as {
+        controls: { enabled: boolean } | null;
+    };
+    const dragging = useRef(false);
+    const facePlane = useMemo(
+        () => new THREE.Plane(new THREE.Vector3(0, 0, 1), 0),
+        [],
+    );
+    const hitPt = useRef(new THREE.Vector3());
+    const clamp = (v: number, lo: number, hi: number) =>
+        Math.max(lo, Math.min(hi, v));
+    const onDown = (e: { stopPropagation: () => void }) => {
+        if (!onReposition) return;
+        e.stopPropagation();
+        dragging.current = true;
+        // eslint-disable-next-line react-hooks/immutability -- toggle orbit while dragging
+        if (controls) controls.enabled = false;
+    };
+    const onMove = (e: {
+        stopPropagation: () => void;
+        ray: THREE.Ray;
+    }) => {
+        if (!dragging.current || !onReposition) return;
+        e.stopPropagation();
+        if (!e.ray.intersectPlane(facePlane, hitPt.current)) return;
+        const xMm = clamp(
+            hitPt.current.x / S + fascia.panelWidthMm / 2,
+            0,
+            fascia.panelWidthMm,
+        );
+        const yTopMm = clamp(
+            fascia.panelHeightMm / 2 - hitPt.current.y / S,
+            0,
+            fascia.panelHeightMm,
+        );
+        onReposition(Math.round(xMm), Math.round(yTopMm));
+    };
+    const onUp = () => {
+        dragging.current = false;
+        // eslint-disable-next-line react-hooks/immutability -- restore orbit after drag
+        if (controls) controls.enabled = true;
+    };
     return (
         // Rotate -90° about Y: the tray's width runs out along +Z (protrusion),
         // its face reads from the side (−X), returns fold back toward the wall.
-        <group rotation={[0, -HALF_PI, 0]} position={[ax, ayTop - Hp / 2, Wp / 2]}>
+        <group
+            rotation={[0, -HALF_PI, 0]}
+            position={[ax, ayTop - Hp / 2, Wp / 2]}
+            onPointerDown={onDown}
+            onPointerMove={onMove}
+            onPointerUp={onUp}
+        >
             <Panel
                 params={params}
                 development={development}
@@ -2155,6 +2289,33 @@ function SecondaryTray({
                 showDimensions={false}
                 enclosed
             />
+            {/* The projecting sign's design, shown on its face(s) so it reads
+                in the composite while you edit the main panel. */}
+            {artworkTex && (
+                <>
+                    <mesh position={[0, 0, 0.8 * S]}>
+                        <planeGeometry args={[artW, artH]} />
+                        <meshBasicMaterial
+                            map={artworkTex}
+                            transparent
+                            opacity={night ? 0.6 : 1}
+                        />
+                    </mesh>
+                    {mount.doubleSided && (
+                        <mesh
+                            position={[0, 0, -Dp - 0.8 * S]}
+                            rotation={[0, Math.PI, 0]}
+                        >
+                            <planeGeometry args={[artW, artH]} />
+                            <meshBasicMaterial
+                                map={artworkTex}
+                                transparent
+                                opacity={night ? 0.6 : 1}
+                            />
+                        </mesh>
+                    )}
+                </>
+            )}
         </group>
     );
 }
@@ -2211,9 +2372,12 @@ export default function Scene3D(props: {
         params: PanelParams;
         development: PanelDevelopment;
         split: PanelSplit;
+        artworkSvg?: string | null;
         isBlade: boolean;
     } | null;
     mount?: ResolvedMount;
+    /** Drag-to-position the projecting sign on the fascia face (mm offsets). */
+    onRepositionProjecting?: (offsetXMm: number, offsetYMm: number) => void;
 }) {
     const fold = props.fold ?? 1;
     const autoFixings = props.autoFixings ?? [];
@@ -2260,6 +2424,20 @@ export default function Scene3D(props: {
         S *
         1.5;
 
+    // Camera focus distance: the whole composite on the main tab; tight on the
+    // (small) projecting sign when editing it. Drives the fly-to-focus.
+    const focusReach = activeIsProjecting
+        ? Math.max(props.params.panelWidthMm, props.params.panelHeightMm) *
+          S *
+          2.4
+        : reach;
+    const focusKey = activeIsProjecting ? 'projecting' : 'main';
+    const goalPos: [number, number, number] = [
+        focusReach,
+        focusReach * 0.7,
+        focusReach,
+    ];
+
     return (
         <Canvas
             camera={{ position: [reach, reach * 0.7, reach], fov: 45 }}
@@ -2276,6 +2454,11 @@ export default function Scene3D(props: {
                 args={[illuminationView ? NIGHT_BG : '#ffffff']}
             />
             <CaptureBinder />
+            <CameraFocus
+                focusKey={focusKey}
+                goalPos={goalPos}
+                goalLook={[0, 0, 0]}
+            />
             <Panel
                 {...props}
                 autoFixings={autoFixings}
@@ -2315,6 +2498,8 @@ export default function Scene3D(props: {
                         mount={mount}
                         night={illuminationView}
                         showOutlines={showOutlines}
+                        artworkSvg={secondary.artworkSvg}
+                        onReposition={props.onRepositionProjecting}
                     />
                 ) : (
                     // Circle blade → disc; fascia-as-context → slab.
