@@ -52,11 +52,14 @@ export function NeonMeasureClient() {
     const [view, setView] = useState<'measure' | 'glow'>('measure');
     const [boardOn, setBoardOn] = useState(true);
     const [paddingMm, setPaddingMm] = useState(50);
-    // Manual calibration: the real width (mm) of the artwork. Blank = trust the
-    // SVG's own units. Use it when the SVG was exported without real-world
-    // dimensions (e.g. Illustrator "Responsive"/px export), which makes the
-    // raw lengths read in points, not mm.
-    const [widthInput, setWidthInput] = useState('');
+    const [saturation, setSaturation] = useState(1);
+    // Manual calibration: the real WIDTH or HEIGHT (mm) of the artwork — enter
+    // either one (aspect ratio is fixed, so one dimension sets the scale).
+    // Needed because Illustrator often exports without real-world units, which
+    // makes the raw geometry read in points, not mm. Captured up front on
+    // upload so the very first generation is already to scale.
+    const [calWidth, setCalWidth] = useState('');
+    const [calHeight, setCalHeight] = useState('');
 
     const handleFile = async (file: File) => {
         setError(null);
@@ -73,7 +76,6 @@ export function NeonMeasureClient() {
                 );
                 return;
             }
-            setWidthInput('');
             setLoaded({
                 name: file.name.replace(/\.svg$/i, ''),
                 paths: imported.paths,
@@ -89,11 +91,14 @@ export function NeonMeasureClient() {
         }
     };
 
-    // Raw (uncalibrated) dimensions + the scale implied by any manual width.
+    // Raw (uncalibrated) dimensions + the scale implied by a manual width OR
+    // height (width wins if both are somehow set).
     const rawW = loaded ? Math.max(1, loaded.bbox.maxX - loaded.bbox.minX) : 1;
     const rawH = loaded ? Math.max(1, loaded.bbox.maxY - loaded.bbox.minY) : 1;
-    const parsedW = parseFloat(widthInput);
-    const scale = loaded && parsedW > 0 ? parsedW / rawW : 1;
+    const parsedW = parseFloat(calWidth);
+    const parsedH = parseFloat(calHeight);
+    const scale =
+        parsedW > 0 ? parsedW / rawW : parsedH > 0 ? parsedH / rawH : 1;
 
     // Calibrated geometry: scale the raw paths, then measure. Memoised so it
     // only recomputes when the file or the calibration changes.
@@ -252,67 +257,135 @@ export function NeonMeasureClient() {
                         .
                     </span>
                     <span className="text-amber-700">
-                        Wrong? Illustrator often exports without real units — set
-                        the true overall width to calibrate:
+                        Real size (enter width OR height):
                     </span>
-                    <label className="flex items-center gap-1.5 font-medium">
-                        Actual width
+                    <label className="flex items-center gap-1 font-medium">
+                        W
                         <input
                             type="number"
                             inputMode="decimal"
-                            value={widthInput}
-                            placeholder={String(Math.round(rawW))}
-                            onChange={(e) => setWidthInput(e.target.value)}
-                            className="w-24 rounded border border-amber-300 bg-white px-2 py-0.5 text-right tabular-nums focus:border-amber-500 focus:outline-none"
+                            value={calWidth}
+                            placeholder={String(Math.round(rawW * scale))}
+                            onChange={(e) => {
+                                setCalWidth(e.target.value);
+                                setCalHeight('');
+                            }}
+                            className="w-20 rounded border border-amber-300 bg-white px-2 py-0.5 text-right tabular-nums focus:border-amber-500 focus:outline-none"
+                        />
+                    </label>
+                    <span className="text-amber-500">or</span>
+                    <label className="flex items-center gap-1 font-medium">
+                        H
+                        <input
+                            type="number"
+                            inputMode="decimal"
+                            value={calHeight}
+                            placeholder={String(Math.round(rawH * scale))}
+                            onChange={(e) => {
+                                setCalHeight(e.target.value);
+                                setCalWidth('');
+                            }}
+                            className="w-20 rounded border border-amber-300 bg-white px-2 py-0.5 text-right tabular-nums focus:border-amber-500 focus:outline-none"
                         />
                         mm
                     </label>
                     {scale !== 1 && (
                         <span className="rounded bg-amber-200 px-1.5 py-0.5 font-semibold tabular-nums">
-                            ×{scale.toFixed(3)}
+                            → {Math.round(rawW * scale)} × {Math.round(rawH * scale)} mm
                         </span>
                     )}
                 </div>
             )}
 
             {!loaded ? (
-                <button
-                    type="button"
-                    onClick={() => fileRef.current?.click()}
-                    onDragOver={(e) => {
-                        e.preventDefault();
-                        setDragOver(true);
-                    }}
-                    onDragLeave={() => setDragOver(false)}
-                    onDrop={(e) => {
-                        e.preventDefault();
-                        setDragOver(false);
-                        const f = e.dataTransfer.files?.[0];
-                        if (f) handleFile(f);
-                    }}
-                    className={`flex flex-1 flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed transition-colors ${
-                        dragOver
-                            ? 'border-[#4e7e8c] bg-[#e8f0f3]'
-                            : 'border-neutral-300 bg-neutral-50 hover:border-neutral-400'
-                    }`}
-                >
-                    <Upload size={32} className="text-neutral-400" />
-                    <div className="text-center">
-                        <p className="text-sm font-medium text-neutral-700">
-                            Drop an SVG here, or click to choose
+                <div className="flex flex-1 min-h-0 flex-col gap-3">
+                    {/* Real-world size prompt — captured BEFORE upload so the
+                        first generation is already to scale. */}
+                    <div className="shrink-0 rounded-xl border border-[#b8d0d8] bg-[#e8f0f3] p-3">
+                        <p className="text-xs font-semibold text-[#3a5f6a]">
+                            Real-world size
+                            <span className="ml-1 font-normal text-[#4e7e8c]">
+                                — enter the finished WIDTH or HEIGHT (mm). Either
+                                one sets the scale, so the first run length is
+                                exact.
+                            </span>
                         </p>
-                        <p className="mt-1 text-xs text-neutral-500">
-                            Expand strokes to outlines in Illustrator first. The
-                            SVG must carry real dimensions (mm) for accurate
-                            lengths.
+                        <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-[#3a5f6a]">
+                            <label className="flex items-center gap-1.5 font-medium">
+                                Width
+                                <input
+                                    type="number"
+                                    inputMode="decimal"
+                                    value={calWidth}
+                                    placeholder="e.g. 1200"
+                                    onChange={(e) => {
+                                        setCalWidth(e.target.value);
+                                        setCalHeight('');
+                                    }}
+                                    className="w-28 rounded border border-[#b8d0d8] bg-white px-2 py-1 text-right tabular-nums focus:border-[#4e7e8c] focus:outline-none"
+                                />
+                                mm
+                            </label>
+                            <span className="text-[#4e7e8c]">or</span>
+                            <label className="flex items-center gap-1.5 font-medium">
+                                Height
+                                <input
+                                    type="number"
+                                    inputMode="decimal"
+                                    value={calHeight}
+                                    placeholder="e.g. 300"
+                                    onChange={(e) => {
+                                        setCalHeight(e.target.value);
+                                        setCalWidth('');
+                                    }}
+                                    className="w-28 rounded border border-[#b8d0d8] bg-white px-2 py-1 text-right tabular-nums focus:border-[#4e7e8c] focus:outline-none"
+                                />
+                                mm
+                            </label>
+                        </div>
+                        <p className="mt-1.5 text-[11px] text-[#4e7e8c]">
+                            Leave blank to trust the SVG&apos;s own dimensions
+                            (only correct if it was exported with real mm units).
+                            You can adjust after loading.
                         </p>
                     </div>
-                    {error && (
-                        <p className="mt-2 max-w-md text-center text-xs text-red-600">
-                            {error}
-                        </p>
-                    )}
-                </button>
+
+                    <button
+                        type="button"
+                        onClick={() => fileRef.current?.click()}
+                        onDragOver={(e) => {
+                            e.preventDefault();
+                            setDragOver(true);
+                        }}
+                        onDragLeave={() => setDragOver(false)}
+                        onDrop={(e) => {
+                            e.preventDefault();
+                            setDragOver(false);
+                            const f = e.dataTransfer.files?.[0];
+                            if (f) handleFile(f);
+                        }}
+                        className={`flex flex-1 flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed transition-colors ${
+                            dragOver
+                                ? 'border-[#4e7e8c] bg-[#e8f0f3]'
+                                : 'border-neutral-300 bg-neutral-50 hover:border-neutral-400'
+                        }`}
+                    >
+                        <Upload size={32} className="text-neutral-400" />
+                        <div className="text-center">
+                            <p className="text-sm font-medium text-neutral-700">
+                                Drop an SVG here, or click to choose
+                            </p>
+                            <p className="mt-1 text-xs text-neutral-500">
+                                Expand strokes to outlines in Illustrator first.
+                            </p>
+                        </div>
+                        {error && (
+                            <p className="mt-2 max-w-md text-center text-xs text-red-600">
+                                {error}
+                            </p>
+                        )}
+                    </button>
+                </div>
             ) : view === 'measure' ? (
                 <div className="flex flex-1 min-h-0 gap-3">
                     {/* Annotated preview */}
@@ -453,6 +526,7 @@ export function NeonMeasureClient() {
                         elements={elements}
                         bbox={bbox!}
                         backboard={{ enabled: boardOn, paddingMm }}
+                        saturation={saturation}
                     />
                     {/* Backboard controls */}
                     <div className="absolute left-3 top-3 flex w-52 flex-col gap-2 rounded-lg border border-white/10 bg-black/55 p-3 text-white shadow-lg backdrop-blur">
@@ -499,9 +573,33 @@ export function NeonMeasureClient() {
                                 className="w-full accent-[#46e8ff]"
                             />
                         </label>
+                        <div className="mt-1 border-t border-white/10 pt-2">
+                            <span className="text-[10px] font-semibold uppercase tracking-widest text-white/60">
+                                Glow
+                            </span>
+                            <label className="mt-1.5 flex flex-col gap-1">
+                                <span className="flex items-center justify-between text-[11px] text-white/70">
+                                    <span>Saturation</span>
+                                    <span className="tabular-nums">
+                                        {Math.round(saturation * 100)}%
+                                    </span>
+                                </span>
+                                <input
+                                    type="range"
+                                    min={0}
+                                    max={3}
+                                    step={0.05}
+                                    value={saturation}
+                                    onChange={(e) =>
+                                        setSaturation(parseFloat(e.target.value))
+                                    }
+                                    className="w-full accent-[#46e8ff]"
+                                />
+                            </label>
+                        </div>
                         <p className="text-[10px] leading-snug text-white/40">
                             Drag to orbit. Colours come from each path&apos;s SVG
-                            stroke (fill if no stroke).
+                            stroke (fill if no stroke); saturation pops them.
                         </p>
                     </div>
                 </div>

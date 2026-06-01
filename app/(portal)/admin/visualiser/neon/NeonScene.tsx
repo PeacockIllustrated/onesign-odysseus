@@ -70,10 +70,12 @@ function NeonRun({
     element,
     toScene,
     radius,
+    saturation,
 }: {
     element: NeonElement;
     toScene: (x: number, y: number) => [number, number, number];
     radius: number;
+    saturation: number;
 }) {
     const color = element.stroke || DEFAULT_NEON;
 
@@ -107,6 +109,12 @@ function NeonRun({
 
     if (!geoms) return null;
     const c = new THREE.Color(color);
+    // Boost (or mute) saturation to pop the colours without touching hue.
+    if (saturation !== 1) {
+        const hsl = { h: 0, s: 0, l: 0 };
+        c.getHSL(hsl);
+        c.setHSL(hsl.h, Math.min(1, Math.max(0, hsl.s * saturation)), hsl.l);
+    }
     // Hot near-white core gives the glassy filament look.
     const coreColor = c.clone().lerp(new THREE.Color('#ffffff'), 0.7);
 
@@ -175,10 +183,12 @@ export default function NeonScene({
     elements,
     bbox,
     backboard,
+    saturation = 1,
 }: {
     elements: NeonElement[];
     bbox: Bbox;
     backboard: { enabled: boolean; paddingMm: number };
+    saturation?: number;
 }) {
     const wMm = Math.max(1, bbox.maxX - bbox.minX);
     const hMm = Math.max(1, bbox.maxY - bbox.minY);
@@ -216,6 +226,7 @@ export default function NeonScene({
                     element={el}
                     toScene={toScene}
                     radius={radius}
+                    saturation={saturation}
                 />
             ))}
             <OrbitControls enablePan makeDefault />
