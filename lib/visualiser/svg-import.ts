@@ -15,6 +15,10 @@
  * The warning is always advisory and never blocks export.
  */
 
+import polygonClipping, {
+    type MultiPolygon,
+    type Ring,
+} from 'polygon-clipping';
 import {
     MIN_LASER_FEATURE_MM,
     type FlatPath,
@@ -701,6 +705,74 @@ export function buildKeyline(paths: FlatPath[], offsetMm: number): FlatPath[] {
         if (ring.length) ring.push(ring[0]); // re-close
         return { points: ring, closed: true };
     });
+}
+
+/**
+ * Merge a set of keyline rings into clean, non-overlapping cut paths via a
+ * polygon UNION. Each letter's keyline is offset independently, so adjacent
+ * letters' keylines cross/overlap — which double-cuts on the machine. The
+ * union welds those overlaps into a single outer contour while preserving
+ * counters (the inner holes of O / e / & etc.) as holes.
+ *
+ * Outer-vs-hole is decided by winding (signed-area sign relative to the
+ * largest ring), matching how `buildKeyline` itself assigns the offset
+ * direction — so the merged result keeps the same solids/holes the keyline
+ * was built with. Robust to overlapping siblings (winding doesn't depend on
+ * containment). Falls back to the input untouched on any clipping error.
+ */
+export function mergeKeyline(paths: FlatPath[]): FlatPath[] {
+    const rings: number[][][] = paths
+        .filter((p) => p.closed && p.points.length >= 4)
+        .map((p) => {
+            const r = p.points.map(([x, y]) => [x, y] as [number, number]);
+            const a = r[0];
+            const b = r[r.length - 1];
+            if (a[0] !== b[0] || a[1] !== b[1]) r.push([a[0], a[1]]);
+            return r;
+        })
+        .filter((r) => r.length >= 4);
+    if (rings.length <= 1) return paths;
+
+    // Dominant winding = the largest ring's; solids share it, holes oppose it.
+    let domSign = 1;
+    let maxA = 0;
+    for (const r of rings) {
+        const a = signedArea(r);
+        if (Math.abs(a) > maxA) {
+            maxA = Math.abs(a);
+            domSign = a >= 0 ? 1 : -1;
+        }
+    }
+    const ringSign = (r: number[][]) => (signedArea(r) >= 0 ? 1 : -1);
+    const solids = rings.filter((r) => ringSign(r) === domSign);
+    const holes = rings.filter((r) => ringSign(r) !== domSign);
+    if (solids.length === 0) return paths;
+
+    const toGeom = (r: number[][]): MultiPolygon => [[r as Ring]];
+    try {
+        let geom = polygonClipping.union(
+            toGeom(solids[0]),
+            ...solids.slice(1).map(toGeom),
+        );
+        if (holes.length > 0) {
+            geom = polygonClipping.difference(geom, ...holes.map(toGeom));
+        }
+        const out: FlatPath[] = [];
+        for (const poly of geom) {
+            for (const ring of poly) {
+                if (ring.length < 4) continue;
+                out.push({
+                    points: ring.map(([x, y]) => [x, y] as [number, number]),
+                    closed: true,
+                });
+            }
+        }
+        return out.length > 0 ? out : paths;
+    } catch {
+        // Geometry too degenerate for the clipper — keep the unmerged paths
+        // rather than dropping cuts.
+        return paths;
+    }
 }
 
 /** Drop consecutive points within `eps` mm — kills flattening noise. */

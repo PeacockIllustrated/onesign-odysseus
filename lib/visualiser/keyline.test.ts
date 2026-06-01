@@ -1,6 +1,40 @@
 import { describe, it, expect } from 'vitest';
-import { buildKeyline } from './svg-import';
+import { buildKeyline, mergeKeyline } from './svg-import';
 import type { FlatPath } from './types';
+
+/** A closed rectangle ring (points listed CCW; closing point added). */
+function rect(
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    ccw = true,
+): FlatPath {
+    const pts: Array<[number, number]> = ccw
+        ? [
+              [x0, y0],
+              [x1, y0],
+              [x1, y1],
+              [x0, y1],
+          ]
+        : [
+              [x0, y0],
+              [x0, y1],
+              [x1, y1],
+              [x1, y0],
+          ];
+    pts.push([pts[0][0], pts[0][1]]);
+    return { closed: true, points: pts };
+}
+
+function area(p: FlatPath): number {
+    let a = 0;
+    const r = p.points;
+    for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+        a += (r[j][0] + r[i][0]) * (r[j][1] - r[i][1]);
+    }
+    return Math.abs(a) / 2;
+}
 
 function bbox(p: FlatPath) {
     const xs = p.points.map((q) => q[0]);
@@ -112,5 +146,39 @@ describe('buildKeyline — Illustrator-style Offset Path', () => {
         for (const p of out.points) {
             expect(distToRing(p)).toBeGreaterThanOrEqual(8 * 0.5 - 1e-6);
         }
+    });
+});
+
+describe('mergeKeyline — weld overlapping keyline cuts', () => {
+    it('merges two overlapping rings into one clean contour', () => {
+        const a = rect(0, 0, 60, 60);
+        const b = rect(40, 40, 100, 100);
+        const out = mergeKeyline([a, b]);
+        // Overlapping → a single welded outer contour, not two crossing cuts.
+        expect(out.length).toBe(1);
+        expect(out[0].closed).toBe(true);
+    });
+
+    it('leaves non-overlapping rings as separate contours', () => {
+        const a = rect(0, 0, 30, 30);
+        const b = rect(100, 100, 130, 130);
+        const out = mergeKeyline([a, b]);
+        expect(out.length).toBe(2);
+    });
+
+    it('preserves a counter (opposite-winding inner ring) as a hole', () => {
+        const outer = rect(0, 0, 100, 100, true);
+        const counter = rect(35, 35, 65, 65, false); // opposite winding = hole
+        const out = mergeKeyline([outer, counter]);
+        // Outer contour + the counter hole both survive as cut rings.
+        expect(out.length).toBe(2);
+        const areas = out.map(area).sort((x, y) => y - x);
+        expect(areas[0]).toBeCloseTo(100 * 100, 0); // outer ring
+        expect(areas[1]).toBeCloseTo(30 * 30, 0); // the counter hole ring
+    });
+
+    it('passes a single ring straight through', () => {
+        const a = rect(0, 0, 50, 50);
+        expect(mergeKeyline([a])).toEqual([a]);
     });
 });

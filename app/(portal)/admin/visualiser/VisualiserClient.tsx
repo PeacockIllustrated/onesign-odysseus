@@ -35,7 +35,7 @@ import {
 } from '@/lib/visualiser/geometry';
 import { splitPanels } from '@/lib/visualiser/split';
 import { resolveMount, projectingSpecLine } from '@/lib/visualiser/projecting';
-import { importSvg, buildKeyline } from '@/lib/visualiser/svg-import';
+import { importSvg, buildKeyline, mergeKeyline } from '@/lib/visualiser/svg-import';
 import { composeLayers, composeLayersSvg } from '@/lib/visualiser/compose';
 import {
     PanelParamsSchema,
@@ -1048,7 +1048,9 @@ export function VisualiserClient({
     const keylineClip = useMemo(() => {
         if (!development || params.keylineMm <= 0 || aperture.length === 0)
             return { paths: [], wasClipped: false, anyOutside: false };
-        const raw = buildKeyline(aperture, params.keylineMm);
+        // Union the per-letter keyline offsets so adjacent letters' overlaps
+        // weld into clean, non-overlapping cut contours (no double-cuts).
+        const raw = mergeKeyline(buildKeyline(aperture, params.keylineMm));
         return clipApertureToFace(development, raw);
     }, [development, aperture, params.keylineMm]);
     const keyline = keylineClip.paths;
@@ -1117,7 +1119,9 @@ export function VisualiserClient({
         }
         const clip = (paths: typeof placedClip.paths) =>
             clipApertureToFace(development, paths).paths;
-        return { keyline: clip(keyline), islands: clip(islands) };
+        // Weld overlapping per-letter push-through holes into clean contours;
+        // islands (retained metal counters) stay separate.
+        return { keyline: clip(mergeKeyline(keyline)), islands: clip(islands) };
     }, [development, pushThroughPieces]);
     const pushThroughKeyline = pushThrough.keyline;
     const pushThroughIslands = pushThrough.islands;

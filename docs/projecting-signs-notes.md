@@ -217,6 +217,21 @@ path reuses the identical per-panel logic. Still needs a hands-on check of an
 actual exported PDF before relying on it for fabrication. tsc + 102 vitest +
 eslint green (only the pre-existing DimensionEditLabel error).
 
+### Change-set 17 — weld overlapping keyline cuts (union)
+
+The keyline is offset per-letter, so adjacent letters' keyline rings cross/
+overlap — which double-cuts on the machine. Added `mergeKeyline` (lib/visualiser/
+svg-import.ts) which UNIONs the keyline ring set into clean, non-overlapping cut
+contours via `polygon-clipping` (new dep, 0.15.7, pure JS, MIT). Outer-vs-hole
+is decided by winding (same convention buildKeyline uses), so counters (the
+inner holes of O / e / & …) are preserved as holes; overlapping outers weld into
+one contour. Applied to both the legacy `keyline` and the push-through keyline
+in VisualiserClient, so it flows to the 3D + reference PDF + production PDF
+(via the cached bundle / pdfData). Falls back to the unmerged paths on any
+clipper error (never drops cuts). Covered by 4 new unit tests in keyline.test.ts
+(merge / no-merge / hole-preserved / passthrough) — this geometry IS verifiable
+(unlike the PDF rendering). tsc + 106 vitest + eslint green.
+
 ## v1 — single-panel toggle (REPLACED, kept for history)
 
 Implemented from `docs/projecting-signs-handoff.md`. Run autonomously per the
