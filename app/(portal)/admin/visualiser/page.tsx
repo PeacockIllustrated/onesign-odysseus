@@ -1,4 +1,6 @@
 // app/(portal)/admin/visualiser/page.tsx
+import Link from 'next/link';
+import { Ruler } from 'lucide-react';
 import { requireAdmin } from '@/lib/auth';
 import { listDesigns, prefillFromQuoteItem } from '@/lib/visualiser/actions';
 import { VisualiserClient } from './VisualiserClient';
@@ -47,6 +49,13 @@ export default async function VisualiserPage({
                         production-ready cut files
                     </p>
                 </div>
+                <Link
+                    href="/admin/visualiser/neon"
+                    className="flex shrink-0 items-center gap-1.5 self-center rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:border-[#4e7e8c] hover:bg-[#e8f0f3] hover:text-[#3a5f6a]"
+                >
+                    <Ruler size={14} />
+                    Neon length tool
+                </Link>
             </header>
             <VisualiserClient
                 initialDesigns={designs}
