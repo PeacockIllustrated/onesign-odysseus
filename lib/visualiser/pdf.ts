@@ -1546,12 +1546,17 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
 
     let rowY = specY + 18;
     doc.setFontSize(8.5);
+    // Value column wraps within the specs strip so long notes (e.g. the CAM
+    // "Stroke" description) never run off the right edge of the page.
+    const valueX = specX + 24;
+    const valueW = specX + specW - valueX;
     spec.specs.forEach(([k, v]) => {
         doc.setTextColor(120);
         doc.text(T(k), specX, rowY);
         doc.setTextColor(0);
-        doc.text(T(v), specX + 30, rowY);
-        rowY += 5.2;
+        const lines = doc.splitTextToSize(T(v), valueW) as string[];
+        doc.text(lines, valueX, rowY);
+        rowY += Math.max(1, lines.length) * 4.4 + 1;
     });
 
     // Drawing area — left of the specs strip
@@ -1572,97 +1577,13 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
         showDims: false,
     });
 
-    // Faded outlines of OTHER materials so it's clear where this
-    // material sits relative to the rest of the sign.
-    doc.setDrawColor(220);
-    doc.setLineWidth(0.15);
+    // Each material page shows ONLY its own material (filled solid below) plus
+    // the faded panel outline + section labels drawn above. We deliberately do
+    // NOT ghost the other materials here: a faint outline of, say, a vinyl
+    // decal on the "Cut apertures" page reads as "cut this too", which is
+    // exactly the misread we want to avoid. The panel outline alone gives
+    // enough spatial context. `apAll` is reused by the cut page below.
     const apAll = (opts.apertureBySection ?? []).flatMap((a) => a);
-    if (spec.kind !== 'cut') {
-        for (const p of apAll) {
-            const pl = pathDPolyline(p.points, p.closed);
-            if (pl)
-                doc.lines(
-                    pl.deltas,
-                    px(pl.start[0]),
-                    py(pl.start[1]),
-                    [scale, scale],
-                    'S',
-                    p.closed,
-                );
-        }
-    }
-    if (spec.kind !== 'vinyl') {
-        for (const p of opts.vinylPieces ?? []) {
-            const pl = pathDPolyline(p.path.points, p.path.closed);
-            if (pl)
-                doc.lines(
-                    pl.deltas,
-                    px(pl.start[0]),
-                    py(pl.start[1]),
-                    [scale, scale],
-                    'S',
-                    p.path.closed,
-                );
-        }
-    }
-    if (spec.kind !== 'acrylic') {
-        for (const p of opts.acrylicPieces ?? []) {
-            const pl = pathDPolyline(p.path.points, p.path.closed);
-            if (pl)
-                doc.lines(
-                    pl.deltas,
-                    px(pl.start[0]),
-                    py(pl.start[1]),
-                    [scale, scale],
-                    'S',
-                    p.path.closed,
-                );
-        }
-    }
-    if (spec.kind !== 'solid') {
-        for (const p of opts.solidPieces ?? []) {
-            const pl = pathDPolyline(p.path.points, p.path.closed);
-            if (pl)
-                doc.lines(
-                    pl.deltas,
-                    px(pl.start[0]),
-                    py(pl.start[1]),
-                    [scale, scale],
-                    'S',
-                    p.path.closed,
-                );
-        }
-    }
-    if (spec.kind !== 'standoff') {
-        for (const p of opts.standoffPieces ?? []) {
-            const pl = pathDPolyline(p.path.points, p.path.closed);
-            if (pl)
-                doc.lines(
-                    pl.deltas,
-                    px(pl.start[0]),
-                    py(pl.start[1]),
-                    [scale, scale],
-                    'S',
-                    p.path.closed,
-                );
-        }
-    }
-    if (spec.kind !== 'pushthrough') {
-        for (const p of opts.pushThroughPieces ?? []) {
-            for (const ring of [p.path, ...(p.holes ?? [])]) {
-                const pl = pathDPolyline(ring.points, ring.closed);
-                if (pl)
-                    doc.lines(
-                        pl.deltas,
-                        px(pl.start[0]),
-                        py(pl.start[1]),
-                        [scale, scale],
-                        'S',
-                        ring.closed,
-                    );
-            }
-        }
-    }
 
     // THIS material — drawn boldly. Multiple pieces of the same
     // material share one page, each drawn with its own colour /
@@ -1791,7 +1712,7 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
     doc.setTextColor(110);
     doc.text(
         T(
-            `Other materials shown faded for reference.  ·  Scale 1:${scale < 1 ? Math.round(1 / scale) : '1'}`,
+            `This page shows the ${spec.label} only.  ·  Scale 1:${scale < 1 ? Math.round(1 / scale) : '1'}`,
         ),
         margin,
         pageH - margin + 4,
