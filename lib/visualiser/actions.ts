@@ -26,7 +26,13 @@ export async function listDesigns(): Promise<Result<VisualiserDesignRow[]>> {
         .limit(200);
 
     if (error) return err(error.message);
-    return ok((data ?? []) as VisualiserDesignRow[]);
+    // The neon-length tool stores its own records in this table tagged
+    // params_json.kind = 'neon'; keep those out of the panel visualiser list.
+    const rows = ((data ?? []) as VisualiserDesignRow[]).filter(
+        (r) =>
+            (r.params_json as { kind?: string } | null)?.kind !== 'neon',
+    );
+    return ok(rows);
 }
 
 /** Load a single design by id. */

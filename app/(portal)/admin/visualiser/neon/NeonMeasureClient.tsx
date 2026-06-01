@@ -5,9 +5,12 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {
     ArrowLeft,
+    Bookmark,
     Download,
     Ruler,
+    Save,
     Sparkles,
+    Trash2,
     Upload,
     X,
 } from 'lucide-react';
@@ -20,6 +23,12 @@ import {
     type NeonElement,
 } from '@/lib/visualiser/neon';
 import { generateNeonPdfBlob } from '@/lib/visualiser/neon-pdf';
+import {
+    listNeonDesigns,
+    saveNeonDesign,
+    deleteNeonDesign,
+    type NeonDesignRow,
+} from '@/lib/visualiser/neon-actions';
 import type { FlatPath } from '@/lib/visualiser/types';
 
 const ACCENT = '#4e7e8c';
@@ -37,13 +46,19 @@ type Bbox = { minX: number; minY: number; maxX: number; maxY: number };
 
 interface Loaded {
     name: string;
+    /** The raw uploaded SVG text — kept so the design can be saved + reopened. */
+    svgText: string;
     /** Raw flattened paths (mm as read from the SVG, before any calibration). */
     paths: FlatPath[];
     /** Raw bounding box, before calibration. */
     bbox: Bbox;
 }
 
-export function NeonMeasureClient() {
+export function NeonMeasureClient({
+    initialDesigns,
+}: {
+    initialDesigns: NeonDesignRow[];
+}) {
     const fileRef = useRef<HTMLInputElement>(null);
     const [loaded, setLoaded] = useState<Loaded | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -53,6 +68,11 @@ export function NeonMeasureClient() {
     const [boardOn, setBoardOn] = useState(true);
     const [paddingMm, setPaddingMm] = useState(50);
     const [saturation, setSaturation] = useState(1);
+    // Saved designs (shared, DB-backed via neon-actions).
+    const [designs, setDesigns] = useState<NeonDesignRow[]>(initialDesigns);
+    const [designId, setDesignId] = useState<string | null>(null);
+    const [designName, setDesignName] = useState('');
+    const [saveBusy, setSaveBusy] = useState(false);
     // Manual calibration: the real WIDTH or HEIGHT (mm) of the artwork — enter
     // either one (aspect ratio is fixed, so one dimension sets the scale).
     // Needed because Illustrator often exports without real-world units, which
@@ -61,23 +81,20 @@ export function NeonMeasureClient() {
     const [calWidth, setCalWidth] = useState('');
     const [calHeight, setCalHeight] = useState('');
 
-    const handleFile = async (file: File) => {
-        setError(null);
-        if (!/\.svg$/i.test(file.name) && file.type !== 'image/svg+xml') {
-            setError('Please choose an SVG file.');
-            return;
-        }
+    // Import SVG text into the editor. Returns true on success. Optionally
+    // tags it with a saved-design id (when reopening a saved record).
+    const loadSvgText = (text: string, name: string, id: string | null) => {
         try {
-            const text = await file.text();
             const imported = importSvg(text);
             if (measureNeon(imported.paths).length === 0) {
                 setError(
                     'No measurable paths found in that SVG. Make sure strokes/shapes are expanded to outlines, not images.',
                 );
-                return;
+                return false;
             }
             setLoaded({
-                name: file.name.replace(/\.svg$/i, ''),
+                name,
+                svgText: text,
                 paths: imported.paths,
                 bbox: {
                     minX: imported.bbox.x,
@@ -86,9 +103,83 @@ export function NeonMeasureClient() {
                     maxY: imported.bbox.y + imported.bbox.h,
                 },
             });
+            setDesignId(id);
+            setDesignName(name);
+            return true;
         } catch {
             setError('Could not read that SVG. Is it a valid SVG export?');
+            return false;
         }
+    };
+
+    const handleFile = async (file: File) => {
+        setError(null);
+        if (!/\.svg$/i.test(file.name) && file.type !== 'image/svg+xml') {
+            setError('Please choose an SVG file.');
+            return;
+        }
+        const text = await file.text();
+        loadSvgText(text, file.name.replace(/\.svg$/i, ''), null);
+    };
+
+    // Reopen a saved design: re-import its SVG + restore the saved settings.
+    const openDesign = (row: NeonDesignRow) => {
+        setError(null);
+        if (!row.svg_source) {
+            setError('That saved design has no SVG.');
+            return;
+        }
+        if (!loadSvgText(row.svg_source, row.name, row.id)) return;
+        const cfg = row.params_json;
+        setCalWidth(cfg.widthMm != null ? String(cfg.widthMm) : '');
+        setCalHeight(cfg.heightMm != null ? String(cfg.heightMm) : '');
+        setBoardOn(cfg.backboardEnabled);
+        setPaddingMm(cfg.backboardPaddingMm);
+        setSaturation(cfg.saturation);
+    };
+
+    const refreshDesigns = async () => {
+        const res = await listNeonDesigns();
+        if (res.ok) setDesigns(res.data);
+    };
+
+    const onSave = async () => {
+        if (!loaded) return;
+        const name = designName.trim() || loaded.name;
+        setSaveBusy(true);
+        setError(null);
+        try {
+            const res = await saveNeonDesign({
+                id: designId,
+                name,
+                svgSource: loaded.svgText,
+                config: {
+                    widthMm: parsedW > 0 ? parsedW : null,
+                    heightMm: parsedW > 0 ? null : parsedH > 0 ? parsedH : null,
+                    backboardEnabled: boardOn,
+                    backboardPaddingMm: paddingMm,
+                    saturation,
+                },
+            });
+            if (!res.ok) {
+                setError(res.error);
+                return;
+            }
+            setDesignId(res.data.id);
+            await refreshDesigns();
+        } finally {
+            setSaveBusy(false);
+        }
+    };
+
+    const onDeleteDesign = async (id: string) => {
+        const res = await deleteNeonDesign(id);
+        if (!res.ok) {
+            setError(res.error);
+            return;
+        }
+        if (id === designId) setDesignId(null);
+        await refreshDesigns();
     };
 
     // Raw (uncalibrated) dimensions + the scale implied by a manual width OR
@@ -212,11 +303,33 @@ export function NeonMeasureClient() {
                                 <Sparkles size={13} /> Neon preview
                             </button>
                         </div>
+                        <input
+                            type="text"
+                            value={designName}
+                            onChange={(e) => setDesignName(e.target.value)}
+                            placeholder="Design name"
+                            className="w-36 rounded-md border border-neutral-300 px-2 py-1.5 text-xs focus:border-[#4e7e8c] focus:outline-none"
+                        />
+                        <button
+                            type="button"
+                            onClick={onSave}
+                            disabled={saveBusy}
+                            className="flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-60"
+                        >
+                            <Save size={14} />
+                            {saveBusy
+                                ? 'Saving…'
+                                : designId
+                                  ? 'Update'
+                                  : 'Save'}
+                        </button>
                         <button
                             type="button"
                             onClick={() => {
                                 setLoaded(null);
                                 setError(null);
+                                setDesignId(null);
+                                setDesignName('');
                                 if (fileRef.current) fileRef.current.value = '';
                             }}
                             className="flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-100"
@@ -248,6 +361,8 @@ export function NeonMeasureClient() {
                 }}
             />
 
+            <div className="flex flex-1 min-h-0 gap-3">
+                <div className="flex flex-1 min-h-0 flex-col gap-3">
             {loaded && (
                 <div className="shrink-0 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-900">
                     <span>
@@ -605,6 +720,61 @@ export function NeonMeasureClient() {
                     </div>
                 </div>
             )}
+                </div>
+
+                {/* Saved designs rail (DB-backed, shared) */}
+                <aside className="hidden md:flex w-56 shrink-0 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white">
+                    <div className="shrink-0 flex items-center gap-1.5 border-b border-neutral-100 px-3 py-2.5">
+                        <Bookmark size={14} className="text-neutral-400" />
+                        <h2 className="text-[10px] font-semibold uppercase tracking-widest text-neutral-500">
+                            Saved neon designs
+                        </h2>
+                    </div>
+                    <div className="min-h-0 flex-1 overflow-y-auto">
+                        {designs.length === 0 ? (
+                            <p className="px-3 py-4 text-xs text-neutral-400">
+                                No saved designs yet. Load an SVG and hit Save.
+                            </p>
+                        ) : (
+                            <ul className="divide-y divide-neutral-100">
+                                {designs.map((d) => (
+                                    <li
+                                        key={d.id}
+                                        className={`group flex items-center gap-2 px-3 py-2 ${
+                                            d.id === designId
+                                                ? 'bg-[#e8f0f3]'
+                                                : 'hover:bg-neutral-50'
+                                        }`}
+                                    >
+                                        <button
+                                            type="button"
+                                            onClick={() => openDesign(d)}
+                                            className="min-w-0 flex-1 text-left"
+                                        >
+                                            <span className="block truncate text-xs font-medium text-neutral-800">
+                                                {d.name}
+                                            </span>
+                                            <span className="block text-[10px] text-neutral-400">
+                                                {new Date(
+                                                    d.updated_at,
+                                                ).toLocaleDateString('en-GB')}
+                                            </span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => onDeleteDesign(d.id)}
+                                            aria-label={`Delete ${d.name}`}
+                                            className="shrink-0 rounded p-1 text-neutral-300 hover:bg-red-50 hover:text-red-500"
+                                        >
+                                            <Trash2 size={13} />
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+                </aside>
+            </div>
         </div>
     );
 }
