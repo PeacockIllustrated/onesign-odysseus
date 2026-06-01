@@ -290,7 +290,11 @@ function FacePlane({
                 onClick
                     ? (e) => {
                           e.stopPropagation();
-                          onClick(e.point.x, e.point.y);
+                          // Convert the world hit point into the face's LOCAL
+                          // frame so placement is correct even when the panel is
+                          // mounted rotated (the in-situ projecting sign).
+                          const local = e.object.worldToLocal(e.point.clone());
+                          onClick(local.x, local.y);
                       }
                     : undefined
             }
@@ -2542,6 +2546,11 @@ export default function Scene3D(props: {
                         night={illuminationView}
                         showOutlines={showOutlines}
                     >
+                        {/* Full editing parity with the fascia — path picking,
+                            material groups, fixings, outlines, effects and
+                            dimensions all work in situ. FacePlane converts clicks
+                            into face-local coords, so placement is correct even
+                            though the sign is mounted rotated. */}
                         <Panel
                             {...props}
                             autoFixings={autoFixings}
@@ -2555,24 +2564,23 @@ export default function Scene3D(props: {
                             pushThroughKeyline={pushThroughKeyline}
                             pushThroughIslands={pushThroughIslands}
                             pushThroughPieces={pushThroughPieces}
+                            placedPathsByIndex={props.placedPathsByIndex ?? null}
+                            pathGroupColors={props.pathGroupColors ?? null}
+                            pendingPaths={props.pendingPaths}
+                            isEditingGroup={props.isEditingGroup}
+                            onPathToggle={props.onPathToggle}
                             fold={1}
+                            fixingMode={props.fixingMode}
+                            cableMode={props.cableMode}
+                            onFixingClick={props.onFixingClick}
                             showOutlines={showOutlines}
                             showStandoffLetters={showStandoffLetters}
                             showStandoffLocators={showStandoffLocators}
                             illuminationView={illuminationView}
                             illumination={props.illumination}
+                            showDimensions={props.showDimensions}
+                            onDimensionChange={props.onDimensionChange}
                             enclosed
-                            // Rotated in situ — disable 3D click editing (coords
-                            // assume a face at the origin); edit via the controls.
-                            placedPathsByIndex={null}
-                            pathGroupColors={null}
-                            pendingPaths={undefined}
-                            isEditingGroup={false}
-                            onPathToggle={undefined}
-                            fixingMode="off"
-                            cableMode="off"
-                            onFixingClick={undefined}
-                            showDimensions={false}
                         />
                     </ProjectingMounted>
                 ) : mount.shape === 'circle' ? (
