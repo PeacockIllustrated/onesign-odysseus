@@ -232,6 +232,26 @@ clipper error (never drops cuts). Covered by 4 new unit tests in keyline.test.ts
 (merge / no-merge / hole-preserved / passthrough) — this geometry IS verifiable
 (unlike the PDF rendering). tsc + 106 vitest + eslint green.
 
+### Change-set 18 — shapes + bracket styles render in 3D
+
+Made the Mounting config actually drive the geometry (verified live):
+- **Shapes**: `Panel`/`FacePlane`/`BundlePanel` gained a `faceShape` prop. Square
+  = the rectangular folded tray (unchanged). Circle = an elliptical face (fits
+  W×H; a true circle when W=H), a circular back, and a cylindrical RIM instead of
+  the four flat returns — so a circle sign renders as a real round disc WITH its
+  design (apertures cut in the disc), in both the active and composite views.
+  Replaced the old plain-disc `CompositeGhost` (which showed no design).
+- **Bracket styles**: new `MountBracket` renders the bought-in bracket connecting
+  the fascia to the projecting sign, on the +X (back) side so it never obscures
+  the face — `flat-plate` (a backing plate), `box-arm` (top + bottom square arms
+  off a wall plate), `scroll` (top arm + diagonal brace + curl). Brushed grey,
+  indicative (it's bought-in, not fabricated).
+
+The fascia path is untouched (faceShape defaults 'square'). Verified live: square
+box vs round disc, and all three bracket styles, render distinctly on both the
+projecting tab and the main composite, no console errors. tsc + 106 vitest +
+eslint green (only the pre-existing DimensionEditLabel error).
+
 ## v1 — single-panel toggle (REPLACED, kept for history)
 
 Implemented from `docs/projecting-signs-handoff.md`. Run autonomously per the

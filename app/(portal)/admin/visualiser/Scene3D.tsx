@@ -260,6 +260,7 @@ function FacePlane({
     onClick,
     cursorCrosshair,
     outlines = true,
+    faceShape = 'square',
 }: {
     W: number; // mm
     H: number; // mm
@@ -270,16 +271,24 @@ function FacePlane({
     onClick?: (sceneX: number, sceneY: number) => void;
     cursorCrosshair?: boolean;
     outlines?: boolean;
+    /** Outline of the face — a rectangle (default) or an ellipse/disc. */
+    faceShape?: 'square' | 'circle';
 }) {
     const shape = useMemo(() => {
         const s = new THREE.Shape();
         const hw = (W * S) / 2;
         const hh = (H * S) / 2;
-        s.moveTo(-hw, -hh);
-        s.lineTo(hw, -hh);
-        s.lineTo(hw, hh);
-        s.lineTo(-hw, hh);
-        s.lineTo(-hw, -hh);
+        if (faceShape === 'circle') {
+            // Ellipse fitting W×H (a true circle when W === H). 64 segments
+            // so the disc edge reads smooth.
+            s.absellipse(0, 0, hw, hh, 0, Math.PI * 2, false, 0);
+        } else {
+            s.moveTo(-hw, -hh);
+            s.lineTo(hw, -hh);
+            s.lineTo(hw, hh);
+            s.lineTo(-hw, hh);
+            s.lineTo(-hw, -hh);
+        }
         for (const pts of holesLocal) {
             if (pts.length < 3) continue;
             const h = new THREE.Path();
@@ -289,7 +298,7 @@ function FacePlane({
             s.holes.push(h);
         }
         return s;
-    }, [W, H, holesLocal]);
+    }, [W, H, holesLocal, faceShape]);
 
     return (
         <mesh
@@ -1600,6 +1609,7 @@ function Panel({
     showDimensions = false,
     onDimensionChange,
     enclosed = false,
+    faceShape = 'square',
 }: {
     params: PanelParams;
     development: PanelDevelopment;
@@ -1642,6 +1652,12 @@ function Panel({
      * are sealed boxes rather than open-backed fascia trays).
      */
     enclosed?: boolean;
+    /**
+     * Face/box silhouette. 'square' = the rectangular folded tray (fascia +
+     * square projecting signs); 'circle' = a round disc — elliptical face +
+     * back and a cylindrical rim instead of the four flat returns.
+     */
+    faceShape?: 'square' | 'circle';
 }) {
     const W = dev.faceNominalWMm;
     const H = dev.faceNominalHMm;
@@ -1856,6 +1872,7 @@ function Panel({
                 color={panelColor}
                 holesLocal={holesLocal}
                 outlines={showOutlines}
+                faceShape={faceShape}
                 cursorCrosshair={placementActive}
                 onClick={
                     placementActive && face && onFixingClick
@@ -1874,14 +1891,35 @@ function Panel({
             />
 
             {/* Closed back — seals the tray into a box (projecting signs). The
-                returns fold back to z = -D, so the back panel sits there. */}
-            {enclosed && (
-                <mesh position={[0, 0, -D * S]}>
-                    <planeGeometry args={[W * S, H * S]} />
-                    <meshBasicMaterial color={panelColor} side={THREE.DoubleSide} />
-                    {showOutlines && <Edges color={EDGE_COLOR} lineWidth={1} />}
-                </mesh>
-            )}
+                returns fold back to z = -D, so the back panel sits there.
+                Circle signs get a matching disc back. */}
+            {enclosed &&
+                (faceShape === 'circle' ? (
+                    <mesh
+                        position={[0, 0, -D * S]}
+                        scale={[1, W > 0 ? H / W : 1, 1]}
+                    >
+                        <circleGeometry args={[(W * S) / 2, 64]} />
+                        <meshBasicMaterial
+                            color={panelColor}
+                            side={THREE.DoubleSide}
+                        />
+                        {showOutlines && (
+                            <Edges color={EDGE_COLOR} lineWidth={1} />
+                        )}
+                    </mesh>
+                ) : (
+                    <mesh position={[0, 0, -D * S]}>
+                        <planeGeometry args={[W * S, H * S]} />
+                        <meshBasicMaterial
+                            color={panelColor}
+                            side={THREE.DoubleSide}
+                        />
+                        {showOutlines && (
+                            <Edges color={EDGE_COLOR} lineWidth={1} />
+                        )}
+                    </mesh>
+                ))}
 
             {/* Push-through assembly. Two parts, rendered back-to-
                 front in the z-stack:
@@ -1996,22 +2034,45 @@ function Panel({
                 </>
             )}
 
-            {/* Hinged return flaps (+ optional shadow-gap lips) */}
-            {edges.map((e) =>
-                r[e] ? (
-                    <Flap
-                        key={e}
-                        edge={e}
-                        W={W}
-                        H={H}
-                        D={D}
-                        Sg={sgFor(e)}
-                        fold={fold}
-                        color={panelColor}
-                        outlines={showOutlines}
-                    />
-                ) : null,
-            )}
+            {/* Returns. Square signs fold four flat flaps; a circle sign has a
+                continuous cylindrical rim (the box depth) instead. */}
+            {faceShape === 'circle'
+                ? D > 0 && (
+                      <mesh
+                          position={[0, 0, (-D * S) / 2]}
+                          rotation={[HALF_PI, 0, 0]}
+                          scale={[1, 1, W > 0 ? H / W : 1]}
+                      >
+                          {/* Open-ended cylinder: axis along Z (depth) after the
+                              X-rotation; radius = W/2, scaled to H/W on the
+                              vertical so it matches an elliptical face. */}
+                          <cylinderGeometry
+                              args={[(W * S) / 2, (W * S) / 2, D * S, 64, 1, true]}
+                          />
+                          <meshBasicMaterial
+                              color={panelColor}
+                              side={THREE.DoubleSide}
+                          />
+                          {showOutlines && (
+                              <Edges color={EDGE_COLOR} lineWidth={1} />
+                          )}
+                      </mesh>
+                  )
+                : edges.map((e) =>
+                      r[e] ? (
+                          <Flap
+                              key={e}
+                              edge={e}
+                              W={W}
+                              H={H}
+                              D={D}
+                              Sg={sgFor(e)}
+                              fold={fold}
+                              color={panelColor}
+                              outlines={showOutlines}
+                          />
+                      ) : null,
+                  )}
 
             {/* Seam lines on the face */}
             {split.wasSplit &&
@@ -2076,91 +2137,108 @@ function Panel({
 }
 
 
+const BRACKET_COLOR = '#9aa0a4'; // brushed-metal grey for the bought-in bracket
+
 /**
- * The other panel of a projecting-sign design, drawn as a positioned ghost so
- * both signs read together in real space without needing the full artwork
- * pipeline for the inactive panel (you edit each panel's artwork on its own
- * tab; this shows footprint + placement). The projecting sign ALWAYS mounts on
- * the fascia FACE and projects straight out (+Z) toward the street — never off
- * an edge. Its WIDTH is the protrusion (or the diameter, for a circle) and its
- * HEIGHT is vertical. Square → a thin box; circle → a thin disc (axis along X).
+ * The bought-in mounting bracket connecting the fascia to the projecting sign.
+ * The sign reads from −X and projects +Z off the fascia face, so the bracket
+ * sits on the +X (back) side where it won't obscure the artwork. Three styles:
+ *   - flat-plate — a single backing plate the sign bolts to.
+ *   - box-arm    — top + bottom square-section arms off a wall plate (sturdy).
+ *   - scroll     — a top arm with a decorative diagonal brace.
+ * Indicative only (it's a bought-in part, specified on the PDFs, not made).
  */
-function CompositeGhost({
+function MountBracket({
     fascia,
-    blade,
+    proj,
     mount,
-    ghost,
     night,
 }: {
     fascia: PanelParams;
-    blade: PanelParams;
+    proj: PanelParams;
     mount: ResolvedMount;
-    ghost: 'blade' | 'fascia';
     night: boolean;
 }) {
     const Wf = fascia.panelWidthMm * S;
     const Hf = fascia.panelHeightMm * S;
-    const Wb = blade.panelWidthMm * S; // protrusion off the face (Z), or diameter
-    const Hb = blade.panelHeightMm * S; // vertical extent (Y)
-    const Tb = Math.max(blade.returnDepthMm, 25) * S; // sign thickness (X)
-    const ox = mount.offsetXMm * S;
-    const oy = mount.offsetYMm * S;
-    const color = displayColor(
-        (ghost === 'blade' ? blade.panelColor : fascia.panelColor) ??
-            DEFAULT_PANEL_COLOR,
-        night,
-    );
-    const material = (
-        <meshBasicMaterial
-            color={color}
-            transparent
-            opacity={0.45}
-            side={THREE.DoubleSide}
-        />
-    );
+    const Wp = proj.panelWidthMm * S; // protrusion off the face (+Z)
+    const Hp = proj.panelHeightMm * S; // vertical
+    const Tb = Math.max(proj.returnDepthMm, 25) * S; // sign thickness (X)
+    const ax = -Wf / 2 + mount.offsetXMm * S;
+    const ayTop = Hf / 2 - mount.offsetYMm * S;
+    const yBot = ayTop - Hp;
+    const yMid = ayTop - Hp / 2;
+    const bx = ax + Tb / 2; // back face of the sign (+X side)
+    const grey = displayColor(BRACKET_COLOR, night);
 
-    if (ghost === 'fascia') {
-        // Editing the projecting sign (head-on at origin); the fascia ghost is
-        // the wall it mounts to — a slab behind it.
-        const Df = Math.max(fascia.returnDepthMm, 30) * S;
-        const Db = Math.max(blade.returnDepthMm, 25) * S;
-        return (
-            <mesh position={[0, 0, -Db - Df / 2]}>
-                <boxGeometry args={[Wf, Hf, Df]} />
-                {material}
-                <Edges color={EDGE_COLOR} lineWidth={1} />
-            </mesh>
-        );
-    }
-
-    // Fascia at the origin (face +Z). The sign mounts at (offsetX from left,
-    // offsetY from top) ON the face and protrudes +Z. Its top aligns with the
-    // attach point and it hangs down by its height/diameter.
-    const ax = -Wf / 2 + ox; // attach X on the face
-    const ayTop = Hf / 2 - oy; // attach Y (sign top)
-
-    if (mount.shape === 'circle') {
-        const r = Wb / 2; // diameter = blade width
-        return (
-            // Cylinder default axis is Y; rotate 90° about Z so the disc faces
-            // ±X (read from the side), spanning Y (vertical) and Z (protrusion).
-            <mesh
-                position={[ax, ayTop - r, r]}
-                rotation={[0, 0, Math.PI / 2]}
-            >
-                <cylinderGeometry args={[r, r, Tb, 48]} />
-                {material}
-                <Edges color={EDGE_COLOR} lineWidth={1} />
-            </mesh>
-        );
-    }
-
-    return (
-        <mesh position={[ax, ayTop - Hb / 2, Wb / 2]}>
-            <boxGeometry args={[Tb, Hb, Wb]} />
-            {material}
+    // A grey box helper (a plain JSX factory, not a nested component).
+    const gbox = (
+        key: string,
+        size: [number, number, number],
+        position: [number, number, number],
+        rotation?: [number, number, number],
+    ) => (
+        <mesh key={key} position={position} rotation={rotation}>
+            <boxGeometry args={size} />
+            <meshBasicMaterial color={grey} />
             <Edges color={EDGE_COLOR} lineWidth={1} />
         </mesh>
+    );
+
+    const plateThk = 8 * S;
+    if (mount.bracketStyle === 'flat-plate') {
+        // One backing plate, flush to the fascia, slightly larger than the
+        // sign — the sign bolts to it.
+        return (
+            <group>
+                {gbox(
+                    'plate',
+                    [plateThk, Hp * 1.06, Wp * 1.06],
+                    [bx + plateThk / 2, yMid, Wp / 2],
+                )}
+            </group>
+        );
+    }
+
+    const arm = Math.min(Math.max(Hp * 0.14, 35 * S), 70 * S);
+    if (mount.bracketStyle === 'box-arm') {
+        return (
+            <group>
+                {/* wall plate on the fascia face */}
+                {gbox(
+                    'wall',
+                    [plateThk, Hp * 0.55, plateThk * 2.5],
+                    [bx + plateThk / 2, yMid, plateThk * 1.25],
+                )}
+                {/* top + bottom square-section arms out to the sign tip */}
+                {gbox('top', [arm, arm, Wp], [bx + arm / 2, ayTop - arm / 2, Wp / 2])}
+                {gbox(
+                    'bot',
+                    [arm, arm, Wp],
+                    [bx + arm / 2, yBot + arm / 2, Wp / 2],
+                )}
+            </group>
+        );
+    }
+
+    // Scroll — a slim top arm + a diagonal brace + a short wall curl.
+    const braceLen = Math.hypot(Wp, Hp);
+    const braceAngle = Math.atan2(Hp, Wp);
+    return (
+        <group>
+            {gbox('top', [12 * S, 12 * S, Wp], [bx + 6 * S, ayTop, Wp / 2])}
+            {gbox(
+                'brace',
+                [11 * S, 11 * S, braceLen],
+                [bx + 5 * S, yMid, Wp / 2],
+                [braceAngle, 0, 0],
+            )}
+            {gbox(
+                'curl',
+                [9 * S, Hp * 0.28, 9 * S],
+                [bx + 5 * S, yBot + Hp * 0.14, 7 * S],
+            )}
+        </group>
     );
 }
 
@@ -2196,6 +2274,7 @@ function ProjectingMounted({
     showOutlines,
     artworkSvg,
     backBundle,
+    faceShape = 'square',
     children,
 }: {
     fascia: PanelParams;
@@ -2206,6 +2285,7 @@ function ProjectingMounted({
     night: boolean;
     showOutlines: boolean;
     artworkSvg?: string | null;
+    faceShape?: 'square' | 'circle';
     /**
      * The sign's full design, used to render a MIRRORED copy on the back face
      * when the sign is double-sided — so the design reads from both sides. The
@@ -2269,6 +2349,7 @@ function ProjectingMounted({
                         illumination={params.illumination}
                         showDimensions={false}
                         enclosed
+                        faceShape={faceShape}
                     />
                     {/* The projecting sign's design, shown on its face(s) so it
                         reads in the composite while you edit the main panel. */}
@@ -2310,6 +2391,7 @@ function ProjectingMounted({
                         bundle={backBundle}
                         night={night}
                         showOutlines={showOutlines}
+                        faceShape={faceShape}
                     />
                 </group>
             )}
@@ -2329,12 +2411,14 @@ function BundlePanel({
     night,
     showOutlines,
     enclosed = false,
+    faceShape = 'square',
 }: {
     params: PanelParams;
     bundle: PanelRenderBundle;
     night: boolean;
     showOutlines: boolean;
     enclosed?: boolean;
+    faceShape?: 'square' | 'circle';
 }) {
     return (
         <Panel
@@ -2364,6 +2448,7 @@ function BundlePanel({
             pathGroupColors={null}
             showDimensions={false}
             enclosed={enclosed}
+            faceShape={faceShape}
         />
     );
 }
@@ -2659,6 +2744,7 @@ export default function Scene3D(props: {
                         night={illuminationView}
                         showOutlines={showOutlines}
                         backBundle={activeBundle}
+                        faceShape={mount.shape}
                     >
                         {/* Full editing parity with the fascia — path picking,
                             material groups, fixings, outlines, effects and
@@ -2696,12 +2782,14 @@ export default function Scene3D(props: {
                             showDimensions={props.showDimensions}
                             onDimensionChange={props.onDimensionChange}
                             enclosed={!mount.doubleSided}
+                            faceShape={mount.shape}
                         />
                     </ProjectingMounted>
-                ) : secondary?.bundle && mount.shape !== 'circle' ? (
+                ) : secondary?.bundle ? (
                     // Non-active projecting sign with its full design from the
                     // cached bundle — identical material groups/apertures to
-                    // when it's being edited, just non-interactive.
+                    // when it's being edited (square box or round disc), just
+                    // non-interactive.
                     <ProjectingMounted
                         fascia={fasciaParams}
                         params={projParams}
@@ -2711,6 +2799,7 @@ export default function Scene3D(props: {
                         night={illuminationView}
                         showOutlines={showOutlines}
                         backBundle={secondary.bundle}
+                        faceShape={mount.shape}
                     >
                         <BundlePanel
                             params={projParams}
@@ -2718,17 +2807,12 @@ export default function Scene3D(props: {
                             night={illuminationView}
                             showOutlines={showOutlines}
                             enclosed={!mount.doubleSided}
+                            faceShape={mount.shape}
                         />
                     </ProjectingMounted>
-                ) : mount.shape === 'circle' ? (
-                    <CompositeGhost
-                        fascia={fasciaParams}
-                        blade={projParams}
-                        mount={mount}
-                        ghost="blade"
-                        night={illuminationView}
-                    />
                 ) : (
+                    // Not yet cached (never visited the projecting tab) →
+                    // lightweight tray/disc + design texture.
                     <ProjectingMounted
                         fascia={fasciaParams}
                         params={projParams}
@@ -2738,8 +2822,20 @@ export default function Scene3D(props: {
                         night={illuminationView}
                         showOutlines={showOutlines}
                         artworkSvg={secondary?.artworkSvg}
+                        faceShape={mount.shape}
                     />
                 )
+            )}
+
+            {/* Bought-in mounting bracket connecting the fascia to the
+                projecting sign — flat plate / box arm / scroll. */}
+            {showProjecting && mount && projParams && (
+                <MountBracket
+                    fascia={fasciaParams}
+                    proj={projParams}
+                    mount={mount}
+                    night={illuminationView}
+                />
             )}
             <OrbitControls enablePan makeDefault />
         </Canvas>
