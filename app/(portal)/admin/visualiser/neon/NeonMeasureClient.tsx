@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {
@@ -20,6 +20,7 @@ import {
     type NeonElement,
 } from '@/lib/visualiser/neon';
 import { generateNeonPdfBlob } from '@/lib/visualiser/neon-pdf';
+import type { FlatPath } from '@/lib/visualiser/types';
 
 const ACCENT = '#4e7e8c';
 
@@ -32,10 +33,14 @@ const NeonScene = dynamic(() => import('./NeonScene'), {
     ),
 });
 
+type Bbox = { minX: number; minY: number; maxX: number; maxY: number };
+
 interface Loaded {
     name: string;
-    elements: NeonElement[];
-    bbox: { minX: number; minY: number; maxX: number; maxY: number };
+    /** Raw flattened paths (mm as read from the SVG, before any calibration). */
+    paths: FlatPath[];
+    /** Raw bounding box, before calibration. */
+    bbox: Bbox;
 }
 
 export function NeonMeasureClient() {
@@ -47,6 +52,11 @@ export function NeonMeasureClient() {
     const [view, setView] = useState<'measure' | 'glow'>('measure');
     const [boardOn, setBoardOn] = useState(true);
     const [paddingMm, setPaddingMm] = useState(50);
+    // Manual calibration: the real width (mm) of the artwork. Blank = trust the
+    // SVG's own units. Use it when the SVG was exported without real-world
+    // dimensions (e.g. Illustrator "Responsive"/px export), which makes the
+    // raw lengths read in points, not mm.
+    const [widthInput, setWidthInput] = useState('');
 
     const handleFile = async (file: File) => {
         setError(null);
@@ -57,16 +67,16 @@ export function NeonMeasureClient() {
         try {
             const text = await file.text();
             const imported = importSvg(text);
-            const elements = measureNeon(imported.paths);
-            if (elements.length === 0) {
+            if (measureNeon(imported.paths).length === 0) {
                 setError(
                     'No measurable paths found in that SVG. Make sure strokes/shapes are expanded to outlines, not images.',
                 );
                 return;
             }
+            setWidthInput('');
             setLoaded({
                 name: file.name.replace(/\.svg$/i, ''),
-                elements,
+                paths: imported.paths,
                 bbox: {
                     minX: imported.bbox.x,
                     minY: imported.bbox.y,
@@ -79,11 +89,47 @@ export function NeonMeasureClient() {
         }
     };
 
+    // Raw (uncalibrated) dimensions + the scale implied by any manual width.
+    const rawW = loaded ? Math.max(1, loaded.bbox.maxX - loaded.bbox.minX) : 1;
+    const rawH = loaded ? Math.max(1, loaded.bbox.maxY - loaded.bbox.minY) : 1;
+    const parsedW = parseFloat(widthInput);
+    const scale = loaded && parsedW > 0 ? parsedW / rawW : 1;
+
+    // Calibrated geometry: scale the raw paths, then measure. Memoised so it
+    // only recomputes when the file or the calibration changes.
+    const { elements, bbox } = useMemo(() => {
+        if (!loaded) return { elements: [] as NeonElement[], bbox: null as Bbox | null };
+        const paths =
+            scale === 1
+                ? loaded.paths
+                : loaded.paths.map((p) => ({
+                      ...p,
+                      points: p.points.map(
+                          ([x, y]) => [x * scale, y * scale] as [number, number],
+                      ),
+                  }));
+        return {
+            elements: measureNeon(paths),
+            bbox: {
+                minX: loaded.bbox.minX * scale,
+                minY: loaded.bbox.minY * scale,
+                maxX: loaded.bbox.maxX * scale,
+                maxY: loaded.bbox.maxY * scale,
+            },
+        };
+    }, [loaded, scale]);
+
+    const total = totalLengthMm(elements);
+
     const onDownload = async () => {
-        if (!loaded) return;
+        if (!loaded || !bbox) return;
         setBusy(true);
         try {
-            const blob = await generateNeonPdfBlob(loaded);
+            const blob = await generateNeonPdfBlob({
+                name: loaded.name,
+                elements,
+                bbox,
+            });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -97,8 +143,6 @@ export function NeonMeasureClient() {
         }
     };
 
-    const total = loaded ? totalLengthMm(loaded.elements) : 0;
-    const bbox = loaded?.bbox;
     const w = bbox ? Math.max(1, bbox.maxX - bbox.minX) : 1;
     const h = bbox ? Math.max(1, bbox.maxY - bbox.minY) : 1;
     const span = Math.max(w, h);
@@ -198,6 +242,39 @@ export function NeonMeasureClient() {
                 }}
             />
 
+            {loaded && (
+                <div className="shrink-0 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-900">
+                    <span>
+                        SVG reads{' '}
+                        <b className="tabular-nums">
+                            {Math.round(rawW)} × {Math.round(rawH)} mm
+                        </b>
+                        .
+                    </span>
+                    <span className="text-amber-700">
+                        Wrong? Illustrator often exports without real units — set
+                        the true overall width to calibrate:
+                    </span>
+                    <label className="flex items-center gap-1.5 font-medium">
+                        Actual width
+                        <input
+                            type="number"
+                            inputMode="decimal"
+                            value={widthInput}
+                            placeholder={String(Math.round(rawW))}
+                            onChange={(e) => setWidthInput(e.target.value)}
+                            className="w-24 rounded border border-amber-300 bg-white px-2 py-0.5 text-right tabular-nums focus:border-amber-500 focus:outline-none"
+                        />
+                        mm
+                    </label>
+                    {scale !== 1 && (
+                        <span className="rounded bg-amber-200 px-1.5 py-0.5 font-semibold tabular-nums">
+                            ×{scale.toFixed(3)}
+                        </span>
+                    )}
+                </div>
+            )}
+
             {!loaded ? (
                 <button
                     type="button"
@@ -245,7 +322,7 @@ export function NeonMeasureClient() {
                             className="h-full w-full"
                             preserveAspectRatio="xMidYMid meet"
                         >
-                            {loaded.elements.map((el) => {
+                            {elements.map((el) => {
                                 const d =
                                     el.points
                                         .map(
@@ -265,7 +342,7 @@ export function NeonMeasureClient() {
                                     />
                                 );
                             })}
-                            {loaded.elements.map((el) => {
+                            {elements.map((el) => {
                                 const cx = el.centroid[0];
                                 const cy = el.centroid[1];
                                 const bx = cx - balloonR * 2;
@@ -322,8 +399,8 @@ export function NeonMeasureClient() {
                             </p>
                             <p className="text-xs opacity-90">
                                 {formatMm(total)} ·{' '}
-                                {loaded.elements.length} run
-                                {loaded.elements.length === 1 ? '' : 's'}
+                                {elements.length} run
+                                {elements.length === 1 ? '' : 's'}
                             </p>
                         </div>
                         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -342,7 +419,7 @@ export function NeonMeasureClient() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {loaded.elements.map((el) => (
+                                    {elements.map((el) => (
                                         <tr
                                             key={el.index}
                                             className="border-t border-neutral-100"
@@ -373,8 +450,8 @@ export function NeonMeasureClient() {
             ) : (
                 <div className="relative flex-1 min-h-0 overflow-hidden rounded-xl border border-neutral-800 bg-[#07090d]">
                     <NeonScene
-                        elements={loaded.elements}
-                        bbox={loaded.bbox}
+                        elements={elements}
+                        bbox={bbox!}
                         backboard={{ enabled: boardOn, paddingMm }}
                     />
                     {/* Backboard controls */}

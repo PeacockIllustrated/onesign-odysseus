@@ -16,7 +16,7 @@ interface Bbox {
     maxY: number;
 }
 
-/** Drop consecutive duplicate points — CatmullRom curves NaN on zero-length spans. */
+/** Drop consecutive duplicate points — zero-length spans break the tube frames. */
 function dedupe(points: Array<[number, number]>): Array<[number, number]> {
     const out: Array<[number, number]> = [];
     for (const p of points) {
@@ -24,6 +24,41 @@ function dedupe(points: Array<[number, number]>): Array<[number, number]> {
         if (!last || Math.hypot(p[0] - last[0], p[1] - last[1]) > 1e-4) out.push(p);
     }
     return out;
+}
+
+/**
+ * A piecewise-LINEAR curve through the points (parameterised by arc length).
+ * Unlike CatmullRom this does NOT round corners — the neon follows the exact
+ * flattened outline, so letter shapes stay crisp. The flattener already gives
+ * curves enough points to read as smooth.
+ */
+class PolylineCurve3 extends THREE.Curve<THREE.Vector3> {
+    private pts: THREE.Vector3[];
+    private cum: number[];
+    private total: number;
+    constructor(points: THREE.Vector3[], closed: boolean) {
+        super();
+        const pts = points.slice();
+        if (closed && pts.length > 1) pts.push(pts[0].clone());
+        this.pts = pts;
+        this.cum = [0];
+        let total = 0;
+        for (let i = 1; i < pts.length; i++) {
+            total += pts[i].distanceTo(pts[i - 1]);
+            this.cum.push(total);
+        }
+        this.total = total || 1;
+    }
+    getPoint(t: number, target = new THREE.Vector3()): THREE.Vector3 {
+        const d = Math.min(Math.max(t, 0), 1) * this.total;
+        let i = 1;
+        while (i < this.cum.length && this.cum[i] < d) i++;
+        if (i >= this.pts.length)
+            return target.copy(this.pts[this.pts.length - 1]);
+        const seg = this.cum[i] - this.cum[i - 1] || 1;
+        const lt = (d - this.cum[i - 1]) / seg;
+        return target.copy(this.pts[i - 1]).lerp(this.pts[i], lt);
+    }
 }
 
 /**
@@ -48,20 +83,20 @@ function NeonRun({
             return new THREE.Vector3(sx, sy, sz);
         });
         if (pts.length < 2) return null;
-        return new THREE.CatmullRomCurve3(
-            pts,
-            element.closed,
-            'centripetal',
-            0.5,
-        );
+        return new PolylineCurve3(pts, element.closed);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [element, radius]);
 
     const geoms = useMemo(() => {
         if (!curve) return null;
-        const segs = Math.min(600, Math.max(16, element.points.length * 2));
+        // Dense sampling so sharp corners read crisp (the curve itself doesn't
+        // round them; this just controls how finely the tube is tessellated).
+        const segs = Math.min(2000, Math.max(24, element.points.length * 3));
+        // The polyline curve already appends the closing point for closed
+        // runs, so the tube is generated open (closed=false) to avoid a
+        // double seam.
         const make = (r: number) =>
-            new THREE.TubeGeometry(curve, segs, r, 10, element.closed);
+            new THREE.TubeGeometry(curve, segs, r, 10, false);
         return {
             core: make(radius * 0.85),
             halo1: make(radius * 1.9),

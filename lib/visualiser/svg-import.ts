@@ -465,19 +465,53 @@ export function importSvg(svgText: string): ImportedSvg {
     const paths: FlatPath[] = [];
     const SKIP = new Set(['DEFS', 'CLIPPATH', 'MASK', 'USE', 'SYMBOL', 'PATTERN']);
 
-    // Resolve a presentation property (stroke / fill) from the element's
-    // inline style or attribute, falling back to the inherited value from
-    // ancestors. Empty string means "not set here" → inherit.
-    const cssProp = (el: Element, prop: string, inherited: string): string => {
+    // Illustrator's default "Internal CSS" export puts colours in a <style>
+    // block keyed by class (e.g. `.st0{fill:#ff2d95}`) rather than on the
+    // elements. Parse those rules into class → {fill, stroke} so we can read
+    // the artwork's real colours, not just inline styles / attributes.
+    const classRules = new Map<string, { stroke?: string; fill?: string }>();
+    const styleText = Array.from(doc.querySelectorAll('style'))
+        .map((s) => s.textContent || '')
+        .join('\n');
+    for (const rule of styleText.matchAll(/\.([\w-]+)\s*\{([^}]*)\}/g)) {
+        const cls = rule[1];
+        const body = rule[2];
+        const decl = (p: string) =>
+            new RegExp(`(?:^|;)\\s*${p}\\s*:\\s*([^;]+)`).exec(body)?.[1]?.trim();
+        classRules.set(cls, { stroke: decl('stroke'), fill: decl('fill') });
+    }
+
+    // Resolve a presentation property (stroke / fill) in CSS-cascade order:
+    // inline style > <style> class rule > presentation attribute > inherited.
+    const cssProp = (
+        el: Element,
+        prop: 'stroke' | 'fill',
+        inherited: string,
+    ): string => {
         const style = el.getAttribute('style') || '';
-        const m = new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`).exec(style);
-        const v = (m ? m[1] : el.getAttribute(prop) || '').trim();
-        return v ? v : inherited;
+        const inline = new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`)
+            .exec(style)?.[1]
+            ?.trim();
+        if (inline) return inline;
+        const classes = (el.getAttribute('class') || '').split(/\s+/);
+        for (const c of classes) {
+            const v = classRules.get(c)?.[prop];
+            if (v) return v;
+        }
+        const attr = (el.getAttribute(prop) || '').trim();
+        return attr ? attr : inherited;
     };
     // A usable solid colour, or undefined for none / currentColor / gradients.
     const asColor = (v: string): string | undefined => {
         const s = v.trim().toLowerCase();
-        if (!s || s === 'none' || s === 'currentcolor' || s.startsWith('url('))
+        if (
+            !s ||
+            s === 'none' ||
+            s === 'currentcolor' ||
+            s === 'inherit' ||
+            s === 'transparent' ||
+            s.startsWith('url(')
+        )
             return undefined;
         return v.trim();
     };
