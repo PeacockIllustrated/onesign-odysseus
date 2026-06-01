@@ -152,7 +152,6 @@ export function VisualiserClient({
         activeTab,
         inactive,
         mount,
-        setMount,
     } = useVisualiser();
     const [tab, setTab] = useState<Tab>('folded');
     const [mobilePane, setMobilePane] = useState<MobilePane>('preview');
@@ -1768,9 +1767,6 @@ export function VisualiserClient({
                                     : null
                             }
                             mount={resolveMount(mount)}
-                            onRepositionProjecting={(offsetXMm, offsetYMm) =>
-                                setMount({ offsetXMm, offsetYMm })
-                            }
                         />
                     )}
 

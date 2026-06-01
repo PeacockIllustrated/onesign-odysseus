@@ -2184,7 +2184,6 @@ function ProjectingMounted({
     night,
     showOutlines,
     artworkSvg,
-    onReposition,
     children,
 }: {
     fascia: PanelParams;
@@ -2195,7 +2194,6 @@ function ProjectingMounted({
     night: boolean;
     showOutlines: boolean;
     artworkSvg?: string | null;
-    onReposition?: (offsetXMm: number, offsetYMm: number) => void;
     /**
      * When provided (the sign is the one being edited), render this full Panel
      * IN PLACE instead of the lightweight tray+texture — so editing never
@@ -2214,59 +2212,14 @@ function ProjectingMounted({
     const artW = development.faceNominalWMm * S;
     const artH = development.faceNominalHMm * S;
 
-    // Drag-to-position on the fascia face (the z = 0 plane). Disables orbit
-    // while dragging and maps the pointer ray onto the face to set the mount.
-    const { controls } = useThree() as unknown as {
-        controls: { enabled: boolean } | null;
-    };
-    const dragging = useRef(false);
-    const facePlane = useMemo(
-        () => new THREE.Plane(new THREE.Vector3(0, 0, 1), 0),
-        [],
-    );
-    const hitPt = useRef(new THREE.Vector3());
-    const clamp = (v: number, lo: number, hi: number) =>
-        Math.max(lo, Math.min(hi, v));
-    const onDown = (e: { stopPropagation: () => void }) => {
-        if (!onReposition) return;
-        e.stopPropagation();
-        dragging.current = true;
-        // eslint-disable-next-line react-hooks/immutability -- toggle orbit while dragging
-        if (controls) controls.enabled = false;
-    };
-    const onMove = (e: {
-        stopPropagation: () => void;
-        ray: THREE.Ray;
-    }) => {
-        if (!dragging.current || !onReposition) return;
-        e.stopPropagation();
-        if (!e.ray.intersectPlane(facePlane, hitPt.current)) return;
-        const xMm = clamp(
-            hitPt.current.x / S + fascia.panelWidthMm / 2,
-            0,
-            fascia.panelWidthMm,
-        );
-        const yTopMm = clamp(
-            fascia.panelHeightMm / 2 - hitPt.current.y / S,
-            0,
-            fascia.panelHeightMm,
-        );
-        onReposition(Math.round(xMm), Math.round(yTopMm));
-    };
-    const onUp = () => {
-        dragging.current = false;
-        // eslint-disable-next-line react-hooks/immutability -- restore orbit after drag
-        if (controls) controls.enabled = true;
-    };
     return (
         // Rotate -90° about Y: the tray's width runs out along +Z (protrusion),
         // its face reads from the side (−X), returns fold back toward the wall.
+        // Positioned only by the mount (Position-across / Height controls) — no
+        // drag, so it never moves unless you change those values.
         <group
             rotation={[0, -HALF_PI, 0]}
             position={[ax, ayTop - Hp / 2, Wp / 2]}
-            onPointerDown={onDown}
-            onPointerMove={onMove}
-            onPointerUp={onUp}
         >
             {children ?? (
                 <>
@@ -2425,8 +2378,6 @@ export default function Scene3D(props: {
         isBlade: boolean;
     } | null;
     mount?: ResolvedMount;
-    /** Drag-to-position the projecting sign on the fascia face (mm offsets). */
-    onRepositionProjecting?: (offsetXMm: number, offsetYMm: number) => void;
 }) {
     const fold = props.fold ?? 1;
     const autoFixings = props.autoFixings ?? [];
@@ -2590,7 +2541,6 @@ export default function Scene3D(props: {
                         mount={mount}
                         night={illuminationView}
                         showOutlines={showOutlines}
-                        onReposition={props.onRepositionProjecting}
                     >
                         <Panel
                             {...props}
@@ -2643,7 +2593,6 @@ export default function Scene3D(props: {
                         night={illuminationView}
                         showOutlines={showOutlines}
                         artworkSvg={secondary?.artworkSvg}
-                        onReposition={props.onRepositionProjecting}
                     />
                 )
             )}
