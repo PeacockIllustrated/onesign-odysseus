@@ -46,6 +46,7 @@ import {
     type MaterialPiece,
     type StandoffPiece,
     type PushThroughPiece,
+    type PanelRenderBundle,
     type ExportWarning,
 } from '@/lib/visualiser/types';
 
@@ -152,6 +153,8 @@ export function VisualiserClient({
         activeTab,
         inactive,
         mount,
+        bundles,
+        setRenderedBundle,
     } = useVisualiser();
     const [tab, setTab] = useState<Tab>('folded');
     const [mobilePane, setMobilePane] = useState<MobilePane>('preview');
@@ -1116,6 +1119,51 @@ export function VisualiserClient({
     const pushThroughKeyline = pushThrough.keyline;
     const pushThroughIslands = pushThrough.islands;
 
+    // The active panel's full-design bundle. Cached to the store so the OTHER
+    // sign can be rendered with its real material-group geometry too (both
+    // signs show their proper design at once) — no second pipeline pass.
+    const activeBundle = useMemo<PanelRenderBundle | null>(() => {
+        if (!development) return null;
+        return {
+            development,
+            split,
+            aperture,
+            keyline,
+            pushThroughKeyline,
+            pushThroughIslands,
+            autoFixings,
+            manualFixings,
+            cableHoles,
+            reference,
+            vinylPieces: materialPieces.vinyl,
+            acrylicPieces: materialPieces.acrylic,
+            solidPieces: materialPieces.solid,
+            standoffPieces,
+            pushThroughPieces,
+        };
+    }, [
+        development,
+        split,
+        aperture,
+        keyline,
+        pushThroughKeyline,
+        pushThroughIslands,
+        autoFixings,
+        manualFixings,
+        cableHoles,
+        reference,
+        materialPieces,
+        standoffPieces,
+        pushThroughPieces,
+    ]);
+    useEffect(() => {
+        if (activeBundle) setRenderedBundle(activeTab, activeBundle);
+    }, [activeBundle, activeTab, setRenderedBundle]);
+    // The cached bundle for the OTHER sign (the one not being edited).
+    const secondaryBundle = projectingEnabled
+        ? bundles[activeTab === 'main' ? 'projecting' : 'main']
+        : null;
+
     const geometryWarning =
         development &&
         development.segments.some((s) => s.wMm <= 0 || s.hMm <= 0)
@@ -1760,6 +1808,7 @@ export function VisualiserClient({
                                           development: secondaryDevelopment,
                                           split: secondarySplit,
                                           artworkSvg: secondaryArtworkSvg,
+                                          bundle: secondaryBundle,
                                           // active tab 'main' ⇒ the stashed
                                           // panel is the projecting sign.
                                           isBlade: activeTab === 'main',

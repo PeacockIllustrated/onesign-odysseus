@@ -140,6 +140,33 @@ Preview environment was wedged this session (routes 404'd / navigation stuck on
 a fresh server; not a code issue, tsc clean). Needs a hands-on pass to confirm
 the focus fly + the in-situ feel.
 
+### Change-set 14 — both signs show full design (cached bundle)
+
+Fixes: the non-active sign fell back to a flat silhouette (its material groups /
+apertures / acrylic weren't shown), so the two signs didn't both show their
+real design. Now both always do, via a render-bundle cache (no second pipeline
+pass, so the active editing path is untouched):
+- `PanelRenderBundle` (types.ts) captures everything the 3D needs to draw a
+  panel's full design (development, split, aperture, keyline, push-through,
+  fixings, material pieces, standoff).
+- VisualiserClient assembles the ACTIVE panel's bundle and caches it to the
+  store (`bundles.{main,projecting}`, keyed by tab) in an effect.
+- The non-active sign reads its cached bundle and renders via `BundlePanel`
+  (a non-interactive `<Panel>`) — identical material-group geometry to when it
+  was being edited. Falls back to the tray+texture / faded slab only before a
+  panel has ever been the active one. Circle still falls back to a disc.
+- Because apertures render with edge outlines (FacePlane `<Edges>`), an
+  uploaded SVG now shows as outlined cuts on both signs even before material
+  grouping — resolving "can't tell if an SVG was uploaded".
+- Cache validity: a non-active panel can't be edited, so its cached bundle
+  stays correct; editing a sign re-caches it before you switch away.
+
+Done after a /design-critique (consistency + the upload-feedback gap were the
+top findings). tsc + 102 vitest + eslint green (only the pre-existing
+DimensionEditLabel error). Live verification still blocked by the wedged preview
+environment — needs a hands-on pass (upload an SVG to the projecting sign, group
+materials, switch to Main, confirm the full design shows on the in-situ sign).
+
 ## v1 — single-panel toggle (REPLACED, kept for history)
 
 Implemented from `docs/projecting-signs-handoff.md`. Run autonomously per the

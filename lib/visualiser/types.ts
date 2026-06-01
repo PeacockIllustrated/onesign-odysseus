@@ -535,6 +535,30 @@ export interface SectionedExport {
     gapMm: number;
 }
 
+/**
+ * Everything the 3D scene needs to render one panel's full design. Captured
+ * for the active panel and cached so the OTHER panel in a projecting-sign
+ * design can be drawn with its real material-group geometry too (both signs
+ * show their proper design at once), without re-running the pipeline twice.
+ */
+export interface PanelRenderBundle {
+    development: PanelDevelopment;
+    split: PanelSplit;
+    aperture: FlatPath[];
+    keyline: FlatPath[];
+    pushThroughKeyline: FlatPath[];
+    pushThroughIslands: FlatPath[];
+    autoFixings: FlatPath[];
+    manualFixings: FlatPath[];
+    cableHoles: FlatPath[];
+    reference: FlatPath[];
+    vinylPieces: MaterialPiece[];
+    acrylicPieces: MaterialPiece[];
+    solidPieces: MaterialPiece[];
+    standoffPieces: StandoffPiece[];
+    pushThroughPieces: PushThroughPiece[];
+}
+
 /** A pre-export advisory warning. Never blocks the download. */
 export interface ExportWarning {
     kind:

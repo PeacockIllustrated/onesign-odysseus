@@ -14,6 +14,7 @@ import type {
     MaterialPiece,
     StandoffPiece,
     PushThroughPiece,
+    PanelRenderBundle,
 } from '@/lib/visualiser/types';
 import type { ResolvedMount } from '@/lib/visualiser/projecting';
 
@@ -2289,6 +2290,57 @@ function ProjectingMounted({
 }
 
 /**
+ * Render a panel's full design from a cached bundle — non-interactive (no
+ * editing overlays). Used to draw the NON-active sign so both signs show their
+ * real material-group geometry (apertures, acrylic, vinyl, standoff, push-
+ * through) at once, identical to how they look when being edited.
+ */
+function BundlePanel({
+    params,
+    bundle,
+    night,
+    showOutlines,
+    enclosed = false,
+}: {
+    params: PanelParams;
+    bundle: PanelRenderBundle;
+    night: boolean;
+    showOutlines: boolean;
+    enclosed?: boolean;
+}) {
+    return (
+        <Panel
+            params={params}
+            development={bundle.development}
+            split={bundle.split}
+            aperture={bundle.aperture}
+            keyline={bundle.keyline}
+            pushThroughKeyline={bundle.pushThroughKeyline}
+            pushThroughIslands={bundle.pushThroughIslands}
+            autoFixings={bundle.autoFixings}
+            manualFixings={bundle.manualFixings}
+            cableHoles={bundle.cableHoles}
+            reference={bundle.reference}
+            vinylPieces={bundle.vinylPieces}
+            acrylicPieces={bundle.acrylicPieces}
+            solidPieces={bundle.solidPieces}
+            standoffPieces={bundle.standoffPieces}
+            pushThroughPieces={bundle.pushThroughPieces}
+            fold={1}
+            showOutlines={showOutlines}
+            showStandoffLetters
+            showStandoffLocators
+            illuminationView={night}
+            illumination={params.illumination}
+            placedPathsByIndex={null}
+            pathGroupColors={null}
+            showDimensions={false}
+            enclosed={enclosed}
+        />
+    );
+}
+
+/**
  * The fascia shown as a faded backdrop at the origin while the projecting sign
  * is being edited — so the main panel stays visible (in situ) but recedes.
  */
@@ -2379,6 +2431,8 @@ export default function Scene3D(props: {
         development: PanelDevelopment;
         split: PanelSplit;
         artworkSvg?: string | null;
+        /** Cached full-design geometry for the secondary sign, if it has any. */
+        bundle?: PanelRenderBundle | null;
         isBlade: boolean;
     } | null;
     mount?: ResolvedMount;
@@ -2496,13 +2550,24 @@ export default function Scene3D(props: {
             />
 
             {/* Fascia at the origin — the full editable panel when it's the
-                focus, a faded backdrop while the projecting sign is edited. */}
+                focus; otherwise its full design from the cached bundle (so it
+                still shows its real artwork while the projecting sign is
+                edited), falling back to a faded backdrop if not yet cached. */}
             {activeIsProjecting ? (
-                <FadedFascia
-                    params={fasciaParams}
-                    development={fasciaDev}
-                    artworkSvg={secondary?.artworkSvg}
-                />
+                secondary?.bundle ? (
+                    <BundlePanel
+                        params={fasciaParams}
+                        bundle={secondary.bundle}
+                        night={illuminationView}
+                        showOutlines={showOutlines}
+                    />
+                ) : (
+                    <FadedFascia
+                        params={fasciaParams}
+                        development={fasciaDev}
+                        artworkSvg={secondary?.artworkSvg}
+                    />
+                )
             ) : (
                 <Panel
                     {...props}
@@ -2580,6 +2645,27 @@ export default function Scene3D(props: {
                             illumination={props.illumination}
                             showDimensions={props.showDimensions}
                             onDimensionChange={props.onDimensionChange}
+                            enclosed
+                        />
+                    </ProjectingMounted>
+                ) : secondary?.bundle && mount.shape !== 'circle' ? (
+                    // Non-active projecting sign with its full design from the
+                    // cached bundle — identical material groups/apertures to
+                    // when it's being edited, just non-interactive.
+                    <ProjectingMounted
+                        fascia={fasciaParams}
+                        params={projParams}
+                        development={projDev}
+                        split={projSplit}
+                        mount={mount}
+                        night={illuminationView}
+                        showOutlines={showOutlines}
+                    >
+                        <BundlePanel
+                            params={projParams}
+                            bundle={secondary.bundle}
+                            night={illuminationView}
+                            showOutlines={showOutlines}
                             enclosed
                         />
                     </ProjectingMounted>
