@@ -1527,6 +1527,7 @@ function Panel({
     illumination,
     showDimensions = false,
     onDimensionChange,
+    enclosed = false,
 }: {
     params: PanelParams;
     development: PanelDevelopment;
@@ -1563,6 +1564,12 @@ function Panel({
         field: 'width' | 'height' | 'return' | 'shadowGap',
         valueMm: number,
     ) => void;
+    /**
+     * Close the back of the tray with a panel at z = -returnDepth, so the
+     * sign reads as a fully enclosed box (used for projecting signs, which
+     * are sealed boxes rather than open-backed fascia trays).
+     */
+    enclosed?: boolean;
 }) {
     const W = dev.faceNominalWMm;
     const H = dev.faceNominalHMm;
@@ -1793,6 +1800,16 @@ function Panel({
                         : undefined
                 }
             />
+
+            {/* Closed back — seals the tray into a box (projecting signs). The
+                returns fold back to z = -D, so the back panel sits there. */}
+            {enclosed && (
+                <mesh position={[0, 0, -D * S]}>
+                    <planeGeometry args={[W * S, H * S]} />
+                    <meshBasicMaterial color={panelColor} side={THREE.DoubleSide} />
+                    {showOutlines && <Edges color={EDGE_COLOR} lineWidth={1} />}
+                </mesh>
+            )}
 
             {/* Push-through assembly. Two parts, rendered back-to-
                 front in the z-stack:
@@ -2136,6 +2153,7 @@ function SecondaryTray({
                 illuminationView={night}
                 illumination={params.illumination}
                 showDimensions={false}
+                enclosed
             />
         </group>
     );
@@ -2220,6 +2238,9 @@ export default function Scene3D(props: {
     const mount = props.mount;
     const folded = fold >= 0.5;
     const showGhost = !!(secondary && mount && folded);
+    // The active panel is the projecting sign when the stashed secondary is the
+    // fascia (isBlade false). Projecting signs are enclosed boxes.
+    const activeIsProjecting = !!(secondary && !secondary.isBlade);
     // fascia / blade resolve by which panel is active (props.params).
     const ghostFascia =
         secondary && !secondary.isBlade ? secondary.params : props.params;
@@ -2280,6 +2301,7 @@ export default function Scene3D(props: {
                 showOutlines={showOutlines}
                 showStandoffLetters={showStandoffLetters}
                 showStandoffLocators={showStandoffLocators}
+                enclosed={activeIsProjecting}
             />
 
             {showGhost && mount && secondary && (
