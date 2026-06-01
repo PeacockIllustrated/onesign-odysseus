@@ -167,6 +167,27 @@ DimensionEditLabel error). Live verification still blocked by the wedged preview
 environment — needs a hands-on pass (upload an SVG to the projecting sign, group
 materials, switch to Main, confirm the full design shows on the in-situ sign).
 
+### Change-set 15 — dark-view ambient lighting
+
+The illumination (dark) view crushed every surface to ~17% albedo, so only the
+emissive keyline glow was visible — panels/acrylics went black. The renderer is
+UNLIT (meshBasicMaterial ignores scene lights), so "ambient" is simulated by how
+much albedo survives. Changes in `Scene3D.tsx`:
+- `NIGHT_FACTOR` (0.17) → `NIGHT_AMBIENT` (0.5): material colours now read at
+  night while emissive elements still dominate by contrast.
+- `NIGHT_BG` `#0a0b0d` → `#0e131b` (dusk blue-grey) so dim surfaces separate
+  from the void instead of disappearing.
+These are the two dials to tune. This is the base ambient layer; the different
+illumination TYPES (face-lit, halo, edge-lit, internally-lit acrylic…) build on
+top by making specific surfaces self-lit (emissive) — that's the next step.
+A real lit pipeline (meshStandardMaterial + lights) was considered and rejected:
+it would force a conditional material swap on every mesh and change the crisp
+day/diagram look for no benefit the albedo-multiply doesn't already give.
+
+tsc + 102 vitest + eslint green (only the pre-existing DimensionEditLabel
+error). Preview environment wedged — not verified live; the values are easy to
+tune once seen.
+
 ## v1 — single-panel toggle (REPLACED, kept for history)
 
 Implemented from `docs/projecting-signs-handoff.md`. Run autonomously per the

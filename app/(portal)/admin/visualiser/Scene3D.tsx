@@ -164,16 +164,22 @@ const STANDOFF_STUD_COLOR = '#9aa0a4'; // brushed-metal grey for the studs
 const MANUAL_PLACE_COLOR = '#10b981';
 const MANUAL_DELETE_COLOR = '#ef4444';
 
-// Illumination preview. The scene has no real lights (everything is
-// meshBasicMaterial, which ignores lighting), so "going dark" means:
-// drop the background to near-black and multiply every surface colour
-// down toward black. The only things that DON'T darken are the
-// emissive elements (the opal backing in keyline mode), which carry
-// their own light. NIGHT_FACTOR is how much ambient bounce survives —
-// low enough that lit elements dominate, high enough that the dark
-// geometry still reads as form rather than a black void.
-const NIGHT_BG = '#0a0b0d';
-const NIGHT_FACTOR = 0.17;
+// Illumination preview. The scene is UNLIT (everything is meshBasicMaterial,
+// which ignores scene lights), so we can't add a real ambientLight — instead
+// "ambient" is simulated by how much of each surface's albedo survives in the
+// dark view (NIGHT_AMBIENT, a 0..1 multiply). Self-lit elements (the opal
+// keyline backing) carry their own light via emissive meshStandardMaterial and
+// are NOT dimmed, so they pop by contrast against the dimmed-but-visible
+// surfaces.
+//
+// NIGHT_AMBIENT is the key dial: too low (the old 0.17) and panels/acrylics go
+// black so you only see the glow; high enough (~0.5) and material colours still
+// read at night while emissive illumination still clearly dominates. The
+// background is lifted off pure black to a dusk blue-grey so dim surfaces
+// separate from the void rather than disappearing into it. This is the base
+// layer; per-illumination-type glows build on top of it.
+const NIGHT_BG = '#0e131b'; // dusk blue-grey, not a pure-black void
+const NIGHT_AMBIENT = 0.5; // fraction of albedo kept in the dark view
 
 /** Multiply a hex colour toward black by `factor` (0..1). */
 function shadeHex(hex: string, factor: number): string {
@@ -192,9 +198,9 @@ function shadeHex(hex: string, factor: number): string {
     return `#${ch(0)}${ch(2)}${ch(4)}`;
 }
 
-/** Display colour for a surface — darkened in the illumination view. */
+/** Display colour for a surface — dimmed to the night ambient in the dark view. */
 function displayColor(hex: string, night: boolean): string {
-    return night ? shadeHex(hex, NIGHT_FACTOR) : hex;
+    return night ? shadeHex(hex, NIGHT_AMBIENT) : hex;
 }
 
 /** Pick black or white based on the perceptual luminance of `hex`. */
