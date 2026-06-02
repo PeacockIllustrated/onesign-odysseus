@@ -39,11 +39,11 @@ import { outlinePerimeter } from './geometry';
 import { registerVisualiserFonts } from './pdf-fonts';
 import { acrylicByHex } from './acrylic';
 
-/** Distinct Perspex names+codes for a set of piece colours (else 'custom'). */
+/** Distinct acrylic brand+code for a set of piece colours (else 'custom'). */
 function acrylicNames(colors: string[]): string {
     const names = colors.map((c) => {
         const a = acrylicByHex(c);
-        return a ? `${a.name}${a.code ? ' ' + a.code : ''}` : 'custom';
+        return a ? `${a.brand} ${a.code ?? a.name}` : 'custom';
     });
     const uniq = Array.from(new Set(names));
     return uniq.length ? uniq.join(', ') : '-';

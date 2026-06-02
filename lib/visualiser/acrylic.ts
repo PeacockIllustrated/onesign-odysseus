@@ -15,17 +15,22 @@
  * (researched 2026); see also theplasticshop.co.uk Perspex colour swatch.
  */
 
+import { PLEXIGLAS_COLOURS } from './plexiglas';
+
 export type AcrylicFinish = 'opal' | 'solid' | 'clear' | 'tinted';
+export type AcrylicBrand = 'Perspex' | 'Plexiglas';
 
 export interface AcrylicColour {
+    /** Which acrylic range this sheet comes from. */
+    brand: AcrylicBrand;
     name: string;
-    /** Perspex range code, e.g. '4401', '030', '000'. */
+    /** Range code, e.g. Perspex '4401' / '030', Plexiglas '3H15' / 'WH01'. */
     code?: string;
     hex: string;
     finish: AcrylicFinish;
 }
 
-export const ACRYLIC_COLOURS: AcrylicColour[] = [
+const PERSPEX_RAW: Array<Omit<AcrylicColour, 'brand'>> = [
     // --- Clear & Frost ---
     { name: 'Clear', code: '000', hex: '#e9f2f5', finish: 'clear' },
     { name: 'Clear Silk (frost)', code: '000', hex: '#dde5e6', finish: 'clear' },
@@ -73,6 +78,18 @@ export const ACRYLIC_COLOURS: AcrylicColour[] = [
     { name: 'Grey', code: '9981', hex: '#7c8285', finish: 'solid' },
     { name: 'Black', code: '962', hex: '#15171a', finish: 'solid' },
     { name: 'Black (constant transmission)', code: '9T30', hex: '#1b1d20', finish: 'solid' },
+];
+
+/** The Perspex range, branded. */
+export const PERSPEX_COLOURS: AcrylicColour[] = PERSPEX_RAW.map((c) => ({
+    ...c,
+    brand: 'Perspex' as const,
+}));
+
+/** Both stocked ranges combined — what the acrylic picker offers. */
+export const ACRYLIC_COLOURS: AcrylicColour[] = [
+    ...PERSPEX_COLOURS,
+    ...PLEXIGLAS_COLOURS,
 ];
 
 function hexToRgb(hex: string): [number, number, number] {

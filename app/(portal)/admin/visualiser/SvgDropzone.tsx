@@ -17,7 +17,7 @@ import {
 const ACRYLIC_ITEMS: SwatchItem[] = ACRYLIC_COLOURS.map((c) => ({
     hex: c.hex,
     label: c.name,
-    sublabel: c.code ? `${c.code} · ${c.finish}` : c.finish,
+    sublabel: `${c.brand}${c.code ? ' ' + c.code : ''} · ${c.finish}`,
 }));
 import {
     AlertTriangle,
