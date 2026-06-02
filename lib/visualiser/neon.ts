@@ -230,6 +230,28 @@ export function colourBreakdown(els: NeonElement[]): ColourTotal[] {
     return [...map.values()].sort((a, b) => b.lengthMm - a.lengthMm);
 }
 
+/** Which edge the mains cable enters from (a wall outlet may sit to one side). */
+export type CableSide = 'left' | 'right' | 'top' | 'bottom';
+
+export const CABLE_SIDES: CableSide[] = ['left', 'right', 'top', 'bottom'];
+
+/** Default metres of neon flex one transformer/driver can carry. */
+export const DEFAULT_METRES_PER_TRANSFORMER = 10;
+
+/**
+ * Number of transformers/drivers needed for a given total run length. A driver
+ * carries up to `perTransformerM` metres, so e.g. at 10 m each: 0–10 m → 1,
+ * just over 10 m → 2, etc. Zero neon → zero transformers.
+ */
+export function transformerCount(
+    totalMm: number,
+    perTransformerM: number = DEFAULT_METRES_PER_TRANSFORMER,
+): number {
+    if (totalMm <= 0) return 0;
+    const per = perTransformerM > 0 ? perTransformerM : DEFAULT_METRES_PER_TRANSFORMER;
+    return Math.ceil(totalMm / 1000 / per);
+}
+
 /** "1,234 mm" — rounded to the nearest mm with a thousands separator. */
 export function formatMm(mm: number): string {
     return `${Math.round(mm).toLocaleString('en-GB')} mm`;

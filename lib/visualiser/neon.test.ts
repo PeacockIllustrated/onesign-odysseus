@@ -6,6 +6,7 @@ import {
     colourBreakdown,
     parseCssColor,
     colourKey,
+    transformerCount,
     formatMm,
     formatM,
 } from './neon';
@@ -214,6 +215,24 @@ describe('colourKey + breakdown canonicalisation', () => {
         const bd = colourBreakdown(els);
         expect(bd).toHaveLength(1);
         expect(bd[0].runs).toBe(3);
+    });
+});
+
+describe('transformerCount', () => {
+    it('is zero with no neon', () => {
+        expect(transformerCount(0)).toBe(0);
+    });
+    it('one transformer up to the per-transformer limit', () => {
+        expect(transformerCount(5000)).toBe(1); // 5 m
+        expect(transformerCount(10000)).toBe(1); // exactly 10 m
+    });
+    it('adds another transformer past each limit', () => {
+        expect(transformerCount(10001)).toBe(2); // just over 10 m
+        expect(transformerCount(25000)).toBe(3); // 25 m → 3
+    });
+    it('respects a custom metres-per-transformer', () => {
+        expect(transformerCount(25000, 5)).toBe(5); // 25 m at 5 m each
+        expect(transformerCount(9000, 0)).toBe(1); // bad input falls back to default 10 m
     });
 });
 

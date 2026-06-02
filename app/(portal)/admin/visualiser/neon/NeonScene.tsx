@@ -178,11 +178,13 @@ export default function NeonScene({
     bbox,
     backboard,
     saturation = 1,
+    cableSide,
 }: {
     elements: NeonElement[];
     bbox: Bbox;
     backboard: { enabled: boolean; paddingMm: number };
     saturation?: number;
+    cableSide?: 'left' | 'right' | 'top' | 'bottom';
 }) {
     const wMm = Math.max(1, bbox.maxX - bbox.minX);
     const hMm = Math.max(1, bbox.maxY - bbox.minY);
@@ -223,6 +225,29 @@ export default function NeonScene({
                     saturation={saturation}
                 />
             ))}
+            {cableSide &&
+                (() => {
+                    const midXmm = (bbox.minX + bbox.maxX) / 2;
+                    const midYmm = (bbox.minY + bbox.maxY) / 2;
+                    const a = {
+                        left: [bbox.minX, midYmm],
+                        right: [bbox.maxX, midYmm],
+                        top: [midXmm, bbox.minY],
+                        bottom: [midXmm, bbox.maxY],
+                    }[cableSide];
+                    const [mx, my] = toScene(a[0], a[1]);
+                    return (
+                        <mesh position={[mx, my, radius * 3]}>
+                            <sphereGeometry
+                                args={[Math.max(0.1, radius * 2.4), 16, 16]}
+                            />
+                            <meshBasicMaterial
+                                color="#ff7a1a"
+                                toneMapped={false}
+                            />
+                        </mesh>
+                    );
+                })()}
             <OrbitControls enablePan makeDefault />
         </Canvas>
     );

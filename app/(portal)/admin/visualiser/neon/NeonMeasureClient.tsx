@@ -13,6 +13,7 @@ import {
     Trash2,
     Upload,
     X,
+    Zap,
 } from 'lucide-react';
 import { importSvg } from '@/lib/visualiser/svg-import';
 import {
@@ -20,7 +21,11 @@ import {
     totalLengthMm,
     formatMm,
     formatM,
+    transformerCount,
+    CABLE_SIDES,
+    DEFAULT_METRES_PER_TRANSFORMER,
     type NeonElement,
+    type CableSide,
 } from '@/lib/visualiser/neon';
 import { generateNeonPdfBlob } from '@/lib/visualiser/neon-pdf';
 import {
@@ -80,6 +85,12 @@ export function NeonMeasureClient({
     // upload so the very first generation is already to scale.
     const [calWidth, setCalWidth] = useState('');
     const [calHeight, setCalHeight] = useState('');
+    // Power: which edge the mains cable enters, and how many metres of neon one
+    // transformer carries (drives the transformer count for the manufacturer).
+    const [cableSide, setCableSide] = useState<CableSide>('left');
+    const [metresPerTransformer, setMetresPerTransformer] = useState(
+        DEFAULT_METRES_PER_TRANSFORMER,
+    );
 
     // Import SVG text into the editor. Returns true on success. Optionally
     // tags it with a saved-design id (when reopening a saved record).
@@ -112,6 +123,8 @@ export function NeonMeasureClient({
                 setCalWidth('');
                 setCalHeight('');
                 setView('measure');
+                setCableSide('left');
+                setMetresPerTransformer(DEFAULT_METRES_PER_TRANSFORMER);
             }
             return true;
         } catch {
@@ -151,6 +164,12 @@ export function NeonMeasureClient({
                 : 50,
         );
         setSaturation(typeof cfg.saturation === 'number' ? cfg.saturation : 1);
+        setCableSide(cfg.cableSide ?? 'left');
+        setMetresPerTransformer(
+            typeof cfg.metresPerTransformer === 'number'
+                ? cfg.metresPerTransformer
+                : DEFAULT_METRES_PER_TRANSFORMER,
+        );
     };
 
     const refreshDesigns = async () => {
@@ -174,6 +193,8 @@ export function NeonMeasureClient({
                     backboardEnabled: boardOn,
                     backboardPaddingMm: paddingMm,
                     saturation,
+                    cableSide,
+                    metresPerTransformer,
                 },
             });
             if (!res.ok) {
@@ -241,6 +262,8 @@ export function NeonMeasureClient({
                 elements,
                 bbox,
                 backboard: { enabled: boardOn, paddingMm },
+                transformers,
+                cableSide,
             });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -260,6 +283,16 @@ export function NeonMeasureClient({
     const span = Math.max(w, h);
     const stroke = span / 320;
     const balloonR = span / 42;
+    const transformers = transformerCount(total, metresPerTransformer);
+    // Cable-in marker anchor (mm, in bbox space) on the chosen edge midpoint.
+    const cableAnchor = bbox
+        ? {
+              left: [bbox.minX, (bbox.minY + bbox.maxY) / 2],
+              right: [bbox.maxX, (bbox.minY + bbox.maxY) / 2],
+              top: [(bbox.minX + bbox.maxX) / 2, bbox.minY],
+              bottom: [(bbox.minX + bbox.maxX) / 2, bbox.maxY],
+          }[cableSide]
+        : [0, 0];
 
     return (
         <div className="flex flex-col gap-3 h-[calc(100dvh-7rem)] md:min-h-[560px] overflow-hidden">
@@ -348,6 +381,10 @@ export function NeonMeasureClient({
                                 setCalWidth('');
                                 setCalHeight('');
                                 setView('measure');
+                                setCableSide('left');
+                                setMetresPerTransformer(
+                                    DEFAULT_METRES_PER_TRANSFORMER,
+                                );
                                 if (fileRef.current) fileRef.current.value = '';
                             }}
                             className="flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-100"
@@ -428,6 +465,64 @@ export function NeonMeasureClient({
                             → {Math.round(rawW * scale)} × {Math.round(rawH * scale)} mm
                         </span>
                     )}
+                </div>
+            )}
+
+            {loaded && (
+                <div className="shrink-0 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-md border border-[#b8d0d8] bg-[#e8f0f3] px-3 py-1.5 text-xs text-[#3a5f6a]">
+                    <span className="flex items-center gap-1.5 font-semibold">
+                        <Zap size={13} /> Power
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                        Transformers
+                        <span className="rounded px-1.5 py-0.5 font-bold tabular-nums text-white" style={{ background: ACCENT }}>
+                            {transformers}
+                        </span>
+                    </span>
+                    <label className="flex items-center gap-1">
+                        per
+                        <input
+                            type="number"
+                            inputMode="decimal"
+                            min={1}
+                            value={metresPerTransformer}
+                            onChange={(e) => {
+                                const n = parseFloat(e.target.value);
+                                setMetresPerTransformer(
+                                    Number.isFinite(n) && n > 0
+                                        ? n
+                                        : DEFAULT_METRES_PER_TRANSFORMER,
+                                );
+                            }}
+                            className="w-14 rounded border border-[#b8d0d8] bg-white px-2 py-0.5 text-right tabular-nums focus:border-[#4e7e8c] focus:outline-none"
+                        />
+                        m
+                    </label>
+                    <span className="flex items-center gap-1.5">
+                        Cable in
+                        <span className="flex rounded-md border border-[#b8d0d8] p-0.5">
+                            {CABLE_SIDES.map((s) => (
+                                <button
+                                    key={s}
+                                    type="button"
+                                    onClick={() => setCableSide(s)}
+                                    aria-pressed={cableSide === s}
+                                    className={`rounded px-2 py-0.5 text-[11px] font-medium capitalize ${
+                                        cableSide === s
+                                            ? 'text-white'
+                                            : 'text-[#3a5f6a] hover:bg-white'
+                                    }`}
+                                    style={
+                                        cableSide === s
+                                            ? { background: ACCENT }
+                                            : undefined
+                                    }
+                                >
+                                    {s}
+                                </button>
+                            ))}
+                        </span>
+                    </span>
                 </div>
             )}
 
@@ -589,6 +684,51 @@ export function NeonMeasureClient({
                                     </g>
                                 );
                             })}
+                            {/* Cable-in marker on the chosen edge */}
+                            <g>
+                                <circle
+                                    cx={cableAnchor[0]}
+                                    cy={cableAnchor[1]}
+                                    r={balloonR * 0.9}
+                                    fill="#d4661a"
+                                />
+                                <text
+                                    x={cableAnchor[0]}
+                                    y={cableAnchor[1] + balloonR * 0.32}
+                                    fontSize={balloonR}
+                                    fontWeight="bold"
+                                    fill="#fff"
+                                    textAnchor="middle"
+                                >
+                                    ⚡
+                                </text>
+                                <text
+                                    x={
+                                        cableSide === 'right'
+                                            ? cableAnchor[0] - balloonR * 1.4
+                                            : cableSide === 'left'
+                                              ? cableAnchor[0] + balloonR * 1.4
+                                              : cableAnchor[0]
+                                    }
+                                    y={
+                                        cableSide === 'bottom'
+                                            ? cableAnchor[1] - balloonR * 1.4
+                                            : cableAnchor[1] + balloonR * 1.9
+                                    }
+                                    fontSize={balloonR * 0.9}
+                                    fontWeight="bold"
+                                    fill="#d4661a"
+                                    textAnchor={
+                                        cableSide === 'right'
+                                            ? 'end'
+                                            : cableSide === 'left'
+                                              ? 'start'
+                                              : 'middle'
+                                    }
+                                >
+                                    CABLE IN
+                                </text>
+                            </g>
                         </svg>
                     </div>
 
@@ -608,6 +748,12 @@ export function NeonMeasureClient({
                                 {formatMm(total)} ·{' '}
                                 {elements.length} run
                                 {elements.length === 1 ? '' : 's'}
+                            </p>
+                            <p className="mt-1.5 flex items-center gap-1.5 text-xs opacity-90">
+                                <Zap size={12} />
+                                {transformers} transformer
+                                {transformers === 1 ? '' : 's'} · cable in{' '}
+                                {cableSide}
                             </p>
                         </div>
                         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -661,6 +807,7 @@ export function NeonMeasureClient({
                         bbox={bbox!}
                         backboard={{ enabled: boardOn, paddingMm }}
                         saturation={saturation}
+                        cableSide={cableSide}
                     />
                     {/* Backboard controls */}
                     <div className="absolute left-3 top-3 flex w-52 flex-col gap-2 rounded-lg border border-white/10 bg-black/55 p-3 text-white shadow-lg backdrop-blur">

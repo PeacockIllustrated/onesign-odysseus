@@ -40,6 +40,10 @@ export interface NeonPdfOptions {
     elements: NeonElement[];
     bbox: { minX: number; minY: number; maxX: number; maxY: number };
     backboard?: { enabled: boolean; paddingMm: number };
+    /** Transformer/driver count for the manufacturer. */
+    transformers?: number;
+    /** Edge the mains cable enters from. */
+    cableSide?: 'left' | 'right' | 'top' | 'bottom';
 }
 
 function fitScale(w: number, h: number, partW: number, partH: number): number {
@@ -74,15 +78,27 @@ function drawRunPage(
     );
     doc.setFont(font, 'normal');
     doc.setFontSize(9);
-    doc.text(T(opts.name), PAGE_W - margin, 7.5, { align: 'right' });
+    doc.text(T(opts.name), PAGE_W - margin, 6.5, { align: 'right' });
     doc.text(
         T(
             `${els.length} run${els.length === 1 ? '' : 's'}  ·  TOTAL ${formatMm(total)} (${formatM(total)})`,
         ),
         PAGE_W - margin,
-        13.5,
+        11.5,
         { align: 'right' },
     );
+    const power: string[] = [];
+    if (opts.transformers != null)
+        power.push(
+            `${opts.transformers} transformer${opts.transformers === 1 ? '' : 's'}`,
+        );
+    if (opts.cableSide) power.push(`cable in ${opts.cableSide}`);
+    if (power.length) {
+        doc.setFontSize(8);
+        doc.text(T(power.join('  ·  ')), PAGE_W - margin, 15.5, {
+            align: 'right',
+        });
+    }
     doc.setTextColor(0);
 
     // ---- Layout regions ----------------------------------------------
@@ -141,6 +157,41 @@ function drawRunPage(
         doc.text(String(el.index), bx, by + 1.1, { align: 'center' });
     }
     doc.setTextColor(0);
+
+    // ---- Cable-in marker on the chosen edge ----------------------------
+    if (opts.cableSide) {
+        const midX = (opts.bbox.minX + opts.bbox.maxX) / 2;
+        const midY = (opts.bbox.minY + opts.bbox.maxY) / 2;
+        const anchor = {
+            left: [opts.bbox.minX, midY],
+            right: [opts.bbox.maxX, midY],
+            top: [midX, opts.bbox.minY],
+            bottom: [midX, opts.bbox.maxY],
+        }[opts.cableSide];
+        const ax = px(anchor[0]);
+        const ay = py(anchor[1]);
+        doc.setFillColor(212, 102, 26); // amber
+        doc.circle(ax, ay, 2.6, 'F');
+        doc.setTextColor(212, 102, 26);
+        doc.setFont(font, 'bold');
+        doc.setFontSize(7);
+        const lx =
+            opts.cableSide === 'right'
+                ? ax - 4
+                : opts.cableSide === 'left'
+                  ? ax + 4
+                  : ax;
+        const ly = opts.cableSide === 'bottom' ? ay - 4 : ay + 4.5;
+        doc.text('CABLE IN', lx, ly, {
+            align:
+                opts.cableSide === 'right'
+                    ? 'right'
+                    : opts.cableSide === 'left'
+                      ? 'left'
+                      : 'center',
+        });
+        doc.setTextColor(0);
+    }
 
     // ---- Table divider --------------------------------------------------
     doc.setDrawColor(220);

@@ -28,6 +28,10 @@ export interface NeonDesignConfig {
     backboardEnabled: boolean;
     backboardPaddingMm: number;
     saturation: number;
+    /** Edge the mains cable enters from. */
+    cableSide?: 'left' | 'right' | 'top' | 'bottom';
+    /** Metres of neon flex per transformer/driver (drives the count). */
+    metresPerTransformer?: number;
 }
 
 export interface NeonDesignRow {
