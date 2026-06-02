@@ -242,6 +242,98 @@ function hexToRgb(hex: string): [number, number, number] {
     ];
 }
 
+/** sRGB hex → CIE L*a*b* (D65) — the perceptual space the match runs in. */
+export function srgbToLab(hex: string): [number, number, number] {
+    const [r8, g8, b8] = hexToRgb(hex);
+    const lin = (v: number) => {
+        const c = v / 255;
+        return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    };
+    const r = lin(r8);
+    const g = lin(g8);
+    const b = lin(b8);
+    // linear sRGB → XYZ (D65), normalised by the D65 white point.
+    let x = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047;
+    let y = r * 0.2126 + g * 0.7152 + b * 0.0722;
+    let z = (r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883;
+    const f = (t: number) =>
+        t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116;
+    x = f(x);
+    y = f(y);
+    z = f(z);
+    return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+}
+
+/**
+ * CIEDE2000 colour difference between two L*a*b* values (kL=kC=kH=1).
+ * Perceptually uniform — much closer to how different two colours LOOK than
+ * raw RGB distance, with the green/blue corrections that plain Lab (ΔE76)
+ * still gets wrong. Implementation per Sharma, Wu & Dalal (2005).
+ */
+export function deltaE2000(
+    lab1: [number, number, number],
+    lab2: [number, number, number],
+): number {
+    const [L1, a1, b1] = lab1;
+    const [L2, a2, b2] = lab2;
+    const rad = Math.PI / 180;
+    const deg = 180 / Math.PI;
+
+    const C1 = Math.hypot(a1, b1);
+    const C2 = Math.hypot(a2, b2);
+    const Cbar = (C1 + C2) / 2;
+    const Cbar7 = Cbar ** 7;
+    const G = 0.5 * (1 - Math.sqrt(Cbar7 / (Cbar7 + 25 ** 7)));
+    const a1p = a1 * (1 + G);
+    const a2p = a2 * (1 + G);
+    const C1p = Math.hypot(a1p, b1);
+    const C2p = Math.hypot(a2p, b2);
+    const h1p = ((Math.atan2(b1, a1p) * deg) % 360 + 360) % 360;
+    const h2p = ((Math.atan2(b2, a2p) * deg) % 360 + 360) % 360;
+
+    const dLp = L2 - L1;
+    const dCp = C2p - C1p;
+    let dhp = 0;
+    if (C1p * C2p !== 0) {
+        const diff = h2p - h1p;
+        if (Math.abs(diff) <= 180) dhp = diff;
+        else if (diff > 180) dhp = diff - 360;
+        else dhp = diff + 360;
+    }
+    const dHp = 2 * Math.sqrt(C1p * C2p) * Math.sin((dhp * rad) / 2);
+
+    const Lbarp = (L1 + L2) / 2;
+    const Cbarp = (C1p + C2p) / 2;
+    let hbarp = h1p + h2p;
+    if (C1p * C2p !== 0) {
+        if (Math.abs(h1p - h2p) <= 180) hbarp = (h1p + h2p) / 2;
+        else if (h1p + h2p < 360) hbarp = (h1p + h2p + 360) / 2;
+        else hbarp = (h1p + h2p - 360) / 2;
+    }
+    const T =
+        1 -
+        0.17 * Math.cos((hbarp - 30) * rad) +
+        0.24 * Math.cos(2 * hbarp * rad) +
+        0.32 * Math.cos((3 * hbarp + 6) * rad) -
+        0.2 * Math.cos((4 * hbarp - 63) * rad);
+    const dTheta = 30 * Math.exp(-(((hbarp - 275) / 25) ** 2));
+    const Cbarp7 = Cbarp ** 7;
+    const Rc = 2 * Math.sqrt(Cbarp7 / (Cbarp7 + 25 ** 7));
+    const SL =
+        1 +
+        (0.015 * (Lbarp - 50) ** 2) / Math.sqrt(20 + (Lbarp - 50) ** 2);
+    const SC = 1 + 0.045 * Cbarp;
+    const SH = 1 + 0.015 * Cbarp * T;
+    const RT = -Math.sin(2 * dTheta * rad) * Rc;
+
+    return Math.sqrt(
+        (dLp / SL) ** 2 +
+            (dCp / SC) ** 2 +
+            (dHp / SH) ** 2 +
+            RT * (dCp / SC) * (dHp / SH),
+    );
+}
+
 /** Look up a RAL by its code (case/space-insensitive), or null. */
 export function ralByCode(code: string | undefined | null): RalColour | null {
     if (!code) return null;
@@ -253,17 +345,26 @@ export function ralByCode(code: string | undefined | null): RalColour | null {
     );
 }
 
-/** Nearest RAL Classic colour to an arbitrary hex (simple RGB distance). */
+// Pre-compute each RAL's Lab once (the list is static) so a match is just the
+// ΔE2000 loop.
+const RAL_LAB: Array<[number, number, number]> = RAL_CLASSIC.map((c) =>
+    srgbToLab(c.hex),
+);
+
+/**
+ * Nearest RAL Classic colour to an arbitrary hex, by perceptual CIEDE2000
+ * distance (not raw RGB) — so the suggested RAL is the one that LOOKS closest,
+ * which matters most in the green/blue regions where RGB distance misleads.
+ */
 export function nearestRal(hex: string): RalColour {
-    const [r, g, b] = hexToRgb(hex);
+    const lab = srgbToLab(hex);
     let best = RAL_CLASSIC[0];
     let bestD = Infinity;
-    for (const c of RAL_CLASSIC) {
-        const [cr, cg, cb] = hexToRgb(c.hex);
-        const d = (cr - r) ** 2 + (cg - g) ** 2 + (cb - b) ** 2;
+    for (let i = 0; i < RAL_CLASSIC.length; i++) {
+        const d = deltaE2000(lab, RAL_LAB[i]);
         if (d < bestD) {
             bestD = d;
-            best = c;
+            best = RAL_CLASSIC[i];
         }
     }
     return best;
