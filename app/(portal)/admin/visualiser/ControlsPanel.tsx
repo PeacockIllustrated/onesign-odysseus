@@ -3,6 +3,14 @@
 import { useVisualiser } from './store';
 import { Section } from './Section';
 import { MAX_PANEL_WIDTH_MM, type PanelEdge } from '@/lib/visualiser/types';
+import { RAL_CLASSIC, nearestRal } from '@/lib/visualiser/ral';
+import { SwatchPicker, type SwatchItem } from './SwatchPicker';
+
+const RAL_ITEMS: SwatchItem[] = RAL_CLASSIC.map((r) => ({
+    hex: r.hex,
+    label: r.code,
+    sublabel: r.name,
+}));
 import { resolveMount } from '@/lib/visualiser/projecting';
 
 const ACCENT = '#4e7e8c';
@@ -440,34 +448,23 @@ export function ControlsPanel() {
 
                 <div>
                     <span className="text-[11px] font-medium text-neutral-600">
-                        Panel colour
+                        Panel colour (RAL)
                     </span>
-                    <div className="mt-1 flex items-center gap-2">
-                        <input
-                            type="color"
-                            value={params.panelColor ?? '#d6d6d6'}
-                            onChange={(e) =>
-                                setParam('panelColor', e.target.value)
-                            }
-                            className="h-11 w-14 cursor-pointer rounded border border-neutral-300 bg-white p-0.5"
-                            aria-label="Panel base colour"
-                        />
-                        <input
-                            type="text"
-                            value={params.panelColor ?? '#d6d6d6'}
-                            onChange={(e) => {
-                                const v = e.target.value.trim();
-                                if (/^#[0-9a-fA-F]{6}$/.test(v))
-                                    setParam('panelColor', v);
+                    <div className="mt-1">
+                        <SwatchPicker
+                            items={RAL_ITEMS}
+                            value={params.panelColor}
+                            placeholder="Pick a RAL colour…"
+                            onPick={(i) => {
+                                setParam('panelColor', i.hex);
+                                setParam('panelRal', i.label);
                             }}
-                            className="flex-1 rounded-md border border-neutral-300 px-2 py-2 font-mono text-xs uppercase tracking-wide focus:border-black focus:outline-none"
-                            placeholder="#d6d6d6"
-                            aria-label="Panel colour hex"
                         />
                     </div>
                     <span className="mt-1 block text-[10px] text-neutral-400">
-                        Carried into the 3D &amp; flat previews so the
-                        material reads at a glance.
+                        {params.panelRal
+                            ? `${params.panelRal} — preview is an approximation; the coat is ordered by RAL number.`
+                            : `Nearest match: ${nearestRal(params.panelColor ?? '#d6d6d6').code}. Pick a RAL to lock the production colour.`}
                     </span>
                 </div>
             </Section>

@@ -5,12 +5,20 @@ import { useVisualiser } from './store';
 import { importSvg } from '@/lib/visualiser/svg-import';
 import { TraceImage } from './TraceImage';
 import { Section } from './Section';
+import { SwatchPicker, type SwatchItem } from './SwatchPicker';
+import { ACRYLIC_COLOURS } from '@/lib/visualiser/acrylic';
 import {
     GROUP_HIGHLIGHT_PALETTE,
     type AlignH,
     type AlignV,
     type PanelParams,
 } from '@/lib/visualiser/types';
+
+const ACRYLIC_ITEMS: SwatchItem[] = ACRYLIC_COLOURS.map((c) => ({
+    hex: c.hex,
+    label: c.name,
+    sublabel: c.code ? `${c.code} · ${c.finish}` : c.finish,
+}));
 import {
     AlertTriangle,
     Check,
@@ -216,6 +224,22 @@ function GroupEditControls({
                     >
                         Colour
                     </span>
+                    {(material === 'acrylic' || material === 'pushthrough') && (
+                        <div className="mt-0.5">
+                            <SwatchPicker
+                                items={ACRYLIC_ITEMS}
+                                value={color}
+                                placeholder="Pick from acrylic stock…"
+                                onPick={(i) => setColor(i.hex)}
+                            />
+                            <span
+                                className="mt-0.5 block text-[10px]"
+                                style={{ color: ACCENT_DARK }}
+                            >
+                                From our acrylic library — or fine-tune below.
+                            </span>
+                        </div>
+                    )}
                     <div className="mt-0.5 flex items-center gap-1.5">
                         <input
                             type="color"

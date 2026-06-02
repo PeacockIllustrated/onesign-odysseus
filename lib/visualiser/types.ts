@@ -141,6 +141,12 @@ const PanelCoreSchema = z.object({
         .string()
         .regex(/^#[0-9a-fA-F]{6}$/, 'panelColor must be a 6-digit hex colour')
         .optional(),
+    /**
+     * The RAL Classic code the panel colour was chosen as (e.g. 'RAL 9016').
+     * panelColor holds the sRGB preview hex; THIS is the production spec — the
+     * coat is ordered by RAL number. Set by the RAL picker.
+     */
+    panelRal: z.string().max(40).optional(),
     aperturePlacement: AperturePlacementSchema.nullable().optional(),
     /** How the uploaded artwork is treated. Default 'aperture'. */
     apertureMode: z.enum(['aperture', 'standoff']).optional(),

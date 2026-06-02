@@ -37,6 +37,14 @@ import {
 } from './types';
 import { outlinePerimeter } from './geometry';
 import { registerVisualiserFonts } from './pdf-fonts';
+import { acrylicByHex } from './acrylic';
+
+/** Distinct acrylic library names for a set of piece colours (else 'custom'). */
+function acrylicNames(colors: string[]): string {
+    const names = colors.map((c) => acrylicByHex(c)?.name ?? 'custom');
+    const uniq = Array.from(new Set(names));
+    return uniq.length ? uniq.join(', ') : '-';
+}
 
 /** PDF media box limit is ~14400 user units; stay well under it. */
 const MAX_PAGE_MM = 14000;
@@ -761,6 +769,12 @@ function buildMaterialPages(opts: PdfOptions): MaterialPageSpec[] {
                 ['Type', 'Cut from panel'],
                 ['Count', `${apCount} aperture${apCount === 1 ? '' : 's'}`],
                 [
+                    'Panel',
+                    opts.params.panelRal
+                        ? `${opts.params.panelRal} (${opts.params.panelColor ?? '—'})`
+                        : (opts.params.panelColor ?? '—'),
+                ],
+                [
                     'Stroke',
                     'Sent to the CAM cutter as the production output',
                 ],
@@ -821,6 +835,7 @@ function buildMaterialPages(opts: PdfOptions): MaterialPageSpec[] {
                     'Pieces',
                     `${acrylicPieces.length} piece${acrylicPieces.length === 1 ? '' : 's'}`,
                 ],
+                ['Acrylic', acrylicNames(acrylicPieces.map((p) => p.color))],
                 ['Colour', summariseVariants(colours)],
                 ['Thickness', summariseVariants(thicknesses)],
             ],
@@ -883,6 +898,7 @@ function buildMaterialPages(opts: PdfOptions): MaterialPageSpec[] {
                     'Pieces',
                     `${pushThroughPieces.length} letter${pushThroughPieces.length === 1 ? '' : 's'} + ${counterCount} counter${counterCount === 1 ? '' : 's'}`,
                 ],
+                ['Acrylic', acrylicNames(pushThroughPieces.map((p) => p.color))],
                 ['Colour', summariseVariants(colours)],
                 ['Thickness', summariseVariants(thicknesses)],
                 ['Keyline offset', summariseVariants(offsets)],
@@ -1003,6 +1019,7 @@ function drawOverviewPage(ctx: PageContext): void {
             params.shadowGapMm > 0 ? `${params.shadowGapMm} mm` : '—',
         ],
         ['Material', matLabel],
+        ['Panel colour', params.panelRal ?? params.panelColor ?? '—'],
         ['Thickness', `${params.materialThicknessMm} mm`],
         [
             'Sections',
@@ -1913,7 +1930,7 @@ export async function generateProductionPdfBlob(
         partW: layoutW,
         partH: layoutH + warningBandH,
         footerInfo: [
-            `${params.materialLabel || 'material -'}  ·  ${params.materialThicknessMm} mm`,
+            `${params.materialLabel || 'material -'}${params.panelRal ? '  ·  ' + params.panelRal : ''}  ·  ${params.materialThicknessMm} mm`,
             [
                 `face ${params.panelWidthMm} × ${params.panelHeightMm} mm`,
                 sectionExport.sections.length > 1
