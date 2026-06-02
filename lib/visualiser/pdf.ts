@@ -573,6 +573,8 @@ function drawFlatBlank(
         showFolds?: boolean;
         showDims?: boolean;
         dimFont?: number;
+        /** Fill the panel face with this colour (the panel material colour). */
+        fillColor?: [number, number, number];
     } = {},
 ): {
     px: (x: number) => number;
@@ -585,6 +587,25 @@ function drawFlatBlank(
 
     const px = (x: number) => dX + x * scale;
     const py = (y: number) => dY + y * scale;
+
+    // Panel-material colour fill behind everything, so the drawing reads in the
+    // real panel colour and retained islands (uncovered panel) show that colour.
+    if (options.fillColor) {
+        const [fr, fg, fb] = options.fillColor;
+        doc.setFillColor(fr, fg, fb);
+        sectionExport.sections.forEach((section) => {
+            const ox = section.layoutOriginXMm;
+            for (const seg of section.development.segments) {
+                doc.rect(
+                    px(seg.xMm + ox),
+                    py(seg.yMm),
+                    seg.wMm * scale,
+                    seg.hMm * scale,
+                    'F',
+                );
+            }
+        });
+    }
 
     // Per-section outer perimeter — one continuous polyline per section.
     sectionExport.sections.forEach((section) => {
@@ -675,10 +696,31 @@ function drawApertureCuts(
     weight: number,
 ) {
     if (!apertureBySection) return;
-    doc.setDrawColor(color[0], color[1], color[2]);
-    doc.setLineWidth(weight);
+    const sc = px(1) - px(0); // layout scale, for the white hole fill
     sectionExport.sections.forEach((_section, i) => {
         const list = apertureBySection[i] ?? [];
+        // Holes are cut clean through the panel — fill them white first so they
+        // read as removed material against the panel-colour fill, then stroke
+        // the cut line on top.
+        doc.setFillColor(255, 255, 255);
+        for (const p of list) {
+            if (!p.closed || p.points.length < 3) continue;
+            const head = p.points[0];
+            const tail = p.points[p.points.length - 1];
+            const pts =
+                Math.abs(tail[0] - head[0]) < 1e-6 &&
+                Math.abs(tail[1] - head[1]) < 1e-6
+                    ? p.points.slice(0, -1)
+                    : p.points;
+            if (pts.length < 3) continue;
+            const deltas: number[][] = [];
+            for (let k = 1; k < pts.length; k++) {
+                deltas.push([pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]]);
+            }
+            doc.lines(deltas, px(pts[0][0]), py(pts[0][1]), [sc, sc], 'F', true);
+        }
+        doc.setDrawColor(color[0], color[1], color[2]);
+        doc.setLineWidth(weight);
         for (const p of list) {
             for (let k = 0; k + 1 < p.points.length; k++) {
                 doc.line(
@@ -1342,12 +1384,15 @@ function drawFlatLayoutPage(ctx: PageContext): void {
     const dX = margin + (drawW - partW * scale) / 2;
     const dY = drawTop;
 
-    // Outer perimeter + folds + dims
+    // Panel face filled in the panel colour (so the layout reads in the real
+    // material colour + retained islands show as that colour), then perimeter,
+    // folds + dims on top.
     const { px, py } = drawFlatBlank(doc, opts.sectionExport, dX, dY, scale, {
         outlineWeight: 0.4 * Math.max(1, scale),
         showFolds: true,
         showDims: true,
         dimFont: Math.max(8, Math.min(14, scale * 4)),
+        fillColor: hexToRgb(params.panelColor ?? '#d6d6d6'),
     });
 
     // Aperture cuts (dark blue)
@@ -1404,33 +1449,39 @@ function drawFlatLayoutPage(ctx: PageContext): void {
             'FD',
         );
     }
-    // Push-through inserts — acrylic DONUT: outer letter filled in its
-    // real colour, counter filled WHITE (the retained metal island shows
-    // through it). Matches the per-material page and the production PDF
-    // so the documents never disagree on what's acrylic vs hole. Drawn
-    // before standoff so any dashed standoff outlines overlay cleanly.
-    for (const p of opts.pushThroughPieces ?? []) {
-        const fillRgb = hexToRgb(p.color);
-        const drawShape = (ring: FlatPath, fill: [number, number, number]) => {
-            if (!ring.closed || ring.points.length < 3) return;
-            drawMaterialPiece(
-                doc,
-                {
-                    pathIndex: -1,
-                    path: ring,
-                    color: p.color,
-                },
-                px,
-                py,
-                scale,
-                fill,
-                [20, 20, 20],
-                0.3,
-                'FD',
-            );
-        };
-        drawShape(p.path, fillRgb);
-        for (const h of p.holes ?? []) drawShape(h, [255, 255, 255]);
+    // Push-through inserts — acrylic DONUT: outer letter filled in its real
+    // colour, counter filled with the PANEL colour (the retained metal island
+    // shows through the acrylic counter — so the island reads as the panel, not
+    // a white hole or a dark blob). Drawn before standoff so dashed standoff
+    // outlines overlay cleanly.
+    {
+        const panelRgb = hexToRgb(params.panelColor ?? '#d6d6d6');
+        for (const p of opts.pushThroughPieces ?? []) {
+            const fillRgb = hexToRgb(p.color);
+            const drawShape = (
+                ring: FlatPath,
+                fill: [number, number, number],
+            ) => {
+                if (!ring.closed || ring.points.length < 3) return;
+                drawMaterialPiece(
+                    doc,
+                    {
+                        pathIndex: -1,
+                        path: ring,
+                        color: p.color,
+                    },
+                    px,
+                    py,
+                    scale,
+                    fill,
+                    [20, 20, 20],
+                    0.3,
+                    'FD',
+                );
+            };
+            drawShape(p.path, fillRgb);
+            for (const h of p.holes ?? []) drawShape(h, panelRgb);
+        }
     }
 
     // Retained metal islands — the counter centre that STAYS as panel metal.
