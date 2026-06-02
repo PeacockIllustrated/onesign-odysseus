@@ -739,9 +739,13 @@ function drawMaterialPiece(
     };
     drawOne(piece.path.points, style);
     if (piece.holes && piece.holes.length > 0) {
+        // Counters punched white, but STROKED too (style 'FD', not 'F') so the
+        // cut outline of every counter shows — otherwise a white vinyl letter
+        // on a white page reads as a solid blob with no hole, and the vinyl
+        // plotter would cut it without its counters.
         doc.setFillColor(255, 255, 255);
         for (const h of piece.holes) {
-            drawOne(h.points, 'F');
+            drawOne(h.points, style === 'S' ? 'S' : 'FD');
         }
         doc.setFillColor(fill[0], fill[1], fill[2]);
     }
@@ -1430,11 +1434,11 @@ function drawFlatLayoutPage(ctx: PageContext): void {
     }
 
     // Retained metal islands — the counter centre that STAYS as panel metal.
-    // Drawn in the PANEL colour with the teal keyline-cut ring ON TOP of the
-    // white counter, so every counter (every letter + any subtext) reads as
-    // "metal island ringed by a keyline cut", not an open hole to remove.
+    // Drawn as just the teal keyline-CUT RING around the (white) counter — NO
+    // fill, so the island keeps its natural colour and is never a solid dark
+    // blob that reads as "something it isn't". The ring + the legend entry are
+    // what say "retained island, keyline gap rings it".
     {
-        const islandRgb = hexToRgb(params.panelColor ?? '#d6d6d6');
         for (const arr of opts.pushThroughIslandsBySection ?? []) {
             for (const isl of arr) {
                 if (!isl.closed || isl.points.length < 3) continue;
@@ -1448,10 +1452,10 @@ function drawFlatLayoutPage(ctx: PageContext): void {
                     px,
                     py,
                     scale,
-                    islandRgb,
+                    [0, 0, 0], // unused (stroke-only)
                     [0, 150, 170], // teal = the keyline cut around the island
                     0.4,
-                    'FD',
+                    'S',
                 );
             }
         }
