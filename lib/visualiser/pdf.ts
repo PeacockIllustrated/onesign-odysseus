@@ -744,6 +744,10 @@ function drawMaterialPiece(
     stroke: [number, number, number],
     weight: number,
     style: 'F' | 'FD' | 'S',
+    /** Colour a punched counter is filled with. Defaults to white (a clean
+     * hole on a white page); pass the PANEL colour where the piece sits on the
+     * panel, so the counter reveals the panel — matching the finished sign. */
+    holeFill: [number, number, number] = [255, 255, 255],
 ) {
     if (piece.path.points.length < 3) return;
     doc.setFillColor(fill[0], fill[1], fill[2]);
@@ -781,11 +785,11 @@ function drawMaterialPiece(
     };
     drawOne(piece.path.points, style);
     if (piece.holes && piece.holes.length > 0) {
-        // Counters punched white, but STROKED too (style 'FD', not 'F') so the
-        // cut outline of every counter shows — otherwise a white vinyl letter
-        // on a white page reads as a solid blob with no hole, and the vinyl
-        // plotter would cut it without its counters.
-        doc.setFillColor(255, 255, 255);
+        // Counters filled with holeFill (panel colour where the piece sits on
+        // the panel), and STROKED too (style 'FD', not 'F') so the cut outline
+        // of every counter shows — otherwise a letter reads as a solid blob and
+        // would be cut / plotted without its counters.
+        doc.setFillColor(holeFill[0], holeFill[1], holeFill[2]);
         for (const h of piece.holes) {
             drawOne(h.points, style === 'S' ? 'S' : 'FD');
         }
@@ -1386,13 +1390,16 @@ function drawFlatLayoutPage(ctx: PageContext): void {
 
     // Panel face filled in the panel colour (so the layout reads in the real
     // material colour + retained islands show as that colour), then perimeter,
-    // folds + dims on top.
+    // folds + dims on top. panelRgb is reused as the counter fill for every
+    // face material so each counter reveals the panel — continuity with the
+    // finished sign.
+    const panelRgb = hexToRgb(params.panelColor ?? '#d6d6d6');
     const { px, py } = drawFlatBlank(doc, opts.sectionExport, dX, dY, scale, {
         outlineWeight: 0.4 * Math.max(1, scale),
         showFolds: true,
         showDims: true,
         dimFont: Math.max(8, Math.min(14, scale * 4)),
-        fillColor: hexToRgb(params.panelColor ?? '#d6d6d6'),
+        fillColor: panelRgb,
     });
 
     // Aperture cuts (dark blue)
@@ -1406,7 +1413,8 @@ function drawFlatLayoutPage(ctx: PageContext): void {
         0.3 * Math.max(1, scale),
     );
 
-    // Material pieces — drawn filled with their colour
+    // Material pieces — drawn filled with their colour; counters reveal the
+    // panel (holeFill = panelRgb) for continuity with the finished sign.
     for (const p of opts.vinylPieces ?? []) {
         drawMaterialPiece(
             doc,
@@ -1418,6 +1426,7 @@ function drawFlatLayoutPage(ctx: PageContext): void {
             [40, 40, 40],
             0.15,
             'FD',
+            panelRgb,
         );
     }
     for (const p of opts.acrylicPieces ?? []) {
@@ -1431,6 +1440,7 @@ function drawFlatLayoutPage(ctx: PageContext): void {
             [20, 20, 20],
             0.4,
             'FD',
+            panelRgb,
         );
     }
     // Solid pieces — floating bits of letters / panel that stay as
@@ -1447,6 +1457,7 @@ function drawFlatLayoutPage(ctx: PageContext): void {
             [60, 60, 60],
             0.15,
             'FD',
+            panelRgb,
         );
     }
     // Push-through inserts — acrylic DONUT: outer letter filled in its real
@@ -1512,10 +1523,10 @@ function drawFlatLayoutPage(ctx: PageContext): void {
         }
     }
 
-    // Standoff pieces — filled in their real colour (counters punched
-    // white) so the body reads as the part to cut, not just an outline,
-    // then a DASHED dark outline on top to keep the "sits OFF the panel"
-    // cue that the flush face-stuck pieces don't carry.
+    // Standoff pieces — filled in their real colour (counters reveal the panel
+    // behind) so the body reads as the part to cut, not just an outline, then a
+    // DASHED dark outline on top to keep the "sits OFF the panel" cue that the
+    // flush face-stuck pieces don't carry.
     for (const p of opts.standoffPieces ?? []) {
         drawMaterialPiece(
             doc,
@@ -1527,6 +1538,7 @@ function drawFlatLayoutPage(ctx: PageContext): void {
             [60, 60, 60],
             0.15,
             'F',
+            panelRgb,
         );
         doc.setDrawColor(60, 60, 60);
         doc.setLineWidth(0.35);
@@ -1617,6 +1629,9 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
     const { doc, pageW, pageH, margin, opts } = ctx;
     const T = (s: string) => txt(s);
     drawHeaderBar(ctx, `${spec.label}`);
+    // Counters of face materials reveal the panel — fill them the panel colour
+    // for continuity with the finished sign.
+    const panelRgb = hexToRgb(opts.params.panelColor ?? '#d6d6d6');
 
     // Specs strip on the right
     const specW = 76;
@@ -1699,7 +1714,6 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
         const solids = opts.solidPieces ?? [];
         if (solids.length > 0) {
             const panelColor = opts.params.panelColor ?? '#d6d6d6';
-            const panelRgb = hexToRgb(panelColor);
             for (const piece of solids) {
                 const fillRgb = hexToRgb(piece.color || panelColor);
                 const usePanel =
@@ -1716,6 +1730,7 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
                     [80, 80, 80],
                     0.25,
                     'FD',
+                    panelRgb,
                 );
             }
         }
@@ -1739,13 +1754,14 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
                     strokeRgb,
                     0.4,
                     'FD',
+                    panelRgb,
                 );
             } else if (spec.kind === 'pushthrough') {
                 // Acrylic DONUT: outer letter filled in its real colour,
-                // counter filled WHITE (the retained metal island shows
-                // through it — see the panel-cut page). Both edges keep a
-                // cut stroke. Mirrors the production insert page exactly
-                // so the two documents never disagree on what's acrylic.
+                // counter filled with the PANEL colour (the retained metal
+                // island shows through it — see the panel-cut page). Both edges
+                // keep a cut stroke. Mirrors the production insert page so the
+                // two documents never disagree on what's acrylic vs island.
                 doc.setDrawColor(strokeRgb[0], strokeRgb[1], strokeRgb[2]);
                 doc.setLineWidth(0.35);
                 const drawShape = (
@@ -1779,8 +1795,7 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
                     );
                 };
                 drawShape(piece.path, fillForPiece);
-                for (const h of piece.holes ?? [])
-                    drawShape(h, [255, 255, 255]);
+                for (const h of piece.holes ?? []) drawShape(h, panelRgb);
             } else {
                 drawMaterialPiece(
                     doc,
@@ -1792,6 +1807,7 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
                     strokeRgb,
                     0.3,
                     'FD',
+                    panelRgb,
                 );
             }
         }
