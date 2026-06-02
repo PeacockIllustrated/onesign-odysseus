@@ -48,8 +48,9 @@ import { advanceItemToNextRoutedStage } from '@/lib/production/actions';
  *  - 'linked': spawned from a production job_item; org_id is inherited from the
  *    parent production_job. The partial unique index on artwork_jobs.job_item_id
  *    prevents duplicate creation per item.
- *  - 'orphan': warranty/rework/speculative. Requires explicit acknowledgement
- *    and an org_id — never left unlinked to both an item AND an org.
+ *  - 'orphan': warranty/rework/speculative. Requires explicit acknowledgement;
+ *    sets is_orphan=true, which alone satisfies the `org_id OR is_orphan`
+ *    invariant (migration 038), so org_id is optional here.
  */
 export async function createArtworkJob(
     input: CreateArtworkJobInput
