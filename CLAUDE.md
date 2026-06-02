@@ -203,9 +203,10 @@ Migration 031 is intentionally absent (numbering gap from an early draft that wa
 | 049 | `drivers` | Driver roster |
 | 050 | deliveries.driver_id | Links deliveries to drivers (ON DELETE SET NULL) |
 
-### Visualiser + backshop screen (058–059)
+### Visualiser + backshop screen + public studio (058–060)
 | 058 | `visualiser_designs` | Saved folded-aluminium panel visualiser designs (params_json + flattened aperture SVG) |
 | 059 | `backshop_items` + `backshop` storage bucket | Workshop TV production board — snapshot of a pushed design (name / specs / 3D thumbnail / reference PDF) plus contextual production check gates. Base gates Designed / Cut / Painted / Assembled, plus Push-through / Vinyl / Illumination / Stood-off when the design's construction has them (the keys present in `checks` ARE the item's stages). Realtime-published; PDF in the private `backshop` bucket |
+| 060 | `design_requests` (+ `design_request_number_seq`) | Inbound leads from the PUBLIC `/design` studio — a customer's PanelParams + flattened SVG + face-on PNG thumbnail plus their contact details. `DSR-YYYY-NNNNNN` reference via trigger (same pattern as invoices). Status enum `new/reviewing/quoted/won/closed` (`quoted` is the future Stripe-package hook). Super-admin-only RLS; public submissions are written by a service-role server action (no anon policy), mirroring the tokenised approval/delivery pattern. Nullable `design_id` links to a promoted `visualiser_designs` row. Realtime-published for a live admin inbox |
 
 ## Key architectural decisions
 
@@ -221,6 +222,9 @@ Under the hood, production_jobs are still created at quote acceptance time (the 
 
 ### 2b. Backshop TV board is a top-level route (NOT under the portal)
 `/backshop` (workshop production board for the shop TV) lives at `app/backshop/`, deliberately **outside** the `(portal)` route group, with its own `layout.tsx` doing a plain `requireAuth()`. Two reasons it can't sit under `(portal)` like shop-floor: (1) the portal sidebar/topbar is useless on a wall-mounted TV, and (2) the portal layout's `getUserOrg()` redirects any user without org membership to `/login?error=no_org`, which would lock out floor staff. The board is read + tick for any authed user; pushing a design onto it (`addToBackshop`, from the visualiser's ExportBar) is super-admin only. Snapshot model: each `backshop_items` row freezes the design's name/specs/3D-thumbnail/reference-PDF at push time (PDF in the private `backshop` storage bucket, reached via short-lived signed URLs server-side). Stages are **contextual** — `BACKSHOP_STAGE_CATALOG` in `lib/backshop/types.ts` holds base gates (Designed/Cut/Painted/Assembled) plus feature-gated ones (Push-through/Vinyl/Illumination/Stood-off); `checksForFeatures()` freezes the applicable set onto the item at push time from the design's pieces (the keys in `checks` define the stages). The board thumbnail is the 3D capture auto-trimmed to the sign via `trimImageDataUrl` (`lib/visualiser/image.ts`) so it fills its banner. Light theme to match the visualiser. Built for remote navigation (arrow-key roving focus + Enter), refreshed live via Supabase Realtime on `backshop_items`.
+
+### 2c. Public "Design Your Sign" studio is a top-level UNAUTH route
+`/design` (`app/design/`) is the **public, customer-facing** version of the visualiser — a lead-gen front door to push aperture & projecting signs. It sits **outside** `(portal)` with its own light, Onesign-branded `layout.tsx` and **no auth at all** (anyone with the link can build a sign). It does NOT duplicate the engine: `VisualiserClient` gained a `variant` prop (`'admin'` default | `'public'`) — in `public` it hides the saved-designs rail + ExportBar and renders a `publicFooter` (the "Send to Onesign" CTA via `app/design/PublicActionBar.tsx`) instead, so customers keep **every** building capability staff have (apertures, push-through, vinyl, stand-off, illumination, projecting blade). A reusable spotlight tour (`app/design/Tour.tsx`, driven by `data-tour="..."` anchors in `VisualiserClient`) walks first-time visitors through size → artwork → 3D → send, auto-runs once (localStorage), and is replayable via "Show me how". Submitting (`SubmitModal` → `submitDesignRequest`) captures their design + a face-on thumbnail + contact details into `design_requests` (migration 060) through the **service-role admin client** — the same unauth-write-via-server-action pattern as the token flows in §3 (do NOT add `getUser()`/`requireAuth()` to `submitDesignRequest`; there is no session). Spam guard is a honeypot field + a best-effort in-memory rate limit (Turnstile/captcha is a future toggle). Staff triage at `/admin/design-requests` (super-admin), where "Open in visualiser" promotes a request into a real `visualiser_designs` row. The visualiser tab links to `/design` via the "Public design studio" button next to the Neon tool. Pricing is deferred: today it's an enquiry; the `quoted` status + the request row are the seam for the planned hands-off Stripe package checkout.
 
 ### 3. Single-tenant internal platform — clients are records, not users
 
@@ -250,6 +254,7 @@ The `/admin/booking` module (287K of code) was experimental and is not part of O
 ## Build plan — current state
 
 ### Shipped
+- **Public design studio** (`/design`, migration 060) — unauthenticated customer-facing visualiser with a guided spotlight tour; submissions land in the `/admin/design-requests` inbox. See §2c.
 - **Production job board** (`/admin/jobs`) with Kanban across real Onesign departments, shop-floor queue at `/shop-floor`
 - **Quote → production handoff** (`createJobFromQuote`) with item-level stage routing
 - **Artwork compliance module** with sub-items, per-sub-item sign-off, release-to-production flow rebuilding `stage_routing` from signed-off sub-items
