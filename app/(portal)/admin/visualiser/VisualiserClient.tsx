@@ -23,30 +23,16 @@ import { SvgDropzone } from './SvgDropzone';
 import { FlatPreview } from './FlatPreview';
 import { ExportBar } from './ExportBar';
 import { usePanelDerivation } from './usePanelDerivation';
-import {
-    buildDevelopment,
-    placeAperture,
-    placementTransform,
-    clipApertureToFace,
-    placeFixings,
-    buildSectionedExport,
-    clipApertureToSection,
-    validateExport,
-    circlePoly,
-} from '@/lib/visualiser/geometry';
+import { buildDevelopment, validateExport } from '@/lib/visualiser/geometry';
 import { splitPanels } from '@/lib/visualiser/split';
 import { resolveMount, projectingSpecLine } from '@/lib/visualiser/projecting';
-import { importSvg, buildKeyline, mergeKeyline } from '@/lib/visualiser/svg-import';
-import { composeLayers, composeLayersSvg } from '@/lib/visualiser/compose';
+import { importSvg } from '@/lib/visualiser/svg-import';
+import { composeLayersSvg } from '@/lib/visualiser/compose';
 import {
     PanelParamsSchema,
-    DEFAULT_PLACEMENT,
     GROUP_HIGHLIGHT_PALETTE,
     type VisualiserDesignRow,
     type PanelParams,
-    type MaterialPiece,
-    type StandoffPiece,
-    type PushThroughPiece,
     type ExportWarning,
 } from '@/lib/visualiser/types';
 
@@ -265,44 +251,58 @@ export function VisualiserClient({
 
     const valid = PanelParamsSchema.safeParse(params);
 
-    // Geometry-only key for the development / section memos — excludes
-    // the (potentially large) artwork-layer SVG strings so adding or
-    // moving a layer doesn't needlessly re-stringify + rebuild the
-    // panel development.
-    const paramsGeomKey = JSON.stringify({
-        ...params,
-        artworkLayers: undefined,
-    });
+    // The full pure-geometry pipeline for the panel being edited comes from
+    // the SAME hook that derives the projecting sign below — one source of
+    // truth for development, placed artwork, material pieces, keyline /
+    // push-through, section export and the render bundle / PDF data. The
+    // fascia and the projecting blade can no longer silently desync (they
+    // ran as two hand-mirrored copies before). Interactive + display-only
+    // overlays (selection, group-highlight colours, view-layer toggles,
+    // dimension editing) are NOT part of this hook — they layer on top of
+    // these pure outputs further down.
+    const activeDeriv = usePanelDerivation(params, storeImported);
+    const {
+        development,
+        imported,
+        isComposite,
+        placedClip,
+        placedClipByIndex,
+        groupByPath,
+        aperture,
+        materialPieces,
+        pushThroughPieces,
+        standoffPieces,
+        reference,
+        autoFixings,
+        placementXf,
+        manualFixings,
+        fixings,
+        cableHoles,
+        cableHoleDiameter,
+        fixingDiameter,
+        mode,
+        keyline,
+        keylineClip,
+        pushThroughKeyline,
+        pushThroughIslands,
+        sectionExport,
+        apertureBySection,
+        keylineBySection,
+        pushThroughKeylineBySection,
+        pushThroughIslandsBySection,
+        fixingsBySection,
+        cableHolesBySection,
+        referenceBySection,
+        apertureHoles,
+        apertureHolesBySection,
+    } = activeDeriv;
 
-    const development = useMemo(() => {
-        if (!valid.success) return null;
-        return buildDevelopment(params);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [paramsGeomKey, valid.success]);
-
-    // Multi-layer artwork. When layers exist they composite into one
-    // artwork laid out in a panel-sized frame (so each layer's mm
-    // position lands 1:1 on the face via the normal placement path);
-    // the composite's bbox IS the frame, so the rest of the pipeline —
-    // which already reads `imported.bbox` — needs no special-casing.
-    // No layers → the legacy single upload (storeImported) is used.
-    const artworkLayers = params.artworkLayers ?? [];
-    const composite = useMemo(() => {
-        if (artworkLayers.length === 0) return null;
-        return composeLayers(
-            artworkLayers,
-            params.panelWidthMm,
-            params.panelHeightMm,
-        );
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [
-        JSON.stringify(artworkLayers),
-        params.panelWidthMm,
-        params.panelHeightMm,
-    ]);
-    const imported = composite ?? storeImported;
-    const isComposite = composite !== null;
-
+    // Panel split for the active fascia. Recomputed here (cheap, pure) for
+    // the render + validateExport sites that need a non-null PanelSplit —
+    // the hook types its own `split` nullable because it also serves the
+    // null-params projecting slot. Mirrors how the projecting sign keeps its
+    // own `secondarySplit`; both call splitPanels with identical args, so the
+    // hook's internal split (used for the export bundle) can't diverge.
     const split = useMemo(
         () =>
             splitPanels(
@@ -312,6 +312,11 @@ export function VisualiserClient({
             ),
         [params.panelWidthMm, params.centrePanelOverrideMm],
     );
+
+    // Artwork layers stay local — the interactive layer markers + drag
+    // handler below read them straight from params (the hook consumes them
+    // internally to build `imported`).
+    const artworkLayers = params.artworkLayers ?? [];
 
     // Secondary (the other) panel geometry for the 3D composite. A projecting
     // sign is just a tray — width / height / returns — so we only need its
@@ -358,171 +363,6 @@ export function VisualiserClient({
         return inactive.svgSource;
     }, [secondaryParams, inactive]);
 
-    const placement = params.aperturePlacement ?? DEFAULT_PLACEMENT;
-
-    // The placed + clipped lettering outline. In aperture mode this is what
-    // gets cut. In standoff mode it becomes a non-cut REFERENCE and we put
-    // small fixing holes inside it on the panel instead.
-    const placedClip = useMemo(() => {
-        if (!development || !imported)
-            return { paths: [], wasClipped: false, anyOutside: false };
-        const placed = placeAperture(
-            development,
-            imported.paths,
-            imported.bbox,
-            placement,
-        );
-        return clipApertureToFace(development, placed);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [development, imported, JSON.stringify(placement)]);
-
-    // Same placement + clipping, but tracked per original imported path so
-    // material assignments (cut / vinyl / acrylic) can be applied by
-    // original index — preserves the user's mental model of "click that
-    // shape, paint it vinyl" even when paths get clipped to face bounds.
-    const placedClipByIndex = useMemo<Array<import('@/lib/visualiser/types').FlatPath | null>>(() => {
-        if (!development || !imported) return [];
-        const imp = imported;
-        return imp.paths.map((path) => {
-            const placed = placeAperture(
-                development,
-                [path],
-                imp.bbox,
-                placement,
-            );
-            const clipped = clipApertureToFace(development, placed);
-            return clipped.paths[0] ?? null;
-        });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [development, imported, JSON.stringify(placement)]);
-
-    // Lookup: original imported-path index → owning material group (if
-    // any). One path can only belong to one group at a time; we just
-    // index forwards so the lookup is O(1) at render.
-    const groupByPath = useMemo(() => {
-        const map = new Map<
-            number,
-            NonNullable<PanelParams['materialGroups']>[number]
-        >();
-        for (const g of params.materialGroups ?? []) {
-            for (const i of g.pathIndices) map.set(i, g);
-        }
-        return map;
-    }, [params.materialGroups]);
-
-    // Containment map — for each imported path, the index of the
-    // SMALLEST closed path that contains its centroid (or null). Drives
-    // donut behaviour: a path nested inside another renders as an
-    // even-odd hole in the parent's material, regardless of its own
-    // assignment. Matches the SVG fill-rule semantics the operator
-    // expects from their artwork.
-    const parentByIndex = useMemo(() => {
-        const result: Array<number | null> = [];
-        const polyArea = (pts: Array<[number, number]>): number => {
-            let a = 0;
-            for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-                a += (pts[j][0] + pts[i][0]) * (pts[j][1] - pts[i][1]);
-            }
-            return Math.abs(a) / 2;
-        };
-        const containsPoint = (
-            ring: Array<[number, number]>,
-            p: [number, number],
-        ): boolean => {
-            let inside = false;
-            for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-                const xi = ring[i][0];
-                const yi = ring[i][1];
-                const xj = ring[j][0];
-                const yj = ring[j][1];
-                if (
-                    yi > p[1] !== yj > p[1] &&
-                    p[0] <
-                        ((xj - xi) * (p[1] - yi)) / (yj - yi || 1e-12) + xi
-                ) {
-                    inside = !inside;
-                }
-            }
-            return inside;
-        };
-        // Pre-compute areas + centroids once — saves an O(n²)*pts
-        // recomputation when scanning candidate parents.
-        const areas: number[] = [];
-        const centroids: Array<[number, number] | null> = [];
-        for (const p of placedClipByIndex) {
-            if (!p || !p.closed || p.points.length < 3) {
-                areas.push(0);
-                centroids.push(null);
-                continue;
-            }
-            areas.push(polyArea(p.points));
-            let cx = 0;
-            let cy = 0;
-            for (const [x, y] of p.points) {
-                cx += x;
-                cy += y;
-            }
-            centroids.push([cx / p.points.length, cy / p.points.length]);
-        }
-        for (let i = 0; i < placedClipByIndex.length; i++) {
-            const c = centroids[i];
-            if (!c) {
-                result.push(null);
-                continue;
-            }
-            const myArea = areas[i];
-            let parent: number | null = null;
-            let parentArea = Infinity;
-            for (let j = 0; j < placedClipByIndex.length; j++) {
-                if (i === j) continue;
-                const other = placedClipByIndex[j];
-                if (!other || !other.closed || other.points.length < 3)
-                    continue;
-                // Strict area inequality — a parent must be larger than
-                // its child. Stops two overlapping paths from picking
-                // each other as parent and creating a cycle (which made
-                // the walker functions loop forever and hung the app).
-                if (areas[j] <= myArea) continue;
-                if (!containsPoint(other.points, c)) continue;
-                if (areas[j] < parentArea) {
-                    parent = j;
-                    parentArea = areas[j];
-                }
-            }
-            result.push(parent);
-        }
-        return result;
-    }, [placedClipByIndex]);
-
-    // Returns true iff `i` is in the subtree of `root` — used to gather
-    // every descendant of a vinyl / acrylic outer so they can be drawn
-    // as evenodd holes in that outer's compound shape. Depth cap is a
-    // belt for the bracing in parent-map computation: parents are area-
-    // strict so cycles shouldn't happen, but if one ever slips through
-    // the helper still terminates.
-    const isDescendantOf = (i: number, root: number): boolean => {
-        let cursor = parentByIndex[i];
-        let depth = 0;
-        while (cursor !== null && depth < 256) {
-            if (cursor === root) return true;
-            cursor = parentByIndex[cursor];
-            depth++;
-        }
-        return false;
-    };
-    // A path is "nested" iff any other path contains it. Per SVG
-    // compound-path semantics, nested paths are HOLES in their parent's
-    // compound shape — never separate pieces on their own. This
-    // applies regardless of the parent's material kind:
-    //   - inside a cut letter → counter (lost in production unless
-    //     keyline+push-through is enabled)
-    //   - inside a vinyl/acrylic/standoff outer → compound hole in the
-    //     material piece (visible as hole through the material)
-    // Either way the nested path is owned by the ancestor's compound
-    // and must not be rendered or emitted as its own thing.
-    const isNested = (i: number): boolean =>
-        parentByIndex[i] !== null && parentByIndex[i] !== undefined;
-
     // Set of paths in the active edit selection (multi-select).
     const pendingPathsSet = useMemo(
         () => new Set(pendingPaths),
@@ -548,299 +388,6 @@ export function VisualiserClient({
     }, [imported, params.materialGroups, groupByPath]);
 
     const isEditingGroup = editingGroupId !== null;
-
-    const mode = params.apertureMode ?? 'aperture';
-    // Diameter is the source of truth; fall back to legacy radius * 2 for
-    // designs saved before the units change.
-    const fixingDiameter =
-        params.fixingDiameterMm ??
-        (params.fixingRadiusMm ? params.fixingRadiusMm * 2 : 10);
-
-    // Effective material for every imported path: the path's own group
-    // assignment wins; otherwise the default-for-ungrouped is driven by
-    // `apertureMode` (the operator's "what most of this sign is made of"
-    // hint). Nested paths are owned by their material ancestor —
-    // they're rendered as evenodd holes in the ancestor's compound, so
-    // they're treated as 'inherited' and contribute nothing on their own.
-    type Effective =
-        | { kind: 'cut' }
-        | { kind: 'solid' }
-        | { kind: 'vinyl'; color: string }
-        | { kind: 'acrylic'; color: string; thicknessMm: number }
-        | {
-              kind: 'standoff';
-              color: string;
-              thicknessMm: number;
-              standoffDistanceMm: number;
-          }
-        | {
-              kind: 'pushthrough';
-              color: string;
-              thicknessMm: number;
-              keylineOffsetMm: number;
-              protrusionMm: number;
-          }
-        | { kind: 'inherited' };
-
-    const defaultUngroupedKind: 'cut' | 'standoff' =
-        mode === 'standoff' ? 'standoff' : 'cut';
-
-    const globalLetterThickness = params.letterThicknessMm ?? 5;
-    const globalStandoffDistance = params.standoffDistanceMm ?? 25;
-    const globalLetterColor = params.letterColor ?? '#1a1f23';
-
-    const effectiveMaterials = useMemo<Effective[]>(() => {
-        return placedClipByIndex.map((_, i) => {
-            const own = groupByPath.get(i);
-            // Nested paths are holes in their ancestor's compound, not
-            // their own render. Treat as inherited regardless of any
-            // group assignment they happen to carry.
-            // Any nested path is a compound-shape hole of its parent,
-            // never a separate piece. Same rule SVG already uses with
-            // fill-rule="evenodd"; we extend it to ALL material types
-            // (cut included) so a letter's counter never gets cut as
-            // its own contour in the production PDF.
-            if (isNested(i)) return { kind: 'inherited' };
-            if (own) {
-                if (own.material === 'cut') return { kind: 'cut' };
-                if (own.material === 'solid') return { kind: 'solid' };
-                if (own.material === 'vinyl')
-                    return { kind: 'vinyl', color: own.color };
-                if (own.material === 'acrylic')
-                    return {
-                        kind: 'acrylic',
-                        color: own.color,
-                        thicknessMm: own.thicknessMm ?? 5,
-                    };
-                if (own.material === 'standoff')
-                    return {
-                        kind: 'standoff',
-                        color: own.color,
-                        thicknessMm: own.thicknessMm ?? globalLetterThickness,
-                        standoffDistanceMm:
-                            own.standoffDistanceMm ?? globalStandoffDistance,
-                    };
-                if (own.material === 'pushthrough')
-                    return {
-                        kind: 'pushthrough',
-                        color: own.color,
-                        thicknessMm: own.thicknessMm ?? 5,
-                        // Per-group offset supersedes the global
-                        // keylineMm for paths in this group; the
-                        // group's own value falls back to a tidy
-                        // 1.5 mm press-fit shoulder if missing.
-                        keylineOffsetMm: own.keylineOffsetMm ?? 1.5,
-                        protrusionMm: own.protrusionMm ?? 5,
-                    };
-            }
-            // Ungrouped — fall back to the apertureMode default.
-            if (defaultUngroupedKind === 'standoff') {
-                return {
-                    kind: 'standoff',
-                    color: globalLetterColor,
-                    thicknessMm: globalLetterThickness,
-                    standoffDistanceMm: globalStandoffDistance,
-                };
-            }
-            return { kind: 'cut' };
-        });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [
-        placedClipByIndex,
-        groupByPath,
-        parentByIndex,
-        defaultUngroupedKind,
-        globalLetterColor,
-        globalLetterThickness,
-        globalStandoffDistance,
-    ]);
-
-    // Build the holes array (placed-and-clipped descendants of `i`) once
-    // per path — vinyl, acrylic, and standoff pieces all need this so
-    // their compound renders punch through nested counters.
-    const holesByIndex = useMemo(() => {
-        return placedClipByIndex.map((path, i) => {
-            if (!path) return [] as typeof placedClip.paths;
-            const out: typeof placedClip.paths = [];
-            for (let j = 0; j < placedClipByIndex.length; j++) {
-                if (j === i) continue;
-                const hp = placedClipByIndex[j];
-                if (!hp || !hp.closed) continue;
-                if (isDescendantOf(j, i)) out.push(hp);
-            }
-            return out;
-        });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [placedClipByIndex, parentByIndex]);
-
-    // Aperture = paths with effective material 'cut' (own or via default).
-    const aperture = useMemo(() => {
-        const out: typeof placedClip.paths = [];
-        for (let i = 0; i < placedClipByIndex.length; i++) {
-            const p = placedClipByIndex[i];
-            if (!p) continue;
-            if (effectiveMaterials[i]?.kind !== 'cut') continue;
-            out.push(p);
-        }
-        return out;
-    }, [placedClipByIndex, effectiveMaterials]);
-
-    // Vinyl / acrylic / solid compound pieces (face-stuck materials).
-    // Each top-level piece gathers its descendants as evenodd holes so
-    // a letter outline with an inner counter renders as a donut.
-    //
-    // Solid pieces specifically use the panel colour (or the group's
-    // override). They visualise as filled panel-coloured shapes —
-    // exactly what makes a floating inner counter of an O / e / g
-    // read as a real piece of panel material rather than a cut.
-    const materialPieces = useMemo(() => {
-        const vinyl: MaterialPiece[] = [];
-        const acrylic: MaterialPiece[] = [];
-        const solid: MaterialPiece[] = [];
-        const panelColor = params.panelColor ?? '#d6d6d6';
-        for (let i = 0; i < placedClipByIndex.length; i++) {
-            const path = placedClipByIndex[i];
-            if (!path) continue;
-            const eff = effectiveMaterials[i];
-            if (!eff) continue;
-            if (eff.kind === 'vinyl') {
-                vinyl.push({
-                    pathIndex: i,
-                    path,
-                    holes: holesByIndex[i],
-                    color: eff.color,
-                });
-            } else if (eff.kind === 'acrylic') {
-                acrylic.push({
-                    pathIndex: i,
-                    path,
-                    holes: holesByIndex[i],
-                    color: eff.color,
-                    thicknessMm: eff.thicknessMm,
-                });
-            } else if (eff.kind === 'solid') {
-                // Group's stored colour wins (e.g. user picks a
-                // contrast solid). For freshly auto-detected counters
-                // the store seeds the colour to the panel colour, so
-                // by default solid pieces blend with the panel.
-                const groupEntry = groupByPath.get(i);
-                solid.push({
-                    pathIndex: i,
-                    path,
-                    holes: holesByIndex[i],
-                    color: groupEntry?.color ?? panelColor,
-                });
-            }
-        }
-        return { vinyl, acrylic, solid };
-    }, [
-        placedClipByIndex,
-        effectiveMaterials,
-        holesByIndex,
-        groupByPath,
-        params.panelColor,
-    ]);
-
-    // Push-through pieces — acrylic letters pressed through panel
-    // holes from behind. Each piece carries its own thickness, colour,
-    // keyline-offset and protrusion so a sign can mix push-through
-    // groups with different press fits. Counter pieces ride along in
-    // `holes` so the 3D renderer and PDF can emit them as separate
-    // small acrylic pieces (NOT compound-with-hole — production
-    // reality is two pieces glued to a backing board).
-    const pushThroughPieces = useMemo<PushThroughPiece[]>(() => {
-        const out: PushThroughPiece[] = [];
-        for (let i = 0; i < placedClipByIndex.length; i++) {
-            const path = placedClipByIndex[i];
-            if (!path) continue;
-            const eff = effectiveMaterials[i];
-            if (eff?.kind !== 'pushthrough') continue;
-            out.push({
-                pathIndex: i,
-                path,
-                holes: holesByIndex[i],
-                color: eff.color,
-                thicknessMm: eff.thicknessMm,
-                keylineOffsetMm: eff.keylineOffsetMm,
-                protrusionMm: eff.protrusionMm,
-            });
-        }
-        return out;
-    }, [placedClipByIndex, effectiveMaterials, holesByIndex]);
-
-    // Standoff pieces — extruded 3D letters mounted with studs at
-    // standoffDistanceMm. Each piece carries its own settings so a
-    // sign can have, say, 5 mm acrylic letters at 25 mm offset AND
-    // 10 mm letters at 40 mm offset side-by-side.
-    const standoffPieces = useMemo<StandoffPiece[]>(() => {
-        const out: StandoffPiece[] = [];
-        for (let i = 0; i < placedClipByIndex.length; i++) {
-            const path = placedClipByIndex[i];
-            if (!path) continue;
-            const eff = effectiveMaterials[i];
-            if (eff?.kind !== 'standoff') continue;
-            out.push({
-                pathIndex: i,
-                path,
-                holes: holesByIndex[i],
-                color: eff.color,
-                thicknessMm: eff.thicknessMm,
-                standoffDistanceMm: eff.standoffDistanceMm,
-            });
-        }
-        return out;
-    }, [placedClipByIndex, effectiveMaterials, holesByIndex]);
-
-    // Standoff fixing-hole layout still operates on a flat list of
-    // path outlines — preserved for back-compat with the old "all
-    // ungrouped paths in standoff mode" workflow. Includes any path
-    // whose effective kind is 'standoff' (groups + default-ungrouped).
-    const reference = useMemo(() => {
-        const out: typeof placedClip.paths = [];
-        for (let i = 0; i < placedClipByIndex.length; i++) {
-            const p = placedClipByIndex[i];
-            if (!p) continue;
-            if (effectiveMaterials[i]?.kind !== 'standoff') continue;
-            out.push(p);
-            // Compound-path counters (the holes inside O / R / e etc.)
-            // must travel with the outer outline so the fixing-placement
-            // algorithm + insideLettering check see the actual letter
-            // material (a donut), not the bounding outline alone. Without
-            // these, placeFixings happily drops a stud in the counter
-            // region — geometrically inside the outer, but actually
-            // outside the letter material.
-            for (const h of holesByIndex[i] ?? []) {
-                if (h && h.closed) out.push(h);
-            }
-        }
-        return out;
-    }, [placedClipByIndex, effectiveMaterials, holesByIndex]);
-
-    const fixingDensity = params.fixingDensity ?? 1;
-
-    // Auto-placed fixings inside the standoff lettering shapes. Driven by
-    // the live set of standoff paths (groups + default-standoff), NOT by
-    // the quick default — so a sign with default = Cut and one standoff
-    // group still gets fixings placed inside that group's letters.
-    const autoFixings = useMemo(() => {
-        if (!development || reference.length === 0) return [];
-        const raw = placeFixings(
-            reference,
-            fixingDiameter,
-            undefined,
-            fixingDensity,
-        );
-        return clipApertureToFace(development, raw).paths;
-    }, [development, reference, fixingDiameter, fixingDensity]);
-
-    // Transform between the SVG's own coord frame and the flat-dev
-    // frame — manual fixings are stored in the SVG frame so they follow
-    // the lettering when alignment / scale / nudge changes.
-    const placementXf = useMemo(() => {
-        if (!development || !imported) return null;
-        return placementTransform(development, imported.bbox, placement);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [development, imported, JSON.stringify(placement)]);
 
     // Draggable handles for each artwork layer — placed at the layer's
     // centre in flat-development coords so the operator can grab and
@@ -873,91 +420,6 @@ export function VisualiserClient({
             yMm: fy - (layer.hMm * layer.scale) / 2,
         });
     };
-
-    // Manual fixings — user clicks on the canvases to drop pins exactly
-    // where they're needed. Persisted in SVG-local coords so they follow
-    // the lettering across placement edits; converted to flat-dev coords
-    // for rendering / export. Rendered whenever there's at least one
-    // standoff path on the sign (group or default), independent of the
-    // quick default mode.
-    //
-    // Stale-fixings filter: a fixing placed back when a letter was
-    // standoff will still be in the store after the letter switches
-    // material (push-through, vinyl, etc.). The fixing now belongs to
-    // nobody — rendering it leaves a phantom stud floating outside the
-    // current standoff lettering. Filter to keep only the fixings whose
-    // centre is still inside the current standoff set. The store row
-    // stays untouched, so the fixing reappears the moment the letter
-    // is regrouped to standoff again.
-    const manualFixings = useMemo(() => {
-        if (!development || !placementXf || reference.length === 0)
-            return [];
-        const r = fixingDiameter / 2;
-        const isInside = (pt: [number, number]): boolean => {
-            let n = 0;
-            for (const ref of reference) {
-                const ring = ref.points;
-                let inside = false;
-                for (
-                    let i = 0, j = ring.length - 1;
-                    i < ring.length;
-                    j = i++
-                ) {
-                    const xi = ring[i][0];
-                    const yi = ring[i][1];
-                    const xj = ring[j][0];
-                    const yj = ring[j][1];
-                    if (
-                        yi > pt[1] !== yj > pt[1] &&
-                        pt[0] <
-                            ((xj - xi) * (pt[1] - yi)) / (yj - yi || 1e-12) +
-                                xi
-                    ) {
-                        inside = !inside;
-                    }
-                }
-                if (inside) n++;
-            }
-            return n % 2 === 1;
-        };
-        const polys: ReturnType<typeof circlePoly>[] = [];
-        for (const p of params.manualFixings ?? []) {
-            const flatPt = placementXf.toFlat(p);
-            if (!isInside(flatPt)) continue;
-            polys.push(circlePoly(flatPt[0], flatPt[1], r));
-        }
-        return clipApertureToFace(development, polys).paths;
-    }, [
-        development,
-        placementXf,
-        reference,
-        fixingDiameter,
-        params.manualFixings,
-    ]);
-
-    const fixings = useMemo(
-        () => [...autoFixings, ...manualFixings],
-        [autoFixings, manualFixings],
-    );
-
-    const cableHoleDiameter = params.cableHoleDiameterMm ?? 10;
-
-    // Cable holes — manually positioned holes cut in the panel face to
-    // feed LED cables into illuminated letters. Stored SVG-local so
-    // they track the lettering; converted to flat-dev circle polys and
-    // clipped to the face for render + export. Available whenever
-    // there's artwork (any illuminated-letter type), independent of
-    // material — unlike standoff fixings these aren't tied to the
-    // reference set, the operator just drops them where the cable runs.
-    const cableHoles = useMemo(() => {
-        if (!development || !placementXf) return [];
-        const r = cableHoleDiameter / 2;
-        const polys = (params.cableHoles ?? []).map((p) => {
-            const [x, y] = placementXf.toFlat(p);
-            return circlePoly(x, y, r);
-        });
-        return clipApertureToFace(development, polys).paths;
-    }, [development, placementXf, cableHoleDiameter, params.cableHoles]);
 
     // Even-odd inside test across the reference rings — counters of O /
     // A / B correctly exclude. Used by the place handler to reject
@@ -1049,89 +511,6 @@ export function VisualiserClient({
         }
     };
 
-    // Build the keyline from the cut aperture so it tracks the visible
-    // artwork, then clip it too. Standoff mode has no keyline.
-    const keylineClip = useMemo(() => {
-        if (!development || params.keylineMm <= 0 || aperture.length === 0)
-            return { paths: [], wasClipped: false, anyOutside: false };
-        // Union the per-letter keyline offsets so adjacent letters' overlaps
-        // weld into clean, non-overlapping cut contours (no double-cuts).
-        const raw = mergeKeyline(buildKeyline(aperture, params.keylineMm));
-        return clipApertureToFace(development, raw);
-    }, [development, aperture, params.keylineMm]);
-    const keyline = keylineClip.paths;
-
-    // Per-pushthrough-path keyline + retained counter islands.
-    //
-    // A compound letter (G, e, g, O) has counters. Production keeps the
-    // panel METAL inside each counter as an island, ringed by the same
-    // keyline gap as the outer edge — NOT a fully-open hole that just
-    // glows. buildKeyline applied to the FULL compound does both at
-    // once: it grows the outer outward and shrinks the counters inward
-    // (opposite winding, uniform band). So:
-    //   - the largest-area output contour is the grown OUTER keyline →
-    //     the letter-shaped panel hole / press-fit shoulder, and
-    //   - every other contour is a shrunk COUNTER → the retained metal
-    //     island boundary (the keyline gap rings it).
-    const pushThrough = useMemo<{
-        keyline: typeof placedClip.paths;
-        islands: typeof placedClip.paths;
-    }>(() => {
-        const keyline: typeof placedClip.paths = [];
-        const islands: typeof placedClip.paths = [];
-        if (!development || pushThroughPieces.length === 0)
-            return { keyline, islands };
-        const ringArea = (pts: Array<[number, number]>): number => {
-            let a = 0;
-            for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-                a += (pts[j][0] + pts[i][0]) * (pts[j][1] - pts[i][1]);
-            }
-            return Math.abs(a) / 2;
-        };
-        for (const piece of pushThroughPieces) {
-            const holes = (piece.holes ?? []).filter(
-                (h) => h.closed && h.points.length >= 3,
-            );
-            if (piece.keylineOffsetMm <= 0) {
-                // Operator zeroed the offset — press fit is the outline
-                // itself; islands sit exactly on the counter edge.
-                keyline.push(piece.path);
-                islands.push(...holes);
-                continue;
-            }
-            const compound = buildKeyline(
-                [piece.path, ...holes],
-                piece.keylineOffsetMm,
-            );
-            if (compound.length === 0) {
-                keyline.push(piece.path);
-                continue;
-            }
-            // Largest contour = the grown outer; the rest are the
-            // shrunk counters (metal islands).
-            let maxArea = -Infinity;
-            let maxIdx = 0;
-            compound.forEach((c, i) => {
-                const a = ringArea(c.points);
-                if (a > maxArea) {
-                    maxArea = a;
-                    maxIdx = i;
-                }
-            });
-            compound.forEach((c, i) => {
-                if (i === maxIdx) keyline.push(c);
-                else islands.push(c);
-            });
-        }
-        const clip = (paths: typeof placedClip.paths) =>
-            clipApertureToFace(development, paths).paths;
-        // Weld overlapping per-letter push-through holes into clean contours;
-        // islands (retained metal counters) stay separate.
-        return { keyline: clip(mergeKeyline(keyline)), islands: clip(islands) };
-    }, [development, pushThroughPieces]);
-    const pushThroughKeyline = pushThrough.keyline;
-    const pushThroughIslands = pushThrough.islands;
-
     // The full-design bundle for the OTHER sign (the one not being edited),
     // derived live (see secondaryDeriv) so it's present immediately on load —
     // no need to select its tab first to populate a cache.
@@ -1143,104 +522,10 @@ export function VisualiserClient({
             ? 'Return depth is smaller than half the material thickness — the flat size goes negative. Increase the return or reduce thickness.'
             : null;
 
-
-    // Per-section export geometry. Single-panel signs get one section that
-    // collapses back to today's behaviour; split signs get N sections laid
-    // out side-by-side on the same export sheet, each with only the
-    // returns that sit on the outer perimeter of the assembled sign.
-    const sectionExport = useMemo(
-        () =>
-            development ? buildSectionedExport(params, split) : null,
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [development, paramsGeomKey, split],
-    );
-
-    const apertureBySection = useMemo(() => {
-        if (!development || !sectionExport) return [];
-        return sectionExport.sections.map((s) =>
-            clipApertureToSection(development, s, aperture),
-        );
-    }, [development, sectionExport, aperture]);
-
-    const keylineBySection = useMemo(() => {
-        if (!development || !sectionExport) return [];
-        return sectionExport.sections.map((s) =>
-            clipApertureToSection(development, s, keyline),
-        );
-    }, [development, sectionExport, keyline]);
-
-    // Per-section push-through keylines — these are real panel holes,
-    // alongside the aperture cuts. Routed through the same clipper so
-    // sections that don't contain a particular letter don't double-
-    // up on it.
-    const pushThroughKeylineBySection = useMemo(() => {
-        if (!development || !sectionExport) return [];
-        return sectionExport.sections.map((s) =>
-            clipApertureToSection(development, s, pushThroughKeyline),
-        );
-    }, [development, sectionExport, pushThroughKeyline]);
-
-    // Retained counter islands per section — cut around (ringed by the
-    // keyline) but kept as metal, remounted on the backing.
-    const pushThroughIslandsBySection = useMemo(() => {
-        if (!development || !sectionExport) return [];
-        return sectionExport.sections.map((s) =>
-            clipApertureToSection(development, s, pushThroughIslands),
-        );
-    }, [development, sectionExport, pushThroughIslands]);
-
-    const fixingsBySection = useMemo(() => {
-        if (!development || !sectionExport) return [];
-        return sectionExport.sections.map((s) =>
-            clipApertureToSection(development, s, fixings),
-        );
-    }, [development, sectionExport, fixings]);
-
-    const cableHolesBySection = useMemo(() => {
-        if (!development || !sectionExport) return [];
-        return sectionExport.sections.map((s) =>
-            clipApertureToSection(development, s, cableHoles),
-        );
-    }, [development, sectionExport, cableHoles]);
-
-    const referenceBySection = useMemo(() => {
-        if (!development || !sectionExport) return [];
-        return sectionExport.sections.map((s) =>
-            clipApertureToSection(development, s, reference),
-        );
-    }, [development, sectionExport, reference]);
-
-    // Inner counters of aperture letters — the holes inside an R, an
-    // O, an A, etc. — collected as a flat list. These are NEVER cut
-    // from the panel (no bridges, no mechanical support) but they DO
-    // appear on the push-through insert page in keyline mode, where
-    // the acrylic insert is a proper compound shape with the counter
-    // as a hole through it. Result: the counter on the insert lets
-    // panel/lightbox show through, giving the letter its proper
-    // optical shape without trying to do the impossible at the cutter.
-    const apertureHoles = useMemo(() => {
-        const out: typeof placedClip.paths = [];
-        for (let i = 0; i < placedClipByIndex.length; i++) {
-            if (effectiveMaterials[i]?.kind !== 'cut') continue;
-            const holes = holesByIndex[i] ?? [];
-            for (const h of holes) {
-                if (h && h.closed && h.points.length >= 3) out.push(h);
-            }
-        }
-        return out;
-    }, [placedClipByIndex, effectiveMaterials, holesByIndex]);
-
-    const apertureHolesBySection = useMemo(() => {
-        if (!development || !sectionExport) return [];
-        return sectionExport.sections.map((s) =>
-            clipApertureToSection(development, s, apertureHoles),
-        );
-    }, [development, sectionExport, apertureHoles]);
-
     // The full PDF export data for the OTHER sign (derived live, see
     // secondaryDeriv) + a one-line summary of the projecting sign (used on the
     // reference overview). The active panel's own export builds straight from
-    // the inline memos passed to ExportBar.
+    // the activeDeriv section data passed to ExportBar.
     const mainIsActive = activeTab === 'main';
     const companionPdf = projectingEnabled ? secondaryDeriv.pdfData : null;
     const projectingParams = mainIsActive ? secondaryParams : params;

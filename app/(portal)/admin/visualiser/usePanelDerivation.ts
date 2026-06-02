@@ -721,6 +721,7 @@ export function usePanelDerivation(
         fixingDiameter,
         mode,
         keyline,
+        keylineClip,
         pushThroughKeyline,
         pushThroughIslands,
         sectionExport,
