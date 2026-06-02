@@ -224,7 +224,9 @@ function GroupEditControls({
                     >
                         Colour
                     </span>
-                    {(material === 'acrylic' || material === 'pushthrough') && (
+                    {(material === 'acrylic' ||
+                        material === 'pushthrough' ||
+                        material === 'standoff') && (
                         <div className="mt-0.5">
                             <SwatchPicker
                                 items={ACRYLIC_ITEMS}

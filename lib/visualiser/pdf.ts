@@ -953,6 +953,7 @@ function buildMaterialPages(opts: PdfOptions): MaterialPageSpec[] {
                     'Pieces',
                     `${standoffPieces.length} letter${standoffPieces.length === 1 ? '' : 's'}`,
                 ],
+                ['Acrylic', acrylicNames(standoffPieces.map((p) => p.color))],
                 ['Colour', summariseVariants(colours)],
                 ['Thickness', summariseVariants(thicknesses)],
                 ['Standoff', summariseVariants(distances)],
