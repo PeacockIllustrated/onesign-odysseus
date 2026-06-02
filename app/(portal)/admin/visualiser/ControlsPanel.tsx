@@ -183,8 +183,9 @@ export function ControlsPanel() {
                         Mounts on the fascia face and projects straight out
                         toward the street (read from the side). Width (in Panel
                         dimensions) is how far it protrudes; for a circle it is
-                        the diameter. The bracket is bought-in — specified on
-                        the PDFs, not fabricated.
+                        the diameter. Use the standoff to set the gap from the
+                        fascia; how it physically fixes is decided in the
+                        workshop.
                     </p>
 
                     <div>

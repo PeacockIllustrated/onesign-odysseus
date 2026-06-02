@@ -4,6 +4,8 @@ import {
     measureNeon,
     totalLengthMm,
     colourBreakdown,
+    parseCssColor,
+    colourKey,
     formatMm,
     formatM,
 } from './neon';
@@ -158,6 +160,60 @@ describe('colourBreakdown', () => {
         expect(bd).toHaveLength(1);
         expect(bd[0].color).toBeUndefined();
         expect(bd[0].runs).toBe(2);
+    });
+});
+
+describe('parseCssColor', () => {
+    it('parses 6- and 3-digit hex', () => {
+        expect(parseCssColor('#ff2d95')).toEqual([255, 45, 149]);
+        expect(parseCssColor('#f00')).toEqual([255, 0, 0]);
+        expect(parseCssColor('00ff00')).toEqual([0, 255, 0]); // no leading #
+    });
+    it('parses rgb() with numbers and percentages', () => {
+        expect(parseCssColor('rgb(255,0,0)')).toEqual([255, 0, 0]);
+        expect(parseCssColor('rgb(100%, 0%, 0%)')).toEqual([255, 0, 0]);
+        expect(parseCssColor('rgba(0,128,255,0.5)')).toEqual([0, 128, 255]);
+    });
+    it('clamps out-of-range channels', () => {
+        expect(parseCssColor('rgb(300,-5,0)')).toEqual([255, 0, 0]);
+    });
+    it('resolves common named colours', () => {
+        expect(parseCssColor('red')).toEqual([255, 0, 0]);
+        expect(parseCssColor('Cyan')).toEqual([0, 255, 255]);
+    });
+    it('returns null for unresolvable / none / gradients', () => {
+        expect(parseCssColor(undefined)).toBeNull();
+        expect(parseCssColor('none')).toBeNull();
+        expect(parseCssColor('url(#grad)')).toBeNull();
+        expect(parseCssColor('chartreuse')).toBeNull(); // not in the basic table
+    });
+});
+
+describe('colourKey + breakdown canonicalisation', () => {
+    it('collapses equivalent colour notations to one key', () => {
+        expect(colourKey('#f00')).toBe(colourKey('#FF0000'));
+        expect(colourKey('rgb(255,0,0)')).toBe(colourKey('#ff0000'));
+        expect(colourKey('red')).toBe('#ff0000');
+    });
+    it('groups #f00 / #ff0000 / rgb(255,0,0) as one order line', () => {
+        const run = (stroke: string): FlatPath & { stroke?: string } => ({
+            closed: true,
+            stroke,
+            points: [
+                [0, 0],
+                [50, 0],
+                [50, 50],
+                [0, 50],
+            ],
+        });
+        const els = measureNeon([
+            run('#f00'),
+            run('#ff0000'),
+            run('rgb(255,0,0)'),
+        ]);
+        const bd = colourBreakdown(els);
+        expect(bd).toHaveLength(1);
+        expect(bd[0].runs).toBe(3);
     });
 });
 

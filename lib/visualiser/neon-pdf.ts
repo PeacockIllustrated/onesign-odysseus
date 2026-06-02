@@ -1,7 +1,9 @@
 /**
  * Annotated neon-flex run-length PDF.
  *
- * One A4 landscape sheet: the artwork drawn 1:1-to-fit with a numbered balloon
+ * Three A4 landscape pages: (1) run lengths, (2) the same layout with each run
+ * drawn in its real SVG colour + per-run colour codes, (3) colour totals +
+ * backboard spec. Page 1 is: the artwork drawn 1:1-to-fit with a numbered balloon
  * on every measured element (a leader from the balloon to the element centre,
  * so it's unambiguous which run a length refers to — we can't name letters),
  * plus a length table (mm + m per balloon) and the grand total. This is the
@@ -17,14 +19,21 @@ import {
     formatM,
     totalLengthMm,
     colourBreakdown,
+    parseCssColor,
     type NeonElement,
 } from './neon';
 
 const ACCENT: [number, number, number] = [78, 126, 140]; // #4e7e8c
 const INK: [number, number, number] = [26, 31, 35];
+const GREY: [number, number, number] = [150, 150, 150];
 const PAGE_W = 297;
 const PAGE_H = 210;
 const margin = 14;
+
+/** Run colour as RGB for jsPDF; grey when the SVG colour can't be resolved. */
+function rgbOf(c: string | undefined): [number, number, number] {
+    return parseCssColor(c) ?? GREY;
+}
 
 export interface NeonPdfOptions {
     name: string;
@@ -35,29 +44,6 @@ export interface NeonPdfOptions {
 
 function fitScale(w: number, h: number, partW: number, partH: number): number {
     return Math.min(w / Math.max(partW, 1e-6), h / Math.max(partH, 1e-6));
-}
-
-/** Parse a CSS hex / rgb() colour to [r,g,b]; grey fallback for anything else. */
-function cssToRgb(c: string | undefined): [number, number, number] {
-    if (!c) return [150, 150, 150];
-    const s = c.trim();
-    const hex = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(s);
-    if (hex) {
-        let h = hex[1];
-        if (h.length === 3)
-            h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
-        return [
-            parseInt(h.slice(0, 2), 16),
-            parseInt(h.slice(2, 4), 16),
-            parseInt(h.slice(4, 6), 16),
-        ];
-    }
-    const rgb = /rgba?\(([^)]+)\)/i.exec(s);
-    if (rgb) {
-        const n = rgb[1].split(',').map((v) => parseFloat(v));
-        if (n.length >= 3) return [n[0], n[1], n[2]];
-    }
-    return [150, 150, 150];
 }
 
 /**
@@ -119,7 +105,7 @@ function drawRunPage(
     doc.setLineWidth(0.5);
     for (const el of els) {
         if (coloured) {
-            const c = cssToRgb(el.stroke);
+            const c = rgbOf(el.stroke);
             doc.setDrawColor(c[0], c[1], c[2]);
         } else {
             doc.setDrawColor(ACCENT[0], ACCENT[1], ACCENT[2]);
@@ -222,7 +208,7 @@ function drawRunPage(
             doc.setFontSize(8);
             doc.setTextColor(ACCENT[0], ACCENT[1], ACCENT[2]);
             doc.text(`${el.index}`, tableX, y);
-            const c = cssToRgb(el.stroke);
+            const c = rgbOf(el.stroke);
             doc.setFillColor(c[0], c[1], c[2]);
             doc.setDrawColor(180);
             doc.setLineWidth(0.2);
@@ -428,8 +414,15 @@ export async function generateNeonPdfBlob(opts: NeonPdfOptions): Promise<Blob> {
     doc.setTextColor(0);
     cy += 8;
 
-    for (const row of breakdown) {
-        const rgb = cssToRgb(row.color);
+    // Clamp rows to the space above a fixed TOTAL anchor so a rainbow design
+    // can't run the rows (or the TOTAL) off the page.
+    const rowH = 9;
+    const totalAnchor = PAGE_H - margin - 12;
+    const maxRows = Math.max(1, Math.floor((totalAnchor - 5 - cy) / rowH));
+    const shownColours = Math.min(breakdown.length, maxRows);
+    for (let i = 0; i < shownColours; i++) {
+        const row = breakdown[i];
+        const rgb = rgbOf(row.color);
         // swatch
         doc.setFillColor(rgb[0], rgb[1], rgb[2]);
         doc.setDrawColor(180);
@@ -449,22 +442,33 @@ export async function generateNeonPdfBlob(opts: NeonPdfOptions): Promise<Blob> {
             align: 'right',
         });
         doc.setTextColor(0);
-        cy += 9;
+        cy += rowH;
+    }
+    if (shownColours < breakdown.length) {
+        doc.setFont(font, 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(180, 60, 60);
+        doc.text(
+            T(`+${breakdown.length - shownColours} more colours — TOTAL below is complete`),
+            colX,
+            cy,
+        );
+        doc.setTextColor(0);
     }
 
-    // total
+    // total — fixed anchor so it's always on-page below the (clamped) rows
     const total = totalLengthMm(opts.elements);
     doc.setDrawColor(INK[0], INK[1], INK[2]);
     doc.setLineWidth(0.4);
-    doc.line(colX, cy - 3, colX + colW, cy - 3);
+    doc.line(colX, totalAnchor - 5, colX + colW, totalAnchor - 5);
     doc.setFont(font, 'bold');
     doc.setFontSize(10);
     doc.setTextColor(INK[0], INK[1], INK[2]);
-    doc.text(T('TOTAL'), colX, cy + 2);
+    doc.text(T('TOTAL'), colX, totalAnchor);
     doc.text(
         `${formatM(total)}  ·  ${formatMm(total)}`,
         colX + colW,
-        cy + 2,
+        totalAnchor,
         { align: 'right' },
     );
     doc.setTextColor(0);

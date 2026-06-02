@@ -105,6 +105,14 @@ export function NeonMeasureClient({
             });
             setDesignId(id);
             setDesignName(name);
+            // A fresh upload must NOT inherit the previous file's calibration
+            // (different artwork, different real size). Reopening a saved design
+            // (id set) keeps it — openDesign restores the saved values next.
+            if (id === null) {
+                setCalWidth('');
+                setCalHeight('');
+                setView('measure');
+            }
             return true;
         } catch {
             setError('Could not read that SVG. Is it a valid SVG export?');
@@ -130,12 +138,19 @@ export function NeonMeasureClient({
             return;
         }
         if (!loadSvgText(row.svg_source, row.name, row.id)) return;
-        const cfg = row.params_json;
+        // Coalesce — a row saved before a field existed (params_json is
+        // unconstrained JSONB) must not push undefined into the controls
+        // (e.g. undefined saturation → NaN → black runs).
+        const cfg = row.params_json ?? {};
         setCalWidth(cfg.widthMm != null ? String(cfg.widthMm) : '');
         setCalHeight(cfg.heightMm != null ? String(cfg.heightMm) : '');
-        setBoardOn(cfg.backboardEnabled);
-        setPaddingMm(cfg.backboardPaddingMm);
-        setSaturation(cfg.saturation);
+        setBoardOn(cfg.backboardEnabled ?? true);
+        setPaddingMm(
+            typeof cfg.backboardPaddingMm === 'number'
+                ? cfg.backboardPaddingMm
+                : 50,
+        );
+        setSaturation(typeof cfg.saturation === 'number' ? cfg.saturation : 1);
     };
 
     const refreshDesigns = async () => {
@@ -330,6 +345,9 @@ export function NeonMeasureClient({
                                 setError(null);
                                 setDesignId(null);
                                 setDesignName('');
+                                setCalWidth('');
+                                setCalHeight('');
+                                setView('measure');
                                 if (fileRef.current) fileRef.current.value = '';
                             }}
                             className="flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-100"

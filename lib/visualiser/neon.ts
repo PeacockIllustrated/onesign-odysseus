@@ -51,13 +51,22 @@ export function pathLengthMm(p: FlatPath): number {
 }
 
 function centroidOf(pts: Array<[number, number]>): [number, number] {
+    // Closed contours arrive with the first point repeated as the last; drop
+    // it so that vertex isn't double-weighted (which pulls the balloon off
+    // centre on low-vertex shapes).
+    let n = pts.length;
+    if (n > 1) {
+        const a = pts[0];
+        const b = pts[n - 1];
+        if (Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-6) n--;
+    }
     let x = 0;
     let y = 0;
-    for (const [px, py] of pts) {
-        x += px;
-        y += py;
+    for (let i = 0; i < n; i++) {
+        x += pts[i][0];
+        y += pts[i][1];
     }
-    return [x / pts.length, y / pts.length];
+    return [x / n, y / n];
 }
 
 function bboxOf(pts: Array<[number, number]>) {
@@ -120,6 +129,81 @@ export function totalLengthMm(els: NeonElement[]): number {
     return els.reduce((sum, e) => sum + e.lengthMm, 0);
 }
 
+const NAMED_COLOURS: Record<string, [number, number, number]> = {
+    black: [0, 0, 0],
+    white: [255, 255, 255],
+    red: [255, 0, 0],
+    lime: [0, 255, 0],
+    green: [0, 128, 0],
+    blue: [0, 0, 255],
+    yellow: [255, 255, 0],
+    cyan: [0, 255, 255],
+    aqua: [0, 255, 255],
+    magenta: [255, 0, 255],
+    fuchsia: [255, 0, 255],
+    gray: [128, 128, 128],
+    grey: [128, 128, 128],
+    silver: [192, 192, 192],
+    maroon: [128, 0, 0],
+    olive: [128, 128, 0],
+    navy: [0, 0, 128],
+    teal: [0, 128, 128],
+    purple: [128, 0, 128],
+    orange: [255, 165, 0],
+    pink: [255, 192, 203],
+};
+
+/**
+ * Parse a CSS colour (hex #rgb/#rrggbb, rgb()/rgba() with numbers or %, or a
+ * common named colour) to [r,g,b] 0–255. Returns null for anything it can't
+ * resolve (gradients, currentColor, unknown names) so callers fall back. Shared
+ * by the colour grouping and the PDF so they always agree.
+ */
+export function parseCssColor(
+    c: string | undefined | null,
+): [number, number, number] | null {
+    if (!c) return null;
+    const s = c.trim().toLowerCase();
+    if (NAMED_COLOURS[s]) return NAMED_COLOURS[s];
+    const hex = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/.exec(s);
+    if (hex) {
+        let h = hex[1];
+        if (h.length === 3)
+            h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+        return [
+            parseInt(h.slice(0, 2), 16),
+            parseInt(h.slice(2, 4), 16),
+            parseInt(h.slice(4, 6), 16),
+        ];
+    }
+    const rgb = /rgba?\(([^)]+)\)/.exec(s);
+    if (rgb) {
+        const parts = rgb[1]
+            .split(',')
+            .slice(0, 3)
+            .map((p) => {
+                const t = p.trim();
+                const n = t.endsWith('%')
+                    ? (parseFloat(t) * 255) / 100
+                    : parseFloat(t);
+                return Math.max(0, Math.min(255, Math.round(n)));
+            });
+        if (parts.length === 3 && parts.every((n) => Number.isFinite(n)))
+            return parts as [number, number, number];
+    }
+    return null;
+}
+
+/** Canonical key for grouping colours: #rrggbb when parseable, else the raw lowercased string. */
+export function colourKey(c: string | undefined): string {
+    const rgb = parseCssColor(c);
+    if (rgb)
+        return (
+            '#' + rgb.map((n) => n.toString(16).padStart(2, '0')).join('')
+        );
+    return (c ?? '').trim().toLowerCase();
+}
+
 export interface ColourTotal {
     /** Source colour string (undefined when the SVG carried none). */
     color: string | undefined;
@@ -135,7 +219,9 @@ export interface ColourTotal {
 export function colourBreakdown(els: NeonElement[]): ColourTotal[] {
     const map = new Map<string, ColourTotal>();
     for (const e of els) {
-        const key = (e.stroke ?? '').trim().toLowerCase();
+        // Canonical key so #f00 / #ff0000 / rgb(255,0,0) / 'red' collapse into
+        // one order line instead of several near-duplicate rows.
+        const key = colourKey(e.stroke);
         const cur = map.get(key) ?? { color: e.stroke, runs: 0, lengthMm: 0 };
         cur.runs += 1;
         cur.lengthMm += e.lengthMm;

@@ -7,8 +7,6 @@ import {
     type PanelEdge,
     type ImportedSvg,
     type ProjectingMount,
-    type PanelRenderBundle,
-    type PanelPdfData,
     type VisualiserDesignRow,
 } from '@/lib/visualiser/types';
 import { importSvg } from '@/lib/visualiser/svg-import';
@@ -167,17 +165,6 @@ interface VisualiserState {
     projectingEnabled: boolean;
     inactive: PanelSlot | null;
     mount: ProjectingMount;
-    /**
-     * The last rendered full-design bundle for each panel, keyed by tab.
-     * Captured while a panel is active and reused to draw it with its real
-     * material-group geometry when it's the OTHER (non-active) sign — so both
-     * signs always show their proper design in the composite.
-     */
-    bundles: { main: PanelRenderBundle | null; projecting: PanelRenderBundle | null };
-    setRenderedBundle: (tab: SignTab, bundle: PanelRenderBundle) => void;
-    /** Per-panel PDF export data, cached so both signs export in one PDF. */
-    pdfData: { main: PanelPdfData | null; projecting: PanelPdfData | null };
-    setPdfData: (tab: SignTab, data: PanelPdfData) => void;
 
     setParam: <K extends keyof PanelParams>(k: K, v: PanelParams[K]) => void;
     /** Merge a patch into the projecting sign's mount spec. */
@@ -307,14 +294,6 @@ export const useVisualiser = create<VisualiserState>((set) => ({
     projectingEnabled: false,
     inactive: null,
     mount: {},
-    bundles: { main: null, projecting: null },
-    pdfData: { main: null, projecting: null },
-
-    setRenderedBundle: (tab, bundle) =>
-        set((s) => ({ bundles: { ...s.bundles, [tab]: bundle } })),
-
-    setPdfData: (tab, data) =>
-        set((s) => ({ pdfData: { ...s.pdfData, [tab]: data } })),
 
     setParam: (k, v) =>
         set((s) => ({ params: { ...s.params, [k]: v }, dirty: true })),
@@ -366,8 +345,6 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                         ? safeImport(seed.svgSource)
                         : null,
                 },
-                bundles: { ...s.bundles, projecting: null },
-                pdfData: { ...s.pdfData, projecting: null },
                 activeTab: 'main',
             };
         }),
@@ -385,8 +362,6 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                     imported: s.inactive.imported,
                     inactive: null,
                     mount: {},
-                    bundles: { ...s.bundles, projecting: null },
-                    pdfData: { ...s.pdfData, projecting: null },
                     dirty: true,
                     fixingMode: 'off',
                     cableMode: 'off',
@@ -399,8 +374,6 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                 activeTab: 'main',
                 inactive: null,
                 mount: {},
-                bundles: { ...s.bundles, projecting: null },
-                pdfData: { ...s.pdfData, projecting: null },
                 dirty: true,
             };
         }),
@@ -509,8 +482,6 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                 projectingEnabled: !!projecting,
                 inactive: projecting,
                 mount: projectingSign?.mount ?? {},
-                bundles: { main: null, projecting: null },
-                pdfData: { main: null, projecting: null },
                 editingGroupId: null,
                 pendingPaths: [],
                 selectedLayerId: null,

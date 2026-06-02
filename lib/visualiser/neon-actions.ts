@@ -83,6 +83,18 @@ export async function saveNeonDesign(input: {
     };
 
     if (input.id) {
+        // Guard: only ever overwrite an existing neon row, never a panel design
+        // (mirror of deleteNeonDesign) — and fail loudly on a stale/unknown id
+        // rather than silently no-op'ing.
+        const { data: existing, error: readErr } = await supabase
+            .from(TABLE)
+            .select('params_json')
+            .eq('id', input.id)
+            .maybeSingle();
+        if (readErr) return err(readErr.message);
+        if (!existing || !isNeon(existing))
+            return err('neon design not found');
+
         const { error } = await supabase
             .from(TABLE)
             .update(row)

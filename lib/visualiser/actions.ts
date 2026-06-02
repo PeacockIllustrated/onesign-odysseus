@@ -26,11 +26,11 @@ export async function listDesigns(): Promise<Result<VisualiserDesignRow[]>> {
         .limit(200);
 
     if (error) return err(error.message);
-    // The neon-length tool stores its own records in this table tagged
-    // params_json.kind = 'neon'; keep those out of the panel visualiser list.
+    // Other tools (the neon-length tool) tag their rows with params_json.kind.
+    // Allowlist: a panel design is an UNTAGGED row, so any tagged kind is
+    // excluded — robust to future discriminators, not just 'neon'.
     const rows = ((data ?? []) as VisualiserDesignRow[]).filter(
-        (r) =>
-            (r.params_json as { kind?: string } | null)?.kind !== 'neon',
+        (r) => (r.params_json as { kind?: string } | null)?.kind == null,
     );
     return ok(rows);
 }
@@ -51,6 +51,10 @@ export async function getDesign(
 
     if (error) return err(error.message);
     if (!data) return err('design not found');
+    // Don't hand a non-panel row (e.g. a neon take-off) to the panel editor —
+    // its params_json isn't PanelParams and would render as NaN.
+    if ((data.params_json as { kind?: string } | null)?.kind != null)
+        return err('design not found');
     return ok(data as VisualiserDesignRow);
 }
 

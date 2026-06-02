@@ -89,25 +89,11 @@ function NeonRun({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [element, radius]);
 
-    const geoms = useMemo(() => {
-        if (!curve) return null;
-        // Dense sampling so sharp corners read crisp (the curve itself doesn't
-        // round them; this just controls how finely the tube is tessellated).
-        const segs = Math.min(2000, Math.max(24, element.points.length * 3));
-        // The polyline curve already appends the closing point for closed
-        // runs, so the tube is generated open (closed=false) to avoid a
-        // double seam.
-        const make = (r: number) =>
-            new THREE.TubeGeometry(curve, segs, r, 10, false);
-        return {
-            core: make(radius * 0.85),
-            halo1: make(radius * 1.9),
-            halo2: make(radius * 3.4),
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [curve, radius]);
+    if (!curve) return null;
+    // Dense sampling so sharp corners read crisp (the curve doesn't round them;
+    // this just controls how finely the tube is tessellated).
+    const segs = Math.min(2000, Math.max(24, element.points.length * 3));
 
-    if (!geoms) return null;
     const c = new THREE.Color(color);
     // Boost (or mute) saturation to pop the colours without touching hue.
     if (saturation !== 1) {
@@ -118,9 +104,15 @@ function NeonRun({
     // Hot near-white core gives the glassy filament look.
     const coreColor = c.clone().lerp(new THREE.Color('#ffffff'), 0.7);
 
+    // Tubes are declared as JSX children (NOT new THREE.TubeGeometry passed by
+    // prop) so React-Three-Fiber owns them and DISPOSES the old geometry on
+    // every rebuild — otherwise each calibration keystroke / reload would orphan
+    // tube geometries on the GPU. closed=false: PolylineCurve3 already appends
+    // the closing point for closed runs, so this avoids a double seam.
     return (
         <group>
-            <mesh geometry={geoms.halo2}>
+            <mesh>
+                <tubeGeometry args={[curve, segs, radius * 3.4, 10, false]} />
                 <meshBasicMaterial
                     color={c}
                     transparent
@@ -130,7 +122,8 @@ function NeonRun({
                     toneMapped={false}
                 />
             </mesh>
-            <mesh geometry={geoms.halo1}>
+            <mesh>
+                <tubeGeometry args={[curve, segs, radius * 1.9, 10, false]} />
                 <meshBasicMaterial
                     color={c}
                     transparent
@@ -140,7 +133,8 @@ function NeonRun({
                     toneMapped={false}
                 />
             </mesh>
-            <mesh geometry={geoms.core}>
+            <mesh>
+                <tubeGeometry args={[curve, segs, radius * 0.85, 10, false]} />
                 <meshBasicMaterial
                     color={coreColor}
                     transparent

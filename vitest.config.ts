@@ -6,7 +6,9 @@ export default defineConfig({
         globals: true,
         environment: 'node',
         include: ['**/*.test.ts'],
-        exclude: ['node_modules', '.next'],
+        // '.claude/worktrees' holds throwaway git worktrees with duplicate test
+        // copies — exclude so they don't double-count or mask a regression.
+        exclude: ['node_modules', '.next', '**/.claude/**'],
     },
     resolve: {
         alias: {
