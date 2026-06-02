@@ -38,6 +38,7 @@ import {
 import { outlinePerimeter } from './geometry';
 import { registerVisualiserFonts } from './pdf-fonts';
 import { acrylicByHex } from './acrylic';
+import { ralByCode } from './ral';
 
 /** Distinct acrylic brand+code for a set of piece colours (else 'custom'). */
 function acrylicNames(colors: string[]): string {
@@ -47,6 +48,15 @@ function acrylicNames(colors: string[]): string {
     });
     const uniq = Array.from(new Set(names));
     return uniq.length ? uniq.join(', ') : '-';
+}
+
+/** Panel colour spec string: "RAL 9016 · Traffic white" (name resolved), else the hex. */
+function panelColourSpec(params: PanelParams): string {
+    if (params.panelRal) {
+        const r = ralByCode(params.panelRal);
+        return r ? `${params.panelRal} · ${r.name}` : params.panelRal;
+    }
+    return params.panelColor ?? '-';
 }
 
 /** PDF media box limit is ~14400 user units; stay well under it. */
@@ -771,12 +781,7 @@ function buildMaterialPages(opts: PdfOptions): MaterialPageSpec[] {
             specs: [
                 ['Type', 'Cut from panel'],
                 ['Count', `${apCount} aperture${apCount === 1 ? '' : 's'}`],
-                [
-                    'Panel',
-                    opts.params.panelRal
-                        ? `${opts.params.panelRal} (${opts.params.panelColor ?? '—'})`
-                        : (opts.params.panelColor ?? '—'),
-                ],
+                ['Panel', panelColourSpec(opts.params)],
                 [
                     'Stroke',
                     'Sent to the CAM cutter as the production output',
@@ -1023,7 +1028,7 @@ function drawOverviewPage(ctx: PageContext): void {
             params.shadowGapMm > 0 ? `${params.shadowGapMm} mm` : '—',
         ],
         ['Material', matLabel],
-        ['Panel colour', params.panelRal ?? params.panelColor ?? '—'],
+        ['Panel colour', panelColourSpec(params)],
         ['Thickness', `${params.materialThicknessMm} mm`],
         [
             'Sections',
@@ -1048,6 +1053,16 @@ function drawOverviewPage(ctx: PageContext): void {
         doc.text(T(k), margin, y);
         doc.setTextColor(0);
         doc.text(T(v), margin + 36, y);
+        // A colour chip next to the panel colour so the office/client can sanity-
+        // check the RAL at a glance (the rest of the row is just the code+name).
+        if (k === 'Panel colour' && params.panelColor) {
+            const rgb = hexToRgb(params.panelColor);
+            const vw = doc.getTextWidth(T(v));
+            doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+            doc.setDrawColor(200);
+            doc.setLineWidth(0.2);
+            doc.rect(margin + 36 + vw + 2, y - 3, 4, 4, 'FD');
+        }
     });
 
     // Right column: 3D thumbnail
