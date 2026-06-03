@@ -125,7 +125,16 @@ export function ShopFloorClient({ stages, initialJobs, initialStageSlug }: ShopF
         setPendingJobId(itemId);
         startTransition(async () => {
             try {
-                const result = await advanceItemToNextRoutedStage(itemId);
+                let result = await advanceItemToNextRoutedStage(itemId);
+                if ('requiresOverride' in result) {
+                    const ok = window.confirm(
+                        'This item still has un-QC-checked sub-items:\n\n' +
+                        result.warnings.join('\n') +
+                        '\n\nComplete and move it on anyway?'
+                    );
+                    if (!ok) return;
+                    result = await advanceItemToNextRoutedStage(itemId, { override: true });
+                }
                 if ('error' in result) {
                     setErrorMessage(result.error);
                 } else {

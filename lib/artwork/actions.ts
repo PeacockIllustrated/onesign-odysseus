@@ -1017,8 +1017,11 @@ export async function getComponentStageDefaults(): Promise<ComponentStageDefault
  * completed, no production advance.
  */
 export async function completeArtworkAndAdvanceItem(
-    artworkJobId: string
-): Promise<{ success: boolean } | { error: string }> {
+    artworkJobId: string,
+    opts?: { override?: boolean }
+): Promise<
+    { success: boolean } | { error: string } | { requiresOverride: true; warnings: string[] }
+> {
     const user = await getUser();
     if (!user) {
         return { error: 'Not authenticated' };
@@ -1028,7 +1031,7 @@ export async function completeArtworkAndAdvanceItem(
 
     const { data: artworkJob, error: jobError } = await supabase
         .from('artwork_jobs')
-        .select('id, job_item_id')
+        .select('id, job_item_id, status')
         .eq('id', artworkJobId)
         .single();
 
@@ -1087,9 +1090,29 @@ export async function completeArtworkAndAdvanceItem(
             target_stage_id: string | null;
         }>,
     }));
-    const { gaps, targetStageIds } = computeReleaseGaps(normalised);
-    if (gaps.length > 0) {
-        return { error: 'Cannot release: ' + gaps.join('; ') };
+    const { hardGaps, softGaps, targetStageIds } = computeReleaseGaps(normalised);
+    if (hardGaps.length > 0) {
+        // Can't physically route the work — never overridable.
+        return { error: 'Cannot release: ' + hardGaps.join('; ') };
+    }
+
+    // Soft gates (audit B2): design / fabricate-approval / client approval are
+    // warnings, not hard blocks. The client's external sign-off
+    // (artwork_approvals → 'approved') is the headline one. Surface everything
+    // and let the user consciously override — the override is recorded below.
+    const warnings = [...softGaps];
+    const { data: clientApproval } = await supabase
+        .from('artwork_approvals')
+        .select('id')
+        .eq('job_id', artworkJobId)
+        .eq('status', 'approved')
+        .limit(1)
+        .maybeSingle();
+    if (!clientApproval) {
+        warnings.push('client has not approved the artwork (no signed /sign-off link)');
+    }
+    if (warnings.length > 0 && !opts?.override) {
+        return { requiresOverride: true, warnings };
     }
 
     // Guard: item must actually be at the artwork-approval stage. If it's
@@ -1097,7 +1120,7 @@ export async function completeArtworkAndAdvanceItem(
     // would prepend order-book again and could create a loop (finding #10).
     const { data: jobItem } = await supabase
         .from('job_items')
-        .select('id, current_stage_id')
+        .select('id, current_stage_id, job_id')
         .eq('id', artworkJob.job_item_id)
         .single();
     if (!jobItem) {
@@ -1147,6 +1170,9 @@ export async function completeArtworkAndAdvanceItem(
         return { error: `Failed to update item routing: ${routingError.message}` };
     }
 
+    // Capture the prior status so we can roll back if the advance fails (G10).
+    const priorStatus = artworkJob.status;
+
     // Mark artwork completed BEFORE advancing the item. The artwork-approval
     // gate in moveJobItemToStage rejects forward moves when the linked
     // artwork is not yet completed — flipping status here is what authorises
@@ -1159,9 +1185,33 @@ export async function completeArtworkAndAdvanceItem(
         return { error: `Failed to mark artwork completed: ${artworkStatusError.message}` };
     }
 
-    const advanceResult = await advanceItemToNextRoutedStage(artworkJob.job_item_id);
+    // override:true — this is a legitimate release; the per-stage as-built QC
+    // gate in advanceItemToNextRoutedStage applies to fabrication stages, not
+    // this hop out of artwork-approval.
+    const advanceResult = await advanceItemToNextRoutedStage(artworkJob.job_item_id, {
+        override: true,
+    });
     if ('error' in advanceResult) {
-        return { error: `Routing updated but failed to advance item: ${advanceResult.error}` };
+        // Compensate so the item isn't left "artwork completed but un-advanced"
+        // — roll the status back so Release can be retried cleanly (G10).
+        await supabase
+            .from('artwork_jobs')
+            .update({ status: priorStatus })
+            .eq('id', artworkJobId);
+        return { error: `Could not advance item (no changes applied): ${advanceResult.error}` };
+    }
+
+    // Record the override on the production stage log for an audit trail.
+    if (warnings.length > 0) {
+        await supabase.from('job_stage_log').insert({
+            job_id: jobItem.job_id,
+            job_item_id: artworkJob.job_item_id,
+            from_stage_id: null,
+            to_stage_id: jobItem.current_stage_id,
+            moved_by: user.id,
+            moved_by_name: user.email ?? null,
+            notes: `Released with override by ${user.email ?? user.id}: ${warnings.join('; ')}`,
+        });
     }
 
     revalidatePath('/admin/artwork');
