@@ -201,6 +201,25 @@ export async function autoCreateDeliveryForCompletedJob(
 
     if (jobError || !job) return { error: 'Job not found' };
 
+    // Raise a persisted notification so an auto-delivery failure is visible in
+    // the dashboard rather than silently swallowed (audit G3). Deduped per job.
+    const notifyFailure = async (reason: string) => {
+        await supabase.from('notifications').upsert(
+            {
+                kind: 'delivery_autocreate_failed',
+                severity: 'urgent',
+                title: `Delivery not auto-created: ${job.job_number}`,
+                detail: reason.slice(0, 200),
+                href: '/admin/deliveries',
+                source_table: 'production_jobs',
+                source_id: jobId,
+                dismissed_at: null,
+                dismissed_by: null,
+            },
+            { onConflict: 'source_table,source_id' }
+        );
+    };
+
     // Idempotency: skip if a non-failed delivery already exists.
     const { data: existing } = await supabase
         .from('deliveries')
@@ -232,7 +251,9 @@ export async function autoCreateDeliveryForCompletedJob(
 
     if (insertError || !newDelivery) {
         console.error('autoCreateDeliveryForCompletedJob insert error:', insertError);
-        return { error: insertError?.message ?? 'Failed to auto-create delivery' };
+        const reason = insertError?.message ?? 'Failed to auto-create delivery';
+        await notifyFailure(reason);
+        return { error: reason };
     }
 
     // Populate delivery_items from job_items — same shape as the manual action.
@@ -257,6 +278,7 @@ export async function autoCreateDeliveryForCompletedJob(
             console.error('autoCreateDeliveryForCompletedJob items error:', itemsError);
             // Roll back the empty delivery so admin isn't left with an orphan.
             await supabase.from('deliveries').delete().eq('id', newDelivery.id);
+            await notifyFailure(itemsError.message);
             return { error: itemsError.message };
         }
     }

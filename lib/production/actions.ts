@@ -184,11 +184,21 @@ export async function createJobFromQuote(
 
     const { data: quoteItems } = await supabase
         .from('quote_items')
-        .select('id, item_type')
+        .select('id, item_type, is_production_work')
         .eq('quote_id', quoteId)
         .order('created_at', { ascending: true });
 
-    const items = quoteItems || [];
+    // Service-only lines (fitting/removal/survey) don't enter production — they
+    // go to delivery/invoicing (audit G1). Only production-work lines become
+    // job_items, matching generateArtworkFromQuote.
+    const items = (quoteItems || []).filter((i: any) => i.is_production_work !== false);
+    if (items.length === 0) {
+        return {
+            error:
+                'This quote has no production-work line items (services only) — no ' +
+                'production job is needed. Handle it via Deliveries / Invoices instead.',
+        };
+    }
     const title = quote.customer_name
         ? `${quote.customer_name} — ${quote.quote_number}`
         : quote.quote_number;
@@ -205,7 +215,7 @@ export async function createJobFromQuote(
             current_stage_id: orderBookStage.id,
             priority: 'normal',
             status: 'active',
-            total_items: items.length || 1,
+            total_items: items.length,
         })
         .select('id, job_number')
         .single();
@@ -292,6 +302,13 @@ export async function createManualJob(input: {
 
     if (!orderBookStage) return { error: 'Order Book stage not found — run migration 028 first' };
 
+    const { data: goodsOutStage } = await supabase
+        .from('production_stages')
+        .select('id')
+        .eq('slug', 'goods-out')
+        .is('org_id', null)
+        .single();
+
     const { data: newJob, error } = await supabase
         .from('production_jobs')
         .insert({
@@ -314,6 +331,24 @@ export async function createManualJob(input: {
     if (error || !newJob) {
         console.error('createManualJob error:', error);
         return { error: error?.message || 'Failed to create job' };
+    }
+
+    // A manual job needs at least one job_item or it never shows on the
+    // item-centric board (audit B6). Minimal routing: order-book -> goods-out.
+    const manualRouting = goodsOutStage
+        ? [orderBookStage.id, goodsOutStage.id]
+        : [orderBookStage.id];
+    const { error: itemError } = await supabase.from('job_items').insert({
+        job_id: newJob.id,
+        item_number: 'A',
+        description: parsed.description?.trim() || parsed.title,
+        quantity: 1,
+        current_stage_id: orderBookStage.id,
+        status: 'pending',
+        stage_routing: manualRouting,
+    });
+    if (itemError) {
+        console.error('createManualJob item insert error:', itemError);
     }
 
     await supabase.from('job_stage_log').insert({
