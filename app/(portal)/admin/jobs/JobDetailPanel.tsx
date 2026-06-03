@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useTransition } from 'react';
-import { X, Clock, AlertCircle, Plus, Truck } from 'lucide-react';
+import { X, Clock, AlertCircle, Plus } from 'lucide-react';
 import type { ProductionStage } from '@/lib/production/types';
 import {
     getJobItemDetailAction,
@@ -95,13 +95,14 @@ export function JobDetailPanel({ itemId, onClose, stages }: JobDetailPanelProps)
     }
 
     function handleStartArtwork() {
+        const capturedItemId = itemId;
         startTransition(async () => {
-            const result = await createArtworkJobForItem(itemId);
-            if ('id' in result) {
-                window.open(`/admin/artwork/${result.id}`, '_blank');
-            }
-            const updated = await getJobItemDetailAction(itemId);
-            setDetail(updated);
+            const result = await createArtworkJobForItem(capturedItemId);
+            if ('error' in result) { setError(result.error); return; }
+            setError(null);
+            window.open(`/admin/artwork/${result.id}`, '_blank');
+            const updated = await getJobItemDetailAction(capturedItemId);
+            if (capturedItemId === itemId) setDetail(updated);
         });
     }
 

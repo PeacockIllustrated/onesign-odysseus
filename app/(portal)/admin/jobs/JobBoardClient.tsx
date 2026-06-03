@@ -53,6 +53,14 @@ export function JobBoardClient({ initialBoard, stages }: JobBoardClientProps) {
         if (saved === 'kanban' || saved === 'list') setView(saved);
     }, []);
 
+    // Deep-link: /admin/jobs?item=<id> opens that item's detail panel — used by
+    // the "open in board" link from the shop-floor flags inbox (audit G8).
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const item = new URLSearchParams(window.location.search).get('item');
+        if (item) setDetailItemId(item);
+    }, []);
+
     function changeView(next: BoardView) {
         setView(next);
         if (typeof window !== 'undefined') {

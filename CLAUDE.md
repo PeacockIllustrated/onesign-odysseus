@@ -215,7 +215,7 @@ Earlier drafts of this project modelled artwork approval as a stage inside the p
 
 Only after the client approves the artwork and staff click "Release to production" do the job_items appear on the department Kanban. The artwork module is therefore the authoritative specification; the production module is the fabrication tracker derived from it. Service-only line items (fitting, removal, site surveys) skip artwork and go straight to delivery/invoicing.
 
-Under the hood, production_jobs are still created at quote acceptance time (the schema hasn't been inverted). The difference is entirely in the user-facing flow and the narrative: artwork is the first thing staff touch after a quote accepts, and the Kanban surface for the production team only becomes relevant once artwork releases.
+Under the hood, accepting a quote does **not** auto-create anything — `updateQuoteStatusAction` only flips the status. From the accepted quote, staff click **Create Production Job** (`createJobFromQuote`, which now skips service-only lines) and **Generate Artwork** (`generateArtworkFromQuote`, which requires the job to exist first). Both are manual, and invoice generation is a third independent button. The narrative still holds — artwork is the first thing staff touch after acceptance, and the Kanban only matters once artwork releases — but there is no automatic creation at acceptance time.
 
 ### 2. Shop floor is a top-level route with its own minimal layout (NOT under the portal)
 `/shop-floor` lives at `app/shop-floor/`, deliberately **outside** the `(portal)` route group (same reasoning as `/backshop` in §2b). It owns its own light, large-touch-target `layout.tsx` with no sidebar or admin nav — Start, Pause, Complete. Runs on workshop tablets.
