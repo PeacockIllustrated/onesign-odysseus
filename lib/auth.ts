@@ -106,6 +106,50 @@ export async function isSuperAdmin(): Promise<boolean> {
 }
 
 /**
+ * Check if user is production staff (or a super admin).
+ * Staff are Onesign shop-floor / production workers who can read and
+ * progress production work across all clients, but are not super admins.
+ * Super admins are treated as staff too, so admin accounts can use the
+ * shop floor without a separate role.
+ */
+export async function isStaff(): Promise<boolean> {
+    const user = await getUser();
+    if (!user) return false;
+
+    const supabase = await createServerClient();
+    const { data } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+    return data?.role === 'staff' || data?.role === 'super_admin';
+}
+
+/**
+ * Require staff (or super admin) access. Redirects to login if not.
+ * Use this for the chrome-free shop-floor surface.
+ */
+export async function requireStaff() {
+    const allowed = await isStaff();
+    if (!allowed) {
+        redirect('/login?error=not_staff');
+    }
+}
+
+/**
+ * Server-action guard for staff-or-admin mutations. Returns a discriminated
+ * error instead of redirecting, mirroring requireSuperAdminOrError.
+ */
+export async function requireStaffOrError(): Promise<
+    { ok: true } | { ok: false; error: string }
+> {
+    const allowed = await isStaff();
+    if (!allowed) return { ok: false, error: 'not authorised' };
+    return { ok: true };
+}
+
+/**
  * Require super admin access. Redirects to dashboard if not super admin.
  * Use this for OneSign admin pages that manage all orgs.
  */

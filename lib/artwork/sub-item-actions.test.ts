@@ -107,15 +107,15 @@ describe('SubItemMeasurementInputSchema', () => {
 });
 
 describe('computeReleaseGaps', () => {
-    it('flags components with no sub-items', () => {
-        const { gaps } = computeReleaseGaps([
+    it('flags components with no sub-items as a HARD gap', () => {
+        const { hardGaps } = computeReleaseGaps([
             { name: 'Panel', sub_items: [] },
         ]);
-        expect(gaps).toEqual(['"Panel" has no sub-items']);
+        expect(hardGaps).toEqual(['"Panel" has no sub-items']);
     });
 
-    it('flags missing sign-offs and routing with a precise reference', () => {
-        const { gaps } = computeReleaseGaps([
+    it('splits sign-offs (soft) from missing routing (hard) with precise refs', () => {
+        const { hardGaps, softGaps } = computeReleaseGaps([
             {
                 name: 'Panel',
                 sub_items: [
@@ -129,19 +129,21 @@ describe('computeReleaseGaps', () => {
                 ],
             },
         ]);
-        expect(gaps).toContain(
+        // Sign-offs are overridable → soft.
+        expect(softGaps).toContain(
             'sub-item A (QUEEN BEE letters) of "Panel" — design not signed off'
         );
-        expect(gaps).toContain(
-            'sub-item A (QUEEN BEE letters) of "Panel" — production not signed off'
+        expect(softGaps).toContain(
+            'sub-item A (QUEEN BEE letters) of "Panel" — not approved to fabricate'
         );
-        expect(gaps).toContain(
+        // No target department can't be routed → hard.
+        expect(hardGaps).toContain(
             'sub-item A (QUEEN BEE letters) of "Panel" — no target department'
         );
     });
 
-    it('returns empty gaps when every sub-item is signed off + routed', () => {
-        const { gaps, targetStageIds } = computeReleaseGaps([
+    it('returns no gaps when every sub-item is signed off + routed', () => {
+        const { hardGaps, softGaps, targetStageIds } = computeReleaseGaps([
             {
                 name: 'Panel',
                 sub_items: [
@@ -162,7 +164,8 @@ describe('computeReleaseGaps', () => {
                 ],
             },
         ]);
-        expect(gaps).toEqual([]);
+        expect(hardGaps).toEqual([]);
+        expect(softGaps).toEqual([]);
         expect(targetStageIds.sort()).toEqual(['stage-cnc', 'stage-vinyl']);
     });
 

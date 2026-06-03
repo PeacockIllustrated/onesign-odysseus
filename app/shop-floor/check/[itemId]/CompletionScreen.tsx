@@ -19,7 +19,19 @@ export function CompletionScreen({ ctx, onDone }: Props) {
         setError(null);
         setPendingKind('advance');
         startTransition(async () => {
-            const res = await advanceItemToNextRoutedStage(ctx.item.id);
+            let res = await advanceItemToNextRoutedStage(ctx.item.id);
+            if ('requiresOverride' in res) {
+                const ok = window.confirm(
+                    'Some sub-items here are not QC-checked:\n\n' +
+                    res.warnings.join('\n') +
+                    '\n\nComplete and move it on anyway?'
+                );
+                if (!ok) {
+                    setPendingKind(null);
+                    return;
+                }
+                res = await advanceItemToNextRoutedStage(ctx.item.id, { override: true });
+            }
             if ('error' in res) {
                 setError(res.error);
                 setPendingKind(null);

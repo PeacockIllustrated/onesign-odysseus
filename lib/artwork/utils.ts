@@ -257,23 +257,27 @@ export function computeReleaseGaps(
             target_stage_id: string | null;
         }>;
     }>
-): { gaps: string[]; targetStageIds: string[] } {
-    const gaps: string[] = [];
+): { hardGaps: string[]; softGaps: string[]; targetStageIds: string[] } {
+    // hardGaps make release physically impossible (we can't build a routing).
+    // softGaps are policy warnings (sign-offs) the user may consciously
+    // override — see completeArtworkAndAdvanceItem.
+    const hardGaps: string[] = [];
+    const softGaps: string[] = [];
     const targetStageIds = new Set<string>();
     for (const comp of components) {
         if (!comp.sub_items || comp.sub_items.length === 0) {
-            gaps.push(`"${comp.name}" has no sub-items`);
+            hardGaps.push(`"${comp.name}" has no sub-items`);
             continue;
         }
         for (const si of comp.sub_items) {
             const ref = `sub-item ${si.label}${si.name ? ` (${si.name})` : ''} of "${comp.name}"`;
-            if (!si.design_signed_off_at) gaps.push(`${ref} — design not signed off`);
-            if (!si.production_signed_off_at) gaps.push(`${ref} — production not signed off`);
-            if (!si.target_stage_id) gaps.push(`${ref} — no target department`);
+            if (!si.design_signed_off_at) softGaps.push(`${ref} — design not signed off`);
+            if (!si.production_signed_off_at) softGaps.push(`${ref} — not approved to fabricate`);
+            if (!si.target_stage_id) hardGaps.push(`${ref} — no target department`);
             if (si.target_stage_id) targetStageIds.add(si.target_stage_id);
         }
     }
-    return { gaps, targetStageIds: Array.from(targetStageIds) };
+    return { hardGaps, softGaps, targetStageIds: Array.from(targetStageIds) };
 }
 
 /**

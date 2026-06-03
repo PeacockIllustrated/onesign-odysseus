@@ -1,8 +1,9 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { createBrowserClient } from '@/lib/supabase';
 import { Card } from '@/app/(portal)/components/ui';
 import { formatDateTime } from '@/lib/artwork/utils';
 import { AlertTriangle, Check, X, ExternalLink } from 'lucide-react';
@@ -34,6 +35,21 @@ export function FlagsClient({ rows }: Props) {
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('open');
     const [actionError, setActionError] = useState<string | null>(null);
     const [isPending, startTransition] = useTransition();
+
+    // Live inbox: refresh when a flag is raised or resolved (migration 064
+    // publishes shop_floor_flags to Realtime).
+    useEffect(() => {
+        const supabase = createBrowserClient();
+        const channel = supabase
+            .channel('shop_floor_flags_inbox')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'shop_floor_flags' },
+                () => router.refresh()
+            )
+            .subscribe();
+        return () => { supabase.removeChannel(channel); };
+    }, [router]);
 
     const counts = useMemo(() => {
         let open = 0;
@@ -227,9 +243,9 @@ function FlagCard({
                             )}
                         </span>
                         <div className="flex items-center gap-2">
-                            {row.jobItem?.jobId && (
+                            {row.jobItem?.id && (
                                 <Link
-                                    href={`/admin/jobs?job=${row.jobItem.jobId}`}
+                                    href={`/admin/jobs?item=${row.jobItem.id}`}
                                     className="text-xs font-semibold px-2.5 py-1.5 rounded border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50 inline-flex items-center gap-1"
                                 >
                                     <ExternalLink size={12} /> open in board

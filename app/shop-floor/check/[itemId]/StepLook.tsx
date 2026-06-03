@@ -32,6 +32,18 @@ export function StepLook({ subItem, stageInstructions, onNext, onReportProblem }
 
     return (
         <div className="space-y-4 md:grid md:grid-cols-[1.4fr_1fr] md:gap-4 md:space-y-0">
+            {subItem.production_changes_requested_at && (
+                <div className="md:col-span-2 bg-red-50 border-2 border-red-300 rounded-lg p-4">
+                    <h4 className="text-sm font-bold text-red-800 flex items-center gap-1.5 mb-1">
+                        <AlertTriangle size={16} /> Changes requested — do not fabricate yet
+                    </h4>
+                    <p className="text-sm text-red-900">
+                        {subItem.production_changes_comment ||
+                            'The production reviewer flagged this sub-item. Check with the artwork team before building.'}
+                    </p>
+                </div>
+            )}
+
             <div>
                 <ArtworkZoom url={subItem.thumbnail_url} alt={subItem.name ?? 'Artwork'} />
             </div>

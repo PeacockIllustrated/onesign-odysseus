@@ -20,8 +20,6 @@ import {
     CreateComponentInputSchema,
     SubmitDesignInput,
     SubmitDesignInputSchema,
-    SubmitProductionMeasurementsInput,
-    SubmitProductionMeasurementsInputSchema,
     ArtworkJob,
     ArtworkComponent,
     ArtworkJobWithComponents,
@@ -34,7 +32,7 @@ import {
     ArtworkDashboardFilter,
     ArtworkGhostRow,
 } from './types';
-import { checkDimensionTolerance, computeReleaseGaps } from './utils';
+import { computeReleaseGaps } from './utils';
 import { advanceItemToNextRoutedStage } from '@/lib/production/actions';
 
 // =============================================================================
@@ -641,270 +639,6 @@ export async function signOffDesign(
 }
 
 // =============================================================================
-// PRODUCTION WORKFLOW
-// =============================================================================
-
-/**
- * Submit production measurements for a component.
- * Enforces design sign-off gate.
- */
-export async function submitProductionMeasurements(
-    componentId: string,
-    input: SubmitProductionMeasurementsInput
-): Promise<{ success: boolean } | { error: string }> {
-    const user = await getUser();
-    if (!user) {
-        return { error: 'not authenticated' };
-    }
-
-    const validation = SubmitProductionMeasurementsInputSchema.safeParse(input);
-    if (!validation.success) {
-        return { error: validation.error.issues[0].message };
-    }
-
-    const supabase = await createServerClient();
-
-    // Fetch component with design data
-    const { data: component } = await supabase
-        .from('artwork_components')
-        .select('*')
-        .eq('id', componentId)
-        .single();
-
-    if (!component) {
-        return { error: 'component not found' };
-    }
-
-    // Gate check: design must be signed off
-    if (!component.design_signed_off_at) {
-        return { error: 'design sign-off required before production can proceed' };
-    }
-
-    // Compute dimension tolerance
-    const toleranceResult = checkDimensionTolerance(
-        Number(component.width_mm),
-        Number(component.height_mm),
-        validation.data.measured_width_mm,
-        validation.data.measured_height_mm
-    );
-
-    // Update component with production data
-    const { error } = await supabase
-        .from('artwork_components')
-        .update({
-            measured_width_mm: validation.data.measured_width_mm,
-            measured_height_mm: validation.data.measured_height_mm,
-            material_confirmed: validation.data.material_confirmed,
-            rip_no_scaling_confirmed: validation.data.rip_no_scaling_confirmed,
-            production_notes: validation.data.production_notes || null,
-            dimension_flag: toleranceResult.flag,
-            width_deviation_mm: toleranceResult.width_deviation_mm,
-            height_deviation_mm: toleranceResult.height_deviation_mm,
-            production_checked_by: user.id,
-            status: 'in_production',
-        })
-        .eq('id', componentId);
-
-    if (error) {
-        console.error('error submitting production measurements:', error);
-        return { error: error.message };
-    }
-
-    // Log production checks
-    const checks = [
-        {
-            component_id: componentId,
-            check_type: 'dimension_measurement',
-            passed: toleranceResult.overall_pass,
-            value_json: {
-                measured_width_mm: validation.data.measured_width_mm,
-                measured_height_mm: validation.data.measured_height_mm,
-                width_deviation_mm: toleranceResult.width_deviation_mm,
-                height_deviation_mm: toleranceResult.height_deviation_mm,
-            },
-            checked_by: user.id,
-        },
-        {
-            component_id: componentId,
-            check_type: 'material_confirmation',
-            passed: validation.data.material_confirmed,
-            value_json: {},
-            checked_by: user.id,
-        },
-        {
-            component_id: componentId,
-            check_type: 'rip_scaling_check',
-            passed: validation.data.rip_no_scaling_confirmed,
-            value_json: {},
-            checked_by: user.id,
-        },
-    ];
-
-    await supabase.from('artwork_production_checks').insert(checks);
-
-    // Process extra item measurements
-    if (validation.data.item_measurements && validation.data.item_measurements.length > 0) {
-        for (const meas of validation.data.item_measurements) {
-            // Fetch the item's spec dimensions
-            const { data: item } = await supabase
-                .from('artwork_component_items')
-                .select('width_mm, height_mm, label')
-                .eq('id', meas.item_id)
-                .eq('component_id', componentId)
-                .single();
-
-            if (!item || !item.width_mm || !item.height_mm) continue;
-
-            const itemTolerance = checkDimensionTolerance(
-                Number(item.width_mm),
-                Number(item.height_mm),
-                meas.measured_width_mm,
-                meas.measured_height_mm
-            );
-
-            await supabase
-                .from('artwork_component_items')
-                .update({
-                    measured_width_mm: meas.measured_width_mm,
-                    measured_height_mm: meas.measured_height_mm,
-                    dimension_flag: itemTolerance.flag,
-                    width_deviation_mm: itemTolerance.width_deviation_mm,
-                    height_deviation_mm: itemTolerance.height_deviation_mm,
-                })
-                .eq('id', meas.item_id);
-
-            // Log each item's dimension check
-            await supabase.from('artwork_production_checks').insert({
-                component_id: componentId,
-                check_type: 'dimension_measurement',
-                passed: itemTolerance.overall_pass,
-                value_json: {
-                    item_id: meas.item_id,
-                    item_label: item.label,
-                    measured_width_mm: meas.measured_width_mm,
-                    measured_height_mm: meas.measured_height_mm,
-                    width_deviation_mm: itemTolerance.width_deviation_mm,
-                    height_deviation_mm: itemTolerance.height_deviation_mm,
-                },
-                checked_by: user.id,
-            });
-        }
-    }
-
-    // Update job status to in_production
-    await supabase
-        .from('artwork_jobs')
-        .update({ status: 'in_production' })
-        .eq('id', component.job_id)
-        .in('status', ['draft', 'in_progress', 'design_complete']);
-
-    revalidatePath(`/admin/artwork/${component.job_id}`);
-    revalidatePath(`/admin/artwork/${component.job_id}/${componentId}`);
-    return { success: true };
-}
-
-/**
- * Sign off production for a component.
- * Validates all checks are complete.
- * Auto-transitions job to completed if all components are done.
- */
-export async function signOffProduction(
-    componentId: string
-): Promise<{ success: boolean } | { error: string }> {
-    const user = await getUser();
-    if (!user) {
-        return { error: 'not authenticated' };
-    }
-
-    const supabase = await createServerClient();
-
-    const { data: component } = await supabase
-        .from('artwork_components')
-        .select('*')
-        .eq('id', componentId)
-        .single();
-
-    if (!component) {
-        return { error: 'component not found' };
-    }
-
-    // Validate all requirements
-    const checks = [
-        { condition: !!component.design_signed_off_at, message: 'design must be signed off' },
-        { condition: !!component.measured_width_mm, message: 'measured width is required' },
-        { condition: !!component.measured_height_mm, message: 'measured height is required' },
-        { condition: component.material_confirmed, message: 'material must be confirmed' },
-        { condition: component.rip_no_scaling_confirmed, message: 'RIP scaling must be confirmed' },
-    ];
-
-    const failures = checks.filter((c) => !c.condition);
-    if (failures.length > 0) {
-        return { error: failures.map((f) => f.message).join(', ') };
-    }
-
-    // Validate all extra items have measurements
-    const { data: extraItems } = await supabase
-        .from('artwork_component_items')
-        .select('*')
-        .eq('component_id', componentId);
-
-    if (extraItems && extraItems.length > 0) {
-        const unmeasuredItems = extraItems.filter(
-            (item) => item.width_mm && !item.measured_width_mm
-        );
-        if (unmeasuredItems.length > 0) {
-            return { error: 'all extra items must have measured dimensions before sign-off' };
-        }
-    }
-
-    // Log final signoff check
-    await supabase.from('artwork_production_checks').insert({
-        component_id: componentId,
-        check_type: 'final_signoff',
-        passed: true,
-        value_json: {
-            dimension_flag: component.dimension_flag,
-            width_deviation_mm: component.width_deviation_mm,
-            height_deviation_mm: component.height_deviation_mm,
-        },
-        checked_by: user.id,
-    });
-
-    const { error } = await supabase
-        .from('artwork_components')
-        .update({
-            production_signed_off_at: new Date().toISOString(),
-            production_signed_off_by: user.id,
-            status: 'production_complete',
-        })
-        .eq('id', componentId);
-
-    if (error) {
-        console.error('error signing off production:', error);
-        return { error: error.message };
-    }
-
-    // Check if all components for this job are complete
-    const { data: allComponents } = await supabase
-        .from('artwork_components')
-        .select('status')
-        .eq('job_id', component.job_id);
-
-    const allComplete = allComponents?.every((c) => c.status === 'production_complete');
-    if (allComplete) {
-        await supabase
-            .from('artwork_jobs')
-            .update({ status: 'completed' })
-            .eq('id', component.job_id);
-    }
-
-    revalidatePath(`/admin/artwork/${component.job_id}`);
-    revalidatePath(`/admin/artwork/${component.job_id}/${componentId}`);
-    revalidatePath('/admin/artwork');
-    return { success: true };
-}
-
-// =============================================================================
 // FILE UPLOAD
 // =============================================================================
 
@@ -1283,8 +1017,11 @@ export async function getComponentStageDefaults(): Promise<ComponentStageDefault
  * completed, no production advance.
  */
 export async function completeArtworkAndAdvanceItem(
-    artworkJobId: string
-): Promise<{ success: boolean } | { error: string }> {
+    artworkJobId: string,
+    opts?: { override?: boolean }
+): Promise<
+    { success: boolean } | { error: string } | { requiresOverride: true; warnings: string[] }
+> {
     const user = await getUser();
     if (!user) {
         return { error: 'Not authenticated' };
@@ -1294,7 +1031,7 @@ export async function completeArtworkAndAdvanceItem(
 
     const { data: artworkJob, error: jobError } = await supabase
         .from('artwork_jobs')
-        .select('id, job_item_id')
+        .select('id, job_item_id, status')
         .eq('id', artworkJobId)
         .single();
 
@@ -1353,9 +1090,29 @@ export async function completeArtworkAndAdvanceItem(
             target_stage_id: string | null;
         }>,
     }));
-    const { gaps, targetStageIds } = computeReleaseGaps(normalised);
-    if (gaps.length > 0) {
-        return { error: 'Cannot release: ' + gaps.join('; ') };
+    const { hardGaps, softGaps, targetStageIds } = computeReleaseGaps(normalised);
+    if (hardGaps.length > 0) {
+        // Can't physically route the work — never overridable.
+        return { error: 'Cannot release: ' + hardGaps.join('; ') };
+    }
+
+    // Soft gates (audit B2): design / fabricate-approval / client approval are
+    // warnings, not hard blocks. The client's external sign-off
+    // (artwork_approvals → 'approved') is the headline one. Surface everything
+    // and let the user consciously override — the override is recorded below.
+    const warnings = [...softGaps];
+    const { data: clientApproval } = await supabase
+        .from('artwork_approvals')
+        .select('id')
+        .eq('job_id', artworkJobId)
+        .eq('status', 'approved')
+        .limit(1)
+        .maybeSingle();
+    if (!clientApproval) {
+        warnings.push('client has not approved the artwork (no signed /sign-off link)');
+    }
+    if (warnings.length > 0 && !opts?.override) {
+        return { requiresOverride: true, warnings };
     }
 
     // Guard: item must actually be at the artwork-approval stage. If it's
@@ -1363,7 +1120,7 @@ export async function completeArtworkAndAdvanceItem(
     // would prepend order-book again and could create a loop (finding #10).
     const { data: jobItem } = await supabase
         .from('job_items')
-        .select('id, current_stage_id')
+        .select('id, current_stage_id, job_id')
         .eq('id', artworkJob.job_item_id)
         .single();
     if (!jobItem) {
@@ -1413,6 +1170,9 @@ export async function completeArtworkAndAdvanceItem(
         return { error: `Failed to update item routing: ${routingError.message}` };
     }
 
+    // Capture the prior status so we can roll back if the advance fails (G10).
+    const priorStatus = artworkJob.status;
+
     // Mark artwork completed BEFORE advancing the item. The artwork-approval
     // gate in moveJobItemToStage rejects forward moves when the linked
     // artwork is not yet completed — flipping status here is what authorises
@@ -1425,9 +1185,33 @@ export async function completeArtworkAndAdvanceItem(
         return { error: `Failed to mark artwork completed: ${artworkStatusError.message}` };
     }
 
-    const advanceResult = await advanceItemToNextRoutedStage(artworkJob.job_item_id);
+    // override:true — this is a legitimate release; the per-stage as-built QC
+    // gate in advanceItemToNextRoutedStage applies to fabrication stages, not
+    // this hop out of artwork-approval.
+    const advanceResult = await advanceItemToNextRoutedStage(artworkJob.job_item_id, {
+        override: true,
+    });
     if ('error' in advanceResult) {
-        return { error: `Routing updated but failed to advance item: ${advanceResult.error}` };
+        // Compensate so the item isn't left "artwork completed but un-advanced"
+        // — roll the status back so Release can be retried cleanly (G10).
+        await supabase
+            .from('artwork_jobs')
+            .update({ status: priorStatus })
+            .eq('id', artworkJobId);
+        return { error: `Could not advance item (no changes applied): ${advanceResult.error}` };
+    }
+
+    // Record the override on the production stage log for an audit trail.
+    if (warnings.length > 0) {
+        await supabase.from('job_stage_log').insert({
+            job_id: jobItem.job_id,
+            job_item_id: artworkJob.job_item_id,
+            from_stage_id: null,
+            to_stage_id: jobItem.current_stage_id,
+            moved_by: user.id,
+            moved_by_name: user.email ?? null,
+            notes: `Released with override by ${user.email ?? user.id}: ${warnings.join('; ')}`,
+        });
     }
 
     revalidatePath('/admin/artwork');

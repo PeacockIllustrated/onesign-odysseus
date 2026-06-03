@@ -470,8 +470,10 @@ export type UpdateSubItemInput = z.infer<typeof UpdateSubItemInputSchema>;
  * Server computes dimension tolerance against the design width/height.
  */
 export const SubItemMeasurementInputSchema = z.object({
-    measured_width_mm: z.number().positive(),
-    measured_height_mm: z.number().positive(),
+    // Optional: a sub-item whose spec carries no dimensions (common for
+    // visual/vinyl packs) can still pass as-built QC without a measurement.
+    measured_width_mm: z.number().positive().nullable().optional(),
+    measured_height_mm: z.number().positive().nullable().optional(),
     material_confirmed: z.boolean(),
     rip_no_scaling_confirmed: z.boolean(),
 });

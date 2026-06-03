@@ -184,11 +184,21 @@ export async function createJobFromQuote(
 
     const { data: quoteItems } = await supabase
         .from('quote_items')
-        .select('id, item_type')
+        .select('id, item_type, is_production_work')
         .eq('quote_id', quoteId)
         .order('created_at', { ascending: true });
 
-    const items = quoteItems || [];
+    // Service-only lines (fitting/removal/survey) don't enter production — they
+    // go to delivery/invoicing (audit G1). Only production-work lines become
+    // job_items, matching generateArtworkFromQuote.
+    const items = (quoteItems || []).filter((i: any) => i.is_production_work !== false);
+    if (items.length === 0) {
+        return {
+            error:
+                'This quote has no production-work line items (services only) — no ' +
+                'production job is needed. Handle it via Deliveries / Invoices instead.',
+        };
+    }
     const title = quote.customer_name
         ? `${quote.customer_name} — ${quote.quote_number}`
         : quote.quote_number;
@@ -205,7 +215,7 @@ export async function createJobFromQuote(
             current_stage_id: orderBookStage.id,
             priority: 'normal',
             status: 'active',
-            total_items: items.length || 1,
+            total_items: items.length,
         })
         .select('id, job_number')
         .single();
@@ -292,6 +302,13 @@ export async function createManualJob(input: {
 
     if (!orderBookStage) return { error: 'Order Book stage not found — run migration 028 first' };
 
+    const { data: goodsOutStage } = await supabase
+        .from('production_stages')
+        .select('id')
+        .eq('slug', 'goods-out')
+        .is('org_id', null)
+        .single();
+
     const { data: newJob, error } = await supabase
         .from('production_jobs')
         .insert({
@@ -314,6 +331,24 @@ export async function createManualJob(input: {
     if (error || !newJob) {
         console.error('createManualJob error:', error);
         return { error: error?.message || 'Failed to create job' };
+    }
+
+    // A manual job needs at least one job_item or it never shows on the
+    // item-centric board (audit B6). Minimal routing: order-book -> goods-out.
+    const manualRouting = goodsOutStage
+        ? [orderBookStage.id, goodsOutStage.id]
+        : [orderBookStage.id];
+    const { error: itemError } = await supabase.from('job_items').insert({
+        job_id: newJob.id,
+        item_number: 'A',
+        description: parsed.description?.trim() || parsed.title,
+        quantity: 1,
+        current_stage_id: orderBookStage.id,
+        status: 'pending',
+        stage_routing: manualRouting,
+    });
+    if (itemError) {
+        console.error('createManualJob item insert error:', itemError);
     }
 
     await supabase.from('job_stage_log').insert({
@@ -479,9 +514,44 @@ export async function pauseItem(itemId: string): Promise<{ success: boolean } | 
     return { success: true };
 }
 
+/**
+ * For the item's linked artwork job, return labels of sub-items targeted at
+ * `stageId` that have NOT passed as-built QC. Empty when there's no linked
+ * artwork or nothing is targeted here (e.g. order-book) — so the QC gate only
+ * fires when leaving a fabrication stage that actually has work to check.
+ */
+async function asBuiltGapsForStage(
+    supabase: Awaited<ReturnType<typeof createServerClient>>,
+    itemId: string,
+    stageId: string
+): Promise<string[]> {
+    const { data: aj } = await supabase
+        .from('artwork_jobs')
+        .select('id')
+        .eq('job_item_id', itemId)
+        .maybeSingle();
+    if (!aj) return [];
+    const { data: comps } = await supabase
+        .from('artwork_components')
+        .select('name, sub_items:artwork_component_items(label, name, target_stage_id, as_built_signed_off_at)')
+        .eq('job_id', aj.id);
+    const gaps: string[] = [];
+    for (const c of (comps ?? []) as any[]) {
+        for (const si of (c.sub_items ?? []) as any[]) {
+            if (si.target_stage_id === stageId && !si.as_built_signed_off_at) {
+                gaps.push(`${si.label}${si.name ? ` (${si.name})` : ''}`);
+            }
+        }
+    }
+    return gaps;
+}
+
 export async function advanceItemToNextRoutedStage(
-    itemId: string
-): Promise<{ success: boolean } | { error: string }> {
+    itemId: string,
+    opts?: { override?: boolean }
+): Promise<
+    { success: boolean } | { error: string } | { requiresOverride: true; warnings: string[] }
+> {
     const user = await getUser();
     if (!user) return { error: 'Not authenticated' };
 
@@ -495,13 +565,28 @@ export async function advanceItemToNextRoutedStage(
 
     if (!item) return { error: 'Item not found' };
 
+    // As-built QC soft gate (audit B3): leaving a fabrication stage whose
+    // sub-items haven't passed the guided check is a warning, not a block —
+    // the caller may override. No-op for stages with nothing targeted here.
+    if (!opts?.override && item.current_stage_id) {
+        const asBuiltGaps = await asBuiltGapsForStage(supabase, itemId, item.current_stage_id);
+        if (asBuiltGaps.length > 0) {
+            return {
+                requiresOverride: true,
+                warnings: asBuiltGaps.map(g => `${g} — not QC-checked`),
+            };
+        }
+    }
+
+    const moveNote = opts?.override ? 'Advanced from shop floor (QC override)' : 'Advanced from shop floor';
+
     const routing = (item.stage_routing as string[] | null) ?? [];
     const currentIdx = routing.indexOf(item.current_stage_id ?? '');
 
     if (currentIdx >= 0 && currentIdx < routing.length - 1) {
         // Advance to next stage in routing
         const nextStageId = routing[currentIdx + 1];
-        const moveResult = await moveJobItemToStage(itemId, nextStageId, 'Advanced from shop floor');
+        const moveResult = await moveJobItemToStage(itemId, nextStageId, moveNote);
         if ('error' in moveResult) return moveResult;
 
         // Reset status to pending for the next department
@@ -513,23 +598,23 @@ export async function advanceItemToNextRoutedStage(
         revalidatePath('/shop-floor');
         return { success: true };
     } else {
-        // At last stage in routing, or no routing / stage not found in routing — complete item.
-        // Log a warning if routing is empty/missing — this usually means the item
-        // was advanced before Release to Production rebuilt the routing (finding #18).
+        // Malformed routing (audit G5): empty routing, or current stage not in
+        // the routing array. This previously silently marked the item completed
+        // and triggered auto-delivery — masking the upstream bug (item advanced
+        // before Release rebuilt the routing). Refuse instead so it's visible.
         if (routing.length === 0 || currentIdx < 0) {
-            console.warn(
-                `advanceItemToNextRoutedStage: item ${itemId} has empty or mismatched routing ` +
-                `(routing length=${routing.length}, currentIdx=${currentIdx}). Completing item as fallback.`
-            );
+            return {
+                error:
+                    'This item has no valid production routing yet — it was likely ' +
+                    'advanced before its artwork was released. Open the linked artwork ' +
+                    'job and click "Release to production" to rebuild the routing.',
+            };
         }
 
-        // Mirror of the artwork-approval gate in moveJobItemToStage. The
-        // forward-move branch above already passes through that guard, but
-        // this completion-fallback branch writes job_items directly, so we
-        // re-apply the check here. Without this, an item parked at
-        // artwork-approval with a malformed single-stage routing would be
-        // marked completed and trigger auto-delivery before the client has
-        // ever seen the artwork.
+        // Legitimate last stage in the routing — complete the item.
+        // Mirror of the artwork-approval gate in moveJobItemToStage: never
+        // complete (and auto-deliver) an item still parked at artwork-approval
+        // whose linked artwork isn't released.
         const { data: currentStage } = await supabase
             .from('production_stages')
             .select('slug')

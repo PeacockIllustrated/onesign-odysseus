@@ -37,6 +37,7 @@ export function ReleaseToProductionButton({ artworkJobId, components, stages }: 
     const router = useRouter();
     const [isPending, startTransition] = useTransition();
     const [showConfirm, setShowConfirm] = useState(false);
+    const [warnings, setWarnings] = useState<string[] | null>(null);
 
     // Normalise so we can hand the pure function exactly what it expects.
     const normalised = components.map((c) => ({
@@ -50,8 +51,11 @@ export function ReleaseToProductionButton({ artworkJobId, components, stages }: 
         })),
     }));
 
-    const { gaps, targetStageIds } = computeReleaseGaps(normalised);
-    const canRelease = components.length > 0 && gaps.length === 0;
+    // Only HARD gaps (no sub-items / no target department) disable the button —
+    // they make routing impossible. Soft gaps (sign-offs, client approval) are
+    // surfaced by the server as an override confirm (audit B2).
+    const { hardGaps, targetStageIds } = computeReleaseGaps(normalised);
+    const canRelease = components.length > 0 && hardGaps.length === 0;
 
     const stageMap = new Map(stages.map((s) => [s.id, s]));
     const assignedStages = targetStageIds
@@ -59,25 +63,31 @@ export function ReleaseToProductionButton({ artworkJobId, components, stages }: 
         .filter(Boolean)
         .sort((a, b) => stages.indexOf(a!) - stages.indexOf(b!));
 
-    function handleRelease() {
+    function release(override: boolean) {
         startTransition(async () => {
-            const result = await completeArtworkAndAdvanceItem(artworkJobId);
+            const result = await completeArtworkAndAdvanceItem(
+                artworkJobId,
+                override ? { override: true } : undefined
+            );
+            if ('requiresOverride' in result) {
+                setWarnings(result.warnings);
+                return;
+            }
             if ('success' in result) {
                 router.refresh();
             } else {
                 alert(result.error);
             }
             setShowConfirm(false);
+            setWarnings(null);
         });
     }
 
     if (!canRelease) {
-        // Surface the precise gap list on hover. Cap at a reasonable length
-        // so the tooltip stays readable; full list is also available server-side.
         const tooltip =
             components.length === 0
                 ? 'No components on this artwork job'
-                : gaps.slice(0, 6).join(' • ') + (gaps.length > 6 ? ` … +${gaps.length - 6} more` : '');
+                : hardGaps.slice(0, 6).join(' • ') + (hardGaps.length > 6 ? ` … +${hardGaps.length - 6} more` : '');
         return (
             <button
                 disabled
@@ -86,6 +96,35 @@ export function ReleaseToProductionButton({ artworkJobId, components, stages }: 
             >
                 Release to Production
             </button>
+        );
+    }
+
+    // Server flagged soft warnings — confirm an override.
+    if (warnings) {
+        return (
+            <div className="flex flex-col gap-2 max-w-md">
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-900">
+                    <p className="font-semibold mb-1">Release before these are complete?</p>
+                    <ul className="list-disc list-inside space-y-0.5">
+                        {warnings.map((w, i) => <li key={i}>{w}</li>)}
+                    </ul>
+                </div>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => release(true)}
+                        disabled={isPending}
+                        className="btn-primary text-xs py-1.5 px-3"
+                    >
+                        {isPending ? 'Releasing…' : 'Release anyway'}
+                    </button>
+                    <button
+                        onClick={() => setWarnings(null)}
+                        className="text-xs text-neutral-500 hover:text-neutral-700"
+                    >
+                        Cancel
+                    </button>
+                </div>
+            </div>
         );
     }
 
@@ -104,7 +143,7 @@ export function ReleaseToProductionButton({ artworkJobId, components, stages }: 
                     ))}
                 </div>
                 <button
-                    onClick={handleRelease}
+                    onClick={() => release(false)}
                     disabled={isPending}
                     className="btn-primary text-xs py-1.5 px-3"
                 >

@@ -27,6 +27,9 @@ export interface ShopFloorSubItem {
     target_stage_id: string | null;
     design_signed_off_at: string | null;
     production_signed_off_at: string | null;
+    as_built_signed_off_at: string | null;
+    production_changes_requested_at: string | null;
+    production_changes_comment: string | null;
     thumbnail_url: string | null;
     component_id: string;
     component_name: string;
@@ -114,7 +117,9 @@ export async function getSubItemsForItemAtStage(
                     finish, quantity, width_mm, height_mm, returns_mm,
                     measured_width_mm, measured_height_mm, dimension_flag,
                     target_stage_id, design_signed_off_at,
-                    production_signed_off_at, thumbnail_url
+                    production_signed_off_at, as_built_signed_off_at,
+                    production_changes_requested_at, production_changes_comment,
+                    thumbnail_url
                  )`
             )
             .eq('job_id', artworkJob.id);

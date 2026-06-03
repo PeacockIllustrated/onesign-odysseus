@@ -13,10 +13,10 @@ import {
     useSensors,
     useDroppable,
 } from '@dnd-kit/core';
-import { Plus, LayoutGrid, List as ListIcon, AlertCircle, X } from 'lucide-react';
+import { Plus, LayoutGrid, List as ListIcon, AlertCircle, X, Search } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase';
 import { moveJobItemToStage } from '@/lib/production/actions';
-import type { ItemBoardColumn, JobItemWithJob, JobItem, ProductionStage } from '@/lib/production/types';
+import type { ItemBoardColumn, JobItemWithJob, JobItem, JobPriority, ProductionStage } from '@/lib/production/types';
 import { isJobOverdue, formatDueDate } from '@/lib/production/utils';
 import { ItemCard } from './JobCard';
 import { ClientGroupCard } from './ClientGroupCard';
@@ -45,12 +45,23 @@ export function JobBoardClient({ initialBoard, stages }: JobBoardClientProps) {
     const preDragBoardRef = useRef<ItemBoardColumn[]>([]);
     const [view, setView] = useState<BoardView>('kanban');
     const [moveError, setMoveError] = useState<string | null>(null);
+    const [search, setSearch] = useState('');
+    const [priorityFilter, setPriorityFilter] = useState<'all' | JobPriority>('all');
+    const [overdueOnly, setOverdueOnly] = useState(false);
 
     // Load persisted view preference
     useEffect(() => {
         if (typeof window === 'undefined') return;
         const saved = window.localStorage.getItem(VIEW_STORAGE_KEY);
         if (saved === 'kanban' || saved === 'list') setView(saved);
+    }, []);
+
+    // Deep-link: /admin/jobs?item=<id> opens that item's detail panel — used by
+    // the "open in board" link from the shop-floor flags inbox (audit G8).
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const item = new URLSearchParams(window.location.search).get('item');
+        if (item) setDetailItemId(item);
     }, []);
 
     function changeView(next: BoardView) {
@@ -153,6 +164,26 @@ export function JobBoardClient({ initialBoard, stages }: JobBoardClientProps) {
 
     const totalItems = board.flatMap(c => c.items).length;
 
+    // Client-side search + filters (audit GAP-3/GAP-4). Drag still operates on
+    // the full `board`; only what's rendered is filtered.
+    const today = new Date().toISOString().slice(0, 10);
+    const q = search.trim().toLowerCase();
+    const hasFilters = q !== '' || priorityFilter !== 'all' || overdueOnly;
+    const matches = (i: JobItemWithJob) => {
+        if (priorityFilter !== 'all' && i.job.priority !== priorityFilter) return false;
+        if (overdueOnly && !(i.job.due_date && i.job.due_date < today)) return false;
+        if (q) {
+            const hay = `${i.job.client_name} ${i.job.job_number} ${i.description} ${i.item_number ?? ''}`.toLowerCase();
+            if (!hay.includes(q)) return false;
+        }
+        return true;
+    };
+    const filteredBoard = hasFilters
+        ? board.map(col => ({ ...col, items: col.items.filter(matches) }))
+        : board;
+    const filteredTotal = filteredBoard.flatMap(c => c.items).length;
+    const clearFilters = () => { setSearch(''); setPriorityFilter('all'); setOverdueOnly(false); };
+
     return (
         <>
             {moveError && (
@@ -170,9 +201,53 @@ export function JobBoardClient({ initialBoard, stages }: JobBoardClientProps) {
                 </div>
             )}
             <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-                <span className="text-sm text-neutral-500">
-                    {totalItems} active item{totalItems !== 1 ? 's' : ''}
-                </span>
+                <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm text-neutral-500 whitespace-nowrap">
+                        {hasFilters ? `${filteredTotal} of ${totalItems}` : totalItems} active item{totalItems !== 1 ? 's' : ''}
+                    </span>
+                    <div className="relative">
+                        <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-neutral-400" />
+                        <input
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            placeholder="Search client / job / item…"
+                            className="pl-7 pr-2 py-1.5 text-xs rounded-[var(--radius-sm)] border border-neutral-200 bg-white w-44 focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]/30"
+                        />
+                    </div>
+                    <select
+                        value={priorityFilter}
+                        onChange={(e) => setPriorityFilter(e.target.value as 'all' | JobPriority)}
+                        className="py-1.5 px-2 text-xs rounded-[var(--radius-sm)] border border-neutral-200 bg-white text-neutral-700"
+                        aria-label="Filter by priority"
+                    >
+                        <option value="all">All priorities</option>
+                        <option value="urgent">Urgent</option>
+                        <option value="high">High</option>
+                        <option value="normal">Normal</option>
+                        <option value="low">Low</option>
+                    </select>
+                    <button
+                        type="button"
+                        onClick={() => setOverdueOnly(v => !v)}
+                        aria-pressed={overdueOnly}
+                        className={`px-2.5 py-1.5 text-xs font-medium rounded-[var(--radius-sm)] border transition-colors ${
+                            overdueOnly
+                                ? 'bg-red-600 text-white border-red-600'
+                                : 'bg-white text-neutral-600 border-neutral-200 hover:bg-neutral-50'
+                        }`}
+                    >
+                        Overdue
+                    </button>
+                    {hasFilters && (
+                        <button
+                            type="button"
+                            onClick={clearFilters}
+                            className="text-xs text-neutral-500 hover:text-neutral-700 underline"
+                        >
+                            clear
+                        </button>
+                    )}
+                </div>
                 <div className="flex items-center gap-2">
                     {/* View toggle */}
                     <div className="inline-flex items-center bg-neutral-100 rounded-[var(--radius-sm)] p-0.5">
@@ -212,10 +287,30 @@ export function JobBoardClient({ initialBoard, stages }: JobBoardClientProps) {
                 </div>
             </div>
 
-            {view === 'kanban' ? (
+            {totalItems === 0 ? (
+                <div className="flex flex-col items-center justify-center text-center py-20 rounded-lg border border-dashed border-neutral-300 bg-white/50">
+                    <p className="text-neutral-700 font-medium">No active items on the board</p>
+                    <p className="text-sm text-neutral-500 mt-1 mb-4">
+                        Jobs appear here from an accepted quote, or create one directly.
+                    </p>
+                    <button
+                        onClick={() => setCreateOpen(true)}
+                        className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-[#4e7e8c] hover:bg-[#3a5f6a] rounded-[var(--radius-sm)] transition-colors"
+                    >
+                        <Plus size={14} /> New job
+                    </button>
+                </div>
+            ) : hasFilters && filteredTotal === 0 ? (
+                <div className="flex flex-col items-center justify-center text-center py-20 rounded-lg border border-dashed border-neutral-300 bg-white/50">
+                    <p className="text-neutral-700 font-medium">No items match your filters</p>
+                    <button onClick={clearFilters} className="text-sm text-[#4e7e8c] hover:underline mt-1">
+                        Clear filters
+                    </button>
+                </div>
+            ) : view === 'kanban' ? (
                 <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
                     <div className="flex gap-3 overflow-x-auto pb-6 flex-1 min-h-0">
-                        {board.map(col => (
+                        {filteredBoard.map(col => (
                             <KanbanColumn
                                 key={col.stage.id}
                                 column={col}
@@ -233,7 +328,7 @@ export function JobBoardClient({ initialBoard, stages }: JobBoardClientProps) {
                     </DragOverlay>
                 </DndContext>
             ) : (
-                <ListView board={board} onRowClick={setDetailItemId} />
+                <ListView board={filteredBoard} onRowClick={setDetailItemId} />
             )}
 
             {detailItemId && (

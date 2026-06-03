@@ -229,3 +229,87 @@ describe('advanceItemToNextRoutedStage — artwork-approval gate on completion-f
         expect(flippedToCompleted).toBe(false);
     });
 });
+
+describe('advanceItemToNextRoutedStage — malformed routing (G5)', () => {
+    it('errors instead of silently completing when routing is empty', async () => {
+        mockBag.current = createMockSupabase({
+            tables: {
+                job_items: {
+                    select: {
+                        data: {
+                            id: 'item-1',
+                            job_id: 'j1',
+                            current_stage_id: 'stage-x',
+                            stage_routing: [],
+                            status: 'pending',
+                        },
+                        error: null,
+                    },
+                    update: { data: null, error: null },
+                },
+                // No linked artwork → as-built QC gate is a no-op.
+                artwork_jobs: { select: { data: null, error: null } },
+            },
+        });
+
+        const res = await advanceItemToNextRoutedStage('item-1');
+
+        expect('error' in res).toBe(true);
+        if ('error' in res) expect(res.error).toMatch(/no valid production routing/i);
+        // Must NOT mark the item completed (the old silent-complete bug).
+        const flippedToCompleted = mockBag.current.calls.update.some(
+            (u: any) => u?.status === 'completed'
+        );
+        expect(flippedToCompleted).toBe(false);
+    });
+});
+
+describe('advanceItemToNextRoutedStage — as-built QC soft gate (B3)', () => {
+    it('asks for override when sub-items at the current stage are not QC-checked', async () => {
+        mockBag.current = createMockSupabase({
+            tables: {
+                job_items: {
+                    select: {
+                        data: {
+                            id: 'item-1',
+                            job_id: 'j1',
+                            current_stage_id: 'stage-cnc',
+                            stage_routing: ['stage-cnc', 'stage-goods'],
+                            status: 'in_progress',
+                        },
+                        error: null,
+                    },
+                    update: { data: null, error: null },
+                },
+                artwork_jobs: { select: { data: { id: 'aw1' }, error: null } },
+                artwork_components: {
+                    select: {
+                        data: [
+                            {
+                                name: 'Panel',
+                                sub_items: [
+                                    {
+                                        label: 'A',
+                                        name: 'letters',
+                                        target_stage_id: 'stage-cnc',
+                                        as_built_signed_off_at: null,
+                                    },
+                                ],
+                            },
+                        ],
+                        error: null,
+                    },
+                },
+            },
+        });
+
+        const res = await advanceItemToNextRoutedStage('item-1');
+
+        expect('requiresOverride' in res).toBe(true);
+        if ('requiresOverride' in res) {
+            expect(res.warnings.join(' ')).toMatch(/letters.*not QC-checked/i);
+        }
+        // No stage change should have been written yet.
+        expect(mockBag.current.calls.update).toHaveLength(0);
+    });
+});
