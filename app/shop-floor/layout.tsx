@@ -33,7 +33,7 @@ export default async function ShopFloorLayout({
                         </span>
                         Shop Floor
                     </Link>
-                    <form action={signOut}>
+                    <form action={async () => { 'use server'; await signOut(); }}>
                         <button
                             type="submit"
                             className="flex items-center gap-1.5 text-sm text-neutral-300 hover:text-white px-3 py-2 rounded-lg hover:bg-white/10 transition-colors"
