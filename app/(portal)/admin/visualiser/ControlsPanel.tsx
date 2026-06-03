@@ -355,24 +355,16 @@ export function ControlsPanel() {
                 </div>
 
                 {/* A projecting sign is simply width / height / returns —
-                    no shadow gap or keyline. */}
+                    no shadow gap. (Keyline is push-through specific, so it's
+                    configured per push-through material group, not here.) */}
                 {!onProjectingTab && (
-                    <div className="grid grid-cols-2 gap-3">
-                        <NumberField
-                            label="Shadow gap"
-                            value={params.shadowGapMm}
-                            onChange={(n) => setParam('shadowGapMm', n)}
-                            min={0}
-                            hint="Inward lip at return tip (0 = none)"
-                        />
-                        <NumberField
-                            label="Keyline"
-                            value={params.keylineMm}
-                            onChange={(n) => setParam('keylineMm', n)}
-                            min={0}
-                            hint="Offset around aperture cut"
-                        />
-                    </div>
+                    <NumberField
+                        label="Shadow gap"
+                        value={params.shadowGapMm}
+                        onChange={(n) => setParam('shadowGapMm', n)}
+                        min={0}
+                        hint="Inward lip at return tip (0 = none)"
+                    />
                 )}
 
                 {!onProjectingTab && params.shadowGapMm > 0 && (
