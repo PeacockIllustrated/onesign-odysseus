@@ -53,6 +53,7 @@ CREATE INDEX IF NOT EXISTS idx_production_packs_created_by
     ON public.production_packs(created_by);
 
 -- Reuses the shared updated_at trigger function (defined in 012, used by 014).
+DROP TRIGGER IF EXISTS trg_production_packs_updated_at ON public.production_packs;
 CREATE TRIGGER trg_production_packs_updated_at
     BEFORE UPDATE ON public.production_packs
     FOR EACH ROW
@@ -60,6 +61,7 @@ CREATE TRIGGER trg_production_packs_updated_at
 
 ALTER TABLE public.production_packs ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Super admins can manage production_packs" ON public.production_packs;
 CREATE POLICY "Super admins can manage production_packs"
     ON public.production_packs FOR ALL TO authenticated
     USING (public.is_super_admin())
@@ -76,15 +78,18 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES ('production-packs', 'production-packs', TRUE)
 ON CONFLICT (id) DO NOTHING;
 
+DROP POLICY IF EXISTS "Super admins upload production-pack images" ON storage.objects;
 CREATE POLICY "Super admins upload production-pack images"
     ON storage.objects FOR INSERT TO authenticated
     WITH CHECK (bucket_id = 'production-packs' AND public.is_super_admin());
 
+DROP POLICY IF EXISTS "Super admins update production-pack images" ON storage.objects;
 CREATE POLICY "Super admins update production-pack images"
     ON storage.objects FOR UPDATE TO authenticated
     USING (bucket_id = 'production-packs' AND public.is_super_admin())
     WITH CHECK (bucket_id = 'production-packs' AND public.is_super_admin());
 
+DROP POLICY IF EXISTS "Super admins delete production-pack images" ON storage.objects;
 CREATE POLICY "Super admins delete production-pack images"
     ON storage.objects FOR DELETE TO authenticated
     USING (bucket_id = 'production-packs' AND public.is_super_admin());
