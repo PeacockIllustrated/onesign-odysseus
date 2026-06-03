@@ -33,6 +33,23 @@ export function ShopFloorClient({ stages, initialJobs, initialStageSlug }: ShopF
 
     const activeStage = stages.find(s => s.slug === activeSlug);
 
+    // Hydrate the worker's last-used department once on mount (tablets reload
+    // often; without this every refresh dumps them back on the default tab).
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem('shopfloor.stage');
+            if (saved && saved !== activeSlug && stages.some(s => s.slug === saved)) {
+                setActiveSlug(saved);
+            }
+        } catch { /* localStorage unavailable — ignore */ }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Persist department selection across reloads.
+    useEffect(() => {
+        try { localStorage.setItem('shopfloor.stage', activeSlug); } catch { /* ignore */ }
+    }, [activeSlug]);
+
     // Realtime subscription — refetch queue on any change to job_items
     useEffect(() => {
         const supabase = createBrowserClient();
