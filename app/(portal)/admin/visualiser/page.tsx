@@ -1,6 +1,6 @@
 // app/(portal)/admin/visualiser/page.tsx
 import Link from 'next/link';
-import { Ruler } from 'lucide-react';
+import { Ruler, Globe } from 'lucide-react';
 import { requireAdmin } from '@/lib/auth';
 import { listDesigns, prefillFromQuoteItem } from '@/lib/visualiser/actions';
 import { VisualiserClient } from './VisualiserClient';
@@ -49,13 +49,28 @@ export default async function VisualiserPage({
                         production-ready cut files
                     </p>
                 </div>
-                <Link
-                    href="/admin/visualiser/neon"
-                    className="flex shrink-0 items-center gap-1.5 self-center rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:border-[#4e7e8c] hover:bg-[#e8f0f3] hover:text-[#3a5f6a]"
-                >
-                    <Ruler size={14} />
-                    Neon length tool
-                </Link>
+                <div className="flex shrink-0 items-center gap-2 self-center">
+                    <Link
+                        href="/admin/visualiser/neon"
+                        className="flex items-center gap-1.5 rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:border-[#4e7e8c] hover:bg-[#e8f0f3] hover:text-[#3a5f6a]"
+                    >
+                        <Ruler size={14} />
+                        Neon length tool
+                    </Link>
+                    {/* Public, customer-facing version of the visualiser — opens
+                        the /design studio (unauth) in a new tab so staff keep
+                        their own session/tool open. */}
+                    <Link
+                        href="/design"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Open the public customer design studio in a new tab"
+                        className="flex items-center gap-1.5 rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:border-[#4e7e8c] hover:bg-[#e8f0f3] hover:text-[#3a5f6a]"
+                    >
+                        <Globe size={14} />
+                        Public design studio
+                    </Link>
+                </div>
             </header>
             <VisualiserClient
                 initialDesigns={designs}

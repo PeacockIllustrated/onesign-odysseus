@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 import {
     AlertTriangle,
@@ -98,20 +98,35 @@ function DisplayRow({
 }
 
 export function VisualiserClient({
-    initialDesigns,
-    prefill,
-    initialLoadId,
+    initialDesigns = [],
+    prefill = null,
+    initialLoadId = null,
+    variant = 'admin',
+    publicFooter = null,
 }: {
-    initialDesigns: VisualiserDesignRow[];
-    prefill: { patch: Partial<PanelParams> & { quoteId: string | null }; quoteItemId: string } | null;
+    initialDesigns?: VisualiserDesignRow[];
+    prefill?: { patch: Partial<PanelParams> & { quoteId: string | null }; quoteItemId: string } | null;
     /**
      * Design ID from `?id=<...>` in the URL (set by QR codes on the
      * exported PDFs). When set and the id exists in `initialDesigns`,
      * that design is loaded on mount so the operator lands on the
      * exact design the QR refers to.
      */
-    initialLoadId: string | null;
+    initialLoadId?: string | null;
+    /**
+     * 'admin' (default) is the full staff tool: saved-designs rail + the
+     * ExportBar (PDFs / save / backshop). 'public' is the customer-facing
+     * /design studio — same engine and capabilities, but the staff rails are
+     * hidden and `publicFooter` (the "Send to Onesign" action) replaces the
+     * ExportBar. Tour anchors (`data-tour="..."`) are present in both variants;
+     * they're inert until the public Tour targets them. (Named `variant` to
+     * avoid clashing with the derived aperture `mode` below.)
+     */
+    variant?: 'admin' | 'public';
+    /** Footer rendered in place of the ExportBar when variant === 'public'. */
+    publicFooter?: ReactNode;
 }) {
+    const isPublic = variant === 'public';
     const {
         params,
         imported: storeImported,
@@ -684,6 +699,7 @@ export function VisualiserClient({
             <div className="flex flex-1 min-h-0 min-w-0 flex-col md:flex-row gap-2 md:gap-3">
                 {/* Left: controls (Panel + Artwork) — "Settings" on mobile */}
                 <aside
+                    data-tour="controls"
                     className={`${paneShow('settings')} md:w-[18rem] md:shrink-0 md:flex-none overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm`}
                 >
                 <div className="shrink-0 border-b border-neutral-100 px-4 py-2.5">
@@ -694,7 +710,9 @@ export function VisualiserClient({
                 <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4">
                     <ControlsPanel />
                     <div className="my-4 border-t border-neutral-100" />
-                    <SvgDropzone />
+                    <div data-tour="upload">
+                        <SvgDropzone />
+                    </div>
                 </div>
             </aside>
 
@@ -703,7 +721,7 @@ export function VisualiserClient({
                     className={`${paneShow('preview')} min-w-0 min-h-0 md:flex-1 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm`}
                 >
                 <header className="shrink-0 flex items-center justify-between gap-2 md:gap-3 border-b border-neutral-100 px-2 md:px-3 py-2">
-                    <nav className="flex gap-1 min-w-0" role="tablist" aria-label="Preview view">
+                    <nav data-tour="views" className="flex gap-1 min-w-0" role="tablist" aria-label="Preview view">
                         {(['folded', 'unfold', 'flat'] as const).map((t) => {
                             const active = tab === t;
                             return (
@@ -737,6 +755,7 @@ export function VisualiserClient({
                         {tab !== 'flat' && (
                             <button
                                 type="button"
+                                data-tour="illumination"
                                 onClick={() =>
                                     setIlluminationView((v) => !v)
                                 }
@@ -998,7 +1017,11 @@ export function VisualiserClient({
                                         Group paths into materials (vinyl,
                                         acrylic, standoff…)
                                     </li>
-                                    <li>Export the production PDF</li>
+                                    <li>
+                                        {isPublic
+                                            ? 'Send it to our team for a quote'
+                                            : 'Export the production PDF'}
+                                    </li>
                                 </ol>
                             </div>
                         </div>
@@ -1098,7 +1121,10 @@ export function VisualiserClient({
                         only mean something in 3D (outlines, stand-off)
                         are hidden on the flat tab. */}
                     {development && (
-                        <div className="pointer-events-none absolute right-2 md:right-3 bottom-3 md:bottom-4 z-10 flex max-w-[12rem] flex-col items-end gap-2">
+                        <div
+                            data-tour="display"
+                            className="pointer-events-none absolute right-2 md:right-3 bottom-3 md:bottom-4 z-10 flex max-w-[12rem] flex-col items-end gap-2"
+                        >
                             {displayOpen && (
                                 <div className="pointer-events-auto w-44 rounded-lg border border-neutral-200 bg-white/95 p-2 shadow-lg backdrop-blur">
                                     <div className="flex items-center justify-between px-1 pb-1">
@@ -1241,8 +1267,13 @@ export function VisualiserClient({
                     )}
                 </div>
 
-                <footer className="shrink-0 border-t border-neutral-100 px-3 py-2.5">
-                    {development && sectionExport && (
+                <footer
+                    data-tour="send"
+                    className="shrink-0 border-t border-neutral-100 px-3 py-2.5"
+                >
+                    {isPublic ? (
+                        publicFooter
+                    ) : development && sectionExport ? (
                         <ExportBar
                             sectionExport={sectionExport}
                             apertureBySection={apertureBySection}
@@ -1268,12 +1299,14 @@ export function VisualiserClient({
                             mainIsActive={mainIsActive}
                             projectingSummary={projectingSummary}
                         />
-                    )}
+                    ) : null}
                 </footer>
             </section>
 
                 {/* Right: saved designs (independently scrollable;
-                    collapsible to a thin rail on desktop). */}
+                    collapsible to a thin rail on desktop). Staff-only — the
+                    public studio has no saved-designs library. */}
+                {!isPublic && (
                 <aside
                     className={`${paneShow('designs')} ${
                         designsOpen ? 'md:w-[15rem]' : 'md:w-11'
@@ -1363,17 +1396,25 @@ export function VisualiserClient({
                 </ul>
                 </div>
                 </aside>
+                )}
             </div>
 
-            {/* Mobile tab bar — switches which pane is visible on phones. */}
-            <nav className="md:hidden shrink-0 grid grid-cols-3 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
+            {/* Mobile tab bar — switches which pane is visible on phones. The
+                designs pane is staff-only, so the public studio shows two. */}
+            <nav
+                className={`md:hidden shrink-0 grid ${
+                    isPublic ? 'grid-cols-2' : 'grid-cols-3'
+                } overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm`}
+            >
                 {(
                     [
                         ['preview', 'Preview', Eye],
                         ['settings', 'Panel', Sliders],
                         ['designs', 'Designs', Bookmark],
                     ] as const
-                ).map(([pane, label, Icon]) => {
+                )
+                    .filter(([pane]) => !isPublic || pane !== 'designs')
+                    .map(([pane, label, Icon]) => {
                     const active = mobilePane === pane;
                     return (
                         <button

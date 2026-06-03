@@ -20,6 +20,7 @@ import {
     Inbox,
     AlertTriangle,
     Box,
+    PenTool,
     X,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -85,6 +86,7 @@ const adminNavGroups: NavGroup[] = [
         label: 'Inbound',
         items: [
             { label: 'External Orders', href: '/admin/external-orders', icon: Inbox },
+            { label: 'Design Requests', href: '/admin/design-requests', icon: PenTool },
         ],
     },
 ];

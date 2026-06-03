@@ -18,6 +18,7 @@ import { z } from 'zod';
 export type BackshopFeature =
     | 'pushThrough'
     | 'vinyl'
+    | 'acrylic'
     | 'illumination'
     | 'standoff'
     | 'bracket';
@@ -38,6 +39,9 @@ export const BACKSHOP_STAGE_CATALOG: BackshopStage[] = [
     { key: 'cut', label: 'Cut' },
     { key: 'pushthrough', label: 'Push-through', feature: 'pushThrough' },
     { key: 'vinyl', label: 'Vinyl', feature: 'vinyl' },
+    // Face-stuck acrylic appliqué (distinct from push-through acrylic) — an
+    // applied decoration like vinyl, so it sits alongside it in the sequence.
+    { key: 'acrylic', label: 'Acrylic', feature: 'acrylic' },
     { key: 'painted', label: 'Painted' },
     { key: 'illumination', label: 'Illumination', feature: 'illumination' },
     { key: 'standoff', label: 'Stood-off', feature: 'standoff' },
@@ -80,6 +84,7 @@ export function stagesForChecks(
 const ELEMENT_LABELS: Record<string, string> = {
     pushthrough: 'Push-through acrylic',
     vinyl: 'Vinyl appliqué',
+    acrylic: 'Acrylic (face-stuck)',
     illumination: 'Illuminated',
     standoff: 'Stood-off letters',
     bracket: 'Projecting (bracket)',
@@ -165,6 +170,7 @@ export const AddToBackshopInputSchema = z.object({
         .object({
             pushThrough: z.boolean().optional(),
             vinyl: z.boolean().optional(),
+            acrylic: z.boolean().optional(),
             illumination: z.boolean().optional(),
             standoff: z.boolean().optional(),
             bracket: z.boolean().optional(),

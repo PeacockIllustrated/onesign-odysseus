@@ -46,7 +46,8 @@
       "Bash(grep -i \"TODO\\\\|import\\\\|//\")",
       "Bash(grep -n \"ALTER TABLE.*artwork_jobs\" /c/Users/peaco/Documents/onesign-odysseus/supabase/migrations/*.sql)",
       "Bash(npx --no-install tsc --noEmit)",
-      "Bash(git pull *)"
+      "Bash(git pull *)",
+      "mcp__70e08a6e-4cb9-45a9-add1-436a9117f690__execute_sql"
     ]
   }
 }

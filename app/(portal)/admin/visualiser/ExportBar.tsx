@@ -398,6 +398,7 @@ export function ExportBar({
                 features: {
                     pushThrough: pushThroughPieces.length > 0,
                     vinyl: vinylPieces.length > 0,
+                    acrylic: acrylicPieces.length > 0,
                     standoff: standoffPieces.length > 0,
                     illumination: !!params.illumination?.keyline?.enabled,
                     bracket: bladeActive,

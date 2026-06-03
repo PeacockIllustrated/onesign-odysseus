@@ -68,6 +68,28 @@ describe('contextual stages', () => {
         ).toEqual(['Projecting (bracket)']);
     });
 
+    it('carries face-stuck acrylic as its own stage + build element', () => {
+        // Acrylic appliqué is a distinct material category in the visualiser
+        // (separate from push-through acrylic); the board must reflect it.
+        const keys = stagesForFeatures({ acrylic: true }).map((s) => s.key);
+        expect(keys).toEqual([
+            'designed',
+            'cut',
+            'acrylic',
+            'painted',
+            'assembled',
+        ]);
+        expect(
+            elementsForChecks({
+                designed: false,
+                cut: false,
+                acrylic: false,
+                painted: false,
+                assembled: false,
+            }),
+        ).toEqual(['Acrylic (face-stuck)']);
+    });
+
     it('builds all-false checks for the applicable stages', () => {
         const checks = checksForFeatures({ standoff: true, vinyl: true });
         expect(checks).toEqual({
