@@ -51,10 +51,10 @@ export function GuidedCheckClient({ ctx }: Props) {
         router.push('/shop-floor');
     };
 
-    // Called after successful production sign-off — advance to the next
+    // Called after successful as-built QC sign-off — advance to the next
     // un-signed-off sub-item, or surface the completion screen.
     const afterSignOff = () => {
-        const remaining = subItems.map((si, i) => (i === subIdx ? { ...si, production_signed_off_at: new Date().toISOString() } : si));
+        const remaining = subItems.map((si, i) => (i === subIdx ? { ...si, as_built_signed_off_at: new Date().toISOString() } : si));
         const next = computeNextSubItem(remaining);
         setMeasuredW('');
         setMeasuredH('');

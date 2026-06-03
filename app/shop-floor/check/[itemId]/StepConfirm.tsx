@@ -18,16 +18,17 @@ export function StepConfirm({ subItem, measuredW, measuredH, onSignedOff, onRepo
     const [pending, startTransition] = useTransition();
     const [error, setError] = useState<string | null>(null);
 
-    const wNum = Number(measuredW);
-    const hNum = Number(measuredH);
+    const wNum = measuredW === '' ? null : Number(measuredW);
+    const hNum = measuredH === '' ? null : Number(measuredH);
+    const hasMeasured = wNum != null && !Number.isNaN(wNum) && hNum != null && !Number.isNaN(hNum);
 
     const tol =
-        subItem.width_mm != null && subItem.height_mm != null
+        hasMeasured && subItem.width_mm != null && subItem.height_mm != null
             ? checkDimensionTolerance(
                 Number(subItem.width_mm),
                 Number(subItem.height_mm),
-                wNum,
-                hNum,
+                wNum as number,
+                hNum as number,
             )
             : null;
 
@@ -37,8 +38,8 @@ export function StepConfirm({ subItem, measuredW, measuredH, onSignedOff, onRepo
             const res = await submitSubItemProduction(
                 subItem.id,
                 {
-                    measured_width_mm: wNum,
-                    measured_height_mm: hNum,
+                    measured_width_mm: hasMeasured ? (wNum as number) : null,
+                    measured_height_mm: hasMeasured ? (hNum as number) : null,
                     material_confirmed: true,
                     rip_no_scaling_confirmed: true,
                 },

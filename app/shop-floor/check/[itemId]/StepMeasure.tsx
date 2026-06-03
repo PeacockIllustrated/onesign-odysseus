@@ -41,7 +41,10 @@ export function StepMeasure({
     const wNum = measuredW === '' ? null : Number(measuredW);
     const hNum = measuredH === '' ? null : Number(measuredH);
     const bothEntered = wNum != null && !Number.isNaN(wNum) && hNum != null && !Number.isNaN(hNum);
-    const canProceed = bothEntered;
+    // No spec dimensions to check against (e.g. visual/vinyl packs) →
+    // measurement is optional and the worker can proceed (B4).
+    const hasSpec = subItem.width_mm != null && subItem.height_mm != null;
+    const canProceed = hasSpec ? bothEntered : true;
 
     const tol =
         bothEntered && subItem.width_mm != null && subItem.height_mm != null
@@ -109,6 +112,12 @@ export function StepMeasure({
                     >
                         {tol.flag === 'within_tolerance' ? '✓ Within tolerance' : '⚠ Out of tolerance'}
                     </span>
+                )}
+
+                {!hasSpec && (
+                    <p className="text-xs text-neutral-500">
+                        No spec dimensions on this sub-item — measurement is optional. You can continue.
+                    </p>
                 )}
             </div>
 

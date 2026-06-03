@@ -263,8 +263,18 @@ export async function signOffSubItemDesign(
 }
 
 /**
- * Submit production measurements for a sub-item and optionally sign off.
- * Sign-off requires design to be signed off first.
+ * Record the shop-floor AS-BUILT QC for a sub-item and optionally sign off.
+ *
+ * This is the "the piece I built matches spec" check, written by a shop-floor
+ * worker at the end of the guided check. It is deliberately SEPARATE from the
+ * `/production-sign-off` token flow ("approved to fabricate",
+ * production_signed_off_at) — the two used to collide on one column
+ * (audit B5). As-built sign-off stamps `as_built_signed_off_at` and never
+ * touches `production_signed_off_at`.
+ *
+ * Soft by design: it does not hard-require design / fabricate-approval first
+ * (those are upstream release-readiness gates), and a sub-item with no spec
+ * dimensions can still pass without a measurement (audit B4).
  */
 export async function submitSubItemProduction(
     subItemId: string,
@@ -281,42 +291,42 @@ export async function submitSubItemProduction(
     const supabase = await createServerClient();
     const { data: si } = await supabase
         .from('artwork_component_items')
-        .select(
-            'id, component_id, width_mm, height_mm, design_signed_off_at, production_signed_off_at'
-        )
+        .select('id, component_id, width_mm, height_mm, as_built_signed_off_at')
         .eq('id', subItemId)
         .single();
     if (!si) return { error: 'sub-item not found' };
-    if (signOff && !si.design_signed_off_at) {
-        return { error: 'design must be signed off before production sign-off' };
-    }
-    if (signOff && si.production_signed_off_at) {
-        return { error: 'production already signed off' };
-    }
-    if (si.width_mm == null || si.height_mm == null) {
-        return { error: 'design dimensions missing — cannot compute tolerance' };
+    if (signOff && si.as_built_signed_off_at) {
+        return { error: 'as-built check already signed off' };
     }
 
-    const tol = checkDimensionTolerance(
-        si.width_mm,
-        si.height_mm,
-        parsed.measured_width_mm,
-        parsed.measured_height_mm
-    );
+    // Tolerance only when we have BOTH a spec dimension and a measurement.
+    // A spec without dims (visual/vinyl) or a sign-off without a measurement
+    // simply records no deviation rather than dead-ending the worker (B4).
+    const hasSpec = si.width_mm != null && si.height_mm != null;
+    const hasMeasured =
+        parsed.measured_width_mm != null && parsed.measured_height_mm != null;
+    const tol =
+        hasSpec && hasMeasured
+            ? checkDimensionTolerance(
+                  si.width_mm as number,
+                  si.height_mm as number,
+                  parsed.measured_width_mm as number,
+                  parsed.measured_height_mm as number
+              )
+            : null;
 
     const updates: Record<string, any> = {
-        measured_width_mm: parsed.measured_width_mm,
-        measured_height_mm: parsed.measured_height_mm,
+        measured_width_mm: parsed.measured_width_mm ?? null,
+        measured_height_mm: parsed.measured_height_mm ?? null,
         material_confirmed: parsed.material_confirmed,
         rip_no_scaling_confirmed: parsed.rip_no_scaling_confirmed,
-        width_deviation_mm: tol.width_deviation_mm,
-        height_deviation_mm: tol.height_deviation_mm,
-        dimension_flag: tol.flag,
+        width_deviation_mm: tol?.width_deviation_mm ?? null,
+        height_deviation_mm: tol?.height_deviation_mm ?? null,
+        dimension_flag: tol?.flag ?? null,
     };
     if (signOff) {
-        updates.production_checked_by = user.id;
-        updates.production_signed_off_at = new Date().toISOString();
-        updates.production_signed_off_by = user.id;
+        updates.as_built_signed_off_at = new Date().toISOString();
+        updates.as_built_signed_off_by = user.id;
     }
 
     const { error } = await supabase
