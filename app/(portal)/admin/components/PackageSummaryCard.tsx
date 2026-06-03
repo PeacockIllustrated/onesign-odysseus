@@ -24,7 +24,7 @@ export function PackageSummaryCard({ pkg, selected, onClick, showDeliverables = 
             `}
         >
             {pkg.isRecommended && (
-                <span className="absolute -top-2.5 left-4 bg-black text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">
+                <span className="absolute -top-2.5 left-4 bg-[#4e7e8c] text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">
                     Recommended
                 </span>
             )}

@@ -35,7 +35,7 @@ export function Topbar({ org, isAdmin }: TopbarProps) {
                     <Menu size={20} />
                 </button>
                 <span className="text-sm font-medium text-neutral-900 truncate max-w-[160px] sm:max-w-none">{org.name}</span>
-                <span className="badge text-xs hidden sm:inline-flex">{isAdmin ? 'admin' : 'client portal'}</span>
+                <span className="badge text-xs hidden sm:inline-flex bg-[#e8f0f3] text-[#3a5f6a] border-[#4e7e8c]/40">{isAdmin ? 'admin' : 'client portal'}</span>
             </div>
 
             {/* User menu */}
@@ -44,8 +44,8 @@ export function Topbar({ org, isAdmin }: TopbarProps) {
                     onClick={() => setMenuOpen(!menuOpen)}
                     className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-sm)] text-sm text-neutral-600 hover:bg-neutral-100 transition-colors"
                 >
-                    <div className="w-7 h-7 rounded-full bg-neutral-200 flex items-center justify-center">
-                        <User size={14} className="text-neutral-500" />
+                    <div className="w-7 h-7 rounded-full bg-[#e8f0f3] flex items-center justify-center">
+                        <User size={14} className="text-[#4e7e8c]" />
                     </div>
                     <ChevronDown size={14} className={`transition-transform ${menuOpen ? 'rotate-180' : ''}`} />
                 </button>

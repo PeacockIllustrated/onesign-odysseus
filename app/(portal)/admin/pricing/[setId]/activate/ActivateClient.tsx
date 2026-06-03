@@ -69,7 +69,7 @@ export function ActivateClient({
                             type="checkbox"
                             checked={confirmed}
                             onChange={(e) => setConfirmed(e.target.checked)}
-                            className="mt-0.5 w-4 h-4 rounded border-neutral-300 text-black focus:ring-black"
+                            className="mt-0.5 w-4 h-4 rounded border-neutral-300 text-black focus:ring-[#4e7e8c]"
                         />
                         <span className="text-sm text-neutral-700">
                             I confirm that I want to activate <strong>&quot;{pricingSetName}&quot;</strong>

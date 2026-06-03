@@ -172,7 +172,7 @@ export function LeadsClient({ initialMarketingLeads, initialArchitectLeads }: Le
                         className={`
                             px-3 py-1.5 rounded-full text-xs font-medium transition-colors
                             ${filter === s
-                                ? 'bg-black text-white'
+                                ? 'bg-[#4e7e8c] text-white'
                                 : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'}
                         `}
                     >
@@ -413,7 +413,7 @@ export function LeadsClient({ initialMarketingLeads, initialArchitectLeads }: Le
                                             key={status}
                                             onClick={() => updateArchitectLeadStatus(selectedArchitectLead.id, status)}
                                             className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${selectedArchitectLead.status === status
-                                                    ? 'bg-black text-white'
+                                                    ? 'bg-[#4e7e8c] text-white'
                                                     : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
                                                 }`}
                                         >

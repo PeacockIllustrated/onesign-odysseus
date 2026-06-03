@@ -72,7 +72,7 @@ export function AddComponentForm({ jobId }: { jobId: string }) {
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             placeholder="e.g. 1/2 panel, Vinyl Left, Push-through logo"
-                            className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                            className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                             disabled={submitting}
                             required
                         />
@@ -86,7 +86,7 @@ export function AddComponentForm({ jobId }: { jobId: string }) {
                             id="component_type"
                             value={type}
                             onChange={(e) => setType(e.target.value as ComponentType)}
-                            className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                            className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                             disabled={submitting}
                         >
                             {componentTypes.map((ct) => (

@@ -146,7 +146,7 @@ export function TypographySelector({ packId, data }: TypographySelectorProps) {
                     className={`
                         px-3 py-1.5 text-xs font-medium rounded-full border-2 transition-all
                         ${selectedCategory === 'all'
-                            ? 'border-black bg-black text-white'
+                            ? 'border-black bg-[#4e7e8c] text-white'
                             : 'border-neutral-300 bg-white text-neutral-700 hover:border-neutral-400'}
                         ${isLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
                     `}
@@ -163,7 +163,7 @@ export function TypographySelector({ packId, data }: TypographySelectorProps) {
                             className={`
                                 px-3 py-1.5 text-xs font-medium rounded-full border-2 transition-all
                                 ${selectedCategory === category
-                                    ? 'border-black bg-black text-white'
+                                    ? 'border-black bg-[#4e7e8c] text-white'
                                     : 'border-neutral-300 bg-white text-neutral-700 hover:border-neutral-400'}
                                 ${isLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
                             `}

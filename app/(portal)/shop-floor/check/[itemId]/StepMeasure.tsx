@@ -83,7 +83,7 @@ export function StepMeasure({
                         inputMode="decimal"
                         value={measuredW}
                         onChange={(e) => onChangeW(e.target.value)}
-                        className="w-full text-2xl font-mono font-bold px-4 py-3 rounded-lg border-2 border-[#4e7e8c] focus:outline-none focus:ring-2 focus:ring-black"
+                        className="w-full text-2xl font-mono font-bold px-4 py-3 rounded-lg border-2 border-[#4e7e8c] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                         placeholder="0"
                     />
                 </label>
@@ -94,7 +94,7 @@ export function StepMeasure({
                         inputMode="decimal"
                         value={measuredH}
                         onChange={(e) => onChangeH(e.target.value)}
-                        className="w-full text-2xl font-mono font-bold px-4 py-3 rounded-lg border-2 border-[#4e7e8c] focus:outline-none focus:ring-2 focus:ring-black"
+                        className="w-full text-2xl font-mono font-bold px-4 py-3 rounded-lg border-2 border-[#4e7e8c] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                         placeholder="0"
                     />
                 </label>

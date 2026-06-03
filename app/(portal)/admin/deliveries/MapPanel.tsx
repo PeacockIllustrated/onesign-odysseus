@@ -187,7 +187,7 @@ export function MapPanel({ pins }: Props) {
                         onClick={() => toggle(key)}
                         className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors ${
                             filters[key]
-                                ? 'bg-black text-white border-black'
+                                ? 'bg-[#4e7e8c] text-white border-black'
                                 : 'bg-white text-neutral-500 border-neutral-300'
                         }`}
                     >

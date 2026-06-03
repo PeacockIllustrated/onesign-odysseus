@@ -40,7 +40,7 @@ export function JobFieldsForm({ jobId, panelSize, paintColour }: Props) {
                         value={panel}
                         onChange={(e) => setPanel(e.target.value)}
                         placeholder="e.g. 2400 x 1200mm"
-                        className="w-full px-2.5 py-1.5 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                        className="w-full px-2.5 py-1.5 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                     />
                 </div>
                 <div>
@@ -50,7 +50,7 @@ export function JobFieldsForm({ jobId, panelSize, paintColour }: Props) {
                         value={colour}
                         onChange={(e) => setColour(e.target.value)}
                         placeholder="e.g. RAL 9005 Jet Black"
-                        className="w-full px-2.5 py-1.5 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                        className="w-full px-2.5 py-1.5 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                     />
                 </div>
                 {hasChanges && (
@@ -58,7 +58,7 @@ export function JobFieldsForm({ jobId, panelSize, paintColour }: Props) {
                         type="button"
                         onClick={handleSave}
                         disabled={isPending}
-                        className="text-xs font-medium px-3 py-1.5 bg-black text-white rounded-[var(--radius-sm)] hover:bg-neutral-800 disabled:opacity-50"
+                        className="text-xs font-medium px-3 py-1.5 bg-[#4e7e8c] text-white rounded-[var(--radius-sm)] hover:bg-[#3a5f6a] disabled:opacity-50"
                     >
                         {isPending ? 'saving...' : 'save'}
                     </button>

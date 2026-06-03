@@ -92,7 +92,7 @@ export function LetterSetFields({ form, allowedFinishes }: LetterSetFieldsProps)
                                 </label>
                                 <select
                                     {...form.register(`letter_sets.${index}.type`)}
-                                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                                     onChange={(e) => {
                                         form.setValue(`letter_sets.${index}.type`, e.target.value as (typeof LETTER_TYPES)[number]);
                                         // Reset finish to first available for new type
@@ -115,7 +115,7 @@ export function LetterSetFields({ form, allowedFinishes }: LetterSetFieldsProps)
                                 </label>
                                 <select
                                     {...form.register(`letter_sets.${index}.finish`)}
-                                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                                 >
                                     {availableFinishes.map((finish) => (
                                         <option key={finish} value={finish}>{finish}</option>
@@ -132,7 +132,7 @@ export function LetterSetFields({ form, allowedFinishes }: LetterSetFieldsProps)
                                     type="number"
                                     min={1}
                                     {...form.register(`letter_sets.${index}.qty`, { valueAsNumber: true })}
-                                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                                 />
                             </div>
 
@@ -143,7 +143,7 @@ export function LetterSetFields({ form, allowedFinishes }: LetterSetFieldsProps)
                                 </label>
                                 <select
                                     {...form.register(`letter_sets.${index}.height_mm`, { valueAsNumber: true })}
-                                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                                 >
                                     {HEIGHT_OPTIONS.map((h) => (
                                         <option key={h} value={h}>{h}mm</option>
@@ -158,7 +158,7 @@ export function LetterSetFields({ form, allowedFinishes }: LetterSetFieldsProps)
                                 <input
                                     type="checkbox"
                                     {...form.register(`letter_sets.${index}.illuminated`)}
-                                    className="w-4 h-4 rounded border-neutral-300 text-black focus:ring-black"
+                                    className="w-4 h-4 rounded border-neutral-300 text-black focus:ring-[#4e7e8c]"
                                 />
                                 <span className="text-sm text-neutral-700">Illuminated</span>
                             </label>

@@ -80,7 +80,7 @@ export function ProgressTracker({ pack }: ProgressTrackerProps) {
                             transition-all duration-200
                             ${
                                 section.completed
-                                    ? 'bg-black text-white'
+                                    ? 'bg-[#4e7e8c] text-white'
                                     : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
                             }
                         `}

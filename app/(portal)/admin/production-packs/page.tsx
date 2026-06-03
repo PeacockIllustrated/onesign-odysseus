@@ -41,13 +41,13 @@ export default async function ProductionPacksPage({
                         name="search"
                         placeholder="search by title, project or client…"
                         defaultValue={params.search || ''}
-                        className="flex-1 min-w-0 px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                        className="flex-1 min-w-0 px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                     />
                     <div className="flex items-center gap-3">
                         <select
                             name="status"
                             defaultValue={params.status || 'all'}
-                            className="flex-1 sm:flex-none px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                            className="flex-1 sm:flex-none px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                         >
                             <option value="all">all statuses</option>
                             <option value="draft">draft</option>

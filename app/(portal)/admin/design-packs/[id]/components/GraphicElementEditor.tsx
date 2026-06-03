@@ -133,7 +133,7 @@ export function GraphicElementEditor({
                                                     type="number"
                                                     value={Math.round(element.x)}
                                                     onChange={(e) => handleUpdateElement(element.id, { x: Number(e.target.value) })}
-                                                    className="w-full px-2 py-1.5 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                                                    className="w-full px-2 py-1.5 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                                                     min="0"
                                                     max={signWidth}
                                                 />
@@ -144,7 +144,7 @@ export function GraphicElementEditor({
                                                     type="number"
                                                     value={Math.round(element.y)}
                                                     onChange={(e) => handleUpdateElement(element.id, { y: Number(e.target.value) })}
-                                                    className="w-full px-2 py-1.5 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                                                    className="w-full px-2 py-1.5 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                                                     min="0"
                                                     max={signHeight}
                                                 />

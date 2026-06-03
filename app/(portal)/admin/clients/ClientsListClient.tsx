@@ -77,7 +77,7 @@ export function ClientsListClient({ initialClients }: ClientsListClientProps) {
                 </div>
                 <button
                     onClick={() => setShowNewModal(true)}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-black text-white rounded-[var(--radius-sm)] hover:bg-neutral-800"
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-[#4e7e8c] text-white rounded-[var(--radius-sm)] hover:bg-[#3a5f6a]"
                 >
                     <Plus size={16} />
                     New Client
@@ -103,7 +103,7 @@ export function ClientsListClient({ initialClients }: ClientsListClientProps) {
                                 onClick={() => handleTagClick(tag)}
                                 className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
                                     activeTag === tag
-                                        ? 'bg-black text-white'
+                                        ? 'bg-[#4e7e8c] text-white'
                                         : getTagColor(tag)
                                 } hover:opacity-80`}
                             >
@@ -121,7 +121,7 @@ export function ClientsListClient({ initialClients }: ClientsListClientProps) {
                         value={search}
                         onChange={e => handleSearch(e.target.value)}
                         placeholder="Search clients..."
-                        className="pl-8 pr-3 py-1.5 text-sm border border-neutral-200 rounded-[var(--radius-sm)] w-64 focus:outline-none focus:ring-2 focus:ring-black"
+                        className="pl-8 pr-3 py-1.5 text-sm border border-neutral-200 rounded-[var(--radius-sm)] w-64 focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                     />
                 </div>
             </div>

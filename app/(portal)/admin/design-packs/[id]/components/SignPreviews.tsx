@@ -254,7 +254,7 @@ export function SignPreviews({ pack }: SignPreviewsProps) {
                                         flex-1 px-3 py-2 text-xs font-medium rounded-[var(--radius-sm)] border-2 transition-all
                                         ${
                                             selectedSize === size
-                                                ? 'border-black bg-black text-white'
+                                                ? 'border-black bg-[#4e7e8c] text-white'
                                                 : 'border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300'
                                         }
                                     `}
@@ -292,7 +292,7 @@ export function SignPreviews({ pack }: SignPreviewsProps) {
                                             type="text"
                                             value={value}
                                             onChange={(e) => handleContentChange(field, e.target.value)}
-                                            className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                                            className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                                             placeholder={`Enter ${field}...`}
                                         />
                                     </div>
@@ -309,7 +309,7 @@ export function SignPreviews({ pack }: SignPreviewsProps) {
                             </label>
                             <button
                                 onClick={() => setGraphicLibraryOpen(true)}
-                                className="px-3 py-1.5 text-xs font-medium bg-black text-white rounded-[var(--radius-sm)] hover:bg-neutral-800 transition-colors flex items-center gap-1.5"
+                                className="px-3 py-1.5 text-xs font-medium bg-[#4e7e8c] text-white rounded-[var(--radius-sm)] hover:bg-[#3a5f6a] transition-colors flex items-center gap-1.5"
                             >
                                 <Sparkles size={14} />
                                 add graphic
@@ -359,7 +359,7 @@ export function SignPreviews({ pack }: SignPreviewsProps) {
                                         px-3 py-1.5 text-xs font-medium rounded-[var(--radius-sm)] border transition-all
                                         ${
                                             zoom === zoomLevel
-                                                ? 'border-black bg-black text-white'
+                                                ? 'border-black bg-[#4e7e8c] text-white'
                                                 : 'border-neutral-300 bg-white text-neutral-700 hover:border-neutral-400'
                                         }
                                     `}

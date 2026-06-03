@@ -159,7 +159,7 @@ export function QuoteHeaderEdit({ quote }: QuoteHeaderEditProps) {
                     <button type="button" onClick={() => setIsEditing(false)} className="px-3 py-1.5 text-xs font-medium text-neutral-600 hover:text-neutral-900">
                         Cancel
                     </button>
-                    <button type="submit" disabled={isSaving} className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-black text-white rounded hover:bg-neutral-800 disabled:opacity-50">
+                    <button type="submit" disabled={isSaving} className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-[#4e7e8c] text-white rounded hover:bg-[#3a5f6a] disabled:opacity-50">
                         {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
                         Save Changes
                     </button>

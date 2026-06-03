@@ -166,7 +166,7 @@ export function QuoteLineItemForm({
                                 <input
                                     type="number"
                                     {...form.register('width_mm', { valueAsNumber: true })}
-                                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                                 />
                             </div>
                             <div>
@@ -176,7 +176,7 @@ export function QuoteLineItemForm({
                                 <input
                                     type="number"
                                     {...form.register('height_mm', { valueAsNumber: true })}
-                                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                                 />
                             </div>
                             <div>
@@ -186,7 +186,7 @@ export function QuoteLineItemForm({
                                 <input
                                     type="number"
                                     {...form.register('allowance_mm', { valueAsNumber: true })}
-                                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                                 />
                             </div>
                         </div>
@@ -202,7 +202,7 @@ export function QuoteLineItemForm({
                                 </label>
                                 <select
                                     {...form.register('panel_size')}
-                                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                                 >
                                     {PANEL_SIZES.map((size) => (
                                         <option key={size} value={size}>{size}</option>
@@ -215,7 +215,7 @@ export function QuoteLineItemForm({
                                 </label>
                                 <select
                                     {...form.register('panel_material')}
-                                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                                 >
                                     {rateCard.panelMaterials.map((material) => (
                                         <option key={material} value={material}>{material}</option>
@@ -228,7 +228,7 @@ export function QuoteLineItemForm({
                                 </label>
                                 <select
                                     {...form.register('panel_finish')}
-                                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                                 >
                                     {rateCard.panelFinishes.map((finish) => (
                                         <option key={finish} value={finish}>{finish}</option>
@@ -246,7 +246,7 @@ export function QuoteLineItemForm({
                                 id="hasAperture"
                                 checked={hasAperture}
                                 onChange={(e) => setHasAperture(e.target.checked)}
-                                className="w-4 h-4 rounded border-neutral-300 text-black focus:ring-black"
+                                className="w-4 h-4 rounded border-neutral-300 text-black focus:ring-[#4e7e8c]"
                             />
                             <label htmlFor="hasAperture" className="text-sm font-semibold text-neutral-900 cursor-pointer">
                                 Include Aperture
@@ -262,7 +262,7 @@ export function QuoteLineItemForm({
                                     <input
                                         type="number"
                                         {...form.register('aperture.width_mm', { valueAsNumber: true })}
-                                        className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                                        className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                                     />
                                 </div>
                                 <div>
@@ -272,7 +272,7 @@ export function QuoteLineItemForm({
                                     <input
                                         type="number"
                                         {...form.register('aperture.height_mm', { valueAsNumber: true })}
-                                        className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                                        className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                                     />
                                 </div>
                                 <div>
@@ -281,7 +281,7 @@ export function QuoteLineItemForm({
                                     </label>
                                     <select
                                         {...form.register('aperture.opal_type')}
-                                        className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                                        className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                                     >
                                         {OPAL_TYPES.map((type) => (
                                             <option key={type} value={type}>{type}</option>
@@ -309,7 +309,7 @@ export function QuoteLineItemForm({
                                         step="0.5"
                                         min="0"
                                         {...form.register(`labour_hours.${task}`, { valueAsNumber: true })}
-                                        className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                                        className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                                     />
                                 </div>
                             ))}
@@ -457,7 +457,7 @@ export function QuoteLineItemForm({
                             </label>
                             <select
                                 {...form.register('transformer_type')}
-                                className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                                className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                             >
                                 {TRANSFORMER_TYPES.map((type) => (
                                     <option key={type} value={type}>{type}</option>
@@ -473,7 +473,7 @@ export function QuoteLineItemForm({
                                 min="0"
                                 max="100"
                                 {...form.register('markup_percent', { valueAsNumber: true })}
-                                className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                                className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                             />
                         </div>
                     </div>
@@ -505,7 +505,7 @@ export function QuoteLineItemForm({
                 <button
                     type="submit"
                     disabled={isSaving || !output?.ok}
-                    className="px-4 py-2 text-sm font-medium bg-black text-white rounded-[var(--radius-sm)] hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    className="px-4 py-2 text-sm font-medium bg-[#4e7e8c] text-white rounded-[var(--radius-sm)] hover:bg-[#3a5f6a] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                     {isSaving && <Loader2 size={14} className="animate-spin" />}
                     {isEditMode ? 'Update Line Item' : 'Add Line Item'}

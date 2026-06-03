@@ -64,8 +64,8 @@ export function StatsCard({ label, value, sublabel, icon }: StatsCardProps) {
                     {sublabel && <p className="text-xs text-neutral-400 mt-1">{sublabel}</p>}
                 </div>
                 {Icon && (
-                    <div className="w-10 h-10 rounded-[var(--radius-sm)] bg-neutral-100 flex items-center justify-center">
-                        <Icon size={18} className="text-neutral-500" />
+                    <div className="w-10 h-10 rounded-[var(--radius-sm)] bg-[#e8f0f3] flex items-center justify-center">
+                        <Icon size={18} className="text-[#4e7e8c]" />
                     </div>
                 )}
             </div>
@@ -77,10 +77,11 @@ export function StatsCard({ label, value, sublabel, icon }: StatsCardProps) {
 // CHIP / BADGE
 // =============================================================================
 
-type ChipVariant = 'default' | 'draft' | 'review' | 'approved' | 'scheduled' | 'done' | 'active' | 'paused';
+type ChipVariant = 'default' | 'brand' | 'draft' | 'review' | 'approved' | 'scheduled' | 'done' | 'active' | 'paused';
 
 const chipStyles: Record<ChipVariant, string> = {
     default: 'bg-neutral-100 text-neutral-700 border-neutral-200',
+    brand: 'bg-[#e8f0f3] text-[#3a5f6a] border-[#4e7e8c]/40',
     draft: 'bg-neutral-100 text-neutral-600 border-neutral-200',
     review: 'bg-amber-50 text-amber-700 border-amber-200',
     approved: 'bg-green-50 text-green-700 border-green-200',
@@ -284,7 +285,7 @@ export function FileUpload({ onUpload, accept, multiple = false, loading = false
         <div
             onDrop={handleDrop}
             onDragOver={(e) => e.preventDefault()}
-            className="border-2 border-dashed border-neutral-200 rounded-[var(--radius-md)] p-8 text-center hover:border-neutral-300 transition-colors"
+            className="border-2 border-dashed border-neutral-200 rounded-[var(--radius-md)] p-8 text-center hover:border-[#4e7e8c] hover:bg-[#e8f0f3]/40 transition-colors"
         >
             <FolderOpen className="mx-auto text-neutral-400 mb-3" size={32} />
             <p className="text-sm text-neutral-600 mb-2">

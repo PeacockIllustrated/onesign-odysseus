@@ -92,7 +92,7 @@ export default async function ArtworkJobsPage({
                         <Link
                             key={key}
                             href={href}
-                            className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${active ? 'bg-black text-white border-black' : 'bg-white text-neutral-700 border-neutral-200 hover:border-neutral-400'}`}
+                            className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${active ? 'bg-[#4e7e8c] text-white border-black' : 'bg-white text-neutral-700 border-neutral-200 hover:border-neutral-400'}`}
                         >
                             {FILTER_LABELS[key]} <span className="ml-1 opacity-70">{count}</span>
                         </Link>
@@ -112,7 +112,7 @@ export default async function ArtworkJobsPage({
                         <Link
                             key={t}
                             href={href}
-                            className={`text-xs font-semibold px-3 py-1 rounded border transition-colors ${active ? 'bg-black text-white border-black' : 'bg-white text-neutral-700 border-neutral-200 hover:border-neutral-400'}`}
+                            className={`text-xs font-semibold px-3 py-1 rounded border transition-colors ${active ? 'bg-[#4e7e8c] text-white border-black' : 'bg-white text-neutral-700 border-neutral-200 hover:border-neutral-400'}`}
                         >
                             {label}
                         </Link>
@@ -130,7 +130,7 @@ export default async function ArtworkJobsPage({
                         name="search"
                         placeholder="search by job name, reference or legacy client…"
                         defaultValue={params.search || ''}
-                        className="flex-1 px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                        className="flex-1 px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                     />
                     <button type="submit" className="btn-secondary">search</button>
                 </form>

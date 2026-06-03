@@ -46,7 +46,7 @@ import {
 import { PRODUCTION_PACKS_BUCKET } from '@/lib/production-packs/utils';
 
 const inputCls =
-    'w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black';
+    'w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]';
 const labelCls = 'block text-[11px] font-semibold uppercase tracking-wider text-neutral-500 mb-1';
 
 /** Downscale large images client-side so packs stay light. Returns a Blob. */
@@ -235,7 +235,7 @@ export function PackBuilder({
                             setTitle(e.target.value);
                             markDirty();
                         }}
-                        className="flex-1 min-w-0 px-2 py-1.5 text-base font-semibold border border-transparent hover:border-neutral-200 focus:border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                        className="flex-1 min-w-0 px-2 py-1.5 text-base font-semibold border border-transparent hover:border-neutral-200 focus:border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                         placeholder="Pack title"
                     />
                     <select
@@ -244,7 +244,7 @@ export function PackBuilder({
                             setStatus(e.target.value as ProductionPackStatus);
                             markDirty();
                         }}
-                        className="px-2 py-1.5 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                        className="px-2 py-1.5 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                     >
                         <option value="draft">draft</option>
                         <option value="ready">ready</option>
@@ -399,13 +399,13 @@ function SectionCard({
                 <input
                     value={section.signRef}
                     onChange={(e) => onUpdate({ signRef: e.target.value })}
-                    className="w-28 px-2 py-1 text-xs font-semibold uppercase tracking-wide border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                    className="w-28 px-2 py-1 text-xs font-semibold uppercase tracking-wide border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                     placeholder="Sign Ref 1"
                 />
                 <input
                     value={section.title}
                     onChange={(e) => onUpdate({ title: e.target.value })}
-                    className="flex-1 min-w-0 px-2 py-1 text-sm font-semibold border border-transparent hover:border-neutral-200 focus:border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                    className="flex-1 min-w-0 px-2 py-1 text-sm font-semibold border border-transparent hover:border-neutral-200 focus:border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                     placeholder="Sign name (e.g. Fascia)"
                 />
                 <IconBtn title="Move up" disabled={index === 0} onClick={() => onMove(-1)}>
@@ -555,7 +555,7 @@ function BlockBody({
         case 'heading':
             return (
                 <input
-                    className="w-full px-2 py-1.5 text-lg font-bold border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                    className="w-full px-2 py-1.5 text-lg font-bold border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                     value={block.text}
                     onChange={(e) => onChange({ ...block, text: e.target.value })}
                     placeholder="Heading"
@@ -809,7 +809,7 @@ function ImageBody({
                 <label className="text-xs text-neutral-500 inline-flex items-center gap-1.5">
                     Fit
                     <select
-                        className="px-2 py-1 text-xs border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                        className="px-2 py-1 text-xs border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                         value={block.fit}
                         onChange={(e) => onChange({ ...block, fit: e.target.value as 'contain' | 'cover' })}
                     >

@@ -122,7 +122,7 @@ export default async function AdminQuotesPage({
                             name="search"
                             placeholder="Search by quote number or customer..."
                             defaultValue={params.search || ''}
-                            className="w-full pl-10 pr-4 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                            className="w-full pl-10 pr-4 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                         />
                     </div>
 
@@ -130,7 +130,7 @@ export default async function AdminQuotesPage({
                         <select
                             name="status"
                             defaultValue={params.status || 'all'}
-                            className="flex-1 sm:flex-none px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                            className="flex-1 sm:flex-none px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                         >
                             <option value="all">All Statuses</option>
                             <option value="draft">Draft</option>
@@ -251,7 +251,7 @@ export default async function AdminQuotesPage({
                                                     href={buildPageUrl(params, item)}
                                                     className={`px-2.5 py-1 text-xs font-medium rounded-[var(--radius-sm)] ${
                                                         item === currentPage
-                                                            ? 'bg-black text-white'
+                                                            ? 'bg-[#4e7e8c] text-white'
                                                             : 'text-neutral-600 hover:bg-neutral-100'
                                                     }`}
                                                 >

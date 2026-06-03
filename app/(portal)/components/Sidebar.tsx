@@ -269,11 +269,11 @@ function NavLink({
 }) {
     const Icon = item.icon;
 
-    const baseClasses = 'flex items-center gap-3 px-3 py-2 rounded-[var(--radius-sm)] text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black';
+    const baseClasses = 'flex items-center gap-3 px-3 py-2 rounded-[var(--radius-sm)] text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4e7e8c]';
 
     let stateClasses: string;
     if (isActive) {
-        stateClasses = 'bg-black text-white';
+        stateClasses = 'bg-[#4e7e8c] text-white';
     } else if (muted) {
         stateClasses = 'text-neutral-400 hover:bg-neutral-50 hover:text-neutral-600';
     } else {

@@ -125,7 +125,7 @@ export function SettingsClient({ defaults, stages }: SettingsClientProps) {
                                                     onChange={(e) =>
                                                         handleChange(ct, e.target.value)
                                                     }
-                                                    className="flex-1 min-w-0 px-3 py-1.5 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black bg-white"
+                                                    className="flex-1 min-w-0 px-3 py-1.5 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c] bg-white"
                                                 >
                                                     <option value="">
                                                         -- no default --

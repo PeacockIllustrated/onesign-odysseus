@@ -340,7 +340,7 @@ function InvoiceEditForm({
         }
     }
 
-    const inputCls = 'w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-black';
+    const inputCls = 'w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]';
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4 pt-4 border-t border-neutral-100">
@@ -388,7 +388,7 @@ function InvoiceEditForm({
             </div>
             <div className="flex justify-end gap-3">
                 <button type="button" onClick={onCancel} className="px-3 py-1.5 text-xs font-medium text-neutral-600 hover:text-neutral-900">Cancel</button>
-                <button type="submit" disabled={isSaving} className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-black text-white rounded hover:bg-neutral-800 disabled:opacity-50">
+                <button type="submit" disabled={isSaving} className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-[#4e7e8c] text-white rounded hover:bg-[#3a5f6a] disabled:opacity-50">
                     {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
                     Save
                 </button>
@@ -529,7 +529,7 @@ function LineItemAddRow({
         } finally { setIsSaving(false); }
     }
 
-    const cellCls = 'px-2 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-black w-full';
+    const cellCls = 'px-2 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-[#4e7e8c] w-full';
 
     return (
         <tr className="bg-neutral-50">
@@ -591,7 +591,7 @@ function LineItemEditRow({
         } finally { setIsSaving(false); }
     }
 
-    const cellCls = 'px-2 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-black w-full';
+    const cellCls = 'px-2 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-[#4e7e8c] w-full';
 
     return (
         <tr className="bg-blue-50">

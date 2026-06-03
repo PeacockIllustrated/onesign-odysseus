@@ -76,7 +76,7 @@ export function NewArtworkJobForm({ orgs: initialOrgs, items, contacts, sites }:
             <div>
                 <label className="text-xs font-medium uppercase text-neutral-500">job name *</label>
                 <input
-                    className="mt-1 w-full px-3 py-2 border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-black"
+                    className="mt-1 w-full px-3 py-2 border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                     value={jobName}
                     onChange={(e) => setJobName(e.target.value)}
                     placeholder="e.g. fascia signage"
@@ -148,7 +148,7 @@ export function NewArtworkJobForm({ orgs: initialOrgs, items, contacts, sites }:
             <div>
                 <label className="text-xs font-medium uppercase text-neutral-500">description</label>
                 <textarea
-                    className="mt-1 w-full px-3 py-2 border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-black"
+                    className="mt-1 w-full px-3 py-2 border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                     rows={3}
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}

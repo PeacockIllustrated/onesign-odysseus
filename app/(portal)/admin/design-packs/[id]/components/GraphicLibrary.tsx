@@ -62,7 +62,7 @@ export function GraphicLibrary({ isOpen, onClose, onSelectIcon, currentColor }: 
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             placeholder="search icons (e.g., parking, arrow, coffee)..."
-                            className="w-full pl-10 pr-4 py-2.5 text-sm border border-neutral-300 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                            className="w-full pl-10 pr-4 py-2.5 text-sm border border-neutral-300 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                         />
                     </div>
                 </div>
@@ -76,7 +76,7 @@ export function GraphicLibrary({ isOpen, onClose, onSelectIcon, currentColor }: 
                                 className={`
                                     px-3 py-1.5 text-xs font-medium rounded-full border-2 transition-all
                                     ${selectedCategory === 'all'
-                                        ? 'border-black bg-black text-white'
+                                        ? 'border-black bg-[#4e7e8c] text-white'
                                         : 'border-neutral-300 bg-white text-neutral-700 hover:border-neutral-400'}
                                 `}
                             >
@@ -89,7 +89,7 @@ export function GraphicLibrary({ isOpen, onClose, onSelectIcon, currentColor }: 
                                     className={`
                                         px-3 py-1.5 text-xs font-medium rounded-full border-2 transition-all
                                         ${selectedCategory === category.id
-                                            ? 'border-black bg-black text-white'
+                                            ? 'border-black bg-[#4e7e8c] text-white'
                                             : 'border-neutral-300 bg-white text-neutral-700 hover:border-neutral-400'}
                                     `}
                                 >

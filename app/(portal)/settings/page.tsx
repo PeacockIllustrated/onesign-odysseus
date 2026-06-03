@@ -106,7 +106,7 @@ function ChangePasswordCard() {
                         type="password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="w-full px-3 py-2 border border-neutral-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                        className="w-full px-3 py-2 border border-neutral-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                         required
                     />
                 </div>
@@ -119,7 +119,7 @@ function ChangePasswordCard() {
                         type="password"
                         value={confirm}
                         onChange={(e) => setConfirm(e.target.value)}
-                        className="w-full px-3 py-2 border border-neutral-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                        className="w-full px-3 py-2 border border-neutral-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                         required
                     />
                 </div>

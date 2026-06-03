@@ -184,7 +184,7 @@ export function CreateDeliveryModal({ onClose, onCreated, onError }: CreateDeliv
                                 type="button"
                                 onClick={handleSubmit}
                                 disabled={!selectedJobId || submitting}
-                                className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-black text-white rounded-[var(--radius-sm)] hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-[#4e7e8c] text-white rounded-[var(--radius-sm)] hover:bg-[#3a5f6a] disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {submitting && <Loader2 size={14} className="animate-spin" />}
                                 Schedule Delivery
