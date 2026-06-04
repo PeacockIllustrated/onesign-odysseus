@@ -44,6 +44,7 @@ export const BLOCK_TYPES = [
     'callouts',
     'stages',
     'qc',
+    'pageBreak',
 ] as const;
 export type BlockType = (typeof BLOCK_TYPES)[number];
 
@@ -58,6 +59,7 @@ export const BLOCK_META: Record<BlockType, { label: string; description: string 
     qc: { label: 'QC checks', description: 'Office / Factory / Final sign-off boxes' },
     heading: { label: 'Heading', description: 'A sub-heading within the page' },
     image: { label: 'Image', description: 'A plain image' },
+    pageBreak: { label: 'Page break', description: 'Force the blocks below onto a new printed page' },
 };
 
 /** Block types offered in the palette, in order. Legacy 'image' is excluded. */
@@ -70,6 +72,7 @@ export const PALETTE_BLOCKS: BlockType[] = [
     'stages',
     'qc',
     'heading',
+    'pageBreak',
 ];
 
 export const HeadingBlockSchema = z.object({
@@ -169,6 +172,11 @@ export const QcBlockSchema = z.object({
     checks: z.array(QcCheckSchema).default([]),
 });
 
+export const PageBreakBlockSchema = z.object({
+    id: z.string().min(1),
+    type: z.literal('pageBreak'),
+});
+
 export const BlockSchema = z.discriminatedUnion('type', [
     HeadingBlockSchema,
     TextBlockSchema,
@@ -179,6 +187,7 @@ export const BlockSchema = z.discriminatedUnion('type', [
     CalloutsBlockSchema,
     StagesBlockSchema,
     QcBlockSchema,
+    PageBreakBlockSchema,
 ]);
 export type Block = z.infer<typeof BlockSchema>;
 export type HeadingBlock = z.infer<typeof HeadingBlockSchema>;
@@ -190,6 +199,7 @@ export type SpecTableBlock = z.infer<typeof SpecTableBlockSchema>;
 export type CalloutsBlock = z.infer<typeof CalloutsBlockSchema>;
 export type StagesBlock = z.infer<typeof StagesBlockSchema>;
 export type QcBlock = z.infer<typeof QcBlockSchema>;
+export type PageBreakBlock = z.infer<typeof PageBreakBlockSchema>;
 
 // =============================================================================
 // SECTIONS + COVER + DOCUMENT
@@ -349,6 +359,9 @@ export function newQcBlock(): QcBlock {
         checks: DEFAULT_QC_CHECKS.map((label) => ({ label, done: false })),
     };
 }
+export function newPageBreakBlock(): PageBreakBlock {
+    return { id: genId('pb'), type: 'pageBreak' };
+}
 
 /** Build a fresh block of the requested type with sensible empty defaults. */
 export function newBlock(type: BlockType): Block {
@@ -371,6 +384,8 @@ export function newBlock(type: BlockType): Block {
             return newStagesBlock();
         case 'qc':
             return newQcBlock();
+        case 'pageBreak':
+            return newPageBreakBlock();
     }
 }
 

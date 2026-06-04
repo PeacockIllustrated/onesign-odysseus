@@ -73,22 +73,25 @@ export default async function ProductionPackPrintPage({
             </section>
 
             {/* ONE PAGE PER SIGN */}
-            {sections.map((section, si) => (
-                <section className="pp-page" key={section.id}>
-                    <div className="pp-page-head">
-                        {section.signRef && <span className="pp-ref">{section.signRef}</span>}
-                        <h2 className="pp-title">{section.title}</h2>
-                    </div>
+            {sections.map((section, si) => {
+                const hasBreak = section.blocks.some((b) => b.type === 'pageBreak');
+                return (
+                    <section className={`pp-page${hasBreak ? ' pp-page-flow' : ''}`} key={section.id}>
+                        <div className="pp-page-head">
+                            {section.signRef && <span className="pp-ref">{section.signRef}</span>}
+                            <h2 className="pp-title">{section.title}</h2>
+                        </div>
 
-                    <div className="pp-body">
-                        {section.blocks.map((block) => (
-                            <BlockView key={block.id} block={block} />
-                        ))}
-                    </div>
+                        <div className="pp-body">
+                            {section.blocks.map((block) => (
+                                <BlockView key={block.id} block={block} />
+                            ))}
+                        </div>
 
-                    <TitleBlock cover={cover} page={si + 1} pages={sections.length} />
-                </section>
-            ))}
+                        <TitleBlock cover={cover} page={si + 1} pages={sections.length} />
+                    </section>
+                );
+            })}
 
             {sections.length === 0 && (
                 <section className="pp-page">
@@ -201,6 +204,9 @@ function BlockView({ block }: { block: Block }) {
                     </div>
                 </div>
             );
+
+        case 'pageBreak':
+            return <div className="pp-pagebreak" />;
     }
 }
 
@@ -324,6 +330,14 @@ const styles = `
 
 /* body */
 .pp-body { flex: 1; display: flex; flex-direction: column; gap: 12px; }
+
+/* Manual page break. Sections containing one switch to normal block flow so
+   the forced break is honoured (flex containers don't fragment reliably). */
+.pp-pagebreak { break-before: page; page-break-before: always; height: 0; }
+.pp-page-flow { display: block; }
+.pp-page-flow .pp-body { display: block; }
+.pp-page-flow .pp-body > * { margin-bottom: 12px; }
+.pp-page-flow .pp-titleblock { margin-top: 16px; }
 .pp-h { font-size: 15px; font-weight: 800; margin: 4px 0 0; }
 .pp-block-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: ${TEAL}; margin-bottom: 5px; }
 .pp-text-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: ${TEAL}; margin-bottom: 4px; }

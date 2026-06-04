@@ -18,6 +18,8 @@ import {
     ArrowLeft,
     BadgeCheck,
     ChevronDown,
+    ChevronLeft,
+    ChevronRight,
     ChevronUp,
     Copy,
     Eye,
@@ -31,6 +33,7 @@ import {
     Plus,
     Ruler,
     Save,
+    SeparatorHorizontal,
     Table2,
     Trash2,
     Upload,
@@ -70,6 +73,7 @@ const BLOCK_ICONS: Record<BlockType, LucideIcon> = {
     qc: BadgeCheck,
     heading: HeadingIcon,
     image: ImageIcon,
+    pageBreak: SeparatorHorizontal,
 };
 
 // =============================================================================
@@ -173,6 +177,68 @@ async function analyzeDrawing(
         };
     } catch {
         return { isSvg: false, aspect: 0, widthMm: null, heightMm: null };
+    }
+}
+
+// =============================================================================
+// PDF HELPERS (lazy-loaded; only when a PDF is actually picked)
+// =============================================================================
+
+function isPdf(file: File): boolean {
+    return file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+}
+
+let _pdfjs: typeof import('pdfjs-dist') | null = null;
+async function getPdfjs() {
+    if (!_pdfjs) {
+        const mod = await import('pdfjs-dist');
+        // Worker is vendored into /public so it loads from our own origin
+        // (works offline on shop tablets; no bundler-worker guesswork).
+        mod.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+        _pdfjs = mod;
+    }
+    return _pdfjs;
+}
+
+async function pdfPageCount(file: File): Promise<number> {
+    const pdfjs = await getPdfjs();
+    const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
+    const doc = await task.promise;
+    const n = doc.numPages;
+    await task.destroy();
+    return n;
+}
+
+/** Rasterise one PDF page to a PNG File (so it flows through the normal image
+ *  upload path) and report its aspect ratio. */
+async function pdfPageToFile(
+    file: File,
+    pageNumber: number,
+): Promise<{ file: File; aspect: number } | null> {
+    const pdfjs = await getPdfjs();
+    const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
+    const doc = await task.promise;
+    try {
+        const page = await doc.getPage(Math.min(Math.max(1, pageNumber), doc.numPages));
+        const base = page.getViewport({ scale: 1 });
+        const scale = Math.min(4, 2000 / base.width);
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(viewport.width);
+        canvas.height = Math.round(viewport.height);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return null;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvas, canvasContext: ctx, viewport }).promise;
+        const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png', 0.95));
+        if (!blob) return null;
+        return {
+            file: new File([blob], `page-${pageNumber}.png`, { type: 'image/png' }),
+            aspect: base.height > 0 ? base.width / base.height : 0,
+        };
+    } finally {
+        await task.destroy();
     }
 }
 
@@ -823,7 +889,28 @@ function BlockBody({
                     <AddRowBtn onClick={() => onChange({ ...block, checks: [...block.checks, { label: '', done: false }] })} label="Add check" />
                 </div>
             );
+
+        case 'pageBreak':
+            return (
+                <div className="flex items-center gap-3 py-1 text-[#4e7e8c]">
+                    <span className="flex-1 border-t border-dashed border-[#4e7e8c]/50" />
+                    <span className="text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap">New page starts below</span>
+                    <span className="flex-1 border-t border-dashed border-[#4e7e8c]/50" />
+                </div>
+            );
     }
+}
+
+function PdfPager({ page, numPages, busy, onChange }: { page: number; numPages: number; busy: boolean; onChange: (p: number) => void }) {
+    if (numPages <= 1) return null;
+    return (
+        <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">PDF page</span>
+            <button type="button" disabled={busy || page <= 1} onClick={() => onChange(page - 1)} className="p-1 rounded-[var(--radius-sm)] hover:bg-neutral-100 disabled:opacity-30"><ChevronLeft size={14} /></button>
+            <span className="text-xs tabular-nums w-12 text-center">{page} / {numPages}</span>
+            <button type="button" disabled={busy || page >= numPages} onClick={() => onChange(page + 1)} className="p-1 rounded-[var(--radius-sm)] hover:bg-neutral-100 disabled:opacity-30"><ChevronRight size={14} /></button>
+        </div>
+    );
 }
 
 function AddRowBtn({ onClick, label }: { onClick: () => void; label: string }) {
@@ -845,14 +932,42 @@ function MediaBody({
     uploadImage: (file: File) => Promise<string | null>;
 }) {
     const [uploading, setUploading] = useState(false);
+    const [pdfFile, setPdfFile] = useState<File | null>(null);
+    const [numPages, setNumPages] = useState(1);
+    const [page, setPage] = useState(1);
     const fileRef = useRef<HTMLInputElement>(null);
+
+    async function applyPdfPage(file: File, p: number) {
+        const res = await pdfPageToFile(file, p);
+        if (!res) return;
+        const url = await uploadImage(res.file);
+        if (url) onChange({ ...block, url });
+    }
+
     async function pick(file: File | undefined) {
         if (!file) return;
         setUploading(true);
-        const url = await uploadImage(file);
-        setUploading(false);
-        if (url) onChange({ ...block, url });
+        try {
+            if (isPdf(file)) {
+                const n = await pdfPageCount(file);
+                setPdfFile(file); setNumPages(n); setPage(1);
+                await applyPdfPage(file, 1);
+            } else {
+                setPdfFile(null); setNumPages(1); setPage(1);
+                const url = await uploadImage(file);
+                if (url) onChange({ ...block, url });
+            }
+        } finally {
+            setUploading(false);
+        }
     }
+
+    async function changePage(p: number) {
+        if (!pdfFile) return;
+        setUploading(true); setPage(p);
+        try { await applyPdfPage(pdfFile, p); } finally { setUploading(false); }
+    }
+
     return (
         <div className="space-y-2">
             <div className="flex items-start gap-3">
@@ -865,11 +980,12 @@ function MediaBody({
                     )}
                 </div>
                 <div className="flex-1 space-y-2">
-                    <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
+                    <input ref={fileRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
                     <button onClick={() => fileRef.current?.click()} disabled={uploading} className="btn-secondary inline-flex items-center gap-1.5">
                         {uploading ? <Loader2 size={15} className="animate-spin" /> : <ImagePlus size={15} />}
-                        {uploading ? 'uploading…' : block.url ? 'Replace render / photo' : 'Upload render / photo'}
+                        {uploading ? 'uploading…' : block.url ? 'Replace render / photo' : 'Upload render / photo / PDF'}
                     </button>
+                    <PdfPager page={page} numPages={numPages} busy={uploading} onChange={changePage} />
                     <input className={inputCls} value={block.caption} onChange={(e) => onChange({ ...block, caption: e.target.value })} placeholder="Caption (optional)" />
                 </div>
             </div>
@@ -902,22 +1018,48 @@ function TechnicalBody({
     uploadImage: (file: File) => Promise<string | null>;
 }) {
     const [uploading, setUploading] = useState(false);
+    const [pdfFile, setPdfFile] = useState<File | null>(null);
+    const [numPages, setNumPages] = useState(1);
+    const [page, setPage] = useState(1);
     const fileRef = useRef<HTMLInputElement>(null);
+
+    async function applyPdfPage(file: File, p: number) {
+        const res = await pdfPageToFile(file, p);
+        if (!res) return;
+        const url = await uploadImage(res.file);
+        if (url) onChange({ ...block, url, isSvg: false, aspect: res.aspect || block.aspect });
+    }
 
     async function pick(file: File | undefined) {
         if (!file) return;
         setUploading(true);
-        const [url, info] = await Promise.all([uploadImage(file), analyzeDrawing(file)]);
-        setUploading(false);
-        if (!url) return;
-        onChange({
-            ...block,
-            url,
-            isSvg: info.isSvg,
-            aspect: info.aspect || block.aspect,
-            widthMm: info.widthMm ?? block.widthMm,
-            heightMm: info.heightMm ?? block.heightMm,
-        });
+        try {
+            if (isPdf(file)) {
+                const n = await pdfPageCount(file);
+                setPdfFile(file); setNumPages(n); setPage(1);
+                await applyPdfPage(file, 1);
+            } else {
+                setPdfFile(null); setNumPages(1); setPage(1);
+                const [url, info] = await Promise.all([uploadImage(file), analyzeDrawing(file)]);
+                if (!url) return;
+                onChange({
+                    ...block,
+                    url,
+                    isSvg: info.isSvg,
+                    aspect: info.aspect || block.aspect,
+                    widthMm: info.widthMm ?? block.widthMm,
+                    heightMm: info.heightMm ?? block.heightMm,
+                });
+            }
+        } finally {
+            setUploading(false);
+        }
+    }
+
+    async function changePage(p: number) {
+        if (!pdfFile) return;
+        setUploading(true); setPage(p);
+        try { await applyPdfPage(pdfFile, p); } finally { setUploading(false); }
     }
 
     function setWidth(mm: number | null) {
@@ -946,14 +1088,15 @@ function TechnicalBody({
                     )}
                 </div>
                 <div className="flex-1 space-y-2">
-                    <input ref={fileRef} type="file" accept="image/svg+xml,.svg,image/*" className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
-                    <div className="flex items-center gap-2">
+                    <input ref={fileRef} type="file" accept="image/svg+xml,.svg,application/pdf,image/*" className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
+                    <div className="flex items-center gap-2 flex-wrap">
                         <button onClick={() => fileRef.current?.click()} disabled={uploading} className="btn-secondary inline-flex items-center gap-1.5">
                             {uploading ? <Loader2 size={15} className="animate-spin" /> : <Ruler size={15} />}
-                            {uploading ? 'reading…' : block.url ? 'Replace drawing' : 'Upload drawing (SVG or image)'}
+                            {uploading ? 'reading…' : block.url ? 'Replace drawing' : 'Upload drawing (SVG, PDF or image)'}
                         </button>
                         {block.isSvg && <span className="text-[10px] font-bold uppercase tracking-wide text-[#4e7e8c] bg-[#e8f0f3] px-1.5 py-0.5 rounded">SVG · vector</span>}
                     </div>
+                    <PdfPager page={page} numPages={numPages} busy={uploading} onChange={changePage} />
                     <p className="text-xs text-neutral-500 leading-snug">{scaleNote}</p>
                     <input className={inputCls} value={block.caption} onChange={(e) => onChange({ ...block, caption: e.target.value })} placeholder="Caption (optional, e.g. Section detail)" />
                 </div>
