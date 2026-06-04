@@ -48,8 +48,11 @@ export default async function ProductionPackPrintPage({
 
             {/* COVER */}
             <section className="pp-cover">
-                <img src="/Odysseus-Logo-Black.svg" alt="Onesign & Digital" className="pp-cover-logo" />
+                <img src="/Onesign-Logo-Black.svg" alt="Onesign & Digital" className="pp-cover-logo" />
                 <div className="pp-cover-mid">
+                    {cover.logoUrl && (
+                        <img src={cover.logoUrl} alt={cover.clientName || 'client logo'} className="pp-cover-clientlogo" />
+                    )}
                     <div className="pp-cover-word">{wordmark}</div>
                     <div className="pp-cover-sub">{cover.subtitle || 'Signage works pack'}</div>
                     {cover.projectName && cover.showWordmark && cover.clientName && (
@@ -112,6 +115,7 @@ function BlockView({ block }: { block: Block }) {
             );
 
         case 'image':
+        case 'visual':
             return block.url ? (
                 <figure className="pp-fig" style={{ pageBreakInside: 'avoid' }}>
                     <img
@@ -122,6 +126,9 @@ function BlockView({ block }: { block: Block }) {
                     {block.caption && <figcaption className="pp-cap">{block.caption}</figcaption>}
                 </figure>
             ) : null;
+
+        case 'technical':
+            return <TechnicalView block={block} />;
 
         case 'specTable':
             return (
@@ -197,6 +204,53 @@ function BlockView({ block }: { block: Block }) {
     }
 }
 
+function TechnicalView({ block }: { block: Extract<Block, { type: 'technical' }> }) {
+    if (!block.url) return null;
+    const showDims = block.showDimensions && block.widthMm != null;
+    const frame = (
+        <div className="pp-tech-frame" style={{ height: `${block.height}px` }}>
+            <img src={block.url} alt={block.caption || 'technical drawing'} />
+        </div>
+    );
+    return (
+        <figure className="pp-tech" style={{ pageBreakInside: 'avoid' }}>
+            {showDims ? (
+                <div className="pp-tech-grid">
+                    {block.heightMm != null ? <DimV mm={block.heightMm} /> : <div />}
+                    {frame}
+                    <div />
+                    <DimH mm={block.widthMm as number} />
+                </div>
+            ) : (
+                frame
+            )}
+            {block.caption && <figcaption className="pp-cap">{block.caption}</figcaption>}
+        </figure>
+    );
+}
+
+function DimH({ mm }: { mm: number }) {
+    return (
+        <div className="pp-dim pp-dim-h">
+            <span className="pp-dim-line-h" />
+            <span className="pp-dim-tick-h" style={{ left: 0 }} />
+            <span className="pp-dim-tick-h" style={{ right: 0 }} />
+            <span className="pp-dim-chip">{mm} mm</span>
+        </div>
+    );
+}
+
+function DimV({ mm }: { mm: number }) {
+    return (
+        <div className="pp-dim pp-dim-v">
+            <span className="pp-dim-line-v" />
+            <span className="pp-dim-tick-v" style={{ top: 0 }} />
+            <span className="pp-dim-tick-v" style={{ bottom: 0 }} />
+            <span className="pp-dim-chip pp-dim-chip-v">{mm} mm</span>
+        </div>
+    );
+}
+
 function TitleBlock({ cover, page, pages }: { cover: PackCover; page: number; pages: number }) {
     const fields: Array<[string, string]> = [
         ['Client', cover.clientName],
@@ -210,7 +264,7 @@ function TitleBlock({ cover, page, pages }: { cover: PackCover; page: number; pa
     return (
         <div className="pp-titleblock">
             <div className="pp-tb-brand">
-                <div className="pp-tb-name">Onesign &amp; Digital</div>
+                <img src="/Onesign-Logo-Black.svg" alt="Onesign & Digital" className="pp-tb-logo" />
                 <div className="pp-tb-tag">Signage works pack</div>
             </div>
             <div className="pp-tb-fields">
@@ -308,4 +362,23 @@ const styles = `
 .pp-tb-label { font-size: 7.5px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.8; }
 .pp-tb-value { font-size: 11px; font-weight: 600; }
 .pp-tb-page { font-size: 11px; font-weight: 700; opacity: 0.9; }
+.pp-tb-logo { height: 16px; width: auto; display: block; margin-bottom: 3px; filter: brightness(0) invert(1); }
+
+/* cover client logo */
+.pp-cover-clientlogo { max-height: 150px; max-width: 78%; width: auto; object-fit: contain; margin-bottom: 20px; }
+
+/* technical drawing + overall dimensions */
+.pp-tech { margin: 0; }
+.pp-tech-grid { display: grid; grid-template-columns: 24px 1fr; grid-template-rows: auto 24px; }
+.pp-tech-frame { border: 1px solid #d3d7d9; background: #fff; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.pp-tech-frame img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.pp-dim { position: relative; }
+.pp-dim-h { height: 24px; }
+.pp-dim-line-h { position: absolute; top: 11px; left: 2px; right: 2px; height: 1px; background: ${TEAL}; }
+.pp-dim-tick-h { position: absolute; top: 6px; width: 1px; height: 11px; background: ${TEAL}; }
+.pp-dim-v { width: 24px; }
+.pp-dim-line-v { position: absolute; left: 11px; top: 2px; bottom: 2px; width: 1px; background: ${TEAL}; }
+.pp-dim-tick-v { position: absolute; left: 6px; height: 1px; width: 11px; background: ${TEAL}; }
+.pp-dim-chip { position: absolute; top: 3px; left: 50%; transform: translateX(-50%); background: #fff; padding: 0 5px; font-size: 9px; font-weight: 700; color: ${TEAL}; white-space: nowrap; }
+.pp-dim-chip-v { top: 50%; left: 11px; transform: translate(-50%, -50%) rotate(-90deg); }
 `;

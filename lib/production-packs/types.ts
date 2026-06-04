@@ -38,6 +38,8 @@ export const BLOCK_TYPES = [
     'heading',
     'text',
     'image',
+    'visual',
+    'technical',
     'specTable',
     'callouts',
     'stages',
@@ -45,15 +47,30 @@ export const BLOCK_TYPES = [
 ] as const;
 export type BlockType = (typeof BLOCK_TYPES)[number];
 
-export const BLOCK_LABELS: Record<BlockType, string> = {
-    heading: 'Heading',
-    text: 'Text / notes',
-    image: 'Image',
-    specTable: 'Spec table',
-    callouts: 'Material callouts',
-    stages: 'Build stages',
-    qc: 'QC checks',
+/** Label + one-line description shown in the block palette. */
+export const BLOCK_META: Record<BlockType, { label: string; description: string }> = {
+    visual: { label: 'Visual', description: 'In-situ render or photo of the finished sign' },
+    technical: { label: 'Technical drawing', description: 'Dimensioned drawing — upload an SVG to auto-size it' },
+    specTable: { label: 'Spec table', description: 'Key facts — size, material, finish, fixing' },
+    callouts: { label: 'Material callouts', description: 'Bulleted construction / material notes' },
+    text: { label: 'Text / notes', description: 'Free construction specification or notes' },
+    stages: { label: 'Build stages', description: 'Stage-by-stage steps with sign-off' },
+    qc: { label: 'QC checks', description: 'Office / Factory / Final sign-off boxes' },
+    heading: { label: 'Heading', description: 'A sub-heading within the page' },
+    image: { label: 'Image', description: 'A plain image' },
 };
+
+/** Block types offered in the palette, in order. Legacy 'image' is excluded. */
+export const PALETTE_BLOCKS: BlockType[] = [
+    'visual',
+    'technical',
+    'specTable',
+    'callouts',
+    'text',
+    'stages',
+    'qc',
+    'heading',
+];
 
 export const HeadingBlockSchema = z.object({
     id: z.string().min(1),
@@ -76,6 +93,36 @@ export const ImageBlockSchema = z.object({
     fit: z.enum(['contain', 'cover']).default('contain'),
     /** Render height on the printed page, in px (≈ mm at 96dpi screens). */
     height: z.number().int().min(80).max(900).default(300),
+});
+
+/** In-situ visual: how the finished sign looks installed. Hero treatment. */
+export const VisualBlockSchema = z.object({
+    id: z.string().min(1),
+    type: z.literal('visual'),
+    url: z.string().default(''),
+    caption: z.string().default(''),
+    fit: z.enum(['contain', 'cover']).default('cover'),
+    height: z.number().int().min(80).max(900).default(340),
+});
+
+/**
+ * Technical drawing: a dimensioned drawing. Accepts a raster image or an SVG
+ * (rendered vector-sharp). When the overall real-world size is known — read
+ * from the SVG's mm units or entered as one reference width — the print view
+ * draws overall width/height dimension lines around it. `aspect` (w/h) lets the
+ * builder derive the missing dimension and keep the drawing undistorted.
+ */
+export const TechnicalBlockSchema = z.object({
+    id: z.string().min(1),
+    type: z.literal('technical'),
+    url: z.string().default(''),
+    isSvg: z.boolean().default(false),
+    aspect: z.number().default(0),
+    widthMm: z.number().nullable().default(null),
+    heightMm: z.number().nullable().default(null),
+    caption: z.string().default(''),
+    showDimensions: z.boolean().default(true),
+    height: z.number().int().min(80).max(900).default(320),
 });
 
 export const SpecRowSchema = z.object({
@@ -126,6 +173,8 @@ export const BlockSchema = z.discriminatedUnion('type', [
     HeadingBlockSchema,
     TextBlockSchema,
     ImageBlockSchema,
+    VisualBlockSchema,
+    TechnicalBlockSchema,
     SpecTableBlockSchema,
     CalloutsBlockSchema,
     StagesBlockSchema,
@@ -135,6 +184,8 @@ export type Block = z.infer<typeof BlockSchema>;
 export type HeadingBlock = z.infer<typeof HeadingBlockSchema>;
 export type TextBlock = z.infer<typeof TextBlockSchema>;
 export type ImageBlock = z.infer<typeof ImageBlockSchema>;
+export type VisualBlock = z.infer<typeof VisualBlockSchema>;
+export type TechnicalBlock = z.infer<typeof TechnicalBlockSchema>;
 export type SpecTableBlock = z.infer<typeof SpecTableBlockSchema>;
 export type CalloutsBlock = z.infer<typeof CalloutsBlockSchema>;
 export type StagesBlock = z.infer<typeof StagesBlockSchema>;
@@ -167,6 +218,8 @@ export const PackCoverSchema = z.object({
     checkedBy: z.string().default(''),
     /** free-text or ISO date; printed as-is */
     date: z.string().default(''),
+    /** uploaded client logo shown on the cover (public URL) */
+    logoUrl: z.string().default(''),
     showWordmark: z.boolean().default(true),
 });
 export type PackCover = z.infer<typeof PackCoverSchema>;
@@ -246,6 +299,23 @@ export function newTextBlock(title = '', body = ''): TextBlock {
 export function newImageBlock(): ImageBlock {
     return { id: genId('img'), type: 'image', url: '', caption: '', fit: 'contain', height: 300 };
 }
+export function newVisualBlock(): VisualBlock {
+    return { id: genId('vis'), type: 'visual', url: '', caption: '', fit: 'cover', height: 340 };
+}
+export function newTechnicalBlock(): TechnicalBlock {
+    return {
+        id: genId('tech'),
+        type: 'technical',
+        url: '',
+        isSvg: false,
+        aspect: 0,
+        widthMm: null,
+        heightMm: null,
+        caption: '',
+        showDimensions: true,
+        height: 320,
+    };
+}
 export function newSpecTableBlock(): SpecTableBlock {
     return {
         id: genId('st'),
@@ -289,6 +359,10 @@ export function newBlock(type: BlockType): Block {
             return newTextBlock();
         case 'image':
             return newImageBlock();
+        case 'visual':
+            return newVisualBlock();
+        case 'technical':
+            return newTechnicalBlock();
         case 'specTable':
             return newSpecTableBlock();
         case 'callouts':
@@ -312,8 +386,8 @@ export function newSection(index: number): SignSection {
         title: `Sign ${index}`,
         signRef: `Sign Ref ${index}`,
         blocks: [
-            newHeadingBlock(''),
-            newImageBlock(),
+            newVisualBlock(),
+            newTechnicalBlock(),
             newSpecTableBlock(),
             newCalloutsBlock(),
             newTextBlock('Construction specification', ''),
