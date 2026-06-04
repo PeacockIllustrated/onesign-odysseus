@@ -440,8 +440,9 @@ function StudioSheet({
     page: number;
     pages: number;
 }) {
-    const stage = section.blocks.filter(isStageBlock);
-    const rail = section.blocks.filter((b) => !isStageBlock(b) && b.type !== 'pageBreak');
+    // Each keep-with group becomes an aligned row: its info on the left, its
+    // artwork/drawing on the right — so linked content sits beside its image.
+    const groups = groupBlocks(section.blocks, section.keepWith);
     return (
         <section className="pp-page pp-studio-sheet">
             <header className="pp-studio-head">
@@ -449,40 +450,48 @@ function StudioSheet({
                 <h2 className="pp-studio-title">{section.title}</h2>
                 <span className="pp-studio-headmeta">Onesign &amp; Digital · {page} / {pages}</span>
             </header>
-            <div className="pp-studio-grid">
-                <div className="pp-studio-rail">
-                    {rail.map((b) => (
-                        <BlockView key={b.id} block={b} />
-                    ))}
-                    <StudioTitleBlock cover={cover} />
-                </div>
-                <div className="pp-studio-stage">
-                    {stage.length > 0 ? (
-                        stage.map((b) => <BlockView key={b.id} block={b} />)
-                    ) : (
-                        <div className="pp-studio-empty">Artwork &amp; drawings appear here</div>
-                    )}
-                </div>
+            <div className="pp-studio-rows">
+                {groups.map((group, gi) => {
+                    const info = group.filter((b) => !isStageBlock(b) && b.type !== 'pageBreak');
+                    const stage = group.filter(isStageBlock);
+                    return (
+                        <div className="pp-studio-row" key={gi}>
+                            <div className="pp-studio-row-info">
+                                {info.map((b) => (
+                                    <BlockView key={b.id} block={b} />
+                                ))}
+                            </div>
+                            <div className="pp-studio-row-stage">
+                                {stage.map((b) => (
+                                    <BlockView key={b.id} block={b} />
+                                ))}
+                            </div>
+                        </div>
+                    );
+                })}
+                {groups.length === 0 && <div className="pp-studio-empty">No blocks yet</div>}
             </div>
+            <StudioFooter cover={cover} />
         </section>
     );
 }
 
-function StudioTitleBlock({ cover }: { cover: PackCover }) {
+function StudioFooter({ cover }: { cover: PackCover }) {
     const fields: Array<[string, string]> = [
         ['Drawn by', cover.drawnBy],
         ['Checked by', cover.checkedBy],
         ['Date', cover.date],
+        ['Ref', cover.reference],
         ['Rev', cover.revision],
     ];
     return (
-        <div className="pp-studio-tb">
-            <img src="/Onesign-Logo-Black.svg" alt="Onesign & Digital" className="pp-studio-tb-logo" />
-            <div className="pp-studio-tb-fields">
+        <div className="pp-studio-footer">
+            <img src="/Onesign-Logo-Black.svg" alt="Onesign & Digital" className="pp-studio-foot-logo" />
+            <div className="pp-studio-foot-grid">
                 {fields.map(([l, v]) => (
-                    <div key={l} className="pp-studio-tb-field">
-                        <span className="pp-studio-tb-label">{l}</span>
-                        <span className="pp-studio-tb-value">{v || '—'}</span>
+                    <div key={l} className="pp-studio-foot-field">
+                        <span className="pp-studio-foot-flabel">{l}</span>
+                        <span className="pp-studio-foot-fvalue">{v || '—'}</span>
                     </div>
                 ))}
             </div>
@@ -638,22 +647,25 @@ const STUDIO_CSS = `
 .pp-studio-num { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #fff; background: var(--pp-accent); padding: 4px 9px; border-radius: 2px; white-space: nowrap; }
 .pp-studio-title { font-size: 26px; font-weight: 800; letter-spacing: -0.01em; margin: 0; flex: 1; }
 .pp-studio-headmeta { font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em; color: #9ca3af; white-space: nowrap; }
-.pp-studio-grid { flex: 1; display: grid; grid-template-columns: 82mm 1fr; gap: 11mm; min-height: 0; }
-.pp-studio-rail { display: flex; flex-direction: column; gap: 7mm; border-right: 1px solid #e5e7eb; padding-right: 10mm; }
-.pp-studio-stage { display: flex; flex-direction: column; gap: 7mm; min-width: 0; }
-.pp-studio-empty { flex: 1; display: flex; align-items: center; justify-content: center; border: 1px dashed #d1d5db; border-radius: 4px; color: #9ca3af; font-size: 12px; }
+/* Rows = keep-with groups: info (left) aligned beside its artwork (right). A
+   continuous hairline divider runs down between the two columns. */
+.pp-studio-rows { flex: 1; display: flex; flex-direction: column; gap: 9mm; }
+.pp-studio-row { display: grid; grid-template-columns: 82mm 1fr; gap: 11mm; align-items: start; }
+.pp-studio-row-info { border-right: 1px solid #e5e7eb; padding-right: 10mm; display: flex; flex-direction: column; gap: 6mm; min-width: 0; }
+.pp-studio-row-stage { display: flex; flex-direction: column; gap: 6mm; min-width: 0; }
+.pp-studio-empty { color: #9ca3af; font-size: 12px; padding: 8mm 0; }
 
-/* refined block presentation inside the rail (hairline lists, not boxes) */
-.pp-studio-rail .pp-spec-table th { background: transparent; border: none; border-bottom: 1px solid #eceef0; padding: 5px 0; color: #6b7280; width: 44%; }
-.pp-studio-rail .pp-spec-table td { border: none; border-bottom: 1px solid #eceef0; padding: 5px 0 5px 8px; }
-.pp-studio-rail .pp-stages-table th, .pp-studio-rail .pp-stages-table td { font-size: 11px; }
-.pp-studio-stage .pp-fig img { border-radius: 4px; }
+/* refined block presentation inside the info column (hairline lists, not boxes) */
+.pp-studio-row-info .pp-spec-table th { background: transparent; border: none; border-bottom: 1px solid #eceef0; padding: 5px 0; color: #6b7280; width: 44%; }
+.pp-studio-row-info .pp-spec-table td { border: none; border-bottom: 1px solid #eceef0; padding: 5px 0 5px 8px; }
+.pp-studio-row-info .pp-stages-table th, .pp-studio-row-info .pp-stages-table td { font-size: 11px; }
+.pp-studio-row-stage .pp-fig img { border-radius: 4px; }
 
-/* studio title block pinned to the foot of the rail */
-.pp-studio-tb { margin-top: auto; border-top: 1px solid #e5e7eb; padding-top: 10px; }
-.pp-studio-tb-logo { height: 15px; width: auto; display: block; margin-bottom: 9px; }
-.pp-studio-tb-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 10px; }
-.pp-studio-tb-field { display: flex; flex-direction: column; line-height: 1.2; }
-.pp-studio-tb-label { font-size: 7.5px; text-transform: uppercase; letter-spacing: 0.1em; color: #9ca3af; }
-.pp-studio-tb-value { font-size: 11px; font-weight: 600; color: #1f2937; }
+/* full-width footer (title block) */
+.pp-studio-footer { margin-top: 9mm; border-top: 2px solid var(--pp-accent); padding-top: 9px; display: flex; align-items: center; gap: 18px; }
+.pp-studio-foot-logo { height: 15px; width: auto; }
+.pp-studio-foot-grid { flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+.pp-studio-foot-field { display: flex; flex-direction: column; line-height: 1.2; }
+.pp-studio-foot-flabel { font-size: 7.5px; text-transform: uppercase; letter-spacing: 0.1em; color: #9ca3af; }
+.pp-studio-foot-fvalue { font-size: 11px; font-weight: 600; color: #1f2937; }
 `;
