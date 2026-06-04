@@ -49,12 +49,14 @@ import {
 } from '@/lib/production-packs/actions';
 import {
     BLOCK_META,
+    PACK_STYLES,
     PALETTE_BLOCKS,
     genId,
     newBlock,
     newSection,
     type Block,
     type BlockType,
+    type PackStyle,
     type ProductionPackContent,
     type ProductionPackStatus,
     type SignSection,
@@ -423,6 +425,8 @@ export function PackBuilder({
     const updateCover = (patch: Partial<ProductionPackContent['cover']>) =>
         mutate((d) => Object.assign(d.cover, patch));
 
+    const updateStyle = (style: PackStyle) => mutate((d) => { d.style = style; });
+
     const addSection = () => {
         const sec = newSection(content.sections.length + 1);
         mutate((d) => d.sections.push(sec));
@@ -526,6 +530,8 @@ export function PackBuilder({
                         </button>
                     </div>
                 )}
+
+                <StyleBar value={content.style} onChange={updateStyle} />
 
                 {/* Cover & title block */}
                 <section className="bg-white border border-neutral-200 rounded-[var(--radius-md)]">
@@ -646,6 +652,52 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 function GroupHeading({ children }: { children: ReactNode }) {
     return (
         <div className="text-[11px] font-bold uppercase tracking-wider text-[#4e7e8c] mb-3">{children}</div>
+    );
+}
+
+function StyleBar({ value, onChange }: { value: PackStyle; onChange: (s: PackStyle) => void }) {
+    return (
+        <div className="bg-white border border-neutral-200 rounded-[var(--radius-md)] px-4 py-3">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-[#4e7e8c] mb-2">Pack style</div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {(Object.keys(PACK_STYLES) as PackStyle[]).map((s) => {
+                    const meta = PACK_STYLES[s];
+                    const active = value === s;
+                    return (
+                        <button
+                            key={s}
+                            onClick={() => onChange(s)}
+                            className={`flex items-center gap-2.5 text-left p-2 rounded-[var(--radius-sm)] border transition-colors ${
+                                active
+                                    ? 'border-[#4e7e8c] bg-[#e8f0f3]/50 ring-1 ring-[#4e7e8c]'
+                                    : 'border-neutral-200 hover:border-neutral-300'
+                            }`}
+                        >
+                            <StyleThumb style={s} />
+                            <span className="min-w-0">
+                                <span className="block text-sm font-semibold text-neutral-800">{meta.label}</span>
+                                <span className="block text-[11px] text-neutral-500 truncate">{meta.blurb}</span>
+                            </span>
+                        </button>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+function StyleThumb({ style }: { style: PackStyle }) {
+    const landscape = PACK_STYLES[style].orientation === 'landscape';
+    const dark = style === 'editorial';
+    const accent = style === 'mono' ? '#1a1a1a' : style === 'editorial' ? '#3a5f6a' : '#4e7e8c';
+    return (
+        <span
+            className="shrink-0 rounded-[2px] border border-neutral-300 overflow-hidden flex flex-col"
+            style={{ width: landscape ? 34 : 24, height: landscape ? 24 : 34, background: dark ? '#1a1f23' : '#fff' }}
+        >
+            <span className="flex-1" />
+            <span style={{ height: 6, background: accent }} />
+        </span>
     );
 }
 

@@ -31,6 +31,24 @@ export const ProductionPackStatusEnum = z.enum(['draft', 'ready', 'archived']);
 export type ProductionPackStatus = z.infer<typeof ProductionPackStatusEnum>;
 
 // =============================================================================
+// PACK STYLE (print theme / orientation)
+// =============================================================================
+
+export const PackStyleEnum = z.enum(['steel', 'landscape', 'editorial', 'mono']);
+export type PackStyle = z.infer<typeof PackStyleEnum>;
+
+/** Picker metadata for the print styles. Theme colours live in the print route. */
+export const PACK_STYLES: Record<
+    PackStyle,
+    { label: string; orientation: 'portrait' | 'landscape'; blurb: string }
+> = {
+    steel: { label: 'Steel', orientation: 'portrait', blurb: 'Onesign teal, classic' },
+    landscape: { label: 'Landscape', orientation: 'landscape', blurb: 'Wide, footer band' },
+    editorial: { label: 'Editorial', orientation: 'portrait', blurb: 'Dark cover, ruled' },
+    mono: { label: 'Mono', orientation: 'portrait', blurb: 'Monochrome, minimal' },
+};
+
+// =============================================================================
 // BLOCKS
 // =============================================================================
 
@@ -240,6 +258,8 @@ export const ProductionPackContentSchema = z.object({
     // in Zod 4 takes the OUTPUT type and would demand a fully-formed object.
     cover: PackCoverSchema.prefault({}),
     sections: z.array(SignSectionSchema).default([]),
+    /** Print theme — drives the cover/title-block aesthetic + orientation. */
+    style: PackStyleEnum.default('steel'),
 });
 export type ProductionPackContent = z.infer<typeof ProductionPackContentSchema>;
 
@@ -415,6 +435,7 @@ export function newSection(index: number): SignSection {
 export const DEFAULT_PRODUCTION_PACK_CONTENT: ProductionPackContent = {
     cover: PackCoverSchema.parse({}),
     sections: [],
+    style: 'steel',
 };
 
 /**

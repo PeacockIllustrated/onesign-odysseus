@@ -50,6 +50,7 @@ export async function createProductionPack(
     const content: ProductionPackContent = {
         cover: { ...DEFAULT_PRODUCTION_PACK_CONTENT.cover },
         sections: [newSection(1)],
+        style: 'steel',
     };
 
     const supabase = await createServerClient();

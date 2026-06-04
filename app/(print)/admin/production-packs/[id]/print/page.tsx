@@ -2,9 +2,47 @@
 import { requireAdmin } from '@/lib/auth';
 import { getProductionPack } from '@/lib/production-packs/actions';
 import { notFound } from 'next/navigation';
-import type { Block, PackCover } from '@/lib/production-packs/types';
+import type { Block, PackCover, PackStyle } from '@/lib/production-packs/types';
 
-const TEAL = '#4e7e8c';
+// =============================================================================
+// PRINT THEMES — one per pack style (see PACK_STYLES in lib/production-packs)
+// =============================================================================
+
+interface Theme {
+    orient: 'portrait' | 'landscape';
+    accent: string;
+    ink: string;
+    coverBg: string;
+    coverInk: string;
+    coverSub: string;
+    bandBg: string;
+    bandInk: string;
+    titleBlock: 'band' | 'rule';
+    coverDark: boolean;
+}
+
+const THEMES: Record<PackStyle, Theme> = {
+    steel: {
+        orient: 'portrait', accent: '#4e7e8c', ink: '#1a1a1a',
+        coverBg: '#ffffff', coverInk: '#1a1a1a', coverSub: '#4e7e8c',
+        bandBg: '#4e7e8c', bandInk: '#ffffff', titleBlock: 'band', coverDark: false,
+    },
+    landscape: {
+        orient: 'landscape', accent: '#4e7e8c', ink: '#1a1a1a',
+        coverBg: '#ffffff', coverInk: '#1a1a1a', coverSub: '#4e7e8c',
+        bandBg: '#4e7e8c', bandInk: '#ffffff', titleBlock: 'band', coverDark: false,
+    },
+    editorial: {
+        orient: 'portrait', accent: '#3a5f6a', ink: '#1f2937',
+        coverBg: '#1a1f23', coverInk: '#ffffff', coverSub: '#9cc3cd',
+        bandBg: '#3a5f6a', bandInk: '#ffffff', titleBlock: 'rule', coverDark: true,
+    },
+    mono: {
+        orient: 'portrait', accent: '#1a1a1a', ink: '#1a1a1a',
+        coverBg: '#ffffff', coverInk: '#111111', coverSub: '#4e7e8c',
+        bandBg: '#1a1a1a', bandInk: '#ffffff', titleBlock: 'band', coverDark: false,
+    },
+};
 
 export default async function ProductionPackPrintPage({
     params,
@@ -16,13 +54,19 @@ export default async function ProductionPackPrintPage({
     const pack = await getProductionPack(id);
     if (!pack) notFound();
 
-    const { cover, sections } = pack.content;
+    const { cover, sections, style } = pack.content;
+    const theme = THEMES[style] ?? THEMES.steel;
     const wordmark = (cover.showWordmark && cover.clientName) || cover.projectName || pack.title;
 
     return (
-        <div className="pp-root">
+        <div
+            className="pp-root"
+            data-orient={theme.orient}
+            data-tb={theme.titleBlock}
+            data-cover={theme.coverDark ? 'dark' : 'light'}
+        >
             <title>{`${pack.title} — works pack`}</title>
-            <style>{styles}</style>
+            <style>{buildStyles(theme)}</style>
 
             <div className="pp-hint">
                 Works pack — ready to print
@@ -288,59 +332,72 @@ function TitleBlock({ cover, page, pages }: { cover: PackCover; page: number; pa
     );
 }
 
-const styles = `
+function buildStyles(t: Theme): string {
+    return `
 @media print {
-    @page { size: A4; margin: 12mm; }
+    @page { size: A4 ${t.orient === 'landscape' ? 'landscape' : 'portrait'}; margin: 12mm; }
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .pp-hint { display: none !important; }
-    .pp-cover, .pp-page { page-break-after: always; }
+    .pp-cover, .pp-page { page-break-after: always; padding: 0; }
     .pp-page:last-child, .pp-cover:last-child { page-break-after: auto; }
 }
-.pp-root { font-family: 'Gilroy', system-ui, sans-serif; color: #1a1a1a; background: #fff; }
+.pp-root {
+    --pp-accent: ${t.accent};
+    --pp-ink: ${t.ink};
+    --pp-cover-bg: ${t.coverBg};
+    --pp-cover-ink: ${t.coverInk};
+    --pp-cover-sub: ${t.coverSub};
+    --pp-band-bg: ${t.bandBg};
+    --pp-band-ink: ${t.bandInk};
+}
+${BASE_CSS}
+`;
+}
+
+const BASE_CSS = `
+.pp-root { font-family: 'Gilroy', system-ui, sans-serif; color: var(--pp-ink); background: #fff; }
 .pp-hint { position: fixed; top: 16px; right: 16px; background: #000; color: #fff; padding: 12px 16px; border-radius: 8px; font-size: 13px; z-index: 9999; }
 .pp-hint button { background: #fff; color: #000; border: none; padding: 8px 16px; margin-left: 12px; border-radius: 4px; cursor: pointer; font-weight: 600; }
 
 /* page frame */
-.pp-cover, .pp-page {
-    width: 186mm; min-height: 273mm; margin: 0 auto;
-    display: flex; flex-direction: column;
-    padding: 0; box-sizing: border-box;
-}
+.pp-cover, .pp-page { margin: 0 auto; display: flex; flex-direction: column; padding: 0; box-sizing: border-box; }
+.pp-page { background: #fff; }
+.pp-cover { background: var(--pp-cover-bg); }
+.pp-root[data-orient="portrait"] .pp-cover, .pp-root[data-orient="portrait"] .pp-page { width: 186mm; min-height: 273mm; }
+.pp-root[data-orient="landscape"] .pp-cover, .pp-root[data-orient="landscape"] .pp-page { width: 273mm; min-height: 186mm; }
 @media screen {
-    .pp-cover, .pp-page { box-shadow: 0 1px 8px rgba(0,0,0,0.12); margin: 16px auto; padding: 14mm; background: #fff; }
     .pp-root { background: #f3f4f6; padding: 8px 0 40px; }
+    .pp-cover, .pp-page { box-shadow: 0 1px 8px rgba(0,0,0,0.12); margin: 16px auto; padding: 14mm; }
 }
-@media print { .pp-cover, .pp-page { padding: 0; } }
 
 /* cover */
 .pp-cover { justify-content: space-between; }
 .pp-cover-logo { height: 26px; width: auto; }
+.pp-root[data-cover="dark"] .pp-cover-logo { filter: brightness(0) invert(1); }
 .pp-cover-mid { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-.pp-cover-word { font-size: 52px; font-weight: 900; letter-spacing: -0.01em; line-height: 1.02; text-transform: uppercase; color: #1a1a1a; }
-.pp-cover-sub { margin-top: 14px; font-size: 18px; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: ${TEAL}; }
-.pp-cover-project { margin-top: 10px; font-size: 15px; color: #666; }
-.pp-cover-band { background: ${TEAL}; color: #fff; padding: 14px 18px; display: flex; justify-content: space-between; align-items: flex-end; font-size: 12px; line-height: 1.5; }
+.pp-cover-word { font-size: 52px; font-weight: 900; letter-spacing: -0.01em; line-height: 1.02; text-transform: uppercase; color: var(--pp-cover-ink); word-break: break-word; }
+.pp-cover-sub { margin-top: 14px; font-size: 18px; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--pp-cover-sub); }
+.pp-cover-project { margin-top: 10px; font-size: 15px; color: var(--pp-cover-ink); opacity: 0.6; }
+.pp-cover-band { background: var(--pp-band-bg); color: var(--pp-band-ink); padding: 14px 18px; display: flex; justify-content: space-between; align-items: flex-end; font-size: 12px; line-height: 1.5; }
 .pp-cover-band-strong { font-weight: 700; font-size: 13px; }
 .pp-cover-band-right { text-align: right; }
+.pp-cover-clientlogo { max-height: 150px; max-width: 78%; width: auto; object-fit: contain; margin-bottom: 20px; }
 
 /* page head */
-.pp-page-head { border-bottom: 2px solid ${TEAL}; padding-bottom: 8px; margin-bottom: 12px; }
-.pp-ref { display: inline-block; background: ${TEAL}; color: #fff; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 3px 8px; border-radius: 2px; }
+.pp-page-head { border-bottom: 2px solid var(--pp-accent); padding-bottom: 8px; margin-bottom: 12px; }
+.pp-ref { display: inline-block; background: var(--pp-accent); color: #fff; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 3px 8px; border-radius: 2px; }
 .pp-title { font-size: 22px; font-weight: 800; margin: 6px 0 0; }
 
 /* body */
 .pp-body { flex: 1; display: flex; flex-direction: column; gap: 12px; }
-
-/* Manual page break. Sections containing one switch to normal block flow so
-   the forced break is honoured (flex containers don't fragment reliably). */
 .pp-pagebreak { break-before: page; page-break-before: always; height: 0; }
 .pp-page-flow { display: block; }
 .pp-page-flow .pp-body { display: block; }
 .pp-page-flow .pp-body > * { margin-bottom: 12px; }
 .pp-page-flow .pp-titleblock { margin-top: 16px; }
 .pp-h { font-size: 15px; font-weight: 800; margin: 4px 0 0; }
-.pp-block-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: ${TEAL}; margin-bottom: 5px; }
-.pp-text-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: ${TEAL}; margin-bottom: 4px; }
+.pp-block-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--pp-accent); margin-bottom: 5px; }
+.pp-text-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--pp-accent); margin-bottom: 4px; }
 .pp-text-body { font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; margin: 0; color: #2a2a2a; }
 
 .pp-fig { margin: 0; }
@@ -353,33 +410,37 @@ const styles = `
 
 .pp-callouts ul { margin: 0; padding-left: 0; list-style: none; }
 .pp-callouts li { font-size: 12px; line-height: 1.5; padding-left: 16px; position: relative; margin-bottom: 3px; }
-.pp-callouts li::before { content: ''; position: absolute; left: 2px; top: 7px; width: 6px; height: 6px; background: ${TEAL}; border-radius: 1px; }
+.pp-callouts li::before { content: ''; position: absolute; left: 2px; top: 7px; width: 6px; height: 6px; background: var(--pp-accent); border-radius: 1px; }
 
 .pp-stages-table { width: 100%; border-collapse: collapse; }
 .pp-stages-table th { text-align: left; font-size: 12px; font-weight: 700; padding: 5px 8px; white-space: nowrap; border-bottom: 1px solid #eee; vertical-align: top; width: 1%; }
 .pp-stages-table td { font-size: 12px; padding: 5px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
 .pp-stage-instr { color: #555; }
 .pp-tick-cell { width: 1%; }
-.pp-tick { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border: 1.5px solid ${TEAL}; border-radius: 2px; font-size: 11px; line-height: 1; color: #fff; }
-.pp-tick.done { background: ${TEAL}; }
+.pp-tick { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border: 1.5px solid var(--pp-accent); border-radius: 2px; font-size: 11px; line-height: 1; color: #fff; }
+.pp-tick.done { background: var(--pp-accent); }
 
 .pp-qc-row { display: flex; gap: 22px; flex-wrap: wrap; }
 .pp-qc-item { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; }
 
-/* title block */
-.pp-titleblock { margin-top: 12px; background: ${TEAL}; color: #fff; display: flex; align-items: center; gap: 14px; padding: 9px 14px; }
+/* title block — band (default) */
+.pp-titleblock { margin-top: 12px; background: var(--pp-band-bg); color: var(--pp-band-ink); display: flex; align-items: center; gap: 14px; padding: 9px 14px; }
 .pp-tb-brand { border-right: 1px solid rgba(255,255,255,0.35); padding-right: 14px; }
-.pp-tb-name { font-size: 13px; font-weight: 800; }
 .pp-tb-tag { font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.12em; opacity: 0.85; }
 .pp-tb-fields { flex: 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px 12px; }
+.pp-root[data-orient="landscape"] .pp-tb-fields { grid-template-columns: repeat(6, 1fr); }
 .pp-tb-field { display: flex; flex-direction: column; line-height: 1.2; }
 .pp-tb-label { font-size: 7.5px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.8; }
 .pp-tb-value { font-size: 11px; font-weight: 600; }
 .pp-tb-page { font-size: 11px; font-weight: 700; opacity: 0.9; }
 .pp-tb-logo { height: 16px; width: auto; display: block; margin-bottom: 3px; filter: brightness(0) invert(1); }
 
-/* cover client logo */
-.pp-cover-clientlogo { max-height: 150px; max-width: 78%; width: auto; object-fit: contain; margin-bottom: 20px; }
+/* title block — ruled (editorial) */
+.pp-root[data-tb="rule"] .pp-titleblock { background: transparent; color: var(--pp-ink); border-top: 2px solid var(--pp-accent); padding: 10px 0 0; }
+.pp-root[data-tb="rule"] .pp-tb-brand { border-right-color: rgba(0,0,0,0.15); }
+.pp-root[data-tb="rule"] .pp-tb-logo { filter: none; }
+.pp-root[data-tb="rule"] .pp-tb-label { opacity: 0.55; }
+.pp-root[data-tb="rule"] .pp-tb-tag { opacity: 0.6; }
 
 /* technical drawing + overall dimensions */
 .pp-tech { margin: 0; }
@@ -388,11 +449,11 @@ const styles = `
 .pp-tech-frame img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .pp-dim { position: relative; }
 .pp-dim-h { height: 24px; }
-.pp-dim-line-h { position: absolute; top: 11px; left: 2px; right: 2px; height: 1px; background: ${TEAL}; }
-.pp-dim-tick-h { position: absolute; top: 6px; width: 1px; height: 11px; background: ${TEAL}; }
+.pp-dim-line-h { position: absolute; top: 11px; left: 2px; right: 2px; height: 1px; background: var(--pp-accent); }
+.pp-dim-tick-h { position: absolute; top: 6px; width: 1px; height: 11px; background: var(--pp-accent); }
 .pp-dim-v { width: 24px; }
-.pp-dim-line-v { position: absolute; left: 11px; top: 2px; bottom: 2px; width: 1px; background: ${TEAL}; }
-.pp-dim-tick-v { position: absolute; left: 6px; height: 1px; width: 11px; background: ${TEAL}; }
-.pp-dim-chip { position: absolute; top: 3px; left: 50%; transform: translateX(-50%); background: #fff; padding: 0 5px; font-size: 9px; font-weight: 700; color: ${TEAL}; white-space: nowrap; }
+.pp-dim-line-v { position: absolute; left: 11px; top: 2px; bottom: 2px; width: 1px; background: var(--pp-accent); }
+.pp-dim-tick-v { position: absolute; left: 6px; height: 1px; width: 11px; background: var(--pp-accent); }
+.pp-dim-chip { position: absolute; top: 3px; left: 50%; transform: translateX(-50%); background: #fff; padding: 0 5px; font-size: 9px; font-weight: 700; color: var(--pp-accent); white-space: nowrap; }
 .pp-dim-chip-v { top: 50%; left: 11px; transform: translate(-50%, -50%) rotate(-90deg); }
 `;
