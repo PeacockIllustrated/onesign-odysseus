@@ -949,6 +949,7 @@ function MaterialPieces({
     vinyl,
     acrylic,
     solid,
+    vinylPrintDataUrl,
     outlines = true,
     night = false,
 }: {
@@ -956,9 +957,18 @@ function MaterialPieces({
     vinyl: MaterialPiece[];
     acrylic: MaterialPiece[];
     solid: MaterialPiece[];
+    /** Full-colour vinyl print — a face-sized PNG (colours + gradients) masked
+     *  to the printed-vinyl shapes. Painted as one plane over the face. */
+    vinylPrintDataUrl?: string | null;
     outlines?: boolean;
     night?: boolean;
 }) {
+    // Printed full-colour vinyl is shown as ONE textured plane the size of the
+    // face (the raster IS the face, so default plane UVs map 1:1 — no UV math).
+    // Until the async raster is ready, those pieces fall back to flat meshes.
+    const vinylTex = useImageTexture(vinylPrintDataUrl);
+    const showPrint = !!vinylTex && vinyl.some((p) => p.fullColor);
+    const flatVinyl = showPrint ? vinyl.filter((p) => !p.fullColor) : vinyl;
     const toLocal = (q: [number, number]): [number, number] => [
         (q[0] - face.xMm - face.wMm / 2) * S,
         (face.yMm + face.hMm / 2 - q[1]) * S,
@@ -1012,9 +1022,28 @@ function MaterialPieces({
                 </mesh>
             ))}
 
-            {/* Vinyl: paper-thin coloured fill ~1 mm in front of the face
-                (avoids z-fighting with the panel surface). */}
-            {vinyl.map((piece, i) => (
+            {/* Printed full-colour vinyl — one masked image plane ~1 mm proud
+                of the face, showing the artwork's true colours + gradients.
+                Transparent everywhere except the printed vinyl shapes. */}
+            {showPrint && vinylTex && (
+                <mesh position={[0, 0, 1 * S]}>
+                    <planeGeometry args={[face.wMm * S, face.hMm * S]} />
+                    <meshBasicMaterial
+                        map={vinylTex}
+                        transparent
+                        opacity={night ? 0.6 : 1}
+                        depthWrite={false}
+                        side={THREE.DoubleSide}
+                        polygonOffset
+                        polygonOffsetFactor={1}
+                        polygonOffsetUnits={1}
+                    />
+                </mesh>
+            )}
+
+            {/* Solid-colour cut vinyl: paper-thin flat fill ~1 mm in front of
+                the face (avoids z-fighting with the panel surface). */}
+            {flatVinyl.map((piece, i) => (
                 <mesh
                     key={`vinyl-${piece.pathIndex}-${i}`}
                     position={[0, 0, 1 * S]}>
@@ -1592,6 +1621,7 @@ function Panel({
     solidPieces,
     standoffPieces,
     pushThroughPieces,
+    vinylPrintDataUrl,
     placedPathsByIndex,
     pathGroupColors,
     pendingPaths,
@@ -1627,6 +1657,8 @@ function Panel({
     solidPieces: MaterialPiece[];
     standoffPieces: StandoffPiece[];
     pushThroughPieces: PushThroughPiece[];
+    /** Full-colour vinyl print PNG (face-sized, masked to the vinyl shapes). */
+    vinylPrintDataUrl?: string | null;
     placedPathsByIndex?: Array<FlatPath | null> | null;
     pathGroupColors?: Array<string | null> | null;
     pendingPaths?: Set<number>;
@@ -1846,6 +1878,7 @@ function Panel({
                         vinyl={vinylPieces}
                         acrylic={acrylicPieces}
                         solid={solidPieces}
+                        vinylPrintDataUrl={vinylPrintDataUrl}
                         outlines={showOutlines}
                         night={night}
                     />
@@ -2159,6 +2192,22 @@ function useSvgTexture(svg: string | null | undefined): THREE.Texture | null {
     return tex;
 }
 
+/** Load a ready image data URL (e.g. the printed-vinyl PNG) as a texture
+ *  (memoised, disposed on change). Unlike useSvgTexture the URL is used
+ *  as-is — no SVG wrapping. */
+function useImageTexture(
+    url: string | null | undefined,
+): THREE.Texture | null {
+    const tex = useMemo(() => {
+        if (!url) return null;
+        const t = new THREE.TextureLoader().load(url);
+        t.colorSpace = THREE.SRGBColorSpace;
+        return t;
+    }, [url]);
+    useEffect(() => () => tex?.dispose(), [tex]);
+    return tex;
+}
+
 function ProjectingMounted({
     fascia,
     params,
@@ -2333,6 +2382,7 @@ function BundlePanel({
             solidPieces={bundle.solidPieces}
             standoffPieces={bundle.standoffPieces}
             pushThroughPieces={bundle.pushThroughPieces}
+            vinylPrintDataUrl={bundle.vinylPrintDataUrl}
             fold={1}
             showOutlines={showOutlines}
             showStandoffLetters
@@ -2403,6 +2453,8 @@ export default function Scene3D(props: {
     solidPieces?: MaterialPiece[];
     standoffPieces?: StandoffPiece[];
     pushThroughPieces?: PushThroughPiece[];
+    /** Full-colour vinyl print PNG — face-sized, masked to the vinyl shapes. */
+    vinylPrintDataUrl?: string | null;
     placedPathsByIndex?: Array<FlatPath | null> | null;
     pathGroupColors?: Array<string | null> | null;
     pendingPaths?: Set<number>;
@@ -2553,6 +2605,7 @@ export default function Scene3D(props: {
         solidPieces,
         standoffPieces,
         pushThroughPieces,
+        vinylPrintDataUrl: props.vinylPrintDataUrl,
     };
 
     return (

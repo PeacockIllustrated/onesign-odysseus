@@ -133,6 +133,7 @@ export function FlatPreview({
     vinylPieces = [],
     acrylicPieces = [],
     solidPieces = [],
+    vinylPrintDataUrl = null,
     placedPathsByIndex = null,
     pathGroupColors = null,
     pendingPaths,
@@ -186,6 +187,12 @@ export function FlatPreview({
      * parent aperture.
      */
     solidPieces?: MaterialPiece[];
+    /**
+     * Full-colour vinyl print — a face-sized PNG (true colours + gradients)
+     * masked to the printed-vinyl shapes. Dropped on the face as one image;
+     * the vinyl piece outlines are still stroked as the contour cut line.
+     */
+    vinylPrintDataUrl?: string | null;
     /**
      * Per-original-path placed+clipped data — one entry per imported
      * path, null if it was clipped away. Drives the click overlays and
@@ -391,6 +398,15 @@ export function FlatPreview({
     const face = dev.segments.find((s) => s.role === 'face');
     const k = face ? face.wMm / dev.faceNominalWMm : 1;
 
+    // Printed full-colour vinyl: paint the masked face raster once and keep
+    // only the solid-colour pieces for flat fills. Until the raster resolves,
+    // every vinyl piece falls back to its flat colour.
+    const showVinylPrint =
+        !!vinylPrintDataUrl && vinylPieces.some((p) => p.fullColor);
+    const flatVinylPieces = showVinylPrint
+        ? vinylPieces.filter((p) => !p.fullColor)
+        : vinylPieces;
+
     // Build the face as a single path with the cuts as holes (even-odd
     // fill rule). Apertures, stand-off fixings, and push-through
     // keylines genuinely show through the panel so the operator can
@@ -568,11 +584,49 @@ export function FlatPreview({
                     );
                 })}
 
-                {/* Vinyl appliqués — flat coloured fills sitting on the
-                    face. Nested paths become evenodd holes so an outer
+                {/* Printed full-colour vinyl — the real artwork (true
+                    colours + gradients) as one face-sized image, already
+                    masked to the printed-vinyl shapes, plus a thin contour
+                    on top for the cut line. Falls back to flat fills below
+                    until the raster is ready. */}
+                {showVinylPrint && face && vinylPrintDataUrl && (
+                    <image
+                        href={vinylPrintDataUrl}
+                        x={face.xMm}
+                        y={face.yMm}
+                        width={face.wMm}
+                        height={face.hMm}
+                        preserveAspectRatio="none"
+                        pointerEvents="none"
+                    />
+                )}
+                {showVinylPrint &&
+                    vinylPieces
+                        .filter((p) => p.fullColor)
+                        .map((piece, i) => {
+                            const d =
+                                pathD(piece.path) +
+                                ' ' +
+                                (piece.holes ?? [])
+                                    .map((h) => pathD(h))
+                                    .join(' ');
+                            return (
+                                <path
+                                    key={`vinyl-cut-${i}`}
+                                    d={d}
+                                    fill="none"
+                                    fillRule="evenodd"
+                                    stroke="#1a1f23"
+                                    strokeWidth={stroke * 0.4}
+                                />
+                            );
+                        })}
+
+                {/* Solid-colour cut vinyl — flat coloured fills sitting on
+                    the face. Nested paths become evenodd holes so an outer
                     letter outline assigned to vinyl renders as a proper
                     donut around its inner counters. */}
-                {vinylPieces.map((piece, i) => {
+                {flatVinylPieces.map((piece, i) => {
                     const d =
                         pathD(piece.path) +
                         ' ' +

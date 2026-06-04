@@ -139,6 +139,8 @@ export function ExportBar({
     solidPieces,
     standoffPieces,
     pushThroughPieces,
+    vinylPrintDataUrl = null,
+    faceRectMm = null,
     warnings = [],
     pathCount = 0,
     companionPdf = null,
@@ -159,6 +161,10 @@ export function ExportBar({
     solidPieces: MaterialPiece[];
     standoffPieces: StandoffPiece[];
     pushThroughPieces: PushThroughPiece[];
+    /** Full-colour vinyl print PNG (face-sized, masked) + the face rect it
+     *  maps onto — for the print-&-cut PDF pages. */
+    vinylPrintDataUrl?: string | null;
+    faceRectMm?: { x: number; y: number; w: number; h: number } | null;
     warnings?: ExportWarning[];
     /** Total imported artwork paths (used for the ready checklist). */
     pathCount?: number;
@@ -301,6 +307,8 @@ export function ExportBar({
                 solidPieces,
                 standoffPieces,
                 pushThroughPieces,
+                vinylPrintDataUrl,
+                faceRectMm,
                 thumbnailDataUrl: thumb || undefined,
                 ...twoItem,
             });
@@ -367,6 +375,8 @@ export function ExportBar({
                 solidPieces,
                 standoffPieces,
                 pushThroughPieces,
+                vinylPrintDataUrl,
+                faceRectMm,
                 thumbnailDataUrl: thumb || undefined,
             });
             const pdfBase64 = await blobToBase64(blob);
@@ -446,6 +456,8 @@ export function ExportBar({
                 solidPieces,
                 standoffPieces,
                 pushThroughPieces,
+                vinylPrintDataUrl,
+                faceRectMm,
                 ...twoItem,
             });
             const fname = pdfFilename(params, 'production');

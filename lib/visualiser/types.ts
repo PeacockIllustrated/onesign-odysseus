@@ -87,8 +87,13 @@ export const DEFAULT_PLACEMENT: AperturePlacement = {
  *                  stand-off studs; the panel gets small fixing holes placed
  *                  inside each letter shape instead, and the SVG appears as
  *                  a non-cut reference outline on the PDF.
+ *   - 'vinyl'    — the WHOLE artwork is a printed full-colour vinyl applied to
+ *                  the panel face: nothing is cut, and it renders in the
+ *                  artwork's true colours + gradients (print-&-cut output).
+ *                  This is the upload-time "this is a vinyl" choice; individual
+ *                  paths can still be re-assigned via material groups.
  */
-export type ApertureMode = 'aperture' | 'standoff';
+export type ApertureMode = 'aperture' | 'standoff' | 'vinyl';
 
 /**
  * PanelCoreSchema is every field that describes a single folded-aluminium
@@ -149,7 +154,7 @@ const PanelCoreSchema = z.object({
     panelRal: z.string().max(40).optional(),
     aperturePlacement: AperturePlacementSchema.nullable().optional(),
     /** How the uploaded artwork is treated. Default 'aperture'. */
-    apertureMode: z.enum(['aperture', 'standoff']).optional(),
+    apertureMode: z.enum(['aperture', 'standoff', 'vinyl']).optional(),
     /** Diameter (mm) of each stand-off fixing hole. Default 10mm. */
     fixingDiameterMm: z.number().positive().max(100).optional(),
     /**
@@ -317,6 +322,16 @@ const PanelCoreSchema = z.object({
                 color: z
                     .string()
                     .regex(/^#[0-9a-fA-F]{6}$/, 'colour must be 6-digit hex'),
+                /**
+                 * Vinyl only. When true (the default for vinyl), the piece is
+                 * a digitally-PRINTED vinyl: it renders in the artwork's true
+                 * colours + gradients (sampled from the original SVG) and
+                 * exports as print-&-cut (a full-colour print at 1:1 plus the
+                 * contour cut line). When false it's a SOLID spot-colour cut
+                 * vinyl — the flat `color` above, plotter-cut, no print.
+                 * Ignored for non-vinyl materials.
+                 */
+                printFullColor: z.boolean().optional(),
                 /** Acrylic, standoff + pushthrough. */
                 thicknessMm: z.number().positive().max(50).optional(),
                 /** Standoff only — gap between panel face and letter back. */
@@ -542,6 +557,15 @@ export interface SectionedExport {
  * design can be drawn with its real material-group geometry too (both signs
  * show their proper design at once), without re-running the pipeline twice.
  */
+/** The flat face rectangle in flat-development mm — the coordinate frame the
+ *  full-colour vinyl raster is rendered into, so consumers can place it. */
+export interface FaceRectMm {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+}
+
 export interface PanelRenderBundle {
     development: PanelDevelopment;
     split: PanelSplit;
@@ -558,6 +582,15 @@ export interface PanelRenderBundle {
     solidPieces: MaterialPiece[];
     standoffPieces: StandoffPiece[];
     pushThroughPieces: PushThroughPiece[];
+    /**
+     * Full-colour vinyl print — a transparent face-sized PNG of the real
+     * artwork (colours + gradients), masked to the printed-vinyl shapes. Null
+     * when there's no printed vinyl. Paired with `faceRectMm` so it can be
+     * dropped onto the face at the right place. Built async (canvas), so it's
+     * threaded alongside the (sync) bundle rather than inside it.
+     */
+    vinylPrintDataUrl?: string | null;
+    faceRectMm?: FaceRectMm | null;
 }
 
 /**
@@ -582,6 +615,10 @@ export interface PanelPdfData {
     solidPieces: MaterialPiece[];
     standoffPieces: StandoffPiece[];
     pushThroughPieces: PushThroughPiece[];
+    /** Full-colour vinyl print (see PanelRenderBundle) — for the print-&-cut
+     *  page. Null when there's no printed vinyl. */
+    vinylPrintDataUrl?: string | null;
+    faceRectMm?: FaceRectMm | null;
 }
 
 /** A pre-export advisory warning. Never blocks the download. */
@@ -645,6 +682,13 @@ export interface MaterialPiece {
     color: string;
     /** Only set for acrylic. */
     thicknessMm?: number;
+    /**
+     * Vinyl only. True → this is a printed full-colour vinyl: the renderers
+     * paint the shared face-artwork raster (true colours + gradients) instead
+     * of the flat `color`, and the contour stays the cut line (print-&-cut).
+     * False/undefined → flat solid-colour cut vinyl (`color`).
+     */
+    fullColor?: boolean;
 }
 
 /**
