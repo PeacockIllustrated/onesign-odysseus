@@ -10,7 +10,7 @@
  * drawings can be SVGs — we read their geometry client-side to auto-size them.
  */
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -30,9 +30,11 @@ import {
     List,
     ListChecks,
     Loader2,
+    Palette,
     Plus,
     Ruler,
     Save,
+    Search,
     SeparatorHorizontal,
     Table2,
     Trash2,
@@ -58,6 +60,8 @@ import {
     type SignSection,
 } from '@/lib/production-packs/types';
 import { PRODUCTION_PACKS_BUCKET } from '@/lib/production-packs/utils';
+import { ACRYLIC_COLOURS } from '@/lib/visualiser/acrylic';
+import { RAL_CLASSIC } from '@/lib/visualiser/ral';
 
 const inputCls =
     'w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]';
@@ -75,6 +79,70 @@ const BLOCK_ICONS: Record<BlockType, LucideIcon> = {
     image: ImageIcon,
     pageBreak: SeparatorHorizontal,
 };
+
+// =============================================================================
+// MATERIAL LIBRARY (shared with the visualiser — real orderable specs)
+// =============================================================================
+
+interface MaterialItem {
+    hex: string;
+    label: string;
+    sub: string;
+    /** The text dropped into the pack when picked. */
+    text: string;
+}
+
+const MATERIAL_ITEMS: MaterialItem[] = [
+    ...ACRYLIC_COLOURS.map((c) => ({
+        hex: c.hex,
+        label: `${c.name}${c.code ? ' ' + c.code : ''}`,
+        sub: `${c.brand} · ${c.finish}`,
+        text: `${c.brand} ${c.name}${c.code ? ' ' + c.code : ''}`,
+    })),
+    ...RAL_CLASSIC.map((r) => ({
+        hex: r.hex,
+        label: r.code,
+        sub: r.name,
+        text: `${r.code} — ${r.name}`,
+    })),
+];
+
+/** A one-line summary of a block's content, for the collapsed row. */
+function blockSummary(block: Block): string {
+    switch (block.type) {
+        case 'heading':
+            return block.text || 'empty';
+        case 'text':
+            return block.title || (block.body ? block.body.slice(0, 48) : 'empty');
+        case 'image':
+        case 'visual':
+            return block.url ? 'image set' : 'no image yet';
+        case 'technical':
+            return block.url
+                ? block.widthMm != null
+                    ? `${block.widthMm}×${block.heightMm ?? '?'} mm`
+                    : 'drawing set'
+                : 'no drawing yet';
+        case 'specTable': {
+            const n = block.rows.filter((r) => r.label || r.value).length;
+            return `${n} ${n === 1 ? 'row' : 'rows'}`;
+        }
+        case 'callouts': {
+            const n = block.items.filter(Boolean).length;
+            return `${n} ${n === 1 ? 'item' : 'items'}`;
+        }
+        case 'stages': {
+            const n = block.stages.filter((s) => s.name || s.instructions).length;
+            return `${n} ${n === 1 ? 'stage' : 'stages'}`;
+        }
+        case 'qc': {
+            const n = block.checks.filter((c) => c.label).length;
+            return `${n} ${n === 1 ? 'check' : 'checks'}`;
+        }
+        case 'pageBreak':
+            return '';
+    }
+}
 
 // =============================================================================
 // IMAGE / SVG HELPERS
@@ -267,6 +335,20 @@ export function PackBuilder({
     const [showHelp, setShowHelp] = useState(true);
     const dismissHelp = () => setShowHelp(false);
 
+    // One sign open at a time (accordion); blocks collapse to summaries.
+    const [expandedSign, setExpandedSign] = useState<string | null>(
+        () => initialContent.sections[0]?.id ?? null,
+    );
+    const [expandedBlocks, setExpandedBlocks] = useState<Set<string>>(() => new Set());
+    const toggleSign = (sid: string) => setExpandedSign((cur) => (cur === sid ? null : sid));
+    const toggleBlock = (bid: string) =>
+        setExpandedBlocks((s) => {
+            const n = new Set(s);
+            if (n.has(bid)) n.delete(bid);
+            else n.add(bid);
+            return n;
+        });
+
     const markDirty = useCallback(() => setDirty(true), []);
 
     /** Apply a mutation to a deep clone of the content. */
@@ -341,7 +423,11 @@ export function PackBuilder({
     const updateCover = (patch: Partial<ProductionPackContent['cover']>) =>
         mutate((d) => Object.assign(d.cover, patch));
 
-    const addSection = () => mutate((d) => d.sections.push(newSection(d.sections.length + 1)));
+    const addSection = () => {
+        const sec = newSection(content.sections.length + 1);
+        mutate((d) => d.sections.push(sec));
+        setExpandedSign(sec.id);
+    };
     const updateSection = (si: number, patch: Partial<SignSection>) =>
         mutate((d) => Object.assign(d.sections[si], patch));
     const removeSection = (si: number) => mutate((d) => d.sections.splice(si, 1));
@@ -360,8 +446,11 @@ export function PackBuilder({
             [d.sections[si], d.sections[ti]] = [d.sections[ti], d.sections[si]];
         });
 
-    const addBlock = (si: number, type: BlockType) =>
-        mutate((d) => d.sections[si].blocks.push(newBlock(type)));
+    const addBlock = (si: number, type: BlockType) => {
+        const b = newBlock(type);
+        mutate((d) => d.sections[si].blocks.push(b));
+        setExpandedBlocks((s) => new Set(s).add(b.id));
+    };
     const replaceBlock = (si: number, bi: number, block: Block) =>
         mutate((d) => { d.sections[si].blocks[bi] = block; });
     const removeBlock = (si: number, bi: number) =>
@@ -428,9 +517,9 @@ export function PackBuilder({
                         <Info size={16} className="text-[#4e7e8c] mt-0.5 shrink-0" />
                         <div className="flex-1 text-sm text-neutral-700">
                             <span className="font-semibold">How a pack works: </span>
-                            fill the cover, then add a <strong>sign</strong> for each item — every sign becomes
-                            <strong> one A4 page</strong>. Drop in blocks (visual, technical drawing, spec, stages…),
-                            then hit <strong>Preview / Print</strong>.
+                            fill the cover, then each <strong>sign</strong> is <strong>one A4 page</strong>. Click a sign
+                            to open it, then click a block (visual, drawing, spec…) to fill it. Hit
+                            <strong> Preview / Print</strong> when done.
                         </div>
                         <button onClick={dismissHelp} className="text-neutral-400 hover:text-black" title="Dismiss">
                             <X size={15} />
@@ -504,6 +593,10 @@ export function PackBuilder({
                         section={section}
                         index={si}
                         total={content.sections.length}
+                        expanded={expandedSign === section.id}
+                        onToggleExpand={() => toggleSign(section.id)}
+                        expandedBlocks={expandedBlocks}
+                        onToggleBlock={toggleBlock}
                         onUpdate={(patch) => updateSection(si, patch)}
                         onRemove={() => removeSection(si)}
                         onDuplicate={() => duplicateSection(si)}
@@ -604,6 +697,10 @@ function SectionCard({
     section,
     index,
     total,
+    expanded,
+    onToggleExpand,
+    expandedBlocks,
+    onToggleBlock,
     onUpdate,
     onRemove,
     onDuplicate,
@@ -617,6 +714,10 @@ function SectionCard({
     section: SignSection;
     index: number;
     total: number;
+    expanded: boolean;
+    onToggleExpand: () => void;
+    expandedBlocks: Set<string>;
+    onToggleBlock: (id: string) => void;
     onUpdate: (patch: Partial<SignSection>) => void;
     onRemove: () => void;
     onDuplicate: () => void;
@@ -629,15 +730,18 @@ function SectionCard({
 }) {
     return (
         <section className="bg-white border border-neutral-200 rounded-[var(--radius-md)] overflow-hidden">
-            <header className="flex items-center gap-2 px-4 py-3 bg-neutral-50 border-b border-neutral-200">
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-white bg-[#4e7e8c] px-2 py-1 rounded-[var(--radius-sm)] whitespace-nowrap">
+            <header className="flex items-center gap-2 px-3 py-2.5 bg-neutral-50 border-b border-neutral-200">
+                <button onClick={onToggleExpand} className="p-1 text-neutral-500 hover:text-black rounded-[var(--radius-sm)]" title={expanded ? 'Collapse' : 'Expand'}>
+                    {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                </button>
+                <span className="inline-flex items-center text-[11px] font-bold uppercase tracking-wider text-white bg-[#4e7e8c] px-2 py-1 rounded-[var(--radius-sm)] whitespace-nowrap">
                     Page {index + 1}
                 </span>
                 <input
                     value={section.signRef}
                     onChange={(e) => onUpdate({ signRef: e.target.value })}
-                    className="w-28 px-2 py-1 text-xs font-semibold uppercase tracking-wide border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
-                    placeholder="Sign Ref 1"
+                    className="w-24 px-2 py-1 text-xs font-semibold uppercase tracking-wide border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
+                    placeholder="Ref 1"
                 />
                 <input
                     value={section.title}
@@ -651,25 +755,50 @@ function SectionCard({
                 <IconBtn title="Delete sign" danger onClick={() => { if (confirm('Delete this sign / page?')) onRemove(); }}><Trash2 size={14} /></IconBtn>
             </header>
 
-            <div className="p-4 space-y-3">
-                {section.blocks.length === 0 && (
-                    <p className="text-sm text-neutral-400 text-center py-6">No blocks yet — add one below.</p>
-                )}
-                {section.blocks.map((block, bi) => (
-                    <BlockCard
-                        key={block.id}
-                        block={block}
-                        index={bi}
-                        total={section.blocks.length}
-                        onChange={(b) => onReplaceBlock(bi, b)}
-                        onRemove={() => onRemoveBlock(bi)}
-                        onMove={(dir) => onMoveBlock(bi, dir)}
-                        uploadImage={uploadImage}
-                    />
-                ))}
-                <BlockPalette onAdd={onAddBlock} />
-            </div>
+            {expanded ? (
+                <div className="p-4 space-y-2.5">
+                    {section.blocks.length === 0 && (
+                        <p className="text-sm text-neutral-400 text-center py-6">No blocks yet — add one below.</p>
+                    )}
+                    {section.blocks.map((block, bi) => (
+                        <BlockCard
+                            key={block.id}
+                            block={block}
+                            index={bi}
+                            total={section.blocks.length}
+                            expanded={expandedBlocks.has(block.id)}
+                            onToggle={() => onToggleBlock(block.id)}
+                            onChange={(b) => onReplaceBlock(bi, b)}
+                            onRemove={() => onRemoveBlock(bi)}
+                            onMove={(dir) => onMoveBlock(bi, dir)}
+                            uploadImage={uploadImage}
+                        />
+                    ))}
+                    <BlockPalette onAdd={onAddBlock} />
+                </div>
+            ) : (
+                <button onClick={onToggleExpand} className="w-full text-left px-3 py-2.5 flex flex-wrap items-center gap-1.5">
+                    {section.blocks.length === 0 ? (
+                        <span className="text-xs text-neutral-400">empty — click to add blocks</span>
+                    ) : (
+                        section.blocks.map((b) => <SummaryChip key={b.id} block={b} />)
+                    )}
+                </button>
+            )}
         </section>
+    );
+}
+
+function SummaryChip({ block }: { block: Block }) {
+    if (block.type === 'pageBreak') {
+        return <span className="text-[10px] uppercase tracking-wide text-[#4e7e8c] px-1">— page break —</span>;
+    }
+    const Icon = BLOCK_ICONS[block.type];
+    return (
+        <span className="inline-flex items-center gap-1 text-[11px] text-neutral-600 bg-neutral-100 rounded-full px-2 py-0.5">
+            <span className="text-[#4e7e8c]"><Icon size={12} /></span>
+            {BLOCK_META[block.type].label}
+        </span>
     );
 }
 
@@ -753,6 +882,8 @@ function BlockCard({
     block,
     index,
     total,
+    expanded,
+    onToggle,
     onChange,
     onRemove,
     onMove,
@@ -761,15 +892,50 @@ function BlockCard({
     block: Block;
     index: number;
     total: number;
+    expanded: boolean;
+    onToggle: () => void;
     onChange: (b: Block) => void;
     onRemove: () => void;
     onMove: (dir: -1 | 1) => void;
     uploadImage: (file: File) => Promise<string | null>;
 }) {
     const Icon = BLOCK_ICONS[block.type];
+
+    // Page break carries no content — render it as a slim divider with controls.
+    if (block.type === 'pageBreak') {
+        return (
+            <div className="flex items-center gap-2 px-3 py-2 border border-dashed border-[#4e7e8c]/50 rounded-[var(--radius-sm)] bg-[#e8f0f3]/30">
+                <span className="text-[#4e7e8c]"><Icon size={14} /></span>
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-[#4e7e8c] flex-1">Page break — new page below</span>
+                <IconBtn title="Move up" disabled={index === 0} onClick={() => onMove(-1)}><ChevronUp size={14} /></IconBtn>
+                <IconBtn title="Move down" disabled={index === total - 1} onClick={() => onMove(1)}><ChevronDown size={14} /></IconBtn>
+                <IconBtn title="Remove block" danger onClick={onRemove}><X size={14} /></IconBtn>
+            </div>
+        );
+    }
+
+    // Collapsed: a one-line summary row.
+    if (!expanded) {
+        return (
+            <div className="flex items-center gap-2 px-3 py-2 border border-neutral-200 rounded-[var(--radius-sm)] bg-white hover:border-[#4e7e8c]/60 transition-colors">
+                <button onClick={onToggle} className="flex items-center gap-2 flex-1 min-w-0 text-left">
+                    <span className="text-[#4e7e8c] shrink-0"><Icon size={15} /></span>
+                    <span className="text-xs font-semibold text-neutral-700 shrink-0">{BLOCK_META[block.type].label}</span>
+                    <span className="text-xs text-neutral-400 truncate">{blockSummary(block)}</span>
+                </button>
+                <IconBtn title="Move up" disabled={index === 0} onClick={() => onMove(-1)}><ChevronUp size={14} /></IconBtn>
+                <IconBtn title="Move down" disabled={index === total - 1} onClick={() => onMove(1)}><ChevronDown size={14} /></IconBtn>
+                <IconBtn title="Remove block" danger onClick={onRemove}><X size={14} /></IconBtn>
+                <button onClick={onToggle} className="p-1 text-neutral-400 hover:text-black" title="Edit"><ChevronRight size={15} /></button>
+            </div>
+        );
+    }
+
+    // Expanded: teal header + editor.
     return (
-        <div className="border border-neutral-200 rounded-[var(--radius-sm)] bg-white overflow-hidden">
+        <div className="border border-[#4e7e8c] rounded-[var(--radius-sm)] bg-white overflow-hidden">
             <div className="flex items-center gap-2 px-3 py-1.5 bg-[#4e7e8c] text-white">
+                <button onClick={onToggle} className="text-white/80 hover:text-white" title="Collapse"><ChevronDown size={14} /></button>
                 <span className="text-white"><Icon size={14} /></span>
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-white flex-1">
                     {BLOCK_META[block.type].label}
@@ -780,6 +946,71 @@ function BlockCard({
             </div>
             <div className="p-3">
                 <BlockBody block={block} onChange={onChange} uploadImage={uploadImage} />
+            </div>
+        </div>
+    );
+}
+
+function MaterialButton({ onPick, label = 'Material' }: { onPick: (text: string) => void; label?: string }) {
+    const [open, setOpen] = useState(false);
+    return (
+        <div className="relative inline-block">
+            <button
+                type="button"
+                onClick={() => setOpen((o) => !o)}
+                className="text-xs font-medium text-[#4e7e8c] hover:underline inline-flex items-center gap-1"
+            >
+                <Palette size={13} /> {label}
+            </button>
+            {open && (
+                <MaterialPicker
+                    onPick={(t) => { onPick(t); setOpen(false); }}
+                    onClose={() => setOpen(false)}
+                />
+            )}
+        </div>
+    );
+}
+
+function MaterialPicker({ onPick, onClose }: { onPick: (text: string) => void; onClose: () => void }) {
+    const [q, setQ] = useState('');
+    const filtered = useMemo(() => {
+        const s = q.trim().toLowerCase();
+        const list = s
+            ? MATERIAL_ITEMS.filter((m) => m.label.toLowerCase().includes(s) || m.sub.toLowerCase().includes(s))
+            : MATERIAL_ITEMS;
+        return list.slice(0, 80);
+    }, [q]);
+    return (
+        <div className="absolute z-30 mt-1 left-0 w-72 bg-white border border-neutral-200 rounded-[var(--radius-md)] shadow-lg p-2">
+            <div className="flex items-center gap-1.5 mb-2 border-b border-neutral-100 pb-2">
+                <Search size={14} className="text-neutral-400 shrink-0" />
+                <input
+                    autoFocus
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder="Acrylic code, colour or RAL…"
+                    className="flex-1 min-w-0 text-sm outline-none"
+                />
+                <button onClick={onClose} className="text-neutral-400 hover:text-black shrink-0"><X size={14} /></button>
+            </div>
+            <div className="max-h-64 overflow-y-auto">
+                {filtered.map((m, i) => (
+                    <button
+                        key={i}
+                        onClick={() => onPick(m.text)}
+                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-[var(--radius-sm)] hover:bg-[#e8f0f3]/60 text-left"
+                    >
+                        <span className="h-5 w-5 rounded border border-neutral-300 shrink-0" style={{ background: m.hex }} />
+                        <span className="min-w-0">
+                            <span className="block text-xs font-semibold text-neutral-800 truncate">{m.label}</span>
+                            <span className="block text-[11px] text-neutral-500 truncate">{m.sub}</span>
+                        </span>
+                    </button>
+                ))}
+                {filtered.length === 0 && (
+                    <p className="text-xs text-neutral-400 px-2 py-3 text-center">No match</p>
+                )}
             </div>
         </div>
     );
@@ -841,7 +1072,10 @@ function BlockBody({
                             <IconBtn title="Remove row" danger onClick={() => onChange({ ...block, rows: block.rows.filter((_, i) => i !== ri) })}><X size={14} /></IconBtn>
                         </div>
                     ))}
-                    <AddRowBtn onClick={() => onChange({ ...block, rows: [...block.rows, { label: '', value: '' }] })} label="Add row" />
+                    <div className="flex items-center gap-4">
+                        <AddRowBtn onClick={() => onChange({ ...block, rows: [...block.rows, { label: '', value: '' }] })} label="Add row" />
+                        <MaterialButton label="Material from library" onPick={(t) => onChange({ ...block, rows: [...block.rows, { label: 'Material', value: t }] })} />
+                    </div>
                 </div>
             );
 
@@ -856,7 +1090,10 @@ function BlockBody({
                             <IconBtn title="Remove" danger onClick={() => onChange({ ...block, items: block.items.filter((_, i) => i !== ii) })}><X size={14} /></IconBtn>
                         </div>
                     ))}
-                    <AddRowBtn onClick={() => onChange({ ...block, items: [...block.items, ''] })} label="Add callout" />
+                    <div className="flex items-center gap-4">
+                        <AddRowBtn onClick={() => onChange({ ...block, items: [...block.items, ''] })} label="Add callout" />
+                        <MaterialButton onPick={(t) => onChange({ ...block, items: [...block.items, t] })} />
+                    </div>
                 </div>
             );
 
