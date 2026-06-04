@@ -200,8 +200,11 @@ export async function rasterizeFaceArtwork(
     if (!layers.length || faceWMm <= 0 || faceHMm <= 0) return null;
     try {
         const longestMm = Math.max(faceWMm, faceHMm);
-        const maxPx = opts.maxPx ?? 2048;
-        let pxPerMm = opts.pxPerMm ?? 3; // ~76 dpi at 1:1
+        // Higher than print DPI on purpose: the on-screen 3D preview magnifies
+        // this texture (and the sign is usually viewed at an angle), so a low
+        // raster looks soft. 4096 stays within every WebGL2 device's max texture.
+        const maxPx = opts.maxPx ?? 4096;
+        let pxPerMm = opts.pxPerMm ?? 8; // ~200 dpi at 1:1
         if (longestMm * pxPerMm > maxPx) pxPerMm = maxPx / longestMm;
         pxPerMm = Math.max(0.2, pxPerMm);
 
@@ -212,6 +215,8 @@ export async function rasterizeFaceArtwork(
         canvas.height = ch;
         const ctx = canvas.getContext('2d');
         if (!ctx) return null;
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
 
         for (const layer of layers) {
             const lwPx = Math.max(1, Math.round(layer.wMm * pxPerMm));

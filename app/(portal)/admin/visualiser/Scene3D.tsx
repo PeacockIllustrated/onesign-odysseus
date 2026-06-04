@@ -2180,14 +2180,16 @@ function Panel({
  */
 /** Rasterise an SVG string to a texture (memoised, disposed on change). */
 function useSvgTexture(svg: string | null | undefined): THREE.Texture | null {
+    const gl = useThree((s) => s.gl);
     const tex = useMemo(() => {
         if (!svg) return null;
         const url =
             'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
         const t = new THREE.TextureLoader().load(url);
         t.colorSpace = THREE.SRGBColorSpace;
+        t.anisotropy = gl.capabilities.getMaxAnisotropy();
         return t;
-    }, [svg]);
+    }, [svg, gl]);
     useEffect(() => () => tex?.dispose(), [tex]);
     return tex;
 }
@@ -2198,12 +2200,15 @@ function useSvgTexture(svg: string | null | undefined): THREE.Texture | null {
 function useImageTexture(
     url: string | null | undefined,
 ): THREE.Texture | null {
+    const gl = useThree((s) => s.gl);
     const tex = useMemo(() => {
         if (!url) return null;
         const t = new THREE.TextureLoader().load(url);
         t.colorSpace = THREE.SRGBColorSpace;
+        // Keep it crisp at oblique viewing angles (the sign is rarely face-on).
+        t.anisotropy = gl.capabilities.getMaxAnisotropy();
         return t;
-    }, [url]);
+    }, [url, gl]);
     useEffect(() => () => tex?.dispose(), [tex]);
     return tex;
 }
