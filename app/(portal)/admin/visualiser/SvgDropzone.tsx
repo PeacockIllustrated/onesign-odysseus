@@ -78,6 +78,7 @@ function GroupEditControls({
     initialStandoff,
     initialKeylineOffset,
     initialProtrusion,
+    initialPrintFullColor,
     pendingCount,
     isExistingGroup,
     panelColor,
@@ -90,6 +91,7 @@ function GroupEditControls({
     initialStandoff: number;
     initialKeylineOffset: number;
     initialProtrusion: number;
+    initialPrintFullColor: boolean;
     pendingCount: number;
     isExistingGroup: boolean;
     panelColor: string;
@@ -101,6 +103,7 @@ function GroupEditControls({
             standoffDistanceMm?: number;
             keylineOffsetMm?: number;
             protrusionMm?: number;
+            printFullColor?: boolean;
         },
     ) => void;
     onCancel: () => void;
@@ -114,6 +117,9 @@ function GroupEditControls({
         initialKeylineOffset,
     );
     const [protrusion, setProtrusion] = useState<number>(initialProtrusion);
+    const [printFullColor, setPrintFullColor] = useState<boolean>(
+        initialPrintFullColor,
+    );
 
     // Smart colour default when the operator switches material — only
     // snap if the colour is still the previous material's default; if
@@ -126,7 +132,10 @@ function GroupEditControls({
         setMaterial(next);
     };
 
-    const hasColor = material !== 'solid';
+    const hasVinyl = material === 'vinyl';
+    // Printed full-colour vinyl takes its colour from the artwork itself, so
+    // the spot-colour swatch only applies to solid (non-printed) vinyl.
+    const hasColor = material !== 'solid' && !(hasVinyl && printFullColor);
     const hasThickness =
         material === 'acrylic' ||
         material === 'standoff' ||
@@ -136,7 +145,7 @@ function GroupEditControls({
 
     const materialHelp: Record<Exclude<GroupMaterial, 'cut'>, string> = {
         solid: 'Kept as panel material — not cut. Use for inner counters of letters.',
-        vinyl: 'Flat vinyl appliqué bonded to the panel face.',
+        vinyl: 'Vinyl bonded to the panel face — printed full colour, or a solid cut colour.',
         acrylic: 'Acrylic sheet face-stuck to the panel.',
         standoff:
             'Extruded letter mounted with studs at a distance from the face.',
@@ -215,6 +224,57 @@ function GroupEditControls({
             <p className="text-[10px] text-neutral-600">
                 {materialHelp[material]}
             </p>
+
+            {hasVinyl && (
+                <div>
+                    <span
+                        className="text-[10px] font-medium"
+                        style={{ color: ACCENT_DARK }}
+                    >
+                        Vinyl type
+                    </span>
+                    <div
+                        className="mt-0.5 grid grid-cols-2 overflow-hidden rounded-md border text-[10px] font-medium"
+                        style={{ borderColor: ACCENT_TINT_BORDER }}
+                    >
+                        {(
+                            [
+                                [true, 'Full colour'],
+                                [false, 'Solid colour'],
+                            ] as const
+                        ).map(([v, label], k) => (
+                            <button
+                                key={label}
+                                type="button"
+                                onClick={() => setPrintFullColor(v)}
+                                aria-pressed={printFullColor === v}
+                                className={`min-h-[32px] py-1.5 ${
+                                    k > 0 ? 'border-l' : ''
+                                } ${
+                                    printFullColor === v
+                                        ? 'text-white'
+                                        : 'bg-white text-neutral-700 hover:bg-neutral-100'
+                                }`}
+                                style={{
+                                    borderColor:
+                                        k > 0 ? ACCENT_TINT_BORDER : undefined,
+                                    background:
+                                        printFullColor === v
+                                            ? ACCENT
+                                            : undefined,
+                                }}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                    <span className="mt-0.5 block text-[10px] text-neutral-500">
+                        {printFullColor
+                            ? 'Prints the artwork in full colour (gradients kept), then contour-cuts around it.'
+                            : 'A single spot colour, plotter-cut — pick the colour below.'}
+                    </span>
+                </div>
+            )}
 
             {hasColor && (
                 <label className="block">
@@ -323,6 +383,9 @@ function GroupEditControls({
                             protrusionMm: hasPushThrough
                                 ? protrusion
                                 : undefined,
+                            printFullColor: hasVinyl
+                                ? printFullColor
+                                : undefined,
                         })
                     }
                     disabled={pendingCount === 0}
@@ -387,6 +450,7 @@ function MaterialGroupsPanel({
             standoffDistanceMm?: number;
             keylineOffsetMm?: number;
             protrusionMm?: number;
+            printFullColor?: boolean;
         },
     ) => void;
     updateGroupProps: (
@@ -397,6 +461,7 @@ function MaterialGroupsPanel({
             standoffDistanceMm?: number;
             keylineOffsetMm?: number;
             protrusionMm?: number;
+            printFullColor?: boolean;
             label?: string;
         },
     ) => void;
@@ -460,6 +525,11 @@ function MaterialGroupsPanel({
                         editingExisting?.keylineOffsetMm ?? 1.5
                     }
                     initialProtrusion={editingExisting?.protrusionMm ?? 5}
+                    // Default printed full-colour (undefined → true); only an
+                    // explicit false makes it a solid cut vinyl.
+                    initialPrintFullColor={
+                        editingExisting?.printFullColor !== false
+                    }
                     pendingCount={pendingPaths.length}
                     isExistingGroup={!!editingExisting}
                     panelColor={panelColor}
@@ -556,41 +626,103 @@ function MaterialGroupsPanel({
                                 doesn't get squeezed. */}
                             {!isEditing && g.material !== 'solid' && (
                                 <div className="mt-2 space-y-2">
-                                    <label className="block">
-                                        <span className="text-[10px] text-neutral-500">
-                                            Colour
-                                        </span>
-                                        <div className="mt-0.5 flex items-center gap-1.5">
-                                            <input
-                                                type="color"
-                                                value={g.color}
-                                                onChange={(e) =>
-                                                    updateGroupProps(g.id, {
-                                                        color: e.target.value,
-                                                    })
-                                                }
-                                                className="h-7 w-9 shrink-0 cursor-pointer rounded border border-neutral-300 bg-white p-0.5"
-                                            />
-                                            <input
-                                                type="text"
-                                                value={g.color}
-                                                onChange={(e) => {
-                                                    const v =
-                                                        e.target.value.trim();
-                                                    if (
-                                                        /^#[0-9a-fA-F]{6}$/.test(
-                                                            v,
-                                                        )
-                                                    )
-                                                        updateGroupProps(
-                                                            g.id,
-                                                            { color: v },
-                                                        );
-                                                }}
-                                                className="flex-1 rounded border border-neutral-300 px-2 py-1 font-mono text-[11px] uppercase focus:border-black focus:outline-none"
-                                            />
+                                    {g.material === 'vinyl' && (
+                                        <div>
+                                            <span className="text-[10px] text-neutral-500">
+                                                Vinyl type
+                                            </span>
+                                            <div className="mt-0.5 grid grid-cols-2 overflow-hidden rounded-md border border-neutral-300 text-[10px] font-medium">
+                                                {(
+                                                    [
+                                                        [true, 'Full colour'],
+                                                        [false, 'Solid'],
+                                                    ] as const
+                                                ).map(([v, label], k) => {
+                                                    const active =
+                                                        (g.printFullColor !==
+                                                            false) === v;
+                                                    return (
+                                                        <button
+                                                            key={label}
+                                                            type="button"
+                                                            onClick={() =>
+                                                                updateGroupProps(
+                                                                    g.id,
+                                                                    {
+                                                                        printFullColor:
+                                                                            v,
+                                                                    },
+                                                                )
+                                                            }
+                                                            aria-pressed={active}
+                                                            className={`min-h-[28px] py-1 ${
+                                                                k > 0
+                                                                    ? 'border-l border-neutral-300'
+                                                                    : ''
+                                                            } ${
+                                                                active
+                                                                    ? 'text-white'
+                                                                    : 'bg-white text-neutral-600 hover:bg-neutral-100'
+                                                            }`}
+                                                            style={
+                                                                active
+                                                                    ? {
+                                                                          background:
+                                                                              ACCENT,
+                                                                      }
+                                                                    : undefined
+                                                            }
+                                                        >
+                                                            {label}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
-                                    </label>
+                                    )}
+                                    {/* Colour swatch — hidden for printed vinyl
+                                        (its colour comes from the artwork). */}
+                                    {!(
+                                        g.material === 'vinyl' &&
+                                        g.printFullColor !== false
+                                    ) && (
+                                        <label className="block">
+                                            <span className="text-[10px] text-neutral-500">
+                                                Colour
+                                            </span>
+                                            <div className="mt-0.5 flex items-center gap-1.5">
+                                                <input
+                                                    type="color"
+                                                    value={g.color}
+                                                    onChange={(e) =>
+                                                        updateGroupProps(g.id, {
+                                                            color: e.target
+                                                                .value,
+                                                        })
+                                                    }
+                                                    className="h-7 w-9 shrink-0 cursor-pointer rounded border border-neutral-300 bg-white p-0.5"
+                                                />
+                                                <input
+                                                    type="text"
+                                                    value={g.color}
+                                                    onChange={(e) => {
+                                                        const v =
+                                                            e.target.value.trim();
+                                                        if (
+                                                            /^#[0-9a-fA-F]{6}$/.test(
+                                                                v,
+                                                            )
+                                                        )
+                                                            updateGroupProps(
+                                                                g.id,
+                                                                { color: v },
+                                                            );
+                                                    }}
+                                                    className="flex-1 rounded border border-neutral-300 px-2 py-1 font-mono text-[11px] uppercase focus:border-black focus:outline-none"
+                                                />
+                                            </div>
+                                        </label>
+                                    )}
                                     {(g.material === 'acrylic' ||
                                         g.material === 'standoff' ||
                                         g.material === 'pushthrough') && (
@@ -1006,6 +1138,51 @@ export function SvgDropzone() {
 
             {placement && (
                 <div className="space-y-2.5">
+                    {/* Artwork use — the upload-time "what is this?" choice.
+                        Cut = apertures (default); Printed vinyl = the whole
+                        artwork is a full-colour printed decal on the face
+                        (nothing cut, gradients kept); Stand-off = extruded
+                        lettering on studs. Individual paths can still be
+                        re-assigned under Path materials below. */}
+                    <div
+                        className="rounded-md border p-2.5"
+                        style={{
+                            borderColor: ACCENT_TINT_BORDER,
+                            background: ACCENT_TINT_BG,
+                        }}
+                    >
+                        <span
+                            className="text-[10px] font-semibold uppercase tracking-wide"
+                            style={{ color: ACCENT_DARK }}
+                        >
+                            Artwork use
+                        </span>
+                        <div className="mt-1">
+                            <Segmented<'aperture' | 'vinyl' | 'standoff'>
+                                options={[
+                                    ['aperture', 'Cut'],
+                                    ['vinyl', 'Printed vinyl'],
+                                    ['standoff', 'Stand-off'],
+                                ]}
+                                value={
+                                    (params.apertureMode ?? 'aperture') as
+                                        | 'aperture'
+                                        | 'vinyl'
+                                        | 'standoff'
+                                }
+                                onChange={(v) => setParam('apertureMode', v)}
+                            />
+                        </div>
+                        <p className="mt-1 text-[10px]" style={{ color: ACCENT_DARK }}>
+                            {(params.apertureMode ?? 'aperture') === 'vinyl'
+                                ? 'Printed full-colour vinyl on the panel face — gradients kept, nothing is cut.'
+                                : (params.apertureMode ?? 'aperture') ===
+                                    'standoff'
+                                  ? 'Lettering stood off the face on studs.'
+                                  : 'Cut out of the panel as apertures (holes).'}
+                        </p>
+                    </div>
+
                     {/* Global placement (align / size / nudge) — for the
                         legacy single artwork. In composite mode each
                         layer is positioned individually, so these are

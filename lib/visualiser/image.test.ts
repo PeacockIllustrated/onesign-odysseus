@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findContentBounds } from './image';
+import { findContentBounds, svgWithPixelSize } from './image';
 
 /** Build a WxH RGBA buffer, fill with bg, then paint a solid rect of fg. */
 function makeImage(
@@ -84,5 +84,53 @@ describe('findContentBounds', () => {
         expect(
             findContentBounds(new Uint8ClampedArray(4), 10, 10),
         ).toBeNull();
+    });
+});
+
+describe('svgWithPixelSize', () => {
+    it('forces the given px width/height, replacing any existing size', () => {
+        const out = svgWithPixelSize(
+            '<svg width="10mm" height="5mm" viewBox="0 0 10 5"><rect/></svg>',
+            200,
+            100,
+        );
+        expect(out).toMatch(/width="200"/);
+        expect(out).toMatch(/height="100"/);
+        // The original mm sizing must be gone (no stray width="10mm").
+        expect(out).not.toMatch(/10mm/);
+        // Inner content is untouched.
+        expect(out).toContain('<rect/>');
+    });
+
+    it('forces an explicit content viewBox (alignment to the cut geometry)', () => {
+        const out = svgWithPixelSize(
+            '<svg viewBox="0 0 100 100"><path d="M0 0"/></svg>',
+            64,
+            64,
+            { x: 12, y: 8, w: 40, h: 30 },
+        );
+        expect(out).toMatch(/viewBox="12 8 40 30"/);
+        // Only one viewBox survives (the old one is stripped).
+        expect(out.match(/viewBox=/g)).toHaveLength(1);
+    });
+
+    it('synthesises a viewBox from numeric width/height when none exists', () => {
+        const out = svgWithPixelSize(
+            '<svg width="80" height="40"><g/></svg>',
+            160,
+            80,
+        );
+        expect(out).toMatch(/viewBox="0 0 80 40"/);
+        expect(out).toMatch(/width="160"/);
+    });
+
+    it('preserves gradient defs so full-colour artwork keeps its fills', () => {
+        const svg =
+            '<svg viewBox="0 0 10 10"><defs><linearGradient id="g">' +
+            '<stop offset="0" stop-color="#f00"/></linearGradient></defs>' +
+            '<rect fill="url(#g)"/></svg>';
+        const out = svgWithPixelSize(svg, 100, 100);
+        expect(out).toContain('<linearGradient id="g">');
+        expect(out).toContain('fill="url(#g)"');
     });
 });

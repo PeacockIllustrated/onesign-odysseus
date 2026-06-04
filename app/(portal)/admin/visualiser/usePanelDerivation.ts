@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
     buildDevelopment,
     placeAperture,
@@ -12,14 +12,20 @@ import {
     circlePoly,
 } from '@/lib/visualiser/geometry';
 import { splitPanels } from '@/lib/visualiser/split';
-import { buildKeyline, mergeKeyline } from '@/lib/visualiser/svg-import';
+import { buildKeyline, mergeKeyline, importSvg } from '@/lib/visualiser/svg-import';
 import { composeLayers } from '@/lib/visualiser/compose';
+import {
+    rasterizeFaceArtwork,
+    type PlacedArtwork,
+    type MaskShape,
+} from '@/lib/visualiser/image';
 import {
     PanelParamsSchema,
     DEFAULT_PLACEMENT,
     type PanelParams,
     type ImportedSvg,
     type FlatPath,
+    type FaceRectMm,
     type MaterialPiece,
     type StandoffPiece,
     type PushThroughPiece,
@@ -30,7 +36,7 @@ import {
 type Effective =
     | { kind: 'cut' }
     | { kind: 'solid' }
-    | { kind: 'vinyl'; color: string }
+    | { kind: 'vinyl'; color: string; fullColor: boolean }
     | { kind: 'acrylic'; color: string; thicknessMm: number }
     | {
           kind: 'standoff';
@@ -69,6 +75,14 @@ const EMPTY_CLIP = { paths: [] as FlatPath[], wasClipped: false, anyOutside: fal
 export function usePanelDerivation(
     params: PanelParams | null,
     storeImported: ImportedSvg | null,
+    /**
+     * Raw uploaded SVG string (colours + gradients intact) for the LEGACY
+     * single-upload case (no artwork layers). Only used to build the
+     * full-colour vinyl print; ignored when artwork layers are present (those
+     * carry their own raw SVGs). Optional — omit and printed vinyl simply
+     * falls back to its flat colour for single-upload designs.
+     */
+    rawSvgSource: string | null = null,
 ) {
     const valid = useMemo(
         () => (params ? PanelParamsSchema.safeParse(params) : null),
@@ -242,8 +256,8 @@ export function usePanelDerivation(
     const fixingDiameter =
         params?.fixingDiameterMm ??
         (params?.fixingRadiusMm ? params.fixingRadiusMm * 2 : 10);
-    const defaultUngroupedKind: 'cut' | 'standoff' =
-        mode === 'standoff' ? 'standoff' : 'cut';
+    const defaultUngroupedKind: 'cut' | 'standoff' | 'vinyl' =
+        mode === 'standoff' ? 'standoff' : mode === 'vinyl' ? 'vinyl' : 'cut';
     const globalLetterThickness = params?.letterThicknessMm ?? 5;
     const globalStandoffDistance = params?.standoffDistanceMm ?? 25;
     const globalLetterColor = params?.letterColor ?? '#1a1f23';
@@ -256,7 +270,14 @@ export function usePanelDerivation(
                 if (own.material === 'cut') return { kind: 'cut' };
                 if (own.material === 'solid') return { kind: 'solid' };
                 if (own.material === 'vinyl')
-                    return { kind: 'vinyl', color: own.color };
+                    // Printed full-colour is the default for vinyl ("upgrade in
+                    // place"); a group opts back to flat solid colour by
+                    // setting printFullColor = false.
+                    return {
+                        kind: 'vinyl',
+                        color: own.color,
+                        fullColor: own.printFullColor !== false,
+                    };
                 if (own.material === 'acrylic')
                     return {
                         kind: 'acrylic',
@@ -288,6 +309,15 @@ export function usePanelDerivation(
                     standoffDistanceMm: globalStandoffDistance,
                 };
             }
+            if (defaultUngroupedKind === 'vinyl') {
+                // Whole-artwork printed vinyl — full colour, not cut. The flat
+                // `color` is only a fallback for when the raster isn't ready.
+                return {
+                    kind: 'vinyl',
+                    color: params?.panelColor ?? '#cccccc',
+                    fullColor: true,
+                };
+            }
             return { kind: 'cut' };
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -299,6 +329,7 @@ export function usePanelDerivation(
         globalLetterColor,
         globalLetterThickness,
         globalStandoffDistance,
+        params?.panelColor,
     ]);
 
     const holesByIndex = useMemo(() => {
@@ -342,6 +373,7 @@ export function usePanelDerivation(
                     path,
                     holes: holesByIndex[i],
                     color: eff.color,
+                    fullColor: eff.fullColor,
                 });
             } else if (eff.kind === 'acrylic') {
                 acrylic.push({
@@ -436,6 +468,119 @@ export function usePanelDerivation(
         return placementTransform(development, imported.bbox, placement);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [development, imported, JSON.stringify(placement)]);
+
+    // The flat face rectangle (flat-development mm) — the frame the full-colour
+    // vinyl raster is rendered into, and the rect consumers drop it onto.
+    const faceRectMm = useMemo<FaceRectMm | null>(() => {
+        const face = development?.segments.find((s) => s.role === 'face');
+        return face
+            ? { x: face.xMm, y: face.yMm, w: face.wMm, h: face.hMm }
+            : null;
+    }, [development]);
+
+    // Inputs for the printed-vinyl raster: the raw (colourful) artwork placed
+    // into face-top-left mm, plus the vinyl shapes to mask it to. Built sync;
+    // the actual rasterise (canvas) runs in the effect below. Null when there's
+    // no printed vinyl, so the raster work is skipped entirely for cut-only or
+    // solid-vinyl designs.
+    const vinylPrintInputs = useMemo<{
+        layers: PlacedArtwork[];
+        mask: MaskShape[];
+    } | null>(() => {
+        if (!development || !faceRectMm || !placementXf || !imported)
+            return null;
+        const fcPieces = materialPieces.vinyl.filter((p) => p.fullColor);
+        if (fcPieces.length === 0) return null;
+
+        const s = placement.scale || 1;
+        const placed: PlacedArtwork[] = [];
+        const layers = params?.artworkLayers ?? [];
+        if (layers.length > 0) {
+            // Composite: each layer's raw SVG, placed by its own (x,y,scale)
+            // in face-frame mm, then through the placement transform to flat.
+            for (const l of layers) {
+                let bbox: PlacedArtwork['viewBox'];
+                try {
+                    bbox = importSvg(l.svgSource).bbox;
+                } catch {
+                    bbox = undefined;
+                }
+                const [fx, fy] = placementXf.toFlat([l.xMm, l.yMm]);
+                placed.push({
+                    svg: l.svgSource,
+                    viewBox: bbox,
+                    xMm: fx - faceRectMm.x,
+                    yMm: fy - faceRectMm.y,
+                    wMm: l.wMm * l.scale * s,
+                    hMm: l.hMm * l.scale * s,
+                });
+            }
+        } else if (rawSvgSource) {
+            // Legacy single upload: the whole raw SVG, placed by the global
+            // aperture placement (align / scale / nudge).
+            const b = imported.bbox;
+            const [fx, fy] = placementXf.toFlat([b.x, b.y]);
+            placed.push({
+                svg: rawSvgSource,
+                viewBox: b,
+                xMm: fx - faceRectMm.x,
+                yMm: fy - faceRectMm.y,
+                wMm: b.w * s,
+                hMm: b.h * s,
+            });
+        } else {
+            return null; // no colour source available → fall back to flat
+        }
+
+        const mask: MaskShape[] = fcPieces.map((p) => ({
+            outer: p.path.points.map(
+                ([x, y]) => [x - faceRectMm.x, y - faceRectMm.y] as [number, number],
+            ),
+            holes: (p.holes ?? []).map((h) =>
+                h.points.map(
+                    ([x, y]) =>
+                        [x - faceRectMm.x, y - faceRectMm.y] as [number, number],
+                ),
+            ),
+        }));
+        return { layers: placed, mask };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+        development,
+        faceRectMm,
+        placementXf,
+        imported,
+        materialPieces.vinyl,
+        JSON.stringify(params?.artworkLayers),
+        rawSvgSource,
+        JSON.stringify(placement),
+    ]);
+
+    // Rasterise the placed colour artwork to a face-sized PNG (canvas, async),
+    // masked to the printed-vinyl shapes. Consumers paint this one image onto
+    // the face — 3D texture, 2D <image>, PDF addImage — so gradients/colours
+    // show everywhere and the vinyl polygons stay as the contour cut line.
+    const [vinylPrintDataUrl, setVinylPrintDataUrl] = useState<string | null>(
+        null,
+    );
+    useEffect(() => {
+        let cancelled = false;
+        if (!vinylPrintInputs || !faceRectMm) {
+            setVinylPrintDataUrl(null);
+            return;
+        }
+        rasterizeFaceArtwork(
+            vinylPrintInputs.layers,
+            faceRectMm.w,
+            faceRectMm.h,
+            { mask: vinylPrintInputs.mask },
+        ).then((url) => {
+            if (!cancelled) setVinylPrintDataUrl(url);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [vinylPrintInputs, faceRectMm]);
 
     const manualFixings = useMemo(() => {
         if (!development || !placementXf || reference.length === 0) return [];
@@ -641,6 +786,8 @@ export function usePanelDerivation(
             solidPieces: materialPieces.solid,
             standoffPieces,
             pushThroughPieces,
+            vinylPrintDataUrl,
+            faceRectMm,
         };
     }, [
         development,
@@ -656,6 +803,8 @@ export function usePanelDerivation(
         materialPieces,
         standoffPieces,
         pushThroughPieces,
+        vinylPrintDataUrl,
+        faceRectMm,
     ]);
 
     const pdfData = useMemo<PanelPdfData | null>(() => {
@@ -676,6 +825,8 @@ export function usePanelDerivation(
             solidPieces: materialPieces.solid,
             standoffPieces,
             pushThroughPieces,
+            vinylPrintDataUrl,
+            faceRectMm,
         };
     }, [
         params,
@@ -692,6 +843,8 @@ export function usePanelDerivation(
         materialPieces,
         standoffPieces,
         pushThroughPieces,
+        vinylPrintDataUrl,
+        faceRectMm,
     ]);
 
     return {
@@ -734,6 +887,8 @@ export function usePanelDerivation(
         referenceBySection,
         apertureHoles,
         apertureHolesBySection,
+        faceRectMm,
+        vinylPrintDataUrl,
         bundle,
         pdfData,
     };

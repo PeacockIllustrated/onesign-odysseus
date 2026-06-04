@@ -234,6 +234,7 @@ interface VisualiserState {
             standoffDistanceMm?: number;
             keylineOffsetMm?: number;
             protrusionMm?: number;
+            printFullColor?: boolean;
         },
     ) => void;
     updateGroupProps: (
@@ -244,6 +245,7 @@ interface VisualiserState {
             standoffDistanceMm?: number;
             keylineOffsetMm?: number;
             protrusionMm?: number;
+            printFullColor?: boolean;
             label?: string;
         },
     ) => void;
@@ -806,6 +808,11 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                 options?.protrusionMm ??
                 existing?.protrusionMm ??
                 defaultGroupProtrusion(material);
+            // Vinyl only. Printed full-colour is the default (undefined →
+            // treated as true downstream); a group opts into flat solid by
+            // explicitly setting false.
+            const printFullColor =
+                options?.printFullColor ?? existing?.printFullColor;
 
             const updated: MaterialGroup = {
                 id: existing?.id ?? nextGroupId(),
@@ -816,6 +823,7 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                 standoffDistanceMm,
                 keylineOffsetMm,
                 protrusionMm,
+                printFullColor,
                 pathIndices: [...pending].sort((a, b) => a - b),
             };
 
@@ -848,6 +856,10 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                               patch.keylineOffsetMm ?? g.keylineOffsetMm,
                           protrusionMm:
                               patch.protrusionMm ?? g.protrusionMm,
+                          printFullColor:
+                              patch.printFullColor !== undefined
+                                  ? patch.printFullColor
+                                  : g.printFullColor,
                           label: patch.label ?? g.label,
                       }
                     : g,

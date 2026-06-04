@@ -129,6 +129,7 @@ export function VisualiserClient({
     const isPublic = variant === 'public';
     const {
         params,
+        svgSource,
         imported: storeImported,
         selectedLayerId,
         selectLayer,
@@ -275,11 +276,13 @@ export function VisualiserClient({
     // overlays (selection, group-highlight colours, view-layer toggles,
     // dimension editing) are NOT part of this hook — they layer on top of
     // these pure outputs further down.
-    const activeDeriv = usePanelDerivation(params, storeImported);
+    const activeDeriv = usePanelDerivation(params, storeImported, svgSource);
     const {
         development,
         imported,
         isComposite,
+        faceRectMm,
+        vinylPrintDataUrl,
         placedClip,
         placedClipByIndex,
         groupByPath,
@@ -348,6 +351,7 @@ export function VisualiserClient({
     const secondaryDeriv = usePanelDerivation(
         secondaryParams,
         secondaryStoreImported,
+        projectingEnabled && inactive ? inactive.svgSource : null,
     );
     const secondaryDevelopment = useMemo(
         () => (secondaryParams ? buildDevelopment(secondaryParams) : null),
@@ -1046,6 +1050,7 @@ export function VisualiserClient({
                             vinylPieces={materialPieces.vinyl}
                             acrylicPieces={materialPieces.acrylic}
                             solidPieces={materialPieces.solid}
+                            vinylPrintDataUrl={vinylPrintDataUrl}
                             placedPathsByIndex={placedClipByIndex}
                             pathGroupColors={dispGroupColors}
                             pendingPaths={pendingPathsSet}
@@ -1077,6 +1082,7 @@ export function VisualiserClient({
                             solidPieces={materialPieces.solid}
                             standoffPieces={standoffPieces}
                             pushThroughPieces={pushThroughPieces}
+                            vinylPrintDataUrl={vinylPrintDataUrl}
                             placedPathsByIndex={placedClipByIndex}
                             pathGroupColors={dispGroupColors}
                             pendingPaths={pendingPathsSet}
@@ -1293,6 +1299,8 @@ export function VisualiserClient({
                             solidPieces={materialPieces.solid}
                             standoffPieces={standoffPieces}
                             pushThroughPieces={pushThroughPieces}
+                            vinylPrintDataUrl={vinylPrintDataUrl}
+                            faceRectMm={faceRectMm}
                             warnings={advisories}
                             pathCount={imported?.paths.length ?? 0}
                             companionPdf={companionPdf}
