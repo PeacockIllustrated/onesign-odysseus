@@ -177,6 +177,16 @@ export interface PdfOptions {
      * light-box visible behind the insert".
      */
     apertureHolesBySection?: FlatPath[][];
+    /**
+     * Printed full-colour vinyl: a transparent face-sized PNG of the real
+     * artwork (colours + gradients), masked to the printed-vinyl shapes, plus
+     * the flat-development face rect it maps onto (`faceRectMm`). When both are
+     * present (and the sign isn't split), the vinyl pages render this as a
+     * 1:1 colour print with the vinyl piece outlines as the contour cut line —
+     * i.e. print-&-cut. Absent → the vinyl pages fall back to flat fills.
+     */
+    vinylPrintDataUrl?: string | null;
+    faceRectMm?: { x: number; y: number; w: number; h: number } | null;
     /** PNG/JPEG data URL of the 3D preview, optional. */
     thumbnailDataUrl?: string;
     /**
@@ -797,6 +807,62 @@ function drawMaterialPiece(
     }
 }
 
+/**
+ * True when a full-colour printed-vinyl image is available to drop onto the
+ * face. Gated on a single section: the raster is the WHOLE face, so it maps
+ * 1:1 only when the sign isn't split across sheets (a split sign falls back to
+ * flat vinyl fills, which already clip per section).
+ */
+function hasFullColourVinyl(opts: PdfOptions): boolean {
+    return (
+        !!opts.vinylPrintDataUrl &&
+        !!opts.faceRectMm &&
+        opts.sectionExport.sections.length === 1 &&
+        (opts.vinylPieces ?? []).some((p) => p.fullColor)
+    );
+}
+
+/**
+ * Drop the printed-vinyl colour image onto the face via the page's px/py
+ * mapping. Width/height derive from the mapping itself, so it works at any
+ * scale (fit-to-page reference, 1:1 production). The PNG is pre-masked to the
+ * vinyl shapes, so no clipping is needed — only the printed vinyl shows.
+ */
+function drawVinylPrintImage(
+    doc: jsPDF,
+    dataUrl: string,
+    faceRect: { x: number; y: number; w: number; h: number },
+    px: (x: number) => number,
+    py: (y: number) => number,
+): void {
+    const x0 = px(faceRect.x);
+    const y0 = py(faceRect.y);
+    const w = px(faceRect.x + faceRect.w) - x0;
+    const h = py(faceRect.y + faceRect.h) - y0;
+    if (w <= 0 || h <= 0) return;
+    doc.addImage(dataUrl, 'PNG', x0, y0, w, h, undefined, 'FAST');
+}
+
+/** Stroke a vinyl piece's outer + counter outlines as the contour cut line
+ *  (no fill) — drawn over the colour print for print-&-cut. */
+function drawVinylContour(
+    doc: jsPDF,
+    piece: MaterialPiece,
+    px: (x: number) => number,
+    py: (y: number) => number,
+    weight: number,
+): void {
+    doc.setDrawColor(20, 20, 20);
+    doc.setLineWidth(weight);
+    for (const ring of [piece.path, ...(piece.holes ?? [])]) {
+        if (!ring.closed || ring.points.length < 3) continue;
+        const pts = ring.points.map(
+            ([x, y]) => [px(x), py(y)] as [number, number],
+        );
+        drawClosedPolyline(doc, pts, 'S');
+    }
+}
+
 interface MaterialPageSpec {
     kind:
         | 'cut'
@@ -859,17 +925,28 @@ function buildMaterialPages(opts: PdfOptions): MaterialPageSpec[] {
         // Use the first piece's colour as the page accent; per-piece
         // colours still drive the drawing.
         const accent = hexToRgb(vinylPieces[0].color);
+        const fc = hasFullColourVinyl(opts);
         pages.push({
             kind: 'vinyl',
-            label: 'Vinyl appliqués',
+            label: fc ? 'Vinyl — printed' : 'Vinyl appliqués',
             color: accent,
             specs: [
-                ['Type', 'Vinyl appliqué — flat'],
+                [
+                    'Type',
+                    fc
+                        ? 'Printed vinyl — full colour, print & cut'
+                        : 'Vinyl appliqué — flat',
+                ],
                 [
                     'Pieces',
                     `${vinylPieces.length} piece${vinylPieces.length === 1 ? '' : 's'}`,
                 ],
-                ['Colour', summariseVariants(colours)],
+                [
+                    'Colour',
+                    fc
+                        ? 'Full-colour digital print (gradients preserved)'
+                        : summariseVariants(colours),
+                ],
             ],
             paths: vinylPieces.flatMap((p) => [p.path, ...(p.holes ?? [])]),
             pieces: vinylPieces,
@@ -1735,10 +1812,40 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
             }
         }
     } else if (spec.pieces) {
+        // Printed full-colour vinyl: drop the real artwork (colours +
+        // gradients) onto the face once, masked to the vinyl shapes. Each
+        // full-colour piece then gets just its contour cut line on top
+        // (print-&-cut); solid-colour vinyl pieces still flat-fill below.
+        const vinylFC =
+            spec.kind === 'vinyl' &&
+            hasFullColourVinyl(opts) &&
+            !!opts.vinylPrintDataUrl &&
+            !!opts.faceRectMm;
+        if (vinylFC && opts.vinylPrintDataUrl && opts.faceRectMm) {
+            drawVinylPrintImage(
+                doc,
+                opts.vinylPrintDataUrl,
+                opts.faceRectMm,
+                px,
+                py,
+            );
+        }
         for (const piece of spec.pieces) {
             const fillForPiece = hexToRgb(piece.color);
             const strokeRgb: [number, number, number] = [20, 20, 20];
-            if (spec.kind === 'standoff') {
+            if (
+                vinylFC &&
+                (piece as MaterialPiece).fullColor &&
+                'path' in piece
+            ) {
+                drawVinylContour(
+                    doc,
+                    piece as MaterialPiece,
+                    px,
+                    py,
+                    0.3,
+                );
+            } else if (spec.kind === 'standoff') {
                 // Stood-off letters filled in their real colour (counters
                 // punched white) so the whole body reads as the part to
                 // cut, not just an outline — same intent as the acrylic
@@ -2414,22 +2521,32 @@ export async function generateProductionPdfBlob(
 
     // ---- Per-material cut pages ------------------------------------
     type MaterialPieceBundle = {
+        kind: 'acrylic' | 'vinyl' | 'standoff';
         title: string;
         subtitle: string;
         pieces: MaterialPiece[];
     };
+    // Printed full-colour vinyl turns the vinyl page into a print-&-cut sheet:
+    // the real artwork at 1:1 plus a contour cut line, rather than a flat
+    // spot-colour cut.
+    const vinylFC = hasFullColourVinyl(opts);
     const materialBundles: MaterialPieceBundle[] = [
         {
+            kind: 'acrylic',
             title: 'ACRYLIC',
             subtitle: 'Acrylic face-stuck — 1:1 cut file for the acrylic sheet',
             pieces: opts.acrylicPieces ?? [],
         },
         {
+            kind: 'vinyl',
             title: 'VINYL',
-            subtitle: 'Vinyl appliqué — 1:1 cut file for the vinyl plotter',
+            subtitle: vinylFC
+                ? 'Printed vinyl — full-colour print at 1:1, then contour-cut the outlines'
+                : 'Vinyl appliqué — 1:1 cut file for the vinyl plotter',
             pieces: opts.vinylPieces ?? [],
         },
         {
+            kind: 'standoff',
             title: 'STOOD-OFF',
             subtitle: 'Stood-off lettering — 1:1 cut file for the standoff material',
             pieces: (opts.standoffPieces ?? []).map((p) => ({
@@ -2492,6 +2609,27 @@ export async function generateProductionPdfBlob(
             draw: (dX, dY) => {
                 const px = (x: number) => dX + (x - minX);
                 const py = (y: number) => dY + (y - minY);
+
+                // Printed full-colour vinyl → print-&-cut: drop the real
+                // artwork (masked to the vinyl shapes; its opaque content sits
+                // exactly in this part's bbox) at 1:1, then draw each piece's
+                // outline as the contour cut line. Solid-colour vinyl pieces in
+                // the same bundle still flat-fill below.
+                const printThisBundle =
+                    bundle.kind === 'vinyl' &&
+                    vinylFC &&
+                    !!opts.vinylPrintDataUrl &&
+                    !!opts.faceRectMm;
+                if (printThisBundle && opts.vinylPrintDataUrl && opts.faceRectMm) {
+                    drawVinylPrintImage(
+                        doc,
+                        opts.vinylPrintDataUrl,
+                        opts.faceRectMm,
+                        px,
+                        py,
+                    );
+                }
+
                 // Fill each piece in its real colour with the hairline
                 // cut stroke on top (FD). The fill makes it unmistakable
                 // that the WHOLE shape is the part — not just an outline
@@ -2501,6 +2639,12 @@ export async function generateProductionPdfBlob(
                 doc.setDrawColor(0);
                 doc.setLineWidth(productionStroke);
                 for (const piece of bundle.pieces) {
+                    // Full-colour piece: the print supplies the colour, so just
+                    // stroke the contour cut line (outer + counters).
+                    if (printThisBundle && piece.fullColor) {
+                        drawVinylContour(doc, piece, px, py, productionStroke);
+                        continue;
+                    }
                     if (piece.path.closed && piece.path.points.length >= 3) {
                         const fill = hexToRgb(piece.color);
                         doc.setFillColor(fill[0], fill[1], fill[2]);
