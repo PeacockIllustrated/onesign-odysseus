@@ -653,21 +653,26 @@ function IconBtn({
     onClick,
     disabled,
     danger,
+    onDark,
 }: {
     children: ReactNode;
     title: string;
     onClick: () => void;
     disabled?: boolean;
     danger?: boolean;
+    onDark?: boolean;
 }) {
+    const cls = onDark
+        ? 'text-white/75 hover:text-white hover:bg-white/20'
+        : danger
+            ? 'text-neutral-400 hover:text-red-600 hover:bg-red-50'
+            : 'text-neutral-400 hover:text-black hover:bg-neutral-100';
     return (
         <button
             title={title}
             onClick={onClick}
             disabled={disabled}
-            className={`p-1.5 rounded-[var(--radius-sm)] transition-colors disabled:opacity-30 ${
-                danger ? 'text-neutral-400 hover:text-red-600 hover:bg-red-50' : 'text-neutral-400 hover:text-black hover:bg-neutral-100'
-            }`}
+            className={`p-1.5 rounded-[var(--radius-sm)] transition-colors disabled:opacity-30 ${cls}`}
         >
             {children}
         </button>
@@ -697,15 +702,15 @@ function BlockCard({
 }) {
     const Icon = BLOCK_ICONS[block.type];
     return (
-        <div className="border border-neutral-200 rounded-[var(--radius-sm)] bg-white">
-            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-neutral-100 bg-neutral-50/60">
-                <span className="text-[#4e7e8c]"><Icon size={14} /></span>
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500 flex-1">
+        <div className="border border-neutral-200 rounded-[var(--radius-sm)] bg-white overflow-hidden">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-[#4e7e8c] text-white">
+                <span className="text-white"><Icon size={14} /></span>
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-white flex-1">
                     {BLOCK_META[block.type].label}
                 </span>
-                <IconBtn title="Move up" disabled={index === 0} onClick={() => onMove(-1)}><ChevronUp size={14} /></IconBtn>
-                <IconBtn title="Move down" disabled={index === total - 1} onClick={() => onMove(1)}><ChevronDown size={14} /></IconBtn>
-                <IconBtn title="Remove block" danger onClick={onRemove}><X size={14} /></IconBtn>
+                <IconBtn title="Move up" disabled={index === 0} onDark onClick={() => onMove(-1)}><ChevronUp size={14} /></IconBtn>
+                <IconBtn title="Move down" disabled={index === total - 1} onDark onClick={() => onMove(1)}><ChevronDown size={14} /></IconBtn>
+                <IconBtn title="Remove block" onDark onClick={onRemove}><X size={14} /></IconBtn>
             </div>
             <div className="p-3">
                 <BlockBody block={block} onChange={onChange} uploadImage={uploadImage} />
@@ -764,9 +769,9 @@ function BlockBody({
                 <div className="space-y-2">
                     <input className={inputCls} value={block.title} onChange={(e) => onChange({ ...block, title: e.target.value })} placeholder="Table title" />
                     {block.rows.map((row, ri) => (
-                        <div key={ri} className="flex gap-2">
-                            <input className={`${inputCls} w-2/5`} value={row.label} onChange={(e) => { const rows = block.rows.slice(); rows[ri] = { ...row, label: e.target.value }; onChange({ ...block, rows }); }} placeholder="Label" />
-                            <input className={`${inputCls} flex-1`} value={row.value} onChange={(e) => { const rows = block.rows.slice(); rows[ri] = { ...row, value: e.target.value }; onChange({ ...block, rows }); }} placeholder="Value" />
+                        <div key={ri} className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_auto] gap-2 items-center">
+                            <input className={inputCls} value={row.label} onChange={(e) => { const rows = block.rows.slice(); rows[ri] = { ...row, label: e.target.value }; onChange({ ...block, rows }); }} placeholder="Label" />
+                            <input className={inputCls} value={row.value} onChange={(e) => { const rows = block.rows.slice(); rows[ri] = { ...row, value: e.target.value }; onChange({ ...block, rows }); }} placeholder="Value" />
                             <IconBtn title="Remove row" danger onClick={() => onChange({ ...block, rows: block.rows.filter((_, i) => i !== ri) })}><X size={14} /></IconBtn>
                         </div>
                     ))}
