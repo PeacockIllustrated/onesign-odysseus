@@ -34,7 +34,7 @@ export type ProductionPackStatus = z.infer<typeof ProductionPackStatusEnum>;
 // PACK STYLE (print theme / orientation)
 // =============================================================================
 
-export const PackStyleEnum = z.enum(['steel', 'landscape', 'editorial', 'mono']);
+export const PackStyleEnum = z.enum(['steel', 'landscape', 'editorial', 'mono', 'studio']);
 export type PackStyle = z.infer<typeof PackStyleEnum>;
 
 /** Picker metadata for the print styles. Theme colours live in the print route. */
@@ -46,6 +46,7 @@ export const PACK_STYLES: Record<
     landscape: { label: 'Landscape', orientation: 'landscape', blurb: 'Wide, footer band' },
     editorial: { label: 'Editorial', orientation: 'portrait', blurb: 'Dark cover, ruled' },
     mono: { label: 'Mono', orientation: 'portrait', blurb: 'Monochrome, minimal' },
+    studio: { label: 'Studio', orientation: 'landscape', blurb: 'Designed drawing sheet' },
 };
 
 // =============================================================================

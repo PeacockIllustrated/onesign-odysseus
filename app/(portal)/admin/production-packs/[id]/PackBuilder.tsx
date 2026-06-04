@@ -679,7 +679,7 @@ function StyleBar({ value, onChange }: { value: PackStyle; onChange: (s: PackSty
     return (
         <div className="bg-white border border-neutral-200 rounded-[var(--radius-md)] px-4 py-3">
             <div className="text-[11px] font-bold uppercase tracking-wider text-[#4e7e8c] mb-2">Pack style</div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {(Object.keys(PACK_STYLES) as PackStyle[]).map((s) => {
                     const meta = PACK_STYLES[s];
                     const active = value === s;
@@ -710,10 +710,24 @@ function StyleThumb({ style }: { style: PackStyle }) {
     const landscape = PACK_STYLES[style].orientation === 'landscape';
     const dark = style === 'editorial';
     const accent = style === 'mono' ? '#1a1a1a' : style === 'editorial' ? '#3a5f6a' : '#4e7e8c';
+    const w = landscape ? 34 : 24;
+    const h = landscape ? 24 : 34;
+    // Studio: hint the two-column drawing sheet (left rail + accent rule).
+    if (style === 'studio') {
+        return (
+            <span
+                className="shrink-0 rounded-[2px] border border-neutral-300 overflow-hidden flex"
+                style={{ width: w, height: h, background: '#fff' }}
+            >
+                <span style={{ width: 11, background: '#fafafa', borderRight: '1px solid #d4d4d8' }} />
+                <span className="flex-1" style={{ borderTop: `3px solid ${accent}` }} />
+            </span>
+        );
+    }
     return (
         <span
             className="shrink-0 rounded-[2px] border border-neutral-300 overflow-hidden flex flex-col"
-            style={{ width: landscape ? 34 : 24, height: landscape ? 24 : 34, background: dark ? '#1a1f23' : '#fff' }}
+            style={{ width: w, height: h, background: dark ? '#1a1f23' : '#fff' }}
         >
             <span className="flex-1" />
             <span style={{ height: 6, background: accent }} />
