@@ -119,17 +119,27 @@ export default async function ProductionPackPrintPage({
             {/* ONE PAGE PER SIGN */}
             {sections.map((section, si) => {
                 const hasBreak = section.blocks.some((b) => b.type === 'pageBreak');
+                const needsFlow = hasBreak || section.keepWith.length > 0;
+                const groups = groupBlocks(section.blocks, section.keepWith);
                 return (
-                    <section className={`pp-page${hasBreak ? ' pp-page-flow' : ''}`} key={section.id}>
+                    <section className={`pp-page${needsFlow ? ' pp-page-flow' : ''}`} key={section.id}>
                         <div className="pp-page-head">
                             {section.signRef && <span className="pp-ref">{section.signRef}</span>}
                             <h2 className="pp-title">{section.title}</h2>
                         </div>
 
                         <div className="pp-body">
-                            {section.blocks.map((block) => (
-                                <BlockView key={block.id} block={block} />
-                            ))}
+                            {groups.map((group, gi) =>
+                                group.length > 1 ? (
+                                    <div className="pp-keep" key={gi}>
+                                        {group.map((block) => (
+                                            <BlockView key={block.id} block={block} />
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <BlockView key={group[0].id} block={group[0]} />
+                                ),
+                            )}
                         </div>
 
                         <TitleBlock cover={cover} page={si + 1} pages={sections.length} />
@@ -146,6 +156,28 @@ export default async function ProductionPackPrintPage({
             )}
         </div>
     );
+}
+
+/** Group consecutive blocks joined by keep-with links so the print view can
+ *  wrap each run in a break-inside:avoid container. A page break always ends a
+ *  run (you can't keep across an explicit break). */
+function groupBlocks(blocks: Block[], keepWith: string[]): Block[][] {
+    const groups: Block[][] = [];
+    let cur: Block[] = [];
+    for (let i = 0; i < blocks.length; i++) {
+        cur.push(blocks[i]);
+        const joinNext =
+            i < blocks.length - 1 &&
+            keepWith.includes(blocks[i].id) &&
+            blocks[i].type !== 'pageBreak' &&
+            blocks[i + 1].type !== 'pageBreak';
+        if (!joinNext) {
+            groups.push(cur);
+            cur = [];
+        }
+    }
+    if (cur.length) groups.push(cur);
+    return groups;
 }
 
 function BlockView({ block }: { block: Block }) {
@@ -395,6 +427,8 @@ const BASE_CSS = `
 .pp-page-flow .pp-body { display: block; }
 .pp-page-flow .pp-body > * { margin-bottom: 12px; }
 .pp-page-flow .pp-titleblock { margin-top: 16px; }
+/* Linked blocks kept on one page (break-inside:avoid honoured in block flow). */
+.pp-keep { display: flex; flex-direction: column; gap: 12px; break-inside: avoid; page-break-inside: avoid; }
 .pp-h { font-size: 15px; font-weight: 800; margin: 4px 0 0; }
 .pp-block-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--pp-accent); margin-bottom: 5px; }
 .pp-text-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--pp-accent); margin-bottom: 4px; }

@@ -27,6 +27,7 @@ import {
     Image as ImageIcon,
     ImagePlus,
     Info,
+    Link2,
     List,
     ListChecks,
     Loader2,
@@ -439,7 +440,16 @@ export function PackBuilder({
         mutate((d) => {
             const clone = structuredClone(d.sections[si]);
             clone.id = genId('sec');
-            clone.blocks = clone.blocks.map((b) => ({ ...b, id: genId('b') }));
+            // Remap block ids, carrying the keep-with links across to the copies.
+            const idMap = new Map<string, string>();
+            clone.blocks = clone.blocks.map((b) => {
+                const nid = genId('b');
+                idMap.set(b.id, nid);
+                return { ...b, id: nid };
+            });
+            clone.keepWith = clone.keepWith
+                .map((id) => idMap.get(id))
+                .filter((id): id is string => !!id);
             clone.title = `${clone.title} (copy)`;
             d.sections.splice(si + 1, 0, clone);
         });
@@ -448,6 +458,15 @@ export function PackBuilder({
             const ti = si + dir;
             if (ti < 0 || ti >= d.sections.length) return;
             [d.sections[si], d.sections[ti]] = [d.sections[ti], d.sections[si]];
+        });
+
+    /** Toggle "keep with next" on a block (links it to the block below). */
+    const toggleLink = (si: number, blockId: string) =>
+        mutate((d) => {
+            const s = d.sections[si];
+            s.keepWith = s.keepWith.includes(blockId)
+                ? s.keepWith.filter((x) => x !== blockId)
+                : [...s.keepWith, blockId];
         });
 
     const addBlock = (si: number, type: BlockType) => {
@@ -611,6 +630,7 @@ export function PackBuilder({
                         onReplaceBlock={(bi, b) => replaceBlock(si, bi, b)}
                         onRemoveBlock={(bi) => removeBlock(si, bi)}
                         onMoveBlock={(bi, dir) => moveBlock(si, bi, dir)}
+                        onToggleLink={(blockId) => toggleLink(si, blockId)}
                         uploadImage={uploadImage}
                     />
                 ))}
@@ -761,6 +781,7 @@ function SectionCard({
     onReplaceBlock,
     onRemoveBlock,
     onMoveBlock,
+    onToggleLink,
     uploadImage,
 }: {
     section: SignSection;
@@ -778,6 +799,7 @@ function SectionCard({
     onReplaceBlock: (bi: number, b: Block) => void;
     onRemoveBlock: (bi: number) => void;
     onMoveBlock: (bi: number, dir: -1 | 1) => void;
+    onToggleLink: (blockId: string) => void;
     uploadImage: (file: File) => Promise<string | null>;
 }) {
     return (
@@ -812,20 +834,37 @@ function SectionCard({
                     {section.blocks.length === 0 && (
                         <p className="text-sm text-neutral-400 text-center py-6">No blocks yet — add one below.</p>
                     )}
-                    {section.blocks.map((block, bi) => (
-                        <BlockCard
-                            key={block.id}
-                            block={block}
-                            index={bi}
-                            total={section.blocks.length}
-                            expanded={expandedBlocks.has(block.id)}
-                            onToggle={() => onToggleBlock(block.id)}
-                            onChange={(b) => onReplaceBlock(bi, b)}
-                            onRemove={() => onRemoveBlock(bi)}
-                            onMove={(dir) => onMoveBlock(bi, dir)}
-                            uploadImage={uploadImage}
-                        />
-                    ))}
+                    {section.blocks.map((block, bi) => {
+                        const blocks = section.blocks;
+                        const prevLinked = bi > 0 && section.keepWith.includes(blocks[bi - 1].id);
+                        const nextLinked = bi < blocks.length - 1 && section.keepWith.includes(block.id);
+                        const canLink =
+                            bi < blocks.length - 1 &&
+                            block.type !== 'pageBreak' &&
+                            blocks[bi + 1].type !== 'pageBreak';
+                        return (
+                            <div key={block.id}>
+                                <BlockCard
+                                    block={block}
+                                    index={bi}
+                                    total={blocks.length}
+                                    grouped={prevLinked || nextLinked}
+                                    expanded={expandedBlocks.has(block.id)}
+                                    onToggle={() => onToggleBlock(block.id)}
+                                    onChange={(b) => onReplaceBlock(bi, b)}
+                                    onRemove={() => onRemoveBlock(bi)}
+                                    onMove={(dir) => onMoveBlock(bi, dir)}
+                                    uploadImage={uploadImage}
+                                />
+                                {canLink && (
+                                    <LinkConnector
+                                        linked={section.keepWith.includes(block.id)}
+                                        onToggle={() => onToggleLink(block.id)}
+                                    />
+                                )}
+                            </div>
+                        );
+                    })}
                     <BlockPalette onAdd={onAddBlock} />
                 </div>
             ) : (
@@ -894,6 +933,25 @@ function BlockPalette({ onAdd }: { onAdd: (type: BlockType) => void }) {
     );
 }
 
+function LinkConnector({ linked, onToggle }: { linked: boolean; onToggle: () => void }) {
+    return (
+        <div className="flex justify-center mt-1.5">
+            <button
+                type="button"
+                onClick={onToggle}
+                title={linked ? 'Linked — kept on the same page. Click to unlink.' : 'Link — keep these on the same page'}
+                className={`inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full border transition-colors ${
+                    linked
+                        ? 'border-[#4e7e8c] bg-[#e8f0f3] text-[#3a5f6a]'
+                        : 'border-neutral-200 text-neutral-300 hover:text-[#4e7e8c] hover:border-[#4e7e8c]'
+                }`}
+            >
+                <Link2 size={11} /> {linked ? 'kept together' : 'link'}
+            </button>
+        </div>
+    );
+}
+
 function IconBtn({
     children,
     title,
@@ -934,6 +992,7 @@ function BlockCard({
     block,
     index,
     total,
+    grouped,
     expanded,
     onToggle,
     onChange,
@@ -944,6 +1003,7 @@ function BlockCard({
     block: Block;
     index: number;
     total: number;
+    grouped?: boolean;
     expanded: boolean;
     onToggle: () => void;
     onChange: (b: Block) => void;
@@ -969,7 +1029,7 @@ function BlockCard({
     // Collapsed: a one-line summary row.
     if (!expanded) {
         return (
-            <div className="flex items-center gap-2 px-3 py-2 border border-neutral-200 rounded-[var(--radius-sm)] bg-white hover:border-[#4e7e8c]/60 transition-colors">
+            <div className={`flex items-center gap-2 px-3 py-2 border border-neutral-200 rounded-[var(--radius-sm)] bg-white hover:border-[#4e7e8c]/60 transition-colors ${grouped ? 'border-l-2 border-l-[#4e7e8c]' : ''}`}>
                 <button onClick={onToggle} className="flex items-center gap-2 flex-1 min-w-0 text-left">
                     <span className="text-[#4e7e8c] shrink-0"><Icon size={15} /></span>
                     <span className="text-xs font-semibold text-neutral-700 shrink-0">{BLOCK_META[block.type].label}</span>

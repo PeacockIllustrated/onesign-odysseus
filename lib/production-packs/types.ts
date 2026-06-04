@@ -230,6 +230,12 @@ export const SignSectionSchema = z.object({
     /** e.g. "Sign Ref 1" — printed as the page tag */
     signRef: z.string().default(''),
     blocks: z.array(BlockSchema).default([]),
+    /**
+     * Block ids whose block should stay on the same printed page as the block
+     * directly after it ("keep with next"). Consecutive links form a group the
+     * print view wraps in a break-inside:avoid container so they don't split.
+     */
+    keepWith: z.array(z.string()).default([]),
 });
 export type SignSection = z.infer<typeof SignSectionSchema>;
 
@@ -420,6 +426,7 @@ export function newSection(index: number): SignSection {
         id: genId('sec'),
         title: `Sign ${index}`,
         signRef: `Sign Ref ${index}`,
+        keepWith: [],
         blocks: [
             newVisualBlock(),
             newTechnicalBlock(),
