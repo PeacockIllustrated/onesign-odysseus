@@ -302,6 +302,13 @@ const PanelCoreSchema = z.object({
      *                     at the keyline (larger than the letter), so the
      *                     counter piece fits inside the hole next to the
      *                     outer piece.
+     *   - 'backlight'   — the shape is cut from the panel (like an aperture)
+     *                     and an opal diffuser panel sits behind it, lit from
+     *                     behind: the solid cut shape glows. Same back-panel
+     *                     construction as keyline illumination, but the glow
+     *                     fills the whole cut rather than a keyline shoulder.
+     *                     `color` is the per-element glow colour; `glowIntensity`
+     *                     its brightness.
      *
      * Indices are positions into `imported.paths`, so the list is
      * cleared whenever a new SVG is loaded.
@@ -318,6 +325,7 @@ const PanelCoreSchema = z.object({
                     'acrylic',
                     'standoff',
                     'pushthrough',
+                    'backlight',
                 ]),
                 color: z
                     .string()
@@ -332,6 +340,12 @@ const PanelCoreSchema = z.object({
                  * Ignored for non-vinyl materials.
                  */
                 printFullColor: z.boolean().optional(),
+                /**
+                 * Backlight only — glow brightness multiplier for this
+                 * element's lit opal (1 = default). The glow colour is the
+                 * group `color`.
+                 */
+                glowIntensity: z.number().min(0).max(5).optional(),
                 /** Acrylic, standoff + pushthrough. */
                 thicknessMm: z.number().positive().max(50).optional(),
                 /** Standoff only — gap between panel face and letter back. */
@@ -583,6 +597,12 @@ export interface PanelRenderBundle {
     standoffPieces: StandoffPiece[];
     pushThroughPieces: PushThroughPiece[];
     /**
+     * Backlit apertures — cut from the panel, with an opal diffuser behind
+     * that glows (the cut shape lights up). `color` is the glow colour,
+     * `glowIntensity` its brightness. The CUT itself is also in `aperture`.
+     */
+    backlightPieces: MaterialPiece[];
+    /**
      * Full-colour vinyl print — a transparent face-sized PNG of the real
      * artwork (colours + gradients), masked to the printed-vinyl shapes. Null
      * when there's no printed vinyl. Paired with `faceRectMm` so it can be
@@ -615,6 +635,9 @@ export interface PanelPdfData {
     solidPieces: MaterialPiece[];
     standoffPieces: StandoffPiece[];
     pushThroughPieces: PushThroughPiece[];
+    /** Backlit apertures (see PanelRenderBundle) — for the opal-backing +
+     *  LED pages in the production PDF and the reference backlight page. */
+    backlightPieces: MaterialPiece[];
     /** Full-colour vinyl print (see PanelRenderBundle) — for the print-&-cut
      *  page. Null when there's no printed vinyl. */
     vinylPrintDataUrl?: string | null;
@@ -689,6 +712,11 @@ export interface MaterialPiece {
      * False/undefined → flat solid-colour cut vinyl (`color`).
      */
     fullColor?: boolean;
+    /**
+     * Backlight only — glow brightness multiplier for the lit opal behind the
+     * cut (`color` is the glow colour). Default 1.
+     */
+    glowIntensity?: number;
 }
 
 /**

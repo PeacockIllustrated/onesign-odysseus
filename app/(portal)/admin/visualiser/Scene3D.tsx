@@ -1215,6 +1215,86 @@ function PushThroughPieces({
 }
 
 /**
+ * Backlit apertures — the cut shape is backed by an opal diffuser lit from
+ * behind, so the solid cut glows. Each piece is rendered as a flat shape
+ * (with its counters as holes) sitting just behind the face: in daylight it's
+ * plain opal seen through the cut; in the dark/illumination view it glows in
+ * the element's own colour + intensity (emissive, unaffected by scene
+ * darkening). The physical opal back panel is the same construction as the
+ * keyline-illumination backing — see PushThroughBacking — and is emitted on
+ * the production PDF; here the lit shape itself conveys the effect.
+ */
+function BacklightGlow({
+    face,
+    pieces,
+    night = false,
+}: {
+    face: { xMm: number; yMm: number; wMm: number; hMm: number };
+    pieces: MaterialPiece[];
+    night?: boolean;
+}) {
+    const toLocal = (q: [number, number]): [number, number] => [
+        (q[0] - face.xMm - face.wMm / 2) * S,
+        (face.yMm + face.hMm / 2 - q[1]) * S,
+    ];
+    const shapes = useMemo(() => {
+        return pieces
+            .map((piece) => {
+                const outer = piece.path.points.map(toLocal);
+                if (outer.length < 3) return null;
+                const shape = new THREE.Shape();
+                shape.moveTo(outer[0][0], outer[0][1]);
+                for (let i = 1; i < outer.length; i++)
+                    shape.lineTo(outer[i][0], outer[i][1]);
+                if (piece.path.closed) shape.closePath();
+                for (const hole of piece.holes ?? []) {
+                    const hp = hole.points.map(toLocal);
+                    if (hp.length < 3) continue;
+                    const path = new THREE.Path();
+                    path.moveTo(hp[0][0], hp[0][1]);
+                    for (let i = 1; i < hp.length; i++)
+                        path.lineTo(hp[i][0], hp[i][1]);
+                    if (hole.closed) path.closePath();
+                    shape.holes.push(path);
+                }
+                return {
+                    shape,
+                    color: piece.color,
+                    intensity: piece.glowIntensity ?? 1,
+                    key: piece.pathIndex,
+                };
+            })
+            .filter((s): s is NonNullable<typeof s> => s !== null);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pieces, face]);
+
+    return (
+        <group>
+            {shapes.map((s, i) => (
+                // ~1 mm behind the face front, so it reads through the cut.
+                <mesh key={`bl-${s.key}-${i}`} position={[0, 0, -1 * S]}>
+                    <shapeGeometry args={[s.shape, 48]} />
+                    {night ? (
+                        <meshStandardMaterial
+                            color="#000000"
+                            emissive={s.color}
+                            emissiveIntensity={Math.max(0, s.intensity)}
+                            toneMapped={false}
+                            side={THREE.DoubleSide}
+                        />
+                    ) : (
+                        <meshBasicMaterial
+                            color="#f5f5f0"
+                            side={THREE.DoubleSide}
+                        />
+                    )}
+                </mesh>
+            ))}
+        </group>
+    );
+}
+
+/**
  * Opal diffuser backing panel — the white acrylic sheet that sits
  * BEHIND the face panel. Push-through letter pieces (and their
  * counter pieces) are glued to its front; the assembly is then
@@ -1621,6 +1701,7 @@ function Panel({
     solidPieces,
     standoffPieces,
     pushThroughPieces,
+    backlightPieces,
     vinylPrintDataUrl,
     placedPathsByIndex,
     pathGroupColors,
@@ -1657,6 +1738,8 @@ function Panel({
     solidPieces: MaterialPiece[];
     standoffPieces: StandoffPiece[];
     pushThroughPieces: PushThroughPiece[];
+    /** Backlit apertures — glow through the cut in the illumination view. */
+    backlightPieces?: MaterialPiece[];
     /** Full-colour vinyl print PNG (face-sized, masked to the vinyl shapes). */
     vinylPrintDataUrl?: string | null;
     placedPathsByIndex?: Array<FlatPath | null> | null;
@@ -1883,6 +1966,15 @@ function Panel({
                         night={night}
                     />
                 )}
+
+            {/* Backlit apertures glow through the cut (opal behind, lit). */}
+            {face && (backlightPieces?.length ?? 0) > 0 && (
+                <BacklightGlow
+                    face={face}
+                    pieces={backlightPieces ?? []}
+                    night={night}
+                />
+            )}
 
             {/* Click-to-select hit targets — one transparent mesh per
                 imported path. Outside edit mode they only contribute
@@ -2382,6 +2474,7 @@ function BundlePanel({
             solidPieces={bundle.solidPieces}
             standoffPieces={bundle.standoffPieces}
             pushThroughPieces={bundle.pushThroughPieces}
+            backlightPieces={bundle.backlightPieces}
             vinylPrintDataUrl={bundle.vinylPrintDataUrl}
             fold={1}
             showOutlines={showOutlines}
@@ -2453,6 +2546,8 @@ export default function Scene3D(props: {
     solidPieces?: MaterialPiece[];
     standoffPieces?: StandoffPiece[];
     pushThroughPieces?: PushThroughPiece[];
+    /** Backlit apertures — glow through the cut in the illumination view. */
+    backlightPieces?: MaterialPiece[];
     /** Full-colour vinyl print PNG — face-sized, masked to the vinyl shapes. */
     vinylPrintDataUrl?: string | null;
     placedPathsByIndex?: Array<FlatPath | null> | null;
@@ -2506,6 +2601,7 @@ export default function Scene3D(props: {
     const acrylicPieces = props.acrylicPieces ?? [];
     const solidPieces = props.solidPieces ?? [];
     const standoffPieces = props.standoffPieces ?? [];
+    const backlightPieces = props.backlightPieces ?? [];
     const pushThroughKeyline = props.pushThroughKeyline ?? [];
     const pushThroughIslands = props.pushThroughIslands ?? [];
     const pushThroughPieces = props.pushThroughPieces ?? [];
@@ -2605,6 +2701,7 @@ export default function Scene3D(props: {
         solidPieces,
         standoffPieces,
         pushThroughPieces,
+        backlightPieces,
         vinylPrintDataUrl: props.vinylPrintDataUrl,
     };
 

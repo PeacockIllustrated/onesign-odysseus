@@ -139,6 +139,7 @@ export function ExportBar({
     solidPieces,
     standoffPieces,
     pushThroughPieces,
+    backlightPieces,
     vinylPrintDataUrl = null,
     faceRectMm = null,
     warnings = [],
@@ -161,6 +162,8 @@ export function ExportBar({
     solidPieces: MaterialPiece[];
     standoffPieces: StandoffPiece[];
     pushThroughPieces: PushThroughPiece[];
+    /** Backlit apertures — for the opal-backing + LED pages in the PDFs. */
+    backlightPieces: MaterialPiece[];
     /** Full-colour vinyl print PNG (face-sized, masked) + the face rect it
      *  maps onto — for the print-&-cut PDF pages. */
     vinylPrintDataUrl?: string | null;
@@ -307,6 +310,7 @@ export function ExportBar({
                 solidPieces,
                 standoffPieces,
                 pushThroughPieces,
+                backlightPieces,
                 vinylPrintDataUrl,
                 faceRectMm,
                 thumbnailDataUrl: thumb || undefined,
@@ -375,6 +379,7 @@ export function ExportBar({
                 solidPieces,
                 standoffPieces,
                 pushThroughPieces,
+                backlightPieces,
                 vinylPrintDataUrl,
                 faceRectMm,
                 thumbnailDataUrl: thumb || undefined,
@@ -410,7 +415,9 @@ export function ExportBar({
                     vinyl: vinylPieces.length > 0,
                     acrylic: acrylicPieces.length > 0,
                     standoff: standoffPieces.length > 0,
-                    illumination: !!params.illumination?.keyline?.enabled,
+                    illumination:
+                        !!params.illumination?.keyline?.enabled ||
+                        backlightPieces.length > 0,
                     bracket: bladeActive,
                 },
             });
@@ -456,6 +463,7 @@ export function ExportBar({
                 solidPieces,
                 standoffPieces,
                 pushThroughPieces,
+                backlightPieces,
                 vinylPrintDataUrl,
                 faceRectMm,
                 ...twoItem,

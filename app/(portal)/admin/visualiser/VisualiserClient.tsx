@@ -290,6 +290,7 @@ export function VisualiserClient({
         materialPieces,
         pushThroughPieces,
         standoffPieces,
+        backlightPieces,
         reference,
         autoFixings,
         placementXf,
@@ -950,10 +951,13 @@ export function VisualiserClient({
                     {/* Lit-view nudge — the dark scene with no glow on
                         reads as broken, so explain it and offer the
                         one-click enable (or point at what's missing
-                        when there's nothing to light yet). */}
+                        when there's nothing to light yet). Suppressed when
+                        backlit apertures are present — those glow on their
+                        own, so the scene isn't actually dark. */}
                     {illuminationView &&
                         tab !== 'flat' &&
-                        !keylineGlowOn && (
+                        !keylineGlowOn &&
+                        backlightPieces.length === 0 && (
                             <div className="pointer-events-none absolute inset-x-3 top-1/2 z-10 flex -translate-y-1/2 justify-center">
                                 <div className="pointer-events-auto max-w-xs rounded-lg border border-white/15 bg-[#1a1f23]/90 px-4 py-3 text-center shadow-lg backdrop-blur">
                                     <p className="flex items-center justify-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
@@ -1050,6 +1054,7 @@ export function VisualiserClient({
                             vinylPieces={materialPieces.vinyl}
                             acrylicPieces={materialPieces.acrylic}
                             solidPieces={materialPieces.solid}
+                            backlightPieces={backlightPieces}
                             vinylPrintDataUrl={vinylPrintDataUrl}
                             placedPathsByIndex={placedClipByIndex}
                             pathGroupColors={dispGroupColors}
@@ -1082,6 +1087,7 @@ export function VisualiserClient({
                             solidPieces={materialPieces.solid}
                             standoffPieces={standoffPieces}
                             pushThroughPieces={pushThroughPieces}
+                            backlightPieces={backlightPieces}
                             vinylPrintDataUrl={vinylPrintDataUrl}
                             placedPathsByIndex={placedClipByIndex}
                             pathGroupColors={dispGroupColors}
@@ -1299,6 +1305,7 @@ export function VisualiserClient({
                             solidPieces={materialPieces.solid}
                             standoffPieces={standoffPieces}
                             pushThroughPieces={pushThroughPieces}
+                            backlightPieces={backlightPieces}
                             vinylPrintDataUrl={vinylPrintDataUrl}
                             faceRectMm={faceRectMm}
                             warnings={advisories}
