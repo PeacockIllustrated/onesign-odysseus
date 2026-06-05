@@ -39,7 +39,18 @@ export interface NeonPdfOptions {
     name: string;
     elements: NeonElement[];
     bbox: { minX: number; minY: number; maxX: number; maxY: number };
-    backboard?: { enabled: boolean; paddingMm: number };
+    backboard?: {
+        enabled: boolean;
+        /** 'rectangle' (bbox + padding) or 'shaped' (contour silhouette). */
+        shape?: 'rectangle' | 'shaped';
+        paddingMm: number;
+        /** Shaped-mode padding beyond the neon (mm). */
+        shapePaddingMm?: number;
+        /** Shaped-mode silhouette rings (mm, bbox space) from buildShapedBackboard. */
+        shapeRings?: Array<Array<[number, number]>>;
+        /** Shaped-mode cut area (mm²). */
+        shapeAreaMm2?: number;
+    };
     /** Transformer/driver count for the manufacturer. */
     transformers?: number;
     /** Edge the mains cable enters from. */
@@ -369,10 +380,118 @@ export async function generateNeonPdfBlob(opts: NeonPdfOptions): Promise<Blob> {
     doc.text(T('BACKBOARD'), margin, p2Top);
     doc.setTextColor(0);
 
-    if (board?.enabled) {
+    const boxMaxW = 120;
+    const boxMaxH = 78;
+    // A spec row helper shared by both board flavours.
+    const makeSpecRow = (startY: number) => {
+        let sy = startY;
+        const specRow = (k: string, v: string, bold = false) => {
+            doc.setFont(font, 'normal');
+            doc.setFontSize(8.5);
+            doc.setTextColor(120);
+            doc.text(T(k), margin, sy);
+            doc.setTextColor(0);
+            doc.setFont(font, bold ? 'bold' : 'normal');
+            doc.setFontSize(bold ? 10 : 8.5);
+            doc.text(T(v), margin + 34, sy);
+            sy += bold ? 6.5 : 5.2;
+        };
+        return specRow;
+    };
+
+    const shaped = !!(
+        board?.enabled &&
+        board.shape === 'shaped' &&
+        board.shapeRings &&
+        board.shapeRings.length > 0
+    );
+
+    if (shaped) {
+        // Diagram: the silhouette outline(s), with the neon runs drawn on top
+        // so it's clear the panel is cut to the shape of the design.
+        const rings = board!.shapeRings!;
+        let rMinX = Infinity;
+        let rMinY = Infinity;
+        let rMaxX = -Infinity;
+        let rMaxY = -Infinity;
+        for (const ring of rings)
+            for (const [x, y] of ring) {
+                if (x < rMinX) rMinX = x;
+                if (y < rMinY) rMinY = y;
+                if (x > rMaxX) rMaxX = x;
+                if (y > rMaxY) rMaxY = y;
+            }
+        const rw = Math.max(1, rMaxX - rMinX);
+        const rh = Math.max(1, rMaxY - rMinY);
+        const dgScale = fitScale(boxMaxW, boxMaxH, rw, rh);
+        const dw = rw * dgScale;
+        const dh = rh * dgScale;
+        const bx = margin + (boxMaxW - dw) / 2;
+        const by = p2Top + 8;
+        const tx = (x: number) => bx + (x - rMinX) * dgScale;
+        const ty = (y: number) => by + (y - rMinY) * dgScale;
+
+        // silhouette fill + outline (counters filled → outer rings only)
+        doc.setFillColor(225, 240, 246);
+        doc.setDrawColor(120, 160, 175);
+        doc.setLineWidth(0.4);
+        for (const ring of rings) {
+            if (ring.length < 2) continue;
+            const deltas: [number, number][] = [];
+            for (let i = 1; i < ring.length; i++) {
+                deltas.push([
+                    (ring[i][0] - ring[i - 1][0]) * dgScale,
+                    (ring[i][1] - ring[i - 1][1]) * dgScale,
+                ]);
+            }
+            doc.lines(deltas, tx(ring[0][0]), ty(ring[0][1]), [1, 1], 'FD', true);
+        }
+        // neon runs on top (thin teal centreline)
+        doc.setDrawColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+        doc.setLineWidth(0.25);
+        for (const el of opts.elements) {
+            const pts = el.points;
+            if (pts.length < 2) continue;
+            const deltas: [number, number][] = [];
+            for (let i = 1; i < pts.length; i++) {
+                deltas.push([
+                    (pts[i][0] - pts[i - 1][0]) * dgScale,
+                    (pts[i][1] - pts[i - 1][1]) * dgScale,
+                ]);
+            }
+            doc.lines(
+                deltas,
+                tx(pts[0][0]),
+                ty(pts[0][1]),
+                [1, 1],
+                'S',
+                el.closed,
+            );
+        }
+        // extent dims
+        doc.setFont(font, 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(90);
+        doc.text(`${Math.round(rw)} mm`, bx + dw / 2, by + dh + 4, {
+            align: 'center',
+        });
+        doc.text(`${Math.round(rh)} mm`, bx - 2, by + dh / 2, {
+            align: 'right',
+            angle: 90,
+        });
+        doc.setTextColor(0);
+
+        const shapePad = Math.max(0, board!.shapePaddingMm ?? 0);
+        const areaM2 = (board!.shapeAreaMm2 ?? 0) / 1_000_000;
+        const specRow = makeSpecRow(by + dh + 12);
+        specRow('Material', 'Clear acrylic');
+        specRow('Cut', 'Contour — to shape');
+        specRow('Artwork', `${Math.round(artW)} × ${Math.round(artH)} mm`);
+        specRow('Padding', `${Math.round(shapePad)} mm beyond neon`);
+        specRow('Board extent', `${Math.round(rw)} × ${Math.round(rh)} mm`, true);
+        specRow('Cut area', `${areaM2.toFixed(2)} m²`);
+    } else if (board?.enabled) {
         // Diagram: board rectangle with the artwork extent dashed inside.
-        const boxMaxW = 120;
-        const boxMaxH = 78;
         const dgScale = fitScale(boxMaxW, boxMaxH, boardW, boardH);
         const bw = boardW * dgScale;
         const bh = boardH * dgScale;
@@ -403,19 +522,7 @@ export async function generateNeonPdfBlob(opts: NeonPdfOptions): Promise<Blob> {
         });
         doc.setTextColor(0);
 
-        // spec lines
-        let sy = by + bh + 12;
-        const specRow = (k: string, v: string, bold = false) => {
-            doc.setFont(font, 'normal');
-            doc.setFontSize(8.5);
-            doc.setTextColor(120);
-            doc.text(T(k), margin, sy);
-            doc.setTextColor(0);
-            doc.setFont(font, bold ? 'bold' : 'normal');
-            doc.setFontSize(bold ? 10 : 8.5);
-            doc.text(T(v), margin + 34, sy);
-            sy += bold ? 6.5 : 5.2;
-        };
+        const specRow = makeSpecRow(by + bh + 12);
         specRow('Material', 'Clear acrylic');
         specRow('Artwork', `${Math.round(artW)} × ${Math.round(artH)} mm`);
         specRow('Padding', `${Math.round(pad)} mm all round`);

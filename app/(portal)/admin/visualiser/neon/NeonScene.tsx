@@ -148,7 +148,7 @@ function NeonRun({
     );
 }
 
-/** Clear acrylic backboard sized to the artwork + padding. */
+/** Clear acrylic backboard sized to the artwork + padding (plain rectangle). */
 function Backboard({
     wScene,
     hScene,
@@ -173,6 +173,70 @@ function Backboard({
     );
 }
 
+/**
+ * Shaped (contour-cut) backboard: the silhouette rings (mm, bbox space) from
+ * `buildShapedBackboard`, converted to scene space and extruded into a thin
+ * slab sitting just behind the neon. extrudeGeometry is declared as a JSX
+ * child (not passed by prop) so React-Three-Fiber owns + disposes it on every
+ * rebuild — same reason the tubes are, otherwise dragging the padding slider
+ * would orphan a geometry on the GPU each step.
+ */
+function ShapedBackboard({
+    rings,
+    toScene,
+    depth,
+}: {
+    rings: Array<Array<[number, number]>>;
+    toScene: (x: number, y: number) => [number, number, number];
+    depth: number;
+}) {
+    const shapes = useMemo(() => {
+        return rings
+            .map((r) => {
+                if (r.length < 3) return null;
+                const shape = new THREE.Shape();
+                r.forEach(([x, y], i) => {
+                    const [sx, sy] = toScene(x, y);
+                    if (i === 0) shape.moveTo(sx, sy);
+                    else shape.lineTo(sx, sy);
+                });
+                return shape;
+            })
+            .filter((s): s is THREE.Shape => s !== null);
+        // toScene only changes alongside the rings it transforms (both derive
+        // from the same calibrated geometry), so keying on rings is enough.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [rings]);
+
+    const args = useMemo(
+        () =>
+            [shapes, { depth, bevelEnabled: false }] as [
+                THREE.Shape[],
+                THREE.ExtrudeGeometryOptions,
+            ],
+        [shapes, depth],
+    );
+
+    if (shapes.length === 0) return null;
+
+    // Extrude runs 0→+depth in z; push it fully behind the neon (which sits at
+    // z≈0) so the slab reads as a backboard, matching the rectangle's offset.
+    return (
+        <mesh position={[0, 0, -depth - 0.02]}>
+            <extrudeGeometry args={args} />
+            <meshBasicMaterial
+                color="#bfe9f5"
+                transparent
+                opacity={0.1}
+                depthWrite={false}
+                toneMapped={false}
+                side={THREE.DoubleSide}
+            />
+            <Edges color="#9fd6e6" lineWidth={1} />
+        </mesh>
+    );
+}
+
 export default function NeonScene({
     elements,
     bbox,
@@ -182,7 +246,14 @@ export default function NeonScene({
 }: {
     elements: NeonElement[];
     bbox: Bbox;
-    backboard: { enabled: boolean; paddingMm: number };
+    backboard: {
+        enabled: boolean;
+        /** 'rectangle' (bbox + padding) or 'shaped' (contour silhouette). */
+        shape?: 'rectangle' | 'shaped';
+        paddingMm: number;
+        /** Shaped-mode silhouette rings (mm, bbox space) from buildShapedBackboard. */
+        shapeRings?: Array<Array<[number, number]>>;
+    };
     saturation?: number;
     cableSide?: 'left' | 'right' | 'top' | 'bottom';
 }) {
@@ -213,9 +284,22 @@ export default function NeonScene({
             dpr={[1, 2]}
         >
             <color attach="background" args={['#07090d']} />
-            {backboard.enabled && (
-                <Backboard wScene={boardW} hScene={boardH} depth={boardDepth} />
-            )}
+            {backboard.enabled &&
+                (backboard.shape === 'shaped' ? (
+                    backboard.shapeRings && backboard.shapeRings.length > 0 ? (
+                        <ShapedBackboard
+                            rings={backboard.shapeRings}
+                            toScene={toScene}
+                            depth={boardDepth}
+                        />
+                    ) : null
+                ) : (
+                    <Backboard
+                        wScene={boardW}
+                        hScene={boardH}
+                        depth={boardDepth}
+                    />
+                ))}
             {elements.map((el) => (
                 <NeonRun
                     key={el.index}

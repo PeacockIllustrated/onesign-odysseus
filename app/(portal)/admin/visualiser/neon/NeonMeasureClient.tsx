@@ -28,6 +28,7 @@ import {
     type CableSide,
 } from '@/lib/visualiser/neon';
 import { generateNeonPdfBlob } from '@/lib/visualiser/neon-pdf';
+import { buildShapedBackboard } from '@/lib/visualiser/neon-backboard';
 import {
     listNeonDesigns,
     saveNeonDesign,
@@ -71,7 +72,13 @@ export function NeonMeasureClient({
     const [dragOver, setDragOver] = useState(false);
     const [view, setView] = useState<'measure' | 'glow'>('measure');
     const [boardOn, setBoardOn] = useState(true);
+    // Back-fixing shape: 'rectangle' (bbox + padding) or 'shaped' (a contour
+    // panel cut to the outline of the whole design, with its own margin slider).
+    const [boardShape, setBoardShape] = useState<'rectangle' | 'shaped'>(
+        'rectangle',
+    );
     const [paddingMm, setPaddingMm] = useState(50);
+    const [shapePaddingMm, setShapePaddingMm] = useState(30);
     const [saturation, setSaturation] = useState(1);
     // Saved designs (shared, DB-backed via neon-actions).
     const [designs, setDesigns] = useState<NeonDesignRow[]>(initialDesigns);
@@ -158,10 +165,18 @@ export function NeonMeasureClient({
         setCalWidth(cfg.widthMm != null ? String(cfg.widthMm) : '');
         setCalHeight(cfg.heightMm != null ? String(cfg.heightMm) : '');
         setBoardOn(cfg.backboardEnabled ?? true);
+        setBoardShape(
+            cfg.backboardShape === 'shaped' ? 'shaped' : 'rectangle',
+        );
         setPaddingMm(
             typeof cfg.backboardPaddingMm === 'number'
                 ? cfg.backboardPaddingMm
                 : 50,
+        );
+        setShapePaddingMm(
+            typeof cfg.backboardShapePaddingMm === 'number'
+                ? cfg.backboardShapePaddingMm
+                : 30,
         );
         setSaturation(typeof cfg.saturation === 'number' ? cfg.saturation : 1);
         setCableSide(cfg.cableSide ?? 'left');
@@ -191,7 +206,9 @@ export function NeonMeasureClient({
                     widthMm: parsedW > 0 ? parsedW : null,
                     heightMm: parsedW > 0 ? null : parsedH > 0 ? parsedH : null,
                     backboardEnabled: boardOn,
+                    backboardShape: boardShape,
                     backboardPaddingMm: paddingMm,
+                    backboardShapePaddingMm: shapePaddingMm,
                     saturation,
                     cableSide,
                     metresPerTransformer,
@@ -253,6 +270,15 @@ export function NeonMeasureClient({
 
     const total = totalLengthMm(elements);
 
+    // Shaped backboard silhouette — only built when that mode is active (the
+    // union is the expensive bit, so skip it for the rectangle). Recomputes as
+    // the outline-padding slider moves; shared by the 3D preview and the PDF.
+    const shapeBoard = useMemo(() => {
+        if (!boardOn || boardShape !== 'shaped' || elements.length === 0)
+            return null;
+        return buildShapedBackboard(elements, shapePaddingMm);
+    }, [boardOn, boardShape, elements, shapePaddingMm]);
+
     const onDownload = async () => {
         if (!loaded || !bbox) return;
         setBusy(true);
@@ -261,7 +287,14 @@ export function NeonMeasureClient({
                 name: loaded.name,
                 elements,
                 bbox,
-                backboard: { enabled: boardOn, paddingMm },
+                backboard: {
+                    enabled: boardOn,
+                    shape: boardShape,
+                    paddingMm,
+                    shapePaddingMm,
+                    shapeRings: shapeBoard?.rings,
+                    shapeAreaMm2: shapeBoard?.areaMm2,
+                },
                 transformers,
                 cableSide,
             });
@@ -805,14 +838,19 @@ export function NeonMeasureClient({
                     <NeonScene
                         elements={elements}
                         bbox={bbox!}
-                        backboard={{ enabled: boardOn, paddingMm }}
+                        backboard={{
+                            enabled: boardOn,
+                            shape: boardShape,
+                            paddingMm,
+                            shapeRings: shapeBoard?.rings,
+                        }}
                         saturation={saturation}
                         cableSide={cableSide}
                     />
                     {/* Backboard controls */}
                     <div className="absolute left-3 top-3 flex w-52 flex-col gap-2 rounded-lg border border-white/10 bg-black/55 p-3 text-white shadow-lg backdrop-blur">
                         <span className="text-[10px] font-semibold uppercase tracking-widest text-white/60">
-                            Clear acrylic backboard
+                            Acrylic backboard
                         </span>
                         <button
                             type="button"
@@ -830,30 +868,83 @@ export function NeonMeasureClient({
                                 {boardOn ? 'On' : 'Off'}
                             </span>
                         </button>
-                        <label
-                            className={`flex flex-col gap-1 ${
-                                boardOn ? '' : 'opacity-40'
-                            }`}
-                        >
-                            <span className="flex items-center justify-between text-[11px] text-white/70">
-                                <span>Padding</span>
-                                <span className="tabular-nums">
-                                    {paddingMm} mm
-                                </span>
-                            </span>
-                            <input
-                                type="range"
-                                min={0}
-                                max={300}
-                                step={5}
-                                value={paddingMm}
-                                disabled={!boardOn}
-                                onChange={(e) =>
-                                    setPaddingMm(parseInt(e.target.value, 10))
-                                }
-                                className="w-full accent-[#46e8ff]"
-                            />
-                        </label>
+                        {boardOn && (
+                            <>
+                                {/* Back-fixing shape */}
+                                <div className="flex rounded-md border border-white/10 p-0.5">
+                                    {(
+                                        [
+                                            ['rectangle', 'Rectangle'],
+                                            ['shaped', 'Shaped'],
+                                        ] as const
+                                    ).map(([val, label]) => (
+                                        <button
+                                            key={val}
+                                            type="button"
+                                            onClick={() => setBoardShape(val)}
+                                            aria-pressed={boardShape === val}
+                                            className="flex-1 rounded px-2 py-1 text-[11px] font-medium transition-colors"
+                                            style={
+                                                boardShape === val
+                                                    ? { background: ACCENT }
+                                                    : undefined
+                                            }
+                                        >
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                                {boardShape === 'rectangle' ? (
+                                    <label className="flex flex-col gap-1">
+                                        <span className="flex items-center justify-between text-[11px] text-white/70">
+                                            <span>Padding</span>
+                                            <span className="tabular-nums">
+                                                {paddingMm} mm
+                                            </span>
+                                        </span>
+                                        <input
+                                            type="range"
+                                            min={0}
+                                            max={300}
+                                            step={5}
+                                            value={paddingMm}
+                                            onChange={(e) =>
+                                                setPaddingMm(
+                                                    parseInt(e.target.value, 10),
+                                                )
+                                            }
+                                            className="w-full accent-[#46e8ff]"
+                                        />
+                                    </label>
+                                ) : (
+                                    <label className="flex flex-col gap-1">
+                                        <span className="flex items-center justify-between text-[11px] text-white/70">
+                                            <span>Outline padding</span>
+                                            <span className="tabular-nums">
+                                                {shapePaddingMm} mm
+                                            </span>
+                                        </span>
+                                        <input
+                                            type="range"
+                                            min={0}
+                                            max={200}
+                                            step={5}
+                                            value={shapePaddingMm}
+                                            onChange={(e) =>
+                                                setShapePaddingMm(
+                                                    parseInt(e.target.value, 10),
+                                                )
+                                            }
+                                            className="w-full accent-[#46e8ff]"
+                                        />
+                                        <span className="text-[10px] leading-snug text-white/40">
+                                            Panel cut to the outline of the whole
+                                            design, this far beyond the neon.
+                                        </span>
+                                    </label>
+                                )}
+                            </>
+                        )}
                         <div className="mt-1 border-t border-white/10 pt-2">
                             <span className="text-[10px] font-semibold uppercase tracking-widest text-white/60">
                                 Glow

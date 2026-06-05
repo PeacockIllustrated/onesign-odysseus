@@ -26,7 +26,12 @@ export interface NeonDesignConfig {
     widthMm: number | null;
     heightMm: number | null;
     backboardEnabled: boolean;
+    /** Back-fixing shape: bbox rectangle (default) or a contour-cut silhouette. */
+    backboardShape?: 'rectangle' | 'shaped';
+    /** Padding for the rectangle backboard (all round, mm). */
     backboardPaddingMm: number;
+    /** Padding beyond the neon for the shaped backboard (mm). */
+    backboardShapePaddingMm?: number;
     saturation: number;
     /** Edge the mains cable enters from. */
     cableSide?: 'left' | 'right' | 'top' | 'bottom';
