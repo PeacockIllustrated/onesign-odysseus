@@ -159,6 +159,14 @@ export interface PdfOptions {
      */
     pushThroughPieces?: PushThroughPiece[];
     /**
+     * Backlit apertures — cut from the panel (also present in the aperture
+     * cuts) with an opal diffuser behind, lit from behind so the cut glows.
+     * The reference PDF shows a backlight page (shapes in their glow colour);
+     * the production PDF adds an opal-backing sheet page + an LED-colour note.
+     * `color` is the glow colour, `glowIntensity` the brightness.
+     */
+    backlightPieces?: MaterialPiece[];
+    /**
      * Inner-counter outlines of aperture letters (the holes in R, O,
      * A, e, etc.), clipped per section in export-sheet coords.
      *
@@ -870,7 +878,8 @@ interface MaterialPageSpec {
         | 'acrylic'
         | 'solid'
         | 'standoff'
-        | 'pushthrough';
+        | 'pushthrough'
+        | 'backlight';
     label: string;
     color: [number, number, number];
     /** Brief specs for the right-side info strip. */
@@ -950,6 +959,28 @@ function buildMaterialPages(opts: PdfOptions): MaterialPageSpec[] {
             ],
             paths: vinylPieces.flatMap((p) => [p.path, ...(p.holes ?? [])]),
             pieces: vinylPieces,
+        });
+    }
+
+    const backlightPieces = opts.backlightPieces ?? [];
+    if (backlightPieces.length > 0) {
+        const colours = backlightPieces.map((p) => p.color.toUpperCase());
+        const accent = hexToRgb(backlightPieces[0].color);
+        pages.push({
+            kind: 'backlight',
+            label: 'Backlit apertures',
+            color: accent,
+            specs: [
+                ['Type', 'Backlit aperture — panel cut, opal backing, LED-lit'],
+                [
+                    'Pieces',
+                    `${backlightPieces.length} piece${backlightPieces.length === 1 ? '' : 's'}`,
+                ],
+                ['Glow', summariseVariants(colours)],
+                ['Backing', 'Opal diffuser behind the cut; LEDs to suit'],
+            ],
+            paths: backlightPieces.flatMap((p) => [p.path, ...(p.holes ?? [])]),
+            pieces: backlightPieces,
         });
     }
 
@@ -2517,6 +2548,79 @@ export async function generateProductionPdfBlob(
                 doc.setDrawColor(0);
             },
         });
+    }
+
+    // ---- Backlight opal-backing page ------------------------------
+    //
+    // Backlit apertures are already cut on the panel-cut page. This adds the
+    // opal diffuser sheet that sits behind them with LEDs behind it: light
+    // diffuses through the opal and the solid cut shape glows. Same backing
+    // construction as the keyline-illumination diffuser, sized to the union
+    // bbox of the backlit shapes (off-the-shelf opal sheet, hand-assembled).
+    const backlightForBacking = opts.backlightPieces ?? [];
+    if (backlightForBacking.length > 0) {
+        let bMinX = Infinity,
+            bMinY = Infinity,
+            bMaxX = -Infinity,
+            bMaxY = -Infinity;
+        for (const piece of backlightForBacking) {
+            for (const path of [piece.path, ...(piece.holes ?? [])]) {
+                for (const [x, y] of path.points) {
+                    if (x < bMinX) bMinX = x;
+                    if (y < bMinY) bMinY = y;
+                    if (x > bMaxX) bMaxX = x;
+                    if (y > bMaxY) bMaxY = y;
+                }
+            }
+        }
+        if (Number.isFinite(bMinX)) {
+            const PAD = 12;
+            const THK = 5;
+            const bw = bMaxX - bMinX + PAD * 2;
+            const bh = bMaxY - bMinY + PAD * 2;
+            const colours = Array.from(
+                new Set(backlightForBacking.map((p) => p.color.toUpperCase())),
+            );
+            jobs.push({
+                subtitle:
+                    'Backlight diffuser backing — opal acrylic behind the cut apertures, LEDs behind. The solid cut shapes glow.',
+                partW: bw,
+                partH: bh,
+                footerInfo: [
+                    `Opal acrylic  ·  ${THK} mm thick  ·  ${Math.round(bw)} × ${Math.round(bh)} mm`,
+                    `LED colour ${colours.join(' / ')}  ·  light diffuses through the opal so the solid aperture cut glows.`,
+                    today,
+                ],
+                draw: (dX, dY) => {
+                    doc.setDrawColor(0);
+                    doc.setLineWidth(productionStroke);
+                    doc.rect(dX, dY, bw, bh, 'S');
+                    // Ghost the backlit aperture outlines so the operator can
+                    // confirm the opal covers every cut. Reference only.
+                    doc.setDrawColor(170);
+                    doc.setLineWidth(0.2);
+                    doc.setLineDashPattern([1.2, 0.8], 0);
+                    for (const piece of backlightForBacking) {
+                        for (const ring of [
+                            piece.path,
+                            ...(piece.holes ?? []),
+                        ]) {
+                            if (!ring.closed || ring.points.length < 3) continue;
+                            const pts = ring.points.map(
+                                ([x, y]) =>
+                                    [
+                                        dX + PAD + (x - bMinX),
+                                        dY + PAD + (y - bMinY),
+                                    ] as [number, number],
+                            );
+                            drawClosedPolyline(doc, pts, 'S');
+                        }
+                    }
+                    doc.setLineDashPattern([], 0);
+                    doc.setDrawColor(0);
+                },
+            });
+        }
     }
 
     // ---- Per-material cut pages ------------------------------------

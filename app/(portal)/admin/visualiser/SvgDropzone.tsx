@@ -62,6 +62,7 @@ function defaultColorFor(
     if (material === 'solid') return panelColor;
     if (material === 'vinyl') return '#ffffff';
     if (material === 'pushthrough') return '#f5f5f0';
+    if (material === 'backlight') return '#fff4e0';
     return '#1a1f23';
 }
 
@@ -79,6 +80,7 @@ function GroupEditControls({
     initialKeylineOffset,
     initialProtrusion,
     initialPrintFullColor,
+    initialGlowIntensity,
     pendingCount,
     isExistingGroup,
     panelColor,
@@ -92,6 +94,7 @@ function GroupEditControls({
     initialKeylineOffset: number;
     initialProtrusion: number;
     initialPrintFullColor: boolean;
+    initialGlowIntensity: number;
     pendingCount: number;
     isExistingGroup: boolean;
     panelColor: string;
@@ -104,6 +107,7 @@ function GroupEditControls({
             keylineOffsetMm?: number;
             protrusionMm?: number;
             printFullColor?: boolean;
+            glowIntensity?: number;
         },
     ) => void;
     onCancel: () => void;
@@ -119,6 +123,9 @@ function GroupEditControls({
     const [protrusion, setProtrusion] = useState<number>(initialProtrusion);
     const [printFullColor, setPrintFullColor] = useState<boolean>(
         initialPrintFullColor,
+    );
+    const [glowIntensity, setGlowIntensity] = useState<number>(
+        initialGlowIntensity,
     );
 
     // Smart colour default when the operator switches material — only
@@ -142,6 +149,7 @@ function GroupEditControls({
         material === 'pushthrough';
     const hasStandoff = material === 'standoff';
     const hasPushThrough = material === 'pushthrough';
+    const hasGlow = material === 'backlight';
 
     const materialHelp: Record<Exclude<GroupMaterial, 'cut'>, string> = {
         solid: 'Kept as panel material — not cut. Use for inner counters of letters.',
@@ -151,6 +159,8 @@ function GroupEditControls({
             'Extruded letter mounted with studs at a distance from the face.',
         pushthrough:
             'Acrylic letter pressed through the panel from behind. Outer letter + each counter are cut as separate pieces, mounted to a backing board, and pressed through a keyline hole in the panel face.',
+        backlight:
+            'Aperture cut with an opal diffuser behind it, lit from behind — the solid cut shape glows. Same back panel as keyline illumination. Pick the glow colour + brightness; switch the lit preview on to see it.',
     };
     return (
         <div
@@ -182,6 +192,7 @@ function GroupEditControls({
                         ['acrylic', 'Acrylic'],
                         ['standoff', 'Stood off'],
                         ['pushthrough', 'Push through'],
+                        ['backlight', 'Backlight'],
                     ] as const
                 ).map(([v, label], k) => {
                     const inSecondRow = k >= 3;
@@ -282,7 +293,7 @@ function GroupEditControls({
                         className="text-[10px] font-medium"
                         style={{ color: ACCENT_DARK }}
                     >
-                        Colour
+                        {hasGlow ? 'Glow colour' : 'Colour'}
                     </span>
                     {(material === 'acrylic' ||
                         material === 'pushthrough' ||
@@ -343,6 +354,15 @@ function GroupEditControls({
                 />
             )}
 
+            {hasGlow && (
+                <NumField
+                    label="Glow intensity"
+                    step={0.1}
+                    value={glowIntensity}
+                    onChange={(n) => setGlowIntensity(n >= 0 ? n : 0)}
+                />
+            )}
+
             {hasPushThrough && (
                 <>
                     <NumField
@@ -385,6 +405,9 @@ function GroupEditControls({
                                 : undefined,
                             printFullColor: hasVinyl
                                 ? printFullColor
+                                : undefined,
+                            glowIntensity: hasGlow
+                                ? glowIntensity
                                 : undefined,
                         })
                     }
@@ -451,6 +474,7 @@ function MaterialGroupsPanel({
             keylineOffsetMm?: number;
             protrusionMm?: number;
             printFullColor?: boolean;
+            glowIntensity?: number;
         },
     ) => void;
     updateGroupProps: (
@@ -462,6 +486,7 @@ function MaterialGroupsPanel({
             keylineOffsetMm?: number;
             protrusionMm?: number;
             printFullColor?: boolean;
+            glowIntensity?: number;
             label?: string;
         },
     ) => void;
@@ -530,6 +555,7 @@ function MaterialGroupsPanel({
                     initialPrintFullColor={
                         editingExisting?.printFullColor !== false
                     }
+                    initialGlowIntensity={editingExisting?.glowIntensity ?? 1}
                     pendingCount={pendingPaths.length}
                     isExistingGroup={!!editingExisting}
                     panelColor={panelColor}
@@ -780,6 +806,19 @@ function MaterialGroupsPanel({
                                                 }
                                             />
                                         </>
+                                    )}
+                                    {g.material === 'backlight' && (
+                                        <NumField
+                                            label="Glow intensity"
+                                            step={0.1}
+                                            value={g.glowIntensity ?? 1}
+                                            onChange={(n) =>
+                                                updateGroupProps(g.id, {
+                                                    glowIntensity:
+                                                        n >= 0 ? n : 0,
+                                                })
+                                            }
+                                        />
                                     )}
                                 </div>
                             )}
@@ -1156,6 +1195,13 @@ export function SvgDropzone() {
                             style={{ color: ACCENT_DARK }}
                         >
                             Artwork use
+                        </span>
+                        <span
+                            className="mt-0.5 block text-[10px]"
+                            style={{ color: ACCENT_DARK }}
+                        >
+                            Default for ungrouped paths — mix mediums per shape
+                            under Path materials below (incl. Backlight).
                         </span>
                         <div className="mt-1">
                             <Segmented<'aperture' | 'vinyl' | 'standoff'>

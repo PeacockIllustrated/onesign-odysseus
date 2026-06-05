@@ -37,6 +37,7 @@ type Effective =
     | { kind: 'cut' }
     | { kind: 'solid' }
     | { kind: 'vinyl'; color: string; fullColor: boolean }
+    | { kind: 'backlight'; color: string; glowIntensity: number }
     | { kind: 'acrylic'; color: string; thicknessMm: number }
     | {
           kind: 'standoff';
@@ -300,6 +301,12 @@ export function usePanelDerivation(
                         keylineOffsetMm: own.keylineOffsetMm ?? 1.5,
                         protrusionMm: own.protrusionMm ?? 5,
                     };
+                if (own.material === 'backlight')
+                    return {
+                        kind: 'backlight',
+                        color: own.color,
+                        glowIntensity: own.glowIntensity ?? 1,
+                    };
             }
             if (defaultUngroupedKind === 'standoff') {
                 return {
@@ -352,11 +359,33 @@ export function usePanelDerivation(
         for (let i = 0; i < placedClipByIndex.length; i++) {
             const p = placedClipByIndex[i];
             if (!p) continue;
-            if (effectiveMaterials[i]?.kind !== 'cut') continue;
+            // Backlit shapes are cut from the panel exactly like apertures —
+            // the difference is the lit opal behind. So both kinds become face
+            // holes / panel cuts.
+            const k = effectiveMaterials[i]?.kind;
+            if (k !== 'cut' && k !== 'backlight') continue;
             out.push(p);
         }
         return out;
     }, [placedClipByIndex, effectiveMaterials]);
+
+    const backlightPieces = useMemo<MaterialPiece[]>(() => {
+        const out: MaterialPiece[] = [];
+        for (let i = 0; i < placedClipByIndex.length; i++) {
+            const path = placedClipByIndex[i];
+            if (!path) continue;
+            const eff = effectiveMaterials[i];
+            if (eff?.kind !== 'backlight') continue;
+            out.push({
+                pathIndex: i,
+                path,
+                holes: holesByIndex[i],
+                color: eff.color,
+                glowIntensity: eff.glowIntensity,
+            });
+        }
+        return out;
+    }, [placedClipByIndex, effectiveMaterials, holesByIndex]);
 
     const materialPieces = useMemo(() => {
         const vinyl: MaterialPiece[] = [];
@@ -786,6 +815,7 @@ export function usePanelDerivation(
             solidPieces: materialPieces.solid,
             standoffPieces,
             pushThroughPieces,
+            backlightPieces,
             vinylPrintDataUrl,
             faceRectMm,
         };
@@ -803,6 +833,7 @@ export function usePanelDerivation(
         materialPieces,
         standoffPieces,
         pushThroughPieces,
+        backlightPieces,
         vinylPrintDataUrl,
         faceRectMm,
     ]);
@@ -825,6 +856,7 @@ export function usePanelDerivation(
             solidPieces: materialPieces.solid,
             standoffPieces,
             pushThroughPieces,
+            backlightPieces,
             vinylPrintDataUrl,
             faceRectMm,
         };
@@ -843,6 +875,7 @@ export function usePanelDerivation(
         materialPieces,
         standoffPieces,
         pushThroughPieces,
+        backlightPieces,
         vinylPrintDataUrl,
         faceRectMm,
     ]);
@@ -864,6 +897,7 @@ export function usePanelDerivation(
         materialPieces,
         pushThroughPieces,
         standoffPieces,
+        backlightPieces,
         reference,
         autoFixings,
         placementXf,

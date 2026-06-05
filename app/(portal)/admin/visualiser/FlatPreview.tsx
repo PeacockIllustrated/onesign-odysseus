@@ -133,6 +133,7 @@ export function FlatPreview({
     vinylPieces = [],
     acrylicPieces = [],
     solidPieces = [],
+    backlightPieces = [],
     vinylPrintDataUrl = null,
     placedPathsByIndex = null,
     pathGroupColors = null,
@@ -187,6 +188,12 @@ export function FlatPreview({
      * parent aperture.
      */
     solidPieces?: MaterialPiece[];
+    /**
+     * Backlit apertures — cut from the panel with a lit opal behind. Drawn as
+     * the cut outline tinted in the element's glow colour so the operator can
+     * see which cuts are backlit (and in what colour).
+     */
+    backlightPieces?: MaterialPiece[];
     /**
      * Full-colour vinyl print — a face-sized PNG (true colours + gradients)
      * masked to the printed-vinyl shapes. Dropped on the face as one image;
@@ -638,6 +645,30 @@ export function FlatPreview({
                             key={`vinyl-${i}`}
                             d={d}
                             fill={piece.color}
+                            fillRule="evenodd"
+                            stroke="#1a1f23"
+                            strokeWidth={stroke * 0.4}
+                        />
+                    );
+                })}
+
+                {/* Backlit apertures — the cut shape tinted in its glow
+                    colour (counters punched as evenodd holes) so the
+                    operator sees which cuts are backlit and in what
+                    colour. The cut itself is also drawn as a face hole. */}
+                {backlightPieces.map((piece, i) => {
+                    const d =
+                        pathD(piece.path) +
+                        ' ' +
+                        (piece.holes ?? [])
+                            .map((h) => pathD(h))
+                            .join(' ');
+                    return (
+                        <path
+                            key={`backlight-${i}`}
+                            d={d}
+                            fill={piece.color}
+                            fillOpacity={0.55}
                             fillRule="evenodd"
                             stroke="#1a1f23"
                             strokeWidth={stroke * 0.4}

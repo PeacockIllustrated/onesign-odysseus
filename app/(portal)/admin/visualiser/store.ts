@@ -69,7 +69,8 @@ type GroupMaterial =
     | 'vinyl'
     | 'acrylic'
     | 'standoff'
-    | 'pushthrough';
+    | 'pushthrough'
+    | 'backlight';
 
 type MaterialGroup = NonNullable<PanelParams['materialGroups']>[number];
 
@@ -85,6 +86,9 @@ function defaultGroupColor(
 ): string {
     if (material === 'solid') return panelColor ?? '#d6d6d6';
     if (material === 'vinyl') return '#ffffff';
+    // Backlight glow defaults to a warm white — the most common opal
+    // backlight look; the operator picks a colour per element.
+    if (material === 'backlight') return '#fff4e0';
     // Push-through inserts default to a bright opal-white acrylic; the
     // most common production case is illuminated lettering.
     if (material === 'pushthrough') return '#f5f5f0';
@@ -235,6 +239,7 @@ interface VisualiserState {
             keylineOffsetMm?: number;
             protrusionMm?: number;
             printFullColor?: boolean;
+            glowIntensity?: number;
         },
     ) => void;
     updateGroupProps: (
@@ -246,6 +251,7 @@ interface VisualiserState {
             keylineOffsetMm?: number;
             protrusionMm?: number;
             printFullColor?: boolean;
+            glowIntensity?: number;
             label?: string;
         },
     ) => void;
@@ -813,6 +819,10 @@ export const useVisualiser = create<VisualiserState>((set) => ({
             // explicitly setting false.
             const printFullColor =
                 options?.printFullColor ?? existing?.printFullColor;
+            const glowIntensity =
+                options?.glowIntensity ??
+                existing?.glowIntensity ??
+                (material === 'backlight' ? 1 : undefined);
 
             const updated: MaterialGroup = {
                 id: existing?.id ?? nextGroupId(),
@@ -824,6 +834,7 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                 keylineOffsetMm,
                 protrusionMm,
                 printFullColor,
+                glowIntensity,
                 pathIndices: [...pending].sort((a, b) => a - b),
             };
 
@@ -860,6 +871,8 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                               patch.printFullColor !== undefined
                                   ? patch.printFullColor
                                   : g.printFullColor,
+                          glowIntensity:
+                              patch.glowIntensity ?? g.glowIntensity,
                           label: patch.label ?? g.label,
                       }
                     : g,
