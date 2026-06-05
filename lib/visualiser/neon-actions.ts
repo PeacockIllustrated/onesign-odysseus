@@ -32,6 +32,8 @@ export interface NeonDesignConfig {
     backboardPaddingMm: number;
     /** Padding beyond the neon for the shaped backboard (mm). */
     backboardShapePaddingMm?: number;
+    /** Edge-smoothing level for the shaped backboard (Chaikin passes). */
+    backboardSmoothness?: number;
     saturation: number;
     /** Edge the mains cable enters from. */
     cableSide?: 'left' | 'right' | 'top' | 'bottom';

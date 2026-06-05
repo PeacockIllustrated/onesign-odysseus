@@ -59,6 +59,26 @@ describe('buildShapedBackboard', () => {
         expect(buildShapedBackboard(runs, 300).rings).toHaveLength(1);
     });
 
+    it('smoothing rounds the outline without distorting it much', () => {
+        const run100 = [run([[0, 0], [100, 0]])];
+        const raw = buildShapedBackboard(run100, 20, { smoothing: 0 });
+        const smooth = buildShapedBackboard(run100, 20, { smoothing: 3 });
+        // Corner-cutting adds vertices…
+        expect(smooth.rings[0].length).toBeGreaterThan(raw.rings[0].length);
+        // …still one island, area within ~10% of the raw silhouette.
+        expect(smooth.rings).toHaveLength(1);
+        expect(smooth.areaMm2).toBeGreaterThan(raw.areaMm2 * 0.9);
+        expect(smooth.areaMm2).toBeLessThan(raw.areaMm2 * 1.02);
+    });
+
+    it('smoothing: 0 leaves the silhouette untouched', () => {
+        const runs = [run([[0, 0], [100, 0]])];
+        const a = buildShapedBackboard(runs, 10);
+        const b = buildShapedBackboard(runs, 10, { smoothing: 0 });
+        expect(b.rings[0].length).toBe(a.rings[0].length);
+        expect(b.areaMm2).toBeCloseTo(a.areaMm2, 6);
+    });
+
     it('wraps a closed contour', () => {
         const square = run(
             [

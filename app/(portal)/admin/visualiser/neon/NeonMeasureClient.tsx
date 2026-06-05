@@ -28,7 +28,10 @@ import {
     type CableSide,
 } from '@/lib/visualiser/neon';
 import { generateNeonPdfBlob } from '@/lib/visualiser/neon-pdf';
-import { buildShapedBackboard } from '@/lib/visualiser/neon-backboard';
+import {
+    buildShapedBackboard,
+    MAX_SHAPED_SMOOTHING,
+} from '@/lib/visualiser/neon-backboard';
 import {
     listNeonDesigns,
     saveNeonDesign,
@@ -79,6 +82,8 @@ export function NeonMeasureClient({
     );
     const [paddingMm, setPaddingMm] = useState(50);
     const [shapePaddingMm, setShapePaddingMm] = useState(30);
+    // Edge smoothing for the shaped board (Chaikin passes; 0 = raw facets).
+    const [shapeSmoothness, setShapeSmoothness] = useState(2);
     const [saturation, setSaturation] = useState(1);
     // Saved designs (shared, DB-backed via neon-actions).
     const [designs, setDesigns] = useState<NeonDesignRow[]>(initialDesigns);
@@ -178,6 +183,11 @@ export function NeonMeasureClient({
                 ? cfg.backboardShapePaddingMm
                 : 30,
         );
+        setShapeSmoothness(
+            typeof cfg.backboardSmoothness === 'number'
+                ? cfg.backboardSmoothness
+                : 2,
+        );
         setSaturation(typeof cfg.saturation === 'number' ? cfg.saturation : 1);
         setCableSide(cfg.cableSide ?? 'left');
         setMetresPerTransformer(
@@ -209,6 +219,7 @@ export function NeonMeasureClient({
                     backboardShape: boardShape,
                     backboardPaddingMm: paddingMm,
                     backboardShapePaddingMm: shapePaddingMm,
+                    backboardSmoothness: shapeSmoothness,
                     saturation,
                     cableSide,
                     metresPerTransformer,
@@ -276,8 +287,10 @@ export function NeonMeasureClient({
     const shapeBoard = useMemo(() => {
         if (!boardOn || boardShape !== 'shaped' || elements.length === 0)
             return null;
-        return buildShapedBackboard(elements, shapePaddingMm);
-    }, [boardOn, boardShape, elements, shapePaddingMm]);
+        return buildShapedBackboard(elements, shapePaddingMm, {
+            smoothing: shapeSmoothness,
+        });
+    }, [boardOn, boardShape, elements, shapePaddingMm, shapeSmoothness]);
 
     const onDownload = async () => {
         if (!loaded || !bbox) return;
@@ -917,31 +930,72 @@ export function NeonMeasureClient({
                                         />
                                     </label>
                                 ) : (
-                                    <label className="flex flex-col gap-1">
-                                        <span className="flex items-center justify-between text-[11px] text-white/70">
-                                            <span>Outline padding</span>
-                                            <span className="tabular-nums">
-                                                {shapePaddingMm} mm
+                                    <>
+                                        <label className="flex flex-col gap-1">
+                                            <span className="flex items-center justify-between text-[11px] text-white/70">
+                                                <span>Outline padding</span>
+                                                <span className="tabular-nums">
+                                                    {shapePaddingMm} mm
+                                                </span>
                                             </span>
-                                        </span>
-                                        <input
-                                            type="range"
-                                            min={0}
-                                            max={200}
-                                            step={5}
-                                            value={shapePaddingMm}
-                                            onChange={(e) =>
-                                                setShapePaddingMm(
-                                                    parseInt(e.target.value, 10),
-                                                )
-                                            }
-                                            className="w-full accent-[#46e8ff]"
-                                        />
-                                        <span className="text-[10px] leading-snug text-white/40">
-                                            Panel cut to the outline of the whole
-                                            design, this far beyond the neon.
-                                        </span>
-                                    </label>
+                                            <input
+                                                type="range"
+                                                min={0}
+                                                max={200}
+                                                step={5}
+                                                value={shapePaddingMm}
+                                                onChange={(e) =>
+                                                    setShapePaddingMm(
+                                                        parseInt(
+                                                            e.target.value,
+                                                            10,
+                                                        ),
+                                                    )
+                                                }
+                                                className="w-full accent-[#46e8ff]"
+                                            />
+                                            <span className="text-[10px] leading-snug text-white/40">
+                                                Panel cut to the outline of the
+                                                whole design, this far beyond
+                                                the neon.
+                                            </span>
+                                        </label>
+                                        <label className="flex flex-col gap-1">
+                                            <span className="flex items-center justify-between text-[11px] text-white/70">
+                                                <span>Smoothing</span>
+                                                <span className="tabular-nums">
+                                                    {[
+                                                        'Off',
+                                                        'Low',
+                                                        'Medium',
+                                                        'High',
+                                                        'Max',
+                                                    ][shapeSmoothness] ??
+                                                        shapeSmoothness}
+                                                </span>
+                                            </span>
+                                            <input
+                                                type="range"
+                                                min={0}
+                                                max={MAX_SHAPED_SMOOTHING}
+                                                step={1}
+                                                value={shapeSmoothness}
+                                                onChange={(e) =>
+                                                    setShapeSmoothness(
+                                                        parseInt(
+                                                            e.target.value,
+                                                            10,
+                                                        ),
+                                                    )
+                                                }
+                                                className="w-full accent-[#46e8ff]"
+                                            />
+                                            <span className="text-[10px] leading-snug text-white/40">
+                                                Rounds jagged facets along the
+                                                cut edge.
+                                            </span>
+                                        </label>
+                                    </>
                                 )}
                             </>
                         )}

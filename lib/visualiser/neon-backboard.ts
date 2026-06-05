@@ -39,10 +39,27 @@ export interface ShapedBackboard {
     areaMm2: number;
 }
 
+export interface ShapedBackboardOptions {
+    /** Neon-flex core radius (mm); defaults to {@link NEON_TUBE_MM}. */
+    tubeRadiusMm?: number;
+    /**
+     * Edge-smoothing level (0–{@link MAX_SHAPED_SMOOTHING}). Each level is a
+     * Chaikin corner-cutting pass that rounds the faceted buffer outline; 0
+     * leaves the raw silhouette untouched.
+     */
+    smoothing?: number;
+}
+
+/** Highest smoothing level (Chaikin passes) {@link buildShapedBackboard} applies. */
+export const MAX_SHAPED_SMOOTHING = 4;
+
 const EMPTY: ShapedBackboard = { rings: [], bbox: null, areaMm2: 0 };
 
 /** Vertices used to approximate each round join/cap. */
 const CIRCLE_SEGS = 12;
+
+/** Ceiling on vertices per ring while smoothing, so a pass can't explode it. */
+const SMOOTH_MAX_POINTS = 2400;
 
 /**
  * Snap to a 0.01 mm grid. polygon-clipping's sweep line throws ("Unable to
@@ -114,6 +131,49 @@ function ringArea(ring: Ring): number {
     return s / 2;
 }
 
+/** Append the first point to close a ring (matches polygon-clipping output). */
+function closeRing(pts: Array<[number, number]>): Array<[number, number]> {
+    if (pts.length === 0) return pts;
+    return [...pts, [pts[0][0], pts[0][1]]];
+}
+
+/**
+ * Chaikin corner-cutting on a closed ring (input/output both carry the
+ * repeated closing point). Each pass replaces every vertex with two points
+ * a quarter and three-quarters along its outgoing edge, converging on a
+ * smooth quadratic B-spline — so the faceted buffer outline (12-gon caps,
+ * decimated curves) rounds off into clean edges. Bounded by `maxPoints` so a
+ * dense ring can't blow up.
+ */
+function chaikinClosed(
+    ring: ReadonlyArray<readonly number[]>,
+    iterations: number,
+    maxPoints: number,
+): Array<[number, number]> {
+    // Drop the repeated closing point; Chaikin works on the unique loop.
+    let pts: Array<[number, number]> = ring.map((p) => [p[0], p[1]]);
+    if (pts.length > 1) {
+        const a = pts[0];
+        const b = pts[pts.length - 1];
+        if (a[0] === b[0] && a[1] === b[1]) pts = pts.slice(0, -1);
+    }
+    if (pts.length < 3) return closeRing(pts);
+
+    for (let it = 0; it < iterations; it++) {
+        if (pts.length * 2 > maxPoints) break;
+        const n = pts.length;
+        const out: Array<[number, number]> = [];
+        for (let i = 0; i < n; i++) {
+            const p = pts[i];
+            const q = pts[(i + 1) % n];
+            out.push([p[0] * 0.75 + q[0] * 0.25, p[1] * 0.75 + q[1] * 0.25]);
+            out.push([p[0] * 0.25 + q[0] * 0.75, p[1] * 0.25 + q[1] * 0.75]);
+        }
+        pts = out;
+    }
+    return closeRing(pts);
+}
+
 /** Union a bag of polygons, returning null if the clipper throws. */
 function unionOrNull(pieces: Polygon[]): MultiPolygon | null {
     if (pieces.length === 0) return [];
@@ -127,15 +187,20 @@ function unionOrNull(pieces: Polygon[]): MultiPolygon | null {
 /**
  * Build the shaped backboard for a set of measured neon runs.
  *
- * @param elements    measured runs (mm, artwork-bbox space)
- * @param paddingMm   margin BEYOND the neon tube edge (the "extra padding")
- * @param tubeRadiusMm neon-flex core radius (defaults to {@link NEON_TUBE_MM})
+ * @param elements   measured runs (mm, artwork-bbox space)
+ * @param paddingMm  margin BEYOND the neon tube edge (the "extra padding")
+ * @param opts       tube radius + edge-smoothing level
  */
 export function buildShapedBackboard(
     elements: NeonElement[],
     paddingMm: number,
-    tubeRadiusMm: number = NEON_TUBE_MM,
+    opts: ShapedBackboardOptions = {},
 ): ShapedBackboard {
+    const tubeRadiusMm = opts.tubeRadiusMm ?? NEON_TUBE_MM;
+    const smoothing = Math.max(
+        0,
+        Math.min(MAX_SHAPED_SMOOTHING, Math.round(opts.smoothing ?? 0)),
+    );
     // Total buffer = tube half-width + margin. The board therefore clears the
     // tube by `paddingMm` at padding 0+ (not the centreline).
     const r = Math.max(0.1, tubeRadiusMm + Math.max(0, paddingMm));
@@ -196,9 +261,15 @@ export function buildShapedBackboard(
     for (const poly of geom) {
         const outer = poly[0];
         if (!outer || outer.length < 4) continue;
-        rings.push(outer.map(([x, y]) => [x, y] as [number, number]));
-        areaMm2 += Math.abs(ringArea(outer)); // counters filled → outer only
-        for (const [x, y] of outer) {
+        // Smooth the faceted outline; area/bbox are taken from the smoothed
+        // ring so the reported cut size matches what's actually cut.
+        const ring =
+            smoothing > 0
+                ? chaikinClosed(outer, smoothing, SMOOTH_MAX_POINTS)
+                : outer.map(([x, y]) => [x, y] as [number, number]);
+        rings.push(ring);
+        areaMm2 += Math.abs(ringArea(ring)); // counters filled → outer only
+        for (const [x, y] of ring) {
             if (x < minX) minX = x;
             if (y < minY) minY = y;
             if (x > maxX) maxX = x;
