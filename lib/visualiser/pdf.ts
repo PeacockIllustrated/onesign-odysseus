@@ -396,86 +396,6 @@ function drawHeaderBar(ctx: PageContext, title: string): void {
         subtitle: ctx.itemLabel ? `${ctx.itemLabel} · ${title}` : title,
     });
 }
-
-/**
- * Bottom-of-page footer with QR back to the digital design + small
- * info strip + (production only) PRINT AT 100% warning. The QR
- * dataURL is pre-baked once per export so this helper stays sync.
- */
-function drawDocFooter(
-    doc: jsPDF,
-    args: {
-        pageW: number;
-        pageH: number;
-        margin: number;
-        kind: DocKind;
-        infoLines: string[];
-        qrDataUrl: string | null;
-        font: string;
-    },
-): void {
-    const { pageW, pageH, margin, kind, infoLines, qrDataUrl, font } = args;
-
-    const qrSize = 16; // mm
-    const qrX = pageW - margin - qrSize;
-    const qrY = pageH - margin - qrSize;
-    if (qrDataUrl) {
-        try {
-            doc.addImage(
-                qrDataUrl,
-                'PNG',
-                qrX,
-                qrY,
-                qrSize,
-                qrSize,
-                undefined,
-                'FAST',
-            );
-            doc.setFont(font, 'normal');
-            doc.setFontSize(6);
-            doc.setTextColor(140);
-            doc.text(
-                txt('Scan to open in app'),
-                qrX + qrSize / 2,
-                qrY + qrSize + 3,
-                { align: 'center' },
-            );
-            doc.setTextColor(0);
-        } catch {
-            /* best-effort */
-        }
-    }
-
-    // Info lines stacked to the left of the QR.
-    doc.setFont(font, 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(90);
-    const lineH = 4;
-    let y = pageH - margin - qrSize + 4;
-    for (const line of infoLines) {
-        doc.text(txt(line), margin, y);
-        y += lineH;
-    }
-    doc.setTextColor(0);
-
-    // Print-warning — production only, bottom-left, brand teal.
-    if (kind === 'production') {
-        doc.setFont(font, 'bold');
-        doc.setFontSize(8);
-        doc.setTextColor(
-            BRAND_DARK_RGB[0],
-            BRAND_DARK_RGB[1],
-            BRAND_DARK_RGB[2],
-        );
-        doc.text(
-            txt('PRINT AT 100% — DO NOT SCALE'),
-            margin,
-            pageH - margin + 2,
-        );
-        doc.setTextColor(0);
-    }
-}
-
 /**
  * Place the QR code in the bottom-right corner of a reference page.
  * Smaller than the production footer QR because reference pages have
@@ -522,8 +442,145 @@ function drawCornerQr(
     }
 }
 
+/**
+ * Contained, relatively-scaled production title block. ONE box per page
+ * holding everything the shop needs for THIS part — brand + doc id, what the
+ * page is, the material / spec lines, a print-at-100% reminder and the QR back
+ * to the design. Sized by `uiScale` so it reads the same relative size whether
+ * the cut sheet is 200 mm or 2 m across. Replaces the old full-width strap +
+ * footer strip with a single self-contained block in the bottom-right corner.
+ */
+function titleBlockMetrics(uiScale: number, bodyRows: number, maxAvailW: number) {
+    const pad = 3 * uiScale;
+    const headerH = 7 * uiScale;
+    const lineH = 4.8 * uiScale;
+    const qr = 15 * uiScale;
+    const textH = headerH + pad + bodyRows * lineH + pad;
+    const h = Math.max(textH, headerH + qr + pad * 3);
+    const w = Math.min(maxAvailW, Math.max(150 * uiScale, qr + 115 * uiScale));
+    return { w, h, pad, headerH, lineH, qr };
+}
+
+function drawProductionTitleBlock(
+    doc: jsPDF,
+    a: {
+        x: number;
+        y: number;
+        metrics: ReturnType<typeof titleBlockMetrics>;
+        uiScale: number;
+        font: string;
+        name: string;
+        designIdShort: string;
+        kindLabel: string;
+        pageLabel: string;
+        subtitle: string;
+        bodyLines: string[];
+        qrDataUrl: string | null;
+    },
+): void {
+    const { x, y, metrics: m, uiScale, font } = a;
+    const { w, h, pad, headerH, lineH, qr } = m;
+
+    // Outer box — white fill so it stays legible if a cut line runs under it.
+    doc.setDrawColor(BRAND_DARK_RGB[0], BRAND_DARK_RGB[1], BRAND_DARK_RGB[2]);
+    doc.setLineWidth(0.3 * uiScale);
+    doc.setFillColor(255, 255, 255);
+    doc.rect(x, y, w, h, 'FD');
+
+    // Brand header band — ONESIGN (left) + doc kind · page (right).
+    doc.setFillColor(BRAND_DARK_RGB[0], BRAND_DARK_RGB[1], BRAND_DARK_RGB[2]);
+    doc.rect(x, y, w, headerH, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont(font, 'bold');
+    doc.setFontSize(9 * uiScale);
+    doc.text(txt('ONESIGN'), x + pad, y + headerH - 2.4 * uiScale);
+    doc.setFont(font, 'normal');
+    doc.setFontSize(6.5 * uiScale);
+    doc.text(
+        txt(`${a.kindLabel}  ·  ${a.pageLabel}`),
+        x + w - pad,
+        y + headerH - 2.4 * uiScale,
+        { align: 'right' },
+    );
+    doc.setTextColor(0);
+
+    // QR — bottom-right inside the box. The text column wraps to its left.
+    const qrX = x + w - pad - qr;
+    const qrY = y + h - pad - qr;
+    if (a.qrDataUrl) {
+        try {
+            doc.addImage(a.qrDataUrl, 'PNG', qrX, qrY, qr, qr, undefined, 'FAST');
+            doc.setFont(font, 'normal');
+            doc.setFontSize(5 * uiScale);
+            doc.setTextColor(140);
+            doc.text(txt('Scan to open'), qrX + qr / 2, y + h - pad + 0.2, {
+                align: 'center',
+            });
+            doc.setTextColor(0);
+        } catch {
+            /* best-effort */
+        }
+    }
+
+    const colRight = (a.qrDataUrl ? qrX : x + w) - pad;
+    const colW = colRight - (x + pad);
+    let ty = y + headerH + pad + lineH * 0.7;
+
+    // Identity — design name + document id.
+    doc.setFont(font, 'bold');
+    doc.setFontSize(8.5 * uiScale);
+    doc.setTextColor(30);
+    doc.text(txt(`${a.name}  ·  ${a.designIdShort}`), x + pad, ty, {
+        maxWidth: colW,
+    });
+    ty += lineH;
+
+    // What this page is.
+    doc.setFont(font, 'normal');
+    doc.setFontSize(7.5 * uiScale);
+    doc.setTextColor(70);
+    ty +=
+        drawWrapped(doc, txt(a.subtitle), x + pad, ty, colW, lineH, font) *
+        lineH;
+
+    // Spec / measurement lines.
+    doc.setFontSize(7 * uiScale);
+    doc.setTextColor(90);
+    for (const line of a.bodyLines) {
+        ty +=
+            drawWrapped(doc, txt(line), x + pad, ty, colW, lineH, font) * lineH;
+    }
+
+    // Print-at-100% reminder — bold brand teal, last line of the column.
+    doc.setFont(font, 'bold');
+    doc.setFontSize(7.5 * uiScale);
+    doc.setTextColor(BRAND_DARK_RGB[0], BRAND_DARK_RGB[1], BRAND_DARK_RGB[2]);
+    doc.text(txt('PRINT AT 100% — DO NOT SCALE'), x + pad, ty, {
+        maxWidth: colW,
+    });
+    doc.setTextColor(0);
+}
+
+/** Draw possibly-wrapping text; returns the number of lines it occupied. */
+function drawWrapped(
+    doc: jsPDF,
+    text: string,
+    x: number,
+    y: number,
+    maxWidth: number,
+    lineH: number,
+    font: string,
+): number {
+    void font;
+    const lines = doc.splitTextToSize(text, maxWidth) as string[];
+    lines.forEach((ln, i) => doc.text(ln, x, y + i * lineH));
+    return Math.max(1, lines.length);
+}
+
 /** Pre-generate the QR dataURL once per export (URL is constant). */
-async function buildQrCode(designId: string | null | undefined): Promise<string | null> {
+async function buildQrCode(
+    designId: string | null | undefined,
+): Promise<string | null> {
     try {
         const origin =
             typeof window !== 'undefined' && window.location?.origin
@@ -2970,18 +3027,60 @@ export async function generateProductionPdfBlob(
         ...(opts.secondary ? buildJobs(opts.secondary) : []),
     ];
 
-    // ---- Phase 2: compute single fixed sheet size ------------------
-    // The whole bundle uses one paper size so office printers can't
-    // silently mis-scale a page that's smaller than the others.
-    const M_TOP = STRAP_H + 9; // strap (9 mm) + bold page title + breathing room
-    const M_BOTTOM = 28; // QR (16 mm) + label + warning + breathing
-    const M_SIDE = 14;
+    // ---- Phase 2: sheet size + relatively-scaled title block --------
+    // One paper size for the whole bundle so an office printer can't
+    // silently mis-scale a smaller page. The title block scales with the
+    // part so it reads the same relative size on a 200 mm part or a 2 m one.
     let maxPartW = 0;
     let maxPartH = 0;
     for (const job of jobs) {
         if (job.partW > maxPartW) maxPartW = job.partW;
         if (job.partH > maxPartH) maxPartH = job.partH;
     }
+    const uiScale = Math.min(
+        3.5,
+        Math.max(1, Math.max(maxPartW, maxPartH) / 600),
+    );
+    const M_SIDE = 12 * uiScale;
+    const M_TOP = 8 * uiScale;
+    const designIdShort = docId(opts.designId, params.name);
+    const totalPages = jobs.length;
+    const kindLabel = 'PRODUCTION · 1:1';
+
+    // The box width is row-independent; derive it, then measure how many
+    // (possibly wrapped) rows the tallest page needs so the box is never too
+    // short. Measure on a throwaway doc (built-in metrics + a row of slack).
+    const tbW0 = titleBlockMetrics(uiScale, 1, maxPartW).w;
+    const tbColW = tbW0 - 3 * (3 * uiScale) - 15 * uiScale; // w - 3·pad - qr
+    const measureDoc = new jsPDF({ unit: 'mm' });
+    const rowsFor = (job: ProdPageJob): number => {
+        let rows = 0;
+        measureDoc.setFontSize(8.5 * uiScale);
+        rows += (
+            measureDoc.splitTextToSize(
+                txt(`${params.name}  ·  ${designIdShort}`),
+                tbColW,
+            ) as string[]
+        ).length;
+        measureDoc.setFontSize(7.5 * uiScale);
+        rows += (
+            measureDoc.splitTextToSize(txt(job.subtitle), tbColW) as string[]
+        ).length;
+        measureDoc.setFontSize(7 * uiScale);
+        for (const line of [...job.footerInfo, 'Sheet 0000 x 0000 mm']) {
+            rows += (
+                measureDoc.splitTextToSize(txt(line), tbColW) as string[]
+            ).length;
+        }
+        return rows + 1; // + PRINT AT 100% line
+    };
+    let maxRows = 1;
+    for (const job of jobs) maxRows = Math.max(maxRows, rowsFor(job));
+    maxRows += 2; // slack for font-metric differences vs the measuring doc
+    const tb = titleBlockMetrics(uiScale, maxRows, maxPartW);
+    // Bottom band holds the title block clear of the 1:1 part + a gap above it.
+    const M_BOTTOM = tb.h + M_SIDE + 4 * uiScale;
+
     const sheetW = maxPartW + 2 * M_SIDE;
     const sheetH = maxPartH + M_TOP + M_BOTTOM;
     if (sheetW > MAX_PAGE_MM || sheetH > MAX_PAGE_MM) {
@@ -3005,9 +3104,6 @@ export async function generateProductionPdfBlob(
         keywords: 'production, cut, CAM, signage, onesign',
     });
 
-    const designIdShort = docId(opts.designId, params.name);
-    const totalPages = jobs.length;
-
     // ---- Phase 3: emit pages ---------------------------------------
     jobs.forEach((job, index) => {
         if (index > 0) {
@@ -3016,42 +3112,36 @@ export async function generateProductionPdfBlob(
                 sheetW >= sheetH ? 'landscape' : 'portrait',
             );
         }
-        // Top strap
-        drawDocStrap(doc, {
-            pageW: sheetW,
-            margin: M_SIDE,
-            kind: 'production',
-            designName: params.name,
-            designIdShort,
-            pageNumber: index + 1,
-            totalPages,
-            font,
-            subtitle: job.subtitle,
-        });
 
-        // Thin border 2 mm inside the page edge — operator can measure
-        // border-to-border to verify the print is at 100%.
+        // Scale-verify border ~2 mm inside the page edge — operator can
+        // measure border-to-border to confirm the print is at 100%.
         doc.setDrawColor(200);
-        doc.setLineWidth(0.15);
-        doc.rect(2, STRAP_H + 1.5, sheetW - 4, sheetH - STRAP_H - 3);
+        doc.setLineWidth(0.15 * uiScale);
+        doc.rect(2, 2, sheetW - 4, sheetH - 4);
 
-        // Content — horizontally centred, top-aligned just below the strap.
+        // Content — horizontally centred, top-aligned below the top margin.
         const dX = M_SIDE + (maxPartW - job.partW) / 2;
         const dY = M_TOP;
         job.draw(dX, dY);
 
-        // Footer — info strip + sheet sizing + QR + scale warning.
-        drawDocFooter(doc, {
-            pageW: sheetW,
-            pageH: sheetH,
-            margin: M_SIDE,
-            kind: 'production',
-            infoLines: [
+        // Contained, relatively-scaled title block — bottom-right corner,
+        // inside the reserved bottom band so it never overlaps the 1:1 part.
+        drawProductionTitleBlock(doc, {
+            x: sheetW - M_SIDE - tb.w,
+            y: sheetH - M_SIDE - tb.h,
+            metrics: tb,
+            uiScale,
+            font,
+            name: params.name,
+            designIdShort,
+            kindLabel,
+            pageLabel: `PAGE ${index + 1}/${totalPages}`,
+            subtitle: job.subtitle,
+            bodyLines: [
                 ...job.footerInfo,
-                `Sheet ${Math.round(sheetW)} × ${Math.round(sheetH)} mm  ·  ${designIdShort}`,
+                `Sheet ${Math.round(sheetW)} x ${Math.round(sheetH)} mm`,
             ],
             qrDataUrl,
-            font,
         });
     });
 
