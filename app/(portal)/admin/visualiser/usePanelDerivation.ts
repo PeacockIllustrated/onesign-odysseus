@@ -781,11 +781,11 @@ export function usePanelDerivation(
     const apertureHoles = useMemo(() => {
         const out: FlatPath[] = [];
         for (let i = 0; i < placedClipByIndex.length; i++) {
-            // Backlit shapes are aperture-cut like plain cuts, and their inner
-            // counters stay on the sign too (glued to the lit opal behind), so
-            // they're retained islands on the cut layout just the same.
-            const k = effectiveMaterials[i]?.kind;
-            if (k !== 'cut' && k !== 'backlight') continue;
+            // Plain-cut counters only. Backlit counters are retained on the lit
+            // opal (handled via backlightPieces), so they must NOT count toward
+            // the "counter can't survive a panel-only cut" warning, nor feed the
+            // push-through insert page.
+            if (effectiveMaterials[i]?.kind !== 'cut') continue;
             const holes = holesByIndex[i] ?? [];
             for (const h of holes) {
                 if (h && h.closed && h.points.length >= 3) out.push(h);
