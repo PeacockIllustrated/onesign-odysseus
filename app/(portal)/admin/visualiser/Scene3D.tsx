@@ -618,8 +618,10 @@ function StandoffLettering({
         if (paths.length === 0) return null;
         const positions: number[] = [];
         const segs = 32;
-        // Sit a hair above the front face (z = depth) to avoid z-fight.
-        const z = depthScene + 0.3 * S;
+        // Sit a hair behind the letter's BACK face (local z = 0). The studs
+        // attach to the back, so the fixing rings belong there — not clipping
+        // through to the visible front surface of the stood-off letter.
+        const z = -0.3 * S;
         for (const f of paths) {
             const pts = f.points;
             if (pts.length < 3) continue;
