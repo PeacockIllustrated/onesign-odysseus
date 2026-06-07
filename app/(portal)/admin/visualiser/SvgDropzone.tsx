@@ -1,8 +1,9 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useVisualiser } from './store';
-import { importSvg } from '@/lib/visualiser/svg-import';
+import { importSvg, detectInnerCounters } from '@/lib/visualiser/svg-import';
+import { composeLayers } from '@/lib/visualiser/compose';
 import { TraceImage } from './TraceImage';
 import { Section } from './Section';
 import { SwatchPicker, type SwatchItem } from './SwatchPicker';
@@ -11,6 +12,8 @@ import {
     GROUP_HIGHLIGHT_PALETTE,
     type AlignH,
     type AlignV,
+    type FlatPath,
+    type ImportedSvg,
     type PanelParams,
 } from '@/lib/visualiser/types';
 
@@ -22,11 +25,12 @@ const ACRYLIC_ITEMS: SwatchItem[] = ACRYLIC_COLOURS.map((c) => ({
 import {
     AlertTriangle,
     Check,
+    ChevronRight,
     Crosshair,
     Eraser,
     ImageUp,
     Plus,
-    Sparkles,
+    RotateCcw,
     Trash2,
     Upload,
     X,
@@ -446,24 +450,174 @@ function GroupEditControls({
     );
 }
 
-function MaterialGroupsPanel({
+/* ------------------------------------------------------------------ *
+ * Materials — per-shape overrides
+ * ------------------------------------------------------------------ */
+
+const MATERIAL_LABELS: Record<GroupMaterial, string> = {
+    cut: 'Cut-out',
+    solid: 'Solid (kept)',
+    vinyl: 'Vinyl',
+    acrylic: 'Acrylic',
+    standoff: 'Stand-off',
+    pushthrough: 'Push-through',
+    backlight: 'Backlit',
+};
+
+/** Human label for the whole-sign default (apertureMode). */
+function defaultModeLabel(mode: 'aperture' | 'vinyl' | 'standoff'): string {
+    return mode === 'standoff'
+        ? 'Stand-off'
+        : mode === 'vinyl'
+          ? 'Printed vinyl'
+          : 'Cut-out';
+}
+
+/** Chip text for one shape's resolved material (override → its material; else the default). */
+function shapeMaterialChip(
+    group: MaterialGroup | undefined,
+    mode: 'aperture' | 'vinyl' | 'standoff',
+): { label: string; isDefault: boolean } {
+    if (!group) return { label: defaultModeLabel(mode), isDefault: true };
+    if (group.material === 'vinyl')
+        return {
+            label:
+                group.printFullColor !== false ? 'Printed vinyl' : 'Solid vinyl',
+            isDefault: false,
+        };
+    return { label: MATERIAL_LABELS[group.material], isDefault: false };
+}
+
+const polyCentroid = (p: FlatPath): [number, number] => {
+    let sx = 0;
+    let sy = 0;
+    for (const [x, y] of p.points) {
+        sx += x;
+        sy += y;
+    }
+    const n = p.points.length || 1;
+    return [sx / n, sy / n];
+};
+
+const pointInPoly = (ring: FlatPath, [px, py]: [number, number]): boolean => {
+    let inside = false;
+    const r = ring.points;
+    for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+        const [xi, yi] = r[i];
+        const [xj, yj] = r[j];
+        if (
+            yi > py !== yj > py &&
+            px < ((xj - xi) * (py - yi)) / (yj - yi || 1e-12) + xi
+        ) {
+            inside = !inside;
+        }
+    }
+    return inside;
+};
+
+/**
+ * Tiny silhouette of one imported shape (its outer outline + any counters
+ * sitting inside it, punched as even-odd holes) so the operator can recognise
+ * which part of the artwork a row refers to. Pure SVG scaled by its own
+ * viewBox — the coordinate space (native mm vs composed mm) doesn't matter.
+ */
+function ShapeThumb({
+    paths,
+    index,
+    counters,
+    fill,
+}: {
+    paths: FlatPath[];
+    index: number;
+    counters: number[];
+    fill: string;
+}) {
+    const outer = paths[index];
+    if (!outer || outer.points.length < 2) {
+        return (
+            <span
+                className="block h-7 w-7 shrink-0 rounded bg-neutral-100"
+                aria-hidden
+            />
+        );
+    }
+    const subs: FlatPath[] = [outer];
+    for (const c of counters) {
+        const cp = paths[c];
+        if (cp && pointInPoly(outer, polyCentroid(cp))) subs.push(cp);
+    }
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const s of subs) {
+        for (const [x, y] of s.points) {
+            if (x < minX) minX = x;
+            if (y < minY) minY = y;
+            if (x > maxX) maxX = x;
+            if (y > maxY) maxY = y;
+        }
+    }
+    const w = maxX - minX || 1;
+    const h = maxY - minY || 1;
+    const pad = Math.max(w, h) * 0.1;
+    const d = subs
+        .map((s) => {
+            const [f, ...rest] = s.points;
+            return (
+                `M ${f[0]} ${f[1]} ` +
+                rest.map(([x, y]) => `L ${x} ${y}`).join(' ') +
+                (s.closed ? ' Z' : '')
+            );
+        })
+        .join(' ');
+    return (
+        <svg
+            viewBox={`${minX - pad} ${minY - pad} ${w + pad * 2} ${h + pad * 2}`}
+            className="h-7 w-7 shrink-0 rounded border border-neutral-200 bg-white"
+            preserveAspectRatio="xMidYMid meet"
+            aria-hidden
+        >
+            <path d={d} fill={fill} fillRule="evenodd" />
+        </svg>
+    );
+}
+
+/**
+ * The per-shape override list. Each artwork shape is a row showing a
+ * thumbnail + its resolved material; clicking a row opens the material
+ * picker for just that shape (or, while a group edit is open, toggles the
+ * shape in/out of the current selection — mirroring canvas clicks). The
+ * underlying storage is unchanged: rows read/write `materialGroups`, and
+ * un-overridden shapes follow the whole-sign default (`apertureMode`).
+ */
+function ShapeMaterialsPanel({
+    paths,
+    outerShapes,
+    counters,
     groups,
+    apertureMode,
+    panelColor,
     editingGroupId,
     pendingPaths,
-    panelColor,
+    startGroupEditFromPath,
+    togglePendingPath,
     startNewGroupEdit,
-    startEditingGroup,
     cancelGroupEdit,
     applyEditMaterial,
-    updateGroupProps,
-    deleteGroup,
+    removePathFromGroups,
 }: {
+    paths: FlatPath[];
+    outerShapes: number[];
+    counters: number[];
     groups: MaterialGroup[];
+    apertureMode: 'aperture' | 'vinyl' | 'standoff';
+    panelColor: string;
     editingGroupId: string | null;
     pendingPaths: number[];
-    panelColor: string;
+    startGroupEditFromPath: (pathIndex: number) => void;
+    togglePendingPath: (pathIndex: number) => void;
     startNewGroupEdit: () => void;
-    startEditingGroup: (id: string) => void;
     cancelGroupEdit: () => void;
     applyEditMaterial: (
         material: GroupMaterial,
@@ -477,34 +631,30 @@ function MaterialGroupsPanel({
             glowIntensity?: number;
         },
     ) => void;
-    updateGroupProps: (
-        id: string,
-        patch: {
-            color?: string;
-            thicknessMm?: number;
-            standoffDistanceMm?: number;
-            keylineOffsetMm?: number;
-            protrusionMm?: number;
-            printFullColor?: boolean;
-            glowIntensity?: number;
-            label?: string;
-        },
-    ) => void;
-    deleteGroup: (id: string) => void;
+    removePathFromGroups: (pathIndex: number) => void;
 }) {
     const isEditing = editingGroupId !== null;
+    const pendingSet = new Set(pendingPaths);
+    const groupById = new Map(groups.map((g) => [g.id, g] as const));
+    const groupPos = new Map(groups.map((g, i) => [g.id, i] as const));
+    const groupByPath = new Map<number, MaterialGroup>();
+    for (const g of groups) for (const i of g.pathIndices) groupByPath.set(i, g);
+
     const editingExisting =
         editingGroupId && editingGroupId !== 'new'
-            ? groups.find((g) => g.id === editingGroupId)
+            ? groupById.get(editingGroupId)
             : null;
 
+    const overridden = outerShapes.filter((i) => groupByPath.has(i)).length;
+    const total = outerShapes.length;
+
     return (
-        <div className="space-y-2 pt-2 border-t border-neutral-100">
+        <div className="space-y-2 border-t border-neutral-100 pt-2">
             <div className="flex items-center justify-between gap-2">
                 <h4 className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
-                    Material groups
+                    Override individual shapes
                 </h4>
-                {!isEditing && (
+                {!isEditing && total > 1 && (
                     <button
                         type="button"
                         onClick={startNewGroupEdit}
@@ -517,25 +667,22 @@ function MaterialGroupsPanel({
                             e.currentTarget.style.background = ACCENT;
                         }}
                     >
-                        <Plus size={12} aria-hidden /> New material group
+                        <Plus size={12} aria-hidden /> Group several
                     </button>
                 )}
             </div>
+
             <p className="text-[10px] text-neutral-500">
-                Pull SVG paths out of the default cut and reassign them as
-                solid panel material, vinyl appliqué, face-stuck acrylic, or
-                stood-off lettering.
+                {overridden > 0
+                    ? `${overridden} of ${total} shape${total === 1 ? '' : 's'} overridden — the rest are ${defaultModeLabel(apertureMode)}. Overrides win over the whole-sign material.`
+                    : `Every shape is ${defaultModeLabel(apertureMode)}. Pick a shape to make just that part a different material.`}
             </p>
 
             {isEditing && (
                 <GroupEditControls
-                    // Key on the editing target so seeding happens via
-                    // mount, not via setState-during-render.
+                    // Remount on target change so inputs re-seed cleanly.
                     key={editingGroupId}
                     initialMaterial={
-                        // 'cut' isn't a real picker option — fall back to
-                        // 'solid' so the apply form has a valid starting
-                        // material to render its fields against.
                         (editingExisting?.material === 'cut'
                             ? 'solid'
                             : editingExisting?.material) ?? 'solid'
@@ -546,12 +693,8 @@ function MaterialGroupsPanel({
                     }
                     initialThickness={editingExisting?.thicknessMm ?? 5}
                     initialStandoff={editingExisting?.standoffDistanceMm ?? 25}
-                    initialKeylineOffset={
-                        editingExisting?.keylineOffsetMm ?? 1.5
-                    }
+                    initialKeylineOffset={editingExisting?.keylineOffsetMm ?? 1.5}
                     initialProtrusion={editingExisting?.protrusionMm ?? 5}
-                    // Default printed full-colour (undefined → true); only an
-                    // explicit false makes it a solid cut vinyl.
                     initialPrintFullColor={
                         editingExisting?.printFullColor !== false
                     }
@@ -564,268 +707,118 @@ function MaterialGroupsPanel({
                 />
             )}
 
-            {/* Existing groups. Each row shows a palette swatch (the
-                group's identity colour on the canvas), the material chip
-                and member count, with pencil + trash actions. */}
-            {groups.length === 0 && !isEditing && (
+            {total === 0 ? (
                 <p className="text-[10px] text-neutral-400">
-                    No groups yet — every path will be cut from the panel
-                    by default.
+                    No separate shapes detected in this artwork.
+                </p>
+            ) : (
+                <ul className="space-y-1.5">
+                    {outerShapes.map((i, n) => {
+                        const g = groupByPath.get(i);
+                        const chip = shapeMaterialChip(g, apertureMode);
+                        const pos = g ? (groupPos.get(g.id) ?? 0) : -1;
+                        const swatch =
+                            pos >= 0
+                                ? GROUP_HIGHLIGHT_PALETTE[
+                                      pos % GROUP_HIGHLIGHT_PALETTE.length
+                                  ]
+                                : null;
+                        const selected = pendingSet.has(i);
+                        const isEditTarget =
+                            isEditing && !!g && g.id === editingGroupId;
+                        return (
+                            <li
+                                key={i}
+                                className={`flex items-center gap-2 rounded-md border bg-white p-1.5 ${
+                                    selected || isEditTarget
+                                        ? 'ring-1'
+                                        : 'border-neutral-200 hover:border-neutral-300'
+                                }`}
+                                style={
+                                    selected || isEditTarget
+                                        ? {
+                                              borderColor: ACCENT,
+                                              // @ts-expect-error CSS custom prop for ring
+                                              '--tw-ring-color': ACCENT_TINT_BORDER,
+                                          }
+                                        : undefined
+                                }
+                            >
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        isEditing
+                                            ? togglePendingPath(i)
+                                            : startGroupEditFromPath(i)
+                                    }
+                                    className="flex min-h-[40px] min-w-0 flex-1 items-center gap-2 text-left"
+                                    aria-label={
+                                        isEditing
+                                            ? `${selected ? 'Remove' : 'Add'} shape ${n + 1}`
+                                            : `Change material for shape ${n + 1}`
+                                    }
+                                    aria-pressed={isEditing ? selected : undefined}
+                                >
+                                    <ShapeThumb
+                                        paths={paths}
+                                        index={i}
+                                        counters={counters}
+                                        fill={swatch ?? '#1a1f23'}
+                                    />
+                                    <span className="min-w-0 flex-1">
+                                        <span className="block truncate text-[11px] font-medium text-neutral-700">
+                                            Shape {n + 1}
+                                        </span>
+                                        <span className="mt-0.5 flex items-center gap-1">
+                                            <span
+                                                className={`truncate text-[10px] ${
+                                                    chip.isDefault
+                                                        ? 'text-neutral-400'
+                                                        : 'font-medium'
+                                                }`}
+                                                style={
+                                                    chip.isDefault
+                                                        ? undefined
+                                                        : { color: ACCENT_DARK }
+                                                }
+                                            >
+                                                {chip.isDefault
+                                                    ? `Default · ${chip.label}`
+                                                    : chip.label}
+                                            </span>
+                                        </span>
+                                    </span>
+                                    {!isEditing && (
+                                        <ChevronRight
+                                            size={14}
+                                            aria-hidden
+                                            className="shrink-0 text-neutral-300"
+                                        />
+                                    )}
+                                </button>
+                                {!isEditing && g && (
+                                    <button
+                                        type="button"
+                                        onClick={() => removePathFromGroups(i)}
+                                        aria-label={`Reset shape ${n + 1} to the default material`}
+                                        title="Reset to default"
+                                        className="flex min-h-[36px] min-w-[36px] shrink-0 items-center justify-center rounded text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+                                    >
+                                        <RotateCcw size={13} aria-hidden />
+                                    </button>
+                                )}
+                            </li>
+                        );
+                    })}
+                </ul>
+            )}
+
+            {isEditing && (
+                <p className="text-[10px] text-neutral-400">
+                    Click shapes above or on the canvas to add or remove them,
+                    then choose a material in the panel.
                 </p>
             )}
-            <ul className="space-y-1.5">
-                {groups.map((g, i) => {
-                    const palette =
-                        GROUP_HIGHLIGHT_PALETTE[
-                            i % GROUP_HIGHLIGHT_PALETTE.length
-                        ];
-                    const isThisOne = editingGroupId === g.id;
-                    const isAuto = g.label === 'Counters (auto)';
-                    return (
-                        <li
-                            key={g.id}
-                            className={`rounded-md border bg-white p-2 ${
-                                isThisOne
-                                    ? 'ring-1'
-                                    : 'border-neutral-200 hover:border-neutral-300'
-                            }`}
-                            style={
-                                isThisOne
-                                    ? {
-                                          borderColor: ACCENT,
-                                          // @ts-expect-error CSS custom prop for ring
-                                          '--tw-ring-color': ACCENT_TINT_BORDER,
-                                      }
-                                    : undefined
-                            }
-                        >
-                            <div className="flex items-center justify-between gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => startEditingGroup(g.id)}
-                                    disabled={isEditing && !isThisOne}
-                                    className="flex min-h-[36px] min-w-0 flex-1 items-center gap-2 text-left disabled:cursor-not-allowed disabled:opacity-50"
-                                    aria-label={`Edit group ${g.label ?? g.material}`}
-                                >
-                                    <span
-                                        className="h-3.5 w-3.5 shrink-0 rounded-sm border border-neutral-300"
-                                        style={{ background: palette }}
-                                        aria-hidden
-                                    />
-                                    <span className="text-[11px] font-medium text-neutral-700 truncate">
-                                        {g.label ??
-                                            `${g.material[0].toUpperCase()}${g.material.slice(1)} group`}
-                                    </span>
-                                    <span className="rounded-full bg-neutral-100 px-1.5 py-px text-[9px] uppercase tracking-wide text-neutral-500">
-                                        {g.material}
-                                    </span>
-                                    <span className="text-[10px] text-neutral-400">
-                                        {g.pathIndices.length} path
-                                        {g.pathIndices.length === 1 ? '' : 's'}
-                                    </span>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => deleteGroup(g.id)}
-                                    aria-label="Delete group (paths revert to cut)"
-                                    className="flex min-h-[36px] min-w-[36px] items-center justify-center rounded text-neutral-500 hover:bg-red-50 hover:text-red-600"
-                                >
-                                    <Trash2 size={14} aria-hidden />
-                                </button>
-                            </div>
-                            {isAuto && (
-                                <p className="mt-1 flex items-center gap-1 text-[10px] text-neutral-500">
-                                    <Sparkles
-                                        size={10}
-                                        aria-hidden
-                                        style={{ color: ACCENT }}
-                                    />
-                                    Auto-detected from nested paths — edit or
-                                    delete freely.
-                                </p>
-                            )}
-
-                            {/* Inline colour / thickness — live edits while
-                                not in selection edit, no Apply needed.
-                                Stacked vertically so the hex code has
-                                room to breathe and the thickness field
-                                doesn't get squeezed. */}
-                            {!isEditing && g.material !== 'solid' && (
-                                <div className="mt-2 space-y-2">
-                                    {g.material === 'vinyl' && (
-                                        <div>
-                                            <span className="text-[10px] text-neutral-500">
-                                                Vinyl type
-                                            </span>
-                                            <div className="mt-0.5 grid grid-cols-2 overflow-hidden rounded-md border border-neutral-300 text-[10px] font-medium">
-                                                {(
-                                                    [
-                                                        [true, 'Full colour'],
-                                                        [false, 'Solid'],
-                                                    ] as const
-                                                ).map(([v, label], k) => {
-                                                    const active =
-                                                        (g.printFullColor !==
-                                                            false) === v;
-                                                    return (
-                                                        <button
-                                                            key={label}
-                                                            type="button"
-                                                            onClick={() =>
-                                                                updateGroupProps(
-                                                                    g.id,
-                                                                    {
-                                                                        printFullColor:
-                                                                            v,
-                                                                    },
-                                                                )
-                                                            }
-                                                            aria-pressed={active}
-                                                            className={`min-h-[28px] py-1 ${
-                                                                k > 0
-                                                                    ? 'border-l border-neutral-300'
-                                                                    : ''
-                                                            } ${
-                                                                active
-                                                                    ? 'text-white'
-                                                                    : 'bg-white text-neutral-600 hover:bg-neutral-100'
-                                                            }`}
-                                                            style={
-                                                                active
-                                                                    ? {
-                                                                          background:
-                                                                              ACCENT,
-                                                                      }
-                                                                    : undefined
-                                                            }
-                                                        >
-                                                            {label}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
-                                    {/* Colour swatch — hidden for printed vinyl
-                                        (its colour comes from the artwork). */}
-                                    {!(
-                                        g.material === 'vinyl' &&
-                                        g.printFullColor !== false
-                                    ) && (
-                                        <label className="block">
-                                            <span className="text-[10px] text-neutral-500">
-                                                Colour
-                                            </span>
-                                            <div className="mt-0.5 flex items-center gap-1.5">
-                                                <input
-                                                    type="color"
-                                                    value={g.color}
-                                                    onChange={(e) =>
-                                                        updateGroupProps(g.id, {
-                                                            color: e.target
-                                                                .value,
-                                                        })
-                                                    }
-                                                    className="h-7 w-9 shrink-0 cursor-pointer rounded border border-neutral-300 bg-white p-0.5"
-                                                />
-                                                <input
-                                                    type="text"
-                                                    value={g.color}
-                                                    onChange={(e) => {
-                                                        const v =
-                                                            e.target.value.trim();
-                                                        if (
-                                                            /^#[0-9a-fA-F]{6}$/.test(
-                                                                v,
-                                                            )
-                                                        )
-                                                            updateGroupProps(
-                                                                g.id,
-                                                                { color: v },
-                                                            );
-                                                    }}
-                                                    className="flex-1 rounded border border-neutral-300 px-2 py-1 font-mono text-[11px] uppercase focus:border-black focus:outline-none"
-                                                />
-                                            </div>
-                                        </label>
-                                    )}
-                                    {(g.material === 'acrylic' ||
-                                        g.material === 'standoff' ||
-                                        g.material === 'pushthrough') && (
-                                        <NumField
-                                            label="Thickness (mm)"
-                                            step={0.5}
-                                            value={g.thicknessMm ?? 5}
-                                            onChange={(n) =>
-                                                updateGroupProps(g.id, {
-                                                    thicknessMm:
-                                                        n > 0 ? n : 0.5,
-                                                })
-                                            }
-                                        />
-                                    )}
-                                    {g.material === 'standoff' && (
-                                        <NumField
-                                            label="Standoff (mm)"
-                                            step={1}
-                                            value={
-                                                g.standoffDistanceMm ?? 25
-                                            }
-                                            onChange={(n) =>
-                                                updateGroupProps(g.id, {
-                                                    standoffDistanceMm:
-                                                        n >= 0 ? n : 0,
-                                                })
-                                            }
-                                        />
-                                    )}
-                                    {g.material === 'pushthrough' && (
-                                        <>
-                                            <NumField
-                                                label="Keyline offset (mm)"
-                                                step={0.5}
-                                                value={
-                                                    g.keylineOffsetMm ?? 1.5
-                                                }
-                                                onChange={(n) =>
-                                                    updateGroupProps(g.id, {
-                                                        keylineOffsetMm:
-                                                            n >= 0 ? n : 0,
-                                                    })
-                                                }
-                                            />
-                                            <NumField
-                                                label="Protrusion (mm)"
-                                                step={1}
-                                                value={g.protrusionMm ?? 5}
-                                                onChange={(n) =>
-                                                    updateGroupProps(g.id, {
-                                                        protrusionMm:
-                                                            n >= 0 ? n : 0,
-                                                    })
-                                                }
-                                            />
-                                        </>
-                                    )}
-                                    {g.material === 'backlight' && (
-                                        <NumField
-                                            label="Glow intensity"
-                                            step={0.1}
-                                            value={g.glowIntensity ?? 1}
-                                            onChange={(n) =>
-                                                updateGroupProps(g.id, {
-                                                    glowIntensity:
-                                                        n >= 0 ? n : 0,
-                                                })
-                                            }
-                                        />
-                                    )}
-                                </div>
-                            )}
-                        </li>
-                    );
-                })}
-            </ul>
         </div>
     );
 }
@@ -907,11 +900,11 @@ export function SvgDropzone() {
         editingGroupId,
         pendingPaths,
         startNewGroupEdit,
-        startEditingGroup,
+        startGroupEditFromPath,
         cancelGroupEdit,
         applyEditMaterial,
-        updateGroupProps,
-        deleteGroup,
+        togglePendingPath,
+        removePathFromGroups,
         addArtworkLayer,
         updateArtworkLayer,
         removeArtworkLayer,
@@ -926,6 +919,43 @@ export function SvgDropzone() {
     const layers = params.artworkLayers ?? [];
     const composite = layers.length > 0;
     const hasArtwork = !!svgSource || composite;
+
+    // The indexed shape set the rest of the pipeline works on. In composite
+    // mode that's the composed layers (NOT the store's single `imported`, which
+    // is null then) — built with the SAME pure helper the derivation uses so
+    // path indices line up 1:1 with materialGroups / pendingPaths / the canvas.
+    const layersKey = JSON.stringify(layers);
+    const shapesSvg = useMemo<ImportedSvg | null>(() => {
+        if (composite)
+            return composeLayers(
+                layers,
+                params.panelWidthMm,
+                params.panelHeightMm,
+            );
+        return imported;
+        // layers is captured via layersKey to keep the dep array statically checkable
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+        composite,
+        layersKey,
+        params.panelWidthMm,
+        params.panelHeightMm,
+        imported,
+    ]);
+
+    // Inner counters (holes in a compound letter) follow their parent shape, so
+    // they're hidden from the override list and only rendered inside a shape's
+    // thumbnail. The outer shapes are everything else.
+    const counters = useMemo(
+        () => detectInnerCounters(shapesSvg?.paths ?? []),
+        [shapesSvg],
+    );
+    const outerShapes = useMemo(() => {
+        const set = new Set(counters);
+        return (shapesSvg?.paths ?? [])
+            .map((_, i) => i)
+            .filter((i) => !set.has(i));
+    }, [shapesSvg, counters]);
 
     // Any path rendered as stood off — either the quick default is set
     // to standoff (so ungrouped paths land there) or at least one
@@ -1177,58 +1207,6 @@ export function SvgDropzone() {
 
             {placement && (
                 <div className="space-y-2.5">
-                    {/* Artwork use — the upload-time "what is this?" choice.
-                        Cut = apertures (default); Printed vinyl = the whole
-                        artwork is a full-colour printed decal on the face
-                        (nothing cut, gradients kept); Stand-off = extruded
-                        lettering on studs. Individual paths can still be
-                        re-assigned under Path materials below. */}
-                    <div
-                        className="rounded-md border p-2.5"
-                        style={{
-                            borderColor: ACCENT_TINT_BORDER,
-                            background: ACCENT_TINT_BG,
-                        }}
-                    >
-                        <span
-                            className="text-[10px] font-semibold uppercase tracking-wide"
-                            style={{ color: ACCENT_DARK }}
-                        >
-                            Artwork use
-                        </span>
-                        <span
-                            className="mt-0.5 block text-[10px]"
-                            style={{ color: ACCENT_DARK }}
-                        >
-                            Default for ungrouped paths — mix mediums per shape
-                            under Path materials below (incl. Backlight).
-                        </span>
-                        <div className="mt-1">
-                            <Segmented<'aperture' | 'vinyl' | 'standoff'>
-                                options={[
-                                    ['aperture', 'Cut'],
-                                    ['vinyl', 'Printed vinyl'],
-                                    ['standoff', 'Stand-off'],
-                                ]}
-                                value={
-                                    (params.apertureMode ?? 'aperture') as
-                                        | 'aperture'
-                                        | 'vinyl'
-                                        | 'standoff'
-                                }
-                                onChange={(v) => setParam('apertureMode', v)}
-                            />
-                        </div>
-                        <p className="mt-1 text-[10px]" style={{ color: ACCENT_DARK }}>
-                            {(params.apertureMode ?? 'aperture') === 'vinyl'
-                                ? 'Printed full-colour vinyl on the panel face — gradients kept, nothing is cut.'
-                                : (params.apertureMode ?? 'aperture') ===
-                                    'standoff'
-                                  ? 'Lettering stood off the face on studs.'
-                                  : 'Cut out of the panel as apertures (holes).'}
-                        </p>
-                    </div>
-
                     {/* Global placement (align / size / nudge) — for the
                         legacy single artwork. In composite mode each
                         layer is positioned individually, so these are
@@ -1329,138 +1307,206 @@ export function SvgDropzone() {
                       </>
                     )}
 
-                    {/* Path materials & fixings — each a collapsible
-                        section so the rail isn't a wall of always-open
-                        panels. Every ungrouped path is cut from the
-                        panel by default; the operator opts paths out
-                        into explicit material groups. */}
+                    {/* Materials — one section: the whole-sign default at the
+                        top, then per-shape overrides. Collapsible so the rail
+                        isn't a wall of always-open panels. */}
                     <div className="space-y-2">
                         {hasArtwork && (
-                            <Section title="Path materials" step={4}>
-                                <p className="text-[10px] text-neutral-500">
-                                    Every artwork path is cut from the panel
-                                    by default. Group paths below to reassign
-                                    them.
-                                </p>
-                                <MaterialGroupsPanel
+                            <Section title="Materials" step={4} accent>
+                                {/* Whole-sign default — the single choice that
+                                    drives every shape unless it's overridden in
+                                    the list below. */}
+                                <div
+                                    className="rounded-md border p-2.5"
+                                    style={{
+                                        borderColor: ACCENT_TINT_BORDER,
+                                        background: ACCENT_TINT_BG,
+                                    }}
+                                >
+                                    <span
+                                        className="text-[10px] font-semibold uppercase tracking-wide"
+                                        style={{ color: ACCENT_DARK }}
+                                    >
+                                        Default material
+                                    </span>
+                                    <span
+                                        className="mt-0.5 block text-[10px]"
+                                        style={{ color: ACCENT_DARK }}
+                                    >
+                                        Used for every shape unless you override
+                                        one below.
+                                    </span>
+                                    <div className="mt-1">
+                                        <Segmented<
+                                            'aperture' | 'vinyl' | 'standoff'
+                                        >
+                                            options={[
+                                                ['aperture', 'Cut-out'],
+                                                ['vinyl', 'Printed vinyl'],
+                                                ['standoff', 'Stand-off'],
+                                            ]}
+                                            value={
+                                                (params.apertureMode ??
+                                                    'aperture') as
+                                                    | 'aperture'
+                                                    | 'vinyl'
+                                                    | 'standoff'
+                                            }
+                                            onChange={(v) =>
+                                                setParam('apertureMode', v)
+                                            }
+                                        />
+                                    </div>
+                                    <p
+                                        className="mt-1 text-[10px]"
+                                        style={{ color: ACCENT_DARK }}
+                                    >
+                                        {(params.apertureMode ?? 'aperture') ===
+                                        'vinyl'
+                                            ? 'Printed full-colour vinyl on the panel face — gradients kept, nothing is cut.'
+                                            : (params.apertureMode ??
+                                                    'aperture') === 'standoff'
+                                              ? 'Lettering stood off the face on studs.'
+                                              : 'Cut out of the panel as apertures (holes).'}
+                                    </p>
+
+                                    {/* Stand-off appearance defaults live with
+                                        the default control (not in a third
+                                        place); the stud hardware + fixing holes
+                                        stay under Stand-off & fixings. */}
+                                    {(params.apertureMode ?? 'aperture') ===
+                                        'standoff' && (
+                                        <div className="mt-2 space-y-2 border-t border-[#b8d0d8] pt-2">
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <NumField
+                                                    label="Thickness (mm)"
+                                                    step={0.5}
+                                                    value={
+                                                        params.letterThicknessMm ??
+                                                        5
+                                                    }
+                                                    onChange={(n) =>
+                                                        setParam(
+                                                            'letterThicknessMm',
+                                                            n > 0 ? n : 0.5,
+                                                        )
+                                                    }
+                                                />
+                                                <NumField
+                                                    label="Stand-off (mm)"
+                                                    step={1}
+                                                    value={
+                                                        params.standoffDistanceMm ??
+                                                        25
+                                                    }
+                                                    onChange={(n) =>
+                                                        setParam(
+                                                            'standoffDistanceMm',
+                                                            n >= 0 ? n : 0,
+                                                        )
+                                                    }
+                                                />
+                                            </div>
+                                            <label className="block">
+                                                <span
+                                                    className="text-[10px]"
+                                                    style={{ color: ACCENT_DARK }}
+                                                >
+                                                    Letter colour
+                                                </span>
+                                                <div className="mt-0.5 flex items-center gap-2">
+                                                    <input
+                                                        type="color"
+                                                        value={
+                                                            params.letterColor ??
+                                                            '#1a1f23'
+                                                        }
+                                                        onChange={(e) =>
+                                                            setParam(
+                                                                'letterColor',
+                                                                e.target.value,
+                                                            )
+                                                        }
+                                                        className="h-7 w-10 cursor-pointer rounded border bg-white p-0.5"
+                                                        style={{
+                                                            borderColor:
+                                                                ACCENT_TINT_BORDER,
+                                                        }}
+                                                        aria-label="Default letter colour"
+                                                    />
+                                                    <input
+                                                        type="text"
+                                                        value={
+                                                            params.letterColor ??
+                                                            '#1a1f23'
+                                                        }
+                                                        onChange={(e) => {
+                                                            const v =
+                                                                e.target.value.trim();
+                                                            if (
+                                                                /^#[0-9a-fA-F]{6}$/.test(
+                                                                    v,
+                                                                )
+                                                            )
+                                                                setParam(
+                                                                    'letterColor',
+                                                                    v,
+                                                                );
+                                                        }}
+                                                        className="flex-1 rounded border px-1.5 py-1 font-mono text-[10px] uppercase tracking-wide focus:border-black focus:outline-none"
+                                                        style={{
+                                                            borderColor:
+                                                                ACCENT_TINT_BORDER,
+                                                        }}
+                                                        placeholder="#1a1f23"
+                                                    />
+                                                </div>
+                                            </label>
+                                            <p className="text-[10px] text-neutral-500">
+                                                Studs &amp; fixing holes are set
+                                                in Stand-off &amp; fixings below.
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <ShapeMaterialsPanel
+                                    paths={shapesSvg?.paths ?? []}
+                                    outerShapes={outerShapes}
+                                    counters={counters}
                                     groups={params.materialGroups ?? []}
+                                    apertureMode={
+                                        (params.apertureMode ?? 'aperture') as
+                                            | 'aperture'
+                                            | 'vinyl'
+                                            | 'standoff'
+                                    }
+                                    panelColor={params.panelColor ?? '#d6d6d6'}
                                     editingGroupId={editingGroupId}
                                     pendingPaths={pendingPaths}
-                                    panelColor={
-                                        params.panelColor ?? '#d6d6d6'
+                                    startGroupEditFromPath={
+                                        startGroupEditFromPath
                                     }
+                                    togglePendingPath={togglePendingPath}
                                     startNewGroupEdit={startNewGroupEdit}
-                                    startEditingGroup={startEditingGroup}
                                     cancelGroupEdit={cancelGroupEdit}
                                     applyEditMaterial={applyEditMaterial}
-                                    updateGroupProps={updateGroupProps}
-                                    deleteGroup={deleteGroup}
+                                    removePathFromGroups={removePathFromGroups}
                                 />
                             </Section>
                         )}
-                        {/* Standoff defaults + fixings — shown whenever any
-                            path is rendered as stood off, regardless of
-                            whether that's via the quick default or via an
-                            explicit group. Fixings are a single global
-                            set applied across every standoff path so the
-                            shop only configures the diameter / density
-                            once per sign. */}
+                        {/* Stud hardware + fixings — shown whenever any path is
+                            rendered as stood off (via the default or an explicit
+                            override). Stand-off appearance (thickness / distance
+                            / colour) lives with the default material above; this
+                            section is the procurement + fixing-hole spec, a
+                            single global set applied across every standoff path
+                            so the shop configures the diameter / density once. */}
                         {anyStandoffPath && (
                             <Section
                                 title="Stand-off & fixings"
                                 defaultOpen={false}
                             >
-                                {/* Lettering defaults — applied to standoff
-                                    paths that are NOT in an explicit group
-                                    (i.e. the quick default = Stood off
-                                    case). Explicit standoff groups carry
-                                    their own thickness / distance / colour
-                                    and ignore these. */}
-                                <div className="space-y-2 pt-1">
-                                    <h4 className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
-                                        Standoff defaults
-                                    </h4>
-                                    <p className="text-[10px] text-neutral-400">
-                                        Used for paths set to stood-off via
-                                        the quick default. Group-specific
-                                        standoff has its own thickness +
-                                        distance.
-                                    </p>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <NumField
-                                            label="Thickness (mm)"
-                                            step={0.5}
-                                            value={
-                                                params.letterThicknessMm ?? 5
-                                            }
-                                            onChange={(n) =>
-                                                setParam(
-                                                    'letterThicknessMm',
-                                                    n > 0 ? n : 0.5,
-                                                )
-                                            }
-                                        />
-                                        <NumField
-                                            label="Stand-off (mm)"
-                                            step={1}
-                                            value={
-                                                params.standoffDistanceMm ??
-                                                25
-                                            }
-                                            onChange={(n) =>
-                                                setParam(
-                                                    'standoffDistanceMm',
-                                                    n >= 0 ? n : 0,
-                                                )
-                                            }
-                                        />
-                                    </div>
-                                    <label className="block">
-                                        <span className="text-[10px] text-neutral-500">
-                                            Default letter colour
-                                        </span>
-                                        <div className="mt-0.5 flex items-center gap-2">
-                                            <input
-                                                type="color"
-                                                value={
-                                                    params.letterColor ??
-                                                    '#1a1f23'
-                                                }
-                                                onChange={(e) =>
-                                                    setParam(
-                                                        'letterColor',
-                                                        e.target.value,
-                                                    )
-                                                }
-                                                className="h-7 w-10 cursor-pointer rounded border border-neutral-300 bg-white p-0.5"
-                                                aria-label="Default letter colour"
-                                            />
-                                            <input
-                                                type="text"
-                                                value={
-                                                    params.letterColor ??
-                                                    '#1a1f23'
-                                                }
-                                                onChange={(e) => {
-                                                    const v =
-                                                        e.target.value.trim();
-                                                    if (
-                                                        /^#[0-9a-fA-F]{6}$/.test(
-                                                            v,
-                                                        )
-                                                    )
-                                                        setParam(
-                                                            'letterColor',
-                                                            v,
-                                                        );
-                                                }}
-                                                className="flex-1 rounded border border-neutral-300 px-1.5 py-1 font-mono text-[10px] uppercase tracking-wide focus:border-black focus:outline-none"
-                                                placeholder="#1a1f23"
-                                            />
-                                        </div>
-                                    </label>
-                                </div>
-
                                 {/* Stud hardware — thread / length / finish.
                                     Surfaced on the standoff material page of
                                     the reference PDF so the back-shop has

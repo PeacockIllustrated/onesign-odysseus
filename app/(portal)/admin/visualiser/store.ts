@@ -223,6 +223,13 @@ interface VisualiserState {
     cancelGroupEdit: () => void;
     togglePendingPath: (pathIndex: number) => void;
     /**
+     * Reset a single shape back to the whole-sign default — strip it from
+     * whatever override group it belongs to, dropping any group left empty.
+     * Doesn't touch the current edit selection. Used by the per-shape
+     * "reset to default" control in the Materials list.
+     */
+    removePathFromGroups: (pathIndex: number) => void;
+    /**
      * Commit the current edit. `material === 'cut'` removes the pending
      * paths from any group they're in (and deletes the group being
      * edited if applicable) — effectively reverting them to the
@@ -745,6 +752,30 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                 ? s.pendingPaths.filter((p) => p !== pathIndex)
                 : [...s.pendingPaths, pathIndex],
         })),
+
+    removePathFromGroups: (pathIndex) =>
+        set((s) => {
+            const list = s.params.materialGroups ?? [];
+            const next = list
+                .map((g) => ({
+                    ...g,
+                    pathIndices: g.pathIndices.filter((p) => p !== pathIndex),
+                }))
+                .filter((g) => g.pathIndices.length > 0);
+            // If we just emptied the group currently being edited, close
+            // the editor so it doesn't dangle on a group that no longer exists.
+            const editedGone =
+                s.editingGroupId !== null &&
+                s.editingGroupId !== 'new' &&
+                !next.some((g) => g.id === s.editingGroupId);
+            return {
+                params: { ...s.params, materialGroups: next },
+                dirty: true,
+                ...(editedGone
+                    ? { editingGroupId: null, pendingPaths: [] }
+                    : {}),
+            };
+        }),
 
     applyEditMaterial: (material, options) =>
         set((s) => {
