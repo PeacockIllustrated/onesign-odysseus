@@ -513,6 +513,7 @@ function StandoffLettering({
     faceThicknessMm,
     color,
     outlines = true,
+    showFixings = true,
     fixingMode = 'off',
     onFixingClick,
 }: {
@@ -525,6 +526,10 @@ function StandoffLettering({
     faceThicknessMm: number;
     color: string;
     outlines?: boolean;
+    /** Show the fixing-position rings on the letter face (the stand-off
+     *  fixing highlighters). Stays on while placing/deleting fixings so
+     *  the operator always has a target. */
+    showFixings?: boolean;
     fixingMode?: 'off' | 'place' | 'delete';
     onFixingClick?: (p: [number, number]) => void;
 }) {
@@ -734,15 +739,16 @@ function StandoffLettering({
                     )}
                 </mesh>
             ))}
-            {autoStrokes && (
+            {autoStrokes && (showFixings || fixingActive) && (
                 // Auto-placed fixings — picked by the algorithm. Painted
                 // in a colour that contrasts with the letter, so the
-                // installer reads them clearly.
+                // installer reads them clearly. Hidden via the "Fixings"
+                // display toggle, but forced on while placing/deleting.
                 <lineSegments geometry={autoStrokes}>
                     <lineBasicMaterial color={contrastTo(color)} />
                 </lineSegments>
             )}
-            {manualStrokes && (
+            {manualStrokes && (showFixings || fixingActive) && (
                 // Manually-placed fixings. When the operator is in
                 // place or delete mode, these recolour (green to add,
                 // red to delete) so the user knows which circles they
@@ -1314,6 +1320,7 @@ function BacklightGlow({
 function PushThroughBacking({
     face,
     pieces,
+    backlightPieces = [],
     materialThicknessMm,
     outlines = true,
     night = false,
@@ -1323,6 +1330,9 @@ function PushThroughBacking({
 }: {
     face: { xMm: number; yMm: number; wMm: number; hMm: number };
     pieces: PushThroughPiece[];
+    /** Backlit apertures share the same physical opal sheet — included in
+     *  the panel's span so one sheet covers both keyline + backlit work. */
+    backlightPieces?: MaterialPiece[];
     /**
      * Face panel thickness — backing sits BEHIND the face panel back
      * (z = -materialThicknessMm), with no overlap. Without this the
@@ -1339,12 +1349,18 @@ function PushThroughBacking({
     glowIntensity?: number;
 }) {
     const layout = useMemo(() => {
-        if (pieces.length === 0) return null;
+        // One opal sheet spans every piece glued to it — keyline
+        // push-through inserts AND backlit apertures share the same panel.
+        const spanning: Array<{ path: FlatPath; holes?: FlatPath[] }> = [
+            ...pieces,
+            ...backlightPieces,
+        ];
+        if (spanning.length === 0) return null;
         let minX = Infinity;
         let minY = Infinity;
         let maxX = -Infinity;
         let maxY = -Infinity;
-        for (const piece of pieces) {
+        for (const piece of spanning) {
             for (const [x, y] of piece.path.points) {
                 if (x < minX) minX = x;
                 if (y < minY) minY = y;
@@ -1369,9 +1385,9 @@ function PushThroughBacking({
         const cxMm = (minX + maxX) / 2;
         const cyMm = (minY + maxY) / 2;
         return { wMm, hMm, cxMm, cyMm };
-    }, [pieces]);
+    }, [pieces, backlightPieces]);
 
-    if (!layout || pieces.length === 0) return null;
+    if (!layout) return null;
 
     const BACKING_THICKNESS_MM = 5;
     const cx = (layout.cxMm - face.xMm - face.wMm / 2) * S;
@@ -1803,6 +1819,19 @@ function Panel({
         night &&
         !!keylineIllum?.enabled &&
         pushThroughPieces.length > 0;
+    // Backlit apertures light their shared opal sheet whenever the dark view
+    // is on — they're always-lit by definition (no separate enable). The one
+    // shared backing glows if EITHER illumination source is active; when both
+    // run it takes the keyline colour and the per-aperture BacklightGlow paints
+    // each backlit cut its own colour on top.
+    const backlitLit = night && (backlightPieces?.length ?? 0) > 0;
+    const backingLit = keylineLit || backlitLit;
+    const backingGlowColor = keylineLit
+        ? (keylineIllum?.color ?? '#ffffff')
+        : '#fff4e0';
+    const backingGlowIntensity = keylineLit
+        ? (keylineIllum?.intensity ?? 1)
+        : 1;
     const edges: PanelEdge[] = ['top', 'bottom', 'left', 'right'];
     // Either placement workflow active → canvas captures clicks +
     // shows the crosshair cursor. The parent dispatches to the right
@@ -1944,6 +1973,32 @@ function Panel({
         return out;
     }, [face, pushThroughIslands]);
 
+    // Retained counters of backlit compounds (the eye of an 'e', the bowl of
+    // a 'B'). The face is aperture-cut to the outer outline only, so without
+    // these the lit sheet would shine straight through the counter; here they
+    // sit at the face plane in the panel colour and read as solid sign.
+    const backlightIslandShapes = useMemo(() => {
+        if (!face || (backlightPieces?.length ?? 0) === 0) return [];
+        const toLocal = (q: [number, number]): [number, number] => [
+            (q[0] - face.xMm - face.wMm / 2) * S,
+            (face.yMm + face.hMm / 2 - q[1]) * S,
+        ];
+        const out: THREE.Shape[] = [];
+        for (const piece of backlightPieces ?? []) {
+            for (const hole of piece.holes ?? []) {
+                if (!hole.closed || hole.points.length < 3) continue;
+                const pts = hole.points.map(toLocal);
+                const shape = new THREE.Shape();
+                shape.moveTo(pts[0][0], pts[0][1]);
+                for (let i = 1; i < pts.length; i++)
+                    shape.lineTo(pts[i][0], pts[i][1]);
+                shape.closePath();
+                out.push(shape);
+            }
+        }
+        return out;
+    }, [face, backlightPieces]);
+
     return (
         <group>
             {/* Face — a single sheet with real cut-outs for every aperture /
@@ -2046,26 +2101,32 @@ function Panel({
                     </mesh>
                 ))}
 
-            {/* Push-through assembly. Two parts, rendered back-to-
-                front in the z-stack:
-                  1. Opal diffuser backing panel behind the face — the
-                     surface that letter pieces (+ counters) mount on,
-                     and the light-source diffuser visible through the
-                     keyline shoulder.
-                  2. The letter pieces themselves, extending forward
-                     through the keyline hole. */}
-            {face && pushThroughPieces.length > 0 && (
-                <>
+            {/* Shared opal diffuser backing — ONE sheet behind the face that
+                spans every piece glued to it: keyline push-through inserts AND
+                backlit apertures. It's the lit diffuser visible through both
+                the keyline shoulder and the backlit cut, so when a sign mixes
+                the two they sensibly share the same panel. Glows in the dark
+                view when keyline illumination is on or backlit pieces exist. */}
+            {face &&
+                (pushThroughPieces.length > 0 ||
+                    (backlightPieces?.length ?? 0) > 0) && (
                     <PushThroughBacking
                         face={face}
                         pieces={pushThroughPieces}
+                        backlightPieces={backlightPieces ?? []}
                         materialThicknessMm={T}
                         outlines={showOutlines}
                         night={night}
-                        lit={keylineLit}
-                        glowColor={keylineIllum?.color ?? '#ffffff'}
-                        glowIntensity={keylineIllum?.intensity ?? 1}
+                        lit={backingLit}
+                        glowColor={backingGlowColor}
+                        glowIntensity={backingGlowIntensity}
                     />
+                )}
+
+            {/* Push-through inserts (letters pressed through the keyline hole)
+                plus their retained counter islands. */}
+            {face && pushThroughPieces.length > 0 && (
+                <>
                     <PushThroughPieces
                         face={face}
                         pieces={pushThroughPieces}
@@ -2079,6 +2140,33 @@ function Panel({
                     {islandShapes.map((shape, i) => (
                         <mesh
                             key={`pt-island-${i}`}
+                            position={[0, 0, 0.5 * S]}>
+                            <shapeGeometry args={[shape, 48]} />
+                            <meshBasicMaterial
+                                color={panelColor}
+                                side={THREE.DoubleSide}
+                                polygonOffset
+                                polygonOffsetFactor={1}
+                                polygonOffsetUnits={1}
+                            />
+                            {showOutlines && (
+                                <Edges color={EDGE_COLOR} lineWidth={1} />
+                            )}
+                        </mesh>
+                    ))}
+                </>
+            )}
+
+            {/* Backlit retained counter islands — the inner counters stay on
+                the sign (panel-coloured) glued to the lit sheet, occluding the
+                glow so only the aperture itself lights up. No keyline offset,
+                no re-inserted acrylic — the cut artwork sits straight on the
+                opal, exactly like the keyline halo minus the shoulder. */}
+            {face && backlightIslandShapes.length > 0 && (
+                <>
+                    {backlightIslandShapes.map((shape, i) => (
+                        <mesh
+                            key={`bl-island-${i}`}
                             position={[0, 0, 0.5 * S]}>
                             <shapeGeometry args={[shape, 48]} />
                             <meshBasicMaterial
@@ -2151,6 +2239,7 @@ function Panel({
                                     faceThicknessMm={T}
                                     color={displayColor(piece.color, night)}
                                     outlines={showOutlines}
+                                    showFixings={showStandoffLocators}
                                     fixingMode={fixingMode}
                                     onFixingClick={onFixingClick}
                                 />

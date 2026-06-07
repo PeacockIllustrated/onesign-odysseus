@@ -781,7 +781,11 @@ export function usePanelDerivation(
     const apertureHoles = useMemo(() => {
         const out: FlatPath[] = [];
         for (let i = 0; i < placedClipByIndex.length; i++) {
-            if (effectiveMaterials[i]?.kind !== 'cut') continue;
+            // Backlit shapes are aperture-cut like plain cuts, and their inner
+            // counters stay on the sign too (glued to the lit opal behind), so
+            // they're retained islands on the cut layout just the same.
+            const k = effectiveMaterials[i]?.kind;
+            if (k !== 'cut' && k !== 'backlight') continue;
             const holes = holesByIndex[i] ?? [];
             for (const h of holes) {
                 if (h && h.closed && h.points.length >= 3) out.push(h);

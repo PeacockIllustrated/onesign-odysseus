@@ -1203,7 +1203,7 @@ export function VisualiserClient({
                                                     }
                                                 />
                                                 <DisplayRow
-                                                    label="Locators"
+                                                    label="Fixings"
                                                     on={showStandoffLocators}
                                                     setOn={
                                                         setShowStandoffLocators
