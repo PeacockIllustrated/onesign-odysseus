@@ -1101,43 +1101,99 @@ export function SvgDropzone() {
                                         </button>
                                     </div>
                                     {sel && (
-                                        <div className="mt-2 grid grid-cols-3 gap-1.5">
-                                            <NumField
-                                                label="X (mm)"
-                                                step={5}
-                                                value={Math.round(l.xMm)}
-                                                onChange={(n) =>
-                                                    updateArtworkLayer(l.id, {
-                                                        xMm: n,
-                                                    })
-                                                }
-                                            />
-                                            <NumField
-                                                label="Y (mm)"
-                                                step={5}
-                                                value={Math.round(l.yMm)}
-                                                onChange={(n) =>
-                                                    updateArtworkLayer(l.id, {
-                                                        yMm: n,
-                                                    })
-                                                }
-                                            />
-                                            <NumField
-                                                label="Scale %"
-                                                step={5}
-                                                value={Math.round(
-                                                    l.scale * 100,
-                                                )}
-                                                onChange={(n) =>
-                                                    updateArtworkLayer(l.id, {
-                                                        scale:
+                                        <>
+                                            <div className="mt-2 grid grid-cols-3 gap-1.5">
+                                                <NumField
+                                                    label="X (mm)"
+                                                    step={5}
+                                                    value={Math.round(l.xMm)}
+                                                    onChange={(n) =>
+                                                        updateArtworkLayer(
+                                                            l.id,
+                                                            { xMm: n },
+                                                        )
+                                                    }
+                                                />
+                                                <NumField
+                                                    label="Y (mm)"
+                                                    step={5}
+                                                    value={Math.round(l.yMm)}
+                                                    onChange={(n) =>
+                                                        updateArtworkLayer(
+                                                            l.id,
+                                                            { yMm: n },
+                                                        )
+                                                    }
+                                                />
+                                                <NumField
+                                                    label="Scale %"
+                                                    step={5}
+                                                    value={Math.round(
+                                                        l.scale * 100,
+                                                    )}
+                                                    onChange={(n) => {
+                                                        const newScale =
                                                             n > 0
                                                                 ? n / 100
-                                                                : 0.01,
+                                                                : 0.01;
+                                                        // Scale about the
+                                                        // layer's centre so it
+                                                        // grows / shrinks in
+                                                        // place instead of
+                                                        // drifting from the
+                                                        // top-left origin.
+                                                        const cx =
+                                                            l.xMm +
+                                                            (l.wMm * l.scale) /
+                                                                2;
+                                                        const cy =
+                                                            l.yMm +
+                                                            (l.hMm * l.scale) /
+                                                                2;
+                                                        updateArtworkLayer(
+                                                            l.id,
+                                                            {
+                                                                scale: newScale,
+                                                                xMm:
+                                                                    cx -
+                                                                    (l.wMm *
+                                                                        newScale) /
+                                                                        2,
+                                                                yMm:
+                                                                    cy -
+                                                                    (l.hMm *
+                                                                        newScale) /
+                                                                        2,
+                                                            },
+                                                        );
+                                                    }}
+                                                />
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    updateArtworkLayer(l.id, {
+                                                        xMm:
+                                                            params.panelWidthMm /
+                                                                2 -
+                                                            (l.wMm * l.scale) /
+                                                                2,
+                                                        yMm:
+                                                            params.panelHeightMm /
+                                                                2 -
+                                                            (l.hMm * l.scale) /
+                                                                2,
                                                     })
                                                 }
-                                            />
-                                        </div>
+                                                className="mt-1.5 flex min-h-[28px] w-full items-center justify-center gap-1 rounded-md border border-neutral-300 px-2 py-1 text-[10px] font-medium text-neutral-600 hover:bg-neutral-100"
+                                            >
+                                                <Crosshair
+                                                    size={11}
+                                                    aria-hidden
+                                                />
+                                                Centre on panel
+                                            </button>
+                                        </>
                                     )}
                                 </li>
                             );
@@ -1214,6 +1270,20 @@ export function SvgDropzone() {
                         face. */}
                     {!composite && (
                       <>
+                    <button
+                        type="button"
+                        onClick={() =>
+                            setPlacement({
+                                alignH: 'center',
+                                alignV: 'middle',
+                                nudgeXMm: 0,
+                                nudgeYMm: 0,
+                            })
+                        }
+                        className="flex min-h-[28px] w-full items-center justify-center gap-1 rounded-md border border-neutral-300 px-2 py-1 text-[10px] font-medium text-neutral-600 hover:bg-neutral-100"
+                    >
+                        <Crosshair size={11} aria-hidden /> Centre artwork
+                    </button>
                     <div className="grid grid-cols-2 gap-2">
                         <div>
                             <span className="text-[10px] text-neutral-500">
