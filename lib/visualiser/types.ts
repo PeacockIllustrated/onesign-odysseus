@@ -250,6 +250,15 @@ const PanelCoreSchema = z.object({
         })
         .optional(),
     /**
+     * Save material on the opal backing: instead of ONE sheet spanning every
+     * illuminated piece (push-through + backlit), emit a separate sheet per
+     * cluster of pieces — pieces that sit close together regroup onto one
+     * sheet, isolated pieces get their own, and the gaps (e.g. a stood-off
+     * letter between two backlit pieces) carry no opal. Off → one sheet
+     * (default).
+     */
+    splitBacking: z.boolean().optional(),
+    /**
      * Artwork layers — multiple independently-placed pieces of artwork
      * on one sign (an icon + a wordmark uploaded separately, say). Each
      * layer carries its own SVG (PNG/JPG are traced to SVG before

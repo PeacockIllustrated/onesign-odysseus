@@ -1319,11 +1319,18 @@ function BacklightGlow({
  * still discernible from the front view through the keyline hole —
  * which is exactly what happens with backlit opal acrylic.
  */
+// Padding around each backing sheet (mm). Doubles as the merge tolerance
+// when splitting: pieces whose padded sheets would touch/overlap regroup
+// onto one sheet, so genuinely-close pieces don't get pointlessly separate
+// panels while isolated pieces (across a stood-off gap) split apart.
+const BACKING_PAD_MM = 12;
+
 function PushThroughBacking({
     face,
     pieces,
     backlightPieces = [],
     materialThicknessMm,
+    splitToSave = false,
     outlines = true,
     night = false,
     lit = false,
@@ -1342,6 +1349,12 @@ function PushThroughBacking({
      * hatched z-fighting artifact across both surfaces.
      */
     materialThicknessMm: number;
+    /**
+     * Save material: emit a separate sheet per cluster of pieces instead of
+     * one sheet spanning them all. Close pieces regroup onto one sheet; the
+     * gaps between far-apart pieces carry no opal.
+     */
+    splitToSave?: boolean;
     outlines?: boolean;
     /** Dark illumination view — darken the unlit opal. */
     night?: boolean;
@@ -1350,98 +1363,139 @@ function PushThroughBacking({
     glowColor?: string;
     glowIntensity?: number;
 }) {
-    const layout = useMemo(() => {
-        // One opal sheet spans every piece glued to it — keyline
-        // push-through inserts AND backlit apertures share the same panel.
+    const layouts = useMemo(() => {
+        // Every piece glued to the opal — keyline push-through inserts AND
+        // backlit apertures share the same physical sheet(s).
         const spanning: Array<{ path: FlatPath; holes?: FlatPath[] }> = [
             ...pieces,
             ...backlightPieces,
         ];
-        if (spanning.length === 0) return null;
-        let minX = Infinity;
-        let minY = Infinity;
-        let maxX = -Infinity;
-        let maxY = -Infinity;
-        for (const piece of spanning) {
-            for (const [x, y] of piece.path.points) {
-                if (x < minX) minX = x;
-                if (y < minY) minY = y;
-                if (x > maxX) maxX = x;
-                if (y > maxY) maxY = y;
-            }
-            for (const hole of piece.holes ?? []) {
-                for (const [x, y] of hole.points) {
+        if (spanning.length === 0) return [];
+
+        type Box = { minX: number; minY: number; maxX: number; maxY: number };
+        const boxes: Box[] = spanning.map((piece) => {
+            let minX = Infinity;
+            let minY = Infinity;
+            let maxX = -Infinity;
+            let maxY = -Infinity;
+            const eat = (pts: Array<[number, number]>) => {
+                for (const [x, y] of pts) {
                     if (x < minX) minX = x;
                     if (y < minY) minY = y;
                     if (x > maxX) maxX = x;
                     if (y > maxY) maxY = y;
                 }
+            };
+            eat(piece.path.points);
+            for (const hole of piece.holes ?? []) eat(hole.points);
+            return { minX, minY, maxX, maxY };
+        });
+
+        // Union-find: one cluster when not saving material; otherwise merge
+        // only pieces whose padded sheets would overlap (close together).
+        const n = boxes.length;
+        const parent = Array.from({ length: n }, (_, i) => i);
+        const find = (a: number): number => {
+            while (parent[a] !== a) {
+                parent[a] = parent[parent[a]];
+                a = parent[a];
+            }
+            return a;
+        };
+        const unite = (a: number, b: number) => {
+            const ra = find(a);
+            const rb = find(b);
+            if (ra !== rb) parent[ra] = rb;
+        };
+        const p = BACKING_PAD_MM;
+        if (splitToSave) {
+            for (let i = 0; i < n; i++) {
+                for (let j = i + 1; j < n; j++) {
+                    const a = boxes[i];
+                    const b = boxes[j];
+                    const nearX =
+                        a.minX - p <= b.maxX + p && b.minX - p <= a.maxX + p;
+                    const nearY =
+                        a.minY - p <= b.maxY + p && b.minY - p <= a.maxY + p;
+                    if (nearX && nearY) unite(i, j);
+                }
+            }
+        } else {
+            for (let i = 1; i < n; i++) unite(0, i);
+        }
+
+        const clusters = new Map<number, Box>();
+        for (let i = 0; i < n; i++) {
+            const r = find(i);
+            const b = boxes[i];
+            const c = clusters.get(r);
+            if (!c) clusters.set(r, { ...b });
+            else {
+                c.minX = Math.min(c.minX, b.minX);
+                c.minY = Math.min(c.minY, b.minY);
+                c.maxX = Math.max(c.maxX, b.maxX);
+                c.maxY = Math.max(c.maxY, b.maxY);
             }
         }
-        // Tight padding so the backing reads as a panel without
-        // extending into territory occupied by standoff fixings,
-        // dimensions, or other panel hardware nearby.
-        const pad = 12;
-        const wMm = maxX - minX + pad * 2;
-        const hMm = maxY - minY + pad * 2;
-        const cxMm = (minX + maxX) / 2;
-        const cyMm = (minY + maxY) / 2;
-        return { wMm, hMm, cxMm, cyMm };
-    }, [pieces, backlightPieces]);
+        return [...clusters.values()].map((c) => ({
+            wMm: c.maxX - c.minX + p * 2,
+            hMm: c.maxY - c.minY + p * 2,
+            cxMm: (c.minX + c.maxX) / 2,
+            cyMm: (c.minY + c.maxY) / 2,
+        }));
+    }, [pieces, backlightPieces, splitToSave]);
 
-    if (!layout) return null;
+    if (layouts.length === 0) return null;
 
     const BACKING_THICKNESS_MM = 5;
-    const cx = (layout.cxMm - face.xMm - face.wMm / 2) * S;
-    const cy = (face.yMm + face.hMm / 2 - layout.cyMm) * S;
     // Backing front face sits flush against the back of the face panel
-    // (z = -materialThicknessMm). Centre Z is half the backing
-    // thickness further back.
-    const cz =
-        (-materialThicknessMm - BACKING_THICKNESS_MM / 2) * S;
-
-    const boxArgs: [number, number, number] = [
-        layout.wMm * S,
-        layout.hMm * S,
-        BACKING_THICKNESS_MM * S,
-    ];
-
-    // Lit: opal glows. meshStandardMaterial renders its emissive
-    // colour regardless of scene lighting (there are no lights), so a
-    // black base + emissive glow reads as a self-lit diffuser. The
-    // halo falls out of the existing geometry — the keyline gap in the
-    // dark face panel reveals this glowing panel behind. toneMapped is
-    // off so a bright colour isn't desaturated by tone mapping. Opaque
-    // so the halo ring stays crisp.
-    if (lit) {
-        return (
-            <mesh position={[cx, cy, cz]}>
-                <boxGeometry args={boxArgs} />
-                <meshStandardMaterial
-                    color="#000000"
-                    emissive={glowColor}
-                    emissiveIntensity={Math.max(0, glowIntensity)}
-                    toneMapped={false}
-                />
-            </mesh>
-        );
-    }
+    // (z = -materialThicknessMm). Centre Z is half the backing thickness
+    // further back.
+    const cz = (-materialThicknessMm - BACKING_THICKNESS_MM / 2) * S;
 
     return (
-        <mesh position={[cx, cy, cz]}>
-            <boxGeometry args={boxArgs} />
-            <meshBasicMaterial
-                // Unlit opal: a dim sheet in the dark view, the usual
-                // translucent opal in daylight.
-                color={night ? shadeHex('#f5f5f0', 0.28) : '#f5f5f0'}
-                transparent={!night}
-                opacity={night ? 1 : 0.78}
-                polygonOffset
-                polygonOffsetFactor={1}
-                polygonOffsetUnits={1}
-            />
-            {outlines && <Edges color={EDGE_COLOR} lineWidth={1} />}
-        </mesh>
+        <group>
+            {layouts.map((layout, idx) => {
+                const cx = (layout.cxMm - face.xMm - face.wMm / 2) * S;
+                const cy = (face.yMm + face.hMm / 2 - layout.cyMm) * S;
+                const boxArgs: [number, number, number] = [
+                    layout.wMm * S,
+                    layout.hMm * S,
+                    BACKING_THICKNESS_MM * S,
+                ];
+                // Lit: opal glows. meshStandardMaterial renders its emissive
+                // colour regardless of scene lighting, so a black base +
+                // emissive reads as a self-lit diffuser; the halo falls out of
+                // the keyline gap in the dark face panel. toneMapped off so a
+                // bright colour isn't desaturated.
+                return lit ? (
+                    <mesh key={idx} position={[cx, cy, cz]}>
+                        <boxGeometry args={boxArgs} />
+                        <meshStandardMaterial
+                            color="#000000"
+                            emissive={glowColor}
+                            emissiveIntensity={Math.max(0, glowIntensity)}
+                            toneMapped={false}
+                        />
+                    </mesh>
+                ) : (
+                    <mesh key={idx} position={[cx, cy, cz]}>
+                        <boxGeometry args={boxArgs} />
+                        <meshBasicMaterial
+                            // Unlit opal: a dim sheet in the dark view, the
+                            // usual translucent opal in daylight.
+                            color={night ? shadeHex('#f5f5f0', 0.28) : '#f5f5f0'}
+                            transparent={!night}
+                            opacity={night ? 1 : 0.78}
+                            polygonOffset
+                            polygonOffsetFactor={1}
+                            polygonOffsetUnits={1}
+                        />
+                        {outlines && <Edges color={EDGE_COLOR} lineWidth={1} />}
+                    </mesh>
+                );
+            })}
+        </group>
     );
 }
 
@@ -2117,6 +2171,7 @@ function Panel({
                         pieces={pushThroughPieces}
                         backlightPieces={backlightPieces ?? []}
                         materialThicknessMm={T}
+                        splitToSave={params.splitBacking ?? false}
                         outlines={showOutlines}
                         night={night}
                         lit={backingLit}

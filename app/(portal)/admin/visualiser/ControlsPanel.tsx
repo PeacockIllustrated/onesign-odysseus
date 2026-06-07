@@ -589,6 +589,49 @@ export function ControlsPanel() {
                         </div>
                     );
                 })()}
+
+                {/* Save material — split the shared opal backing into a sheet
+                    per cluster of illuminated pieces. Only relevant when the
+                    sign actually has backing (backlit or push-through). */}
+                {(params.materialGroups ?? []).some(
+                    (g) =>
+                        g.material === 'backlight' ||
+                        g.material === 'pushthrough',
+                ) && (
+                    <div className="space-y-2 border-t border-neutral-100 pt-3">
+                        <button
+                            type="button"
+                            onClick={() =>
+                                setParam(
+                                    'splitBacking',
+                                    !(params.splitBacking ?? false),
+                                )
+                            }
+                            aria-pressed={params.splitBacking ?? false}
+                            className={`flex min-h-[36px] w-full items-center justify-between rounded-md px-3 py-2 text-xs font-medium transition-colors ${
+                                params.splitBacking
+                                    ? 'text-white'
+                                    : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                            }`}
+                            style={
+                                params.splitBacking
+                                    ? { background: ACCENT }
+                                    : undefined
+                            }
+                        >
+                            <span>Save material</span>
+                            <span className="text-[10px] uppercase tracking-wide">
+                                {params.splitBacking ? 'On' : 'Off'}
+                            </span>
+                        </button>
+                        <p className="text-[10px] text-neutral-400">
+                            Split the opal backing into a separate sheet per
+                            piece. Pieces sitting close together regroup onto
+                            one sheet; gaps — like a stood-off letter between
+                            two backlit pieces — carry no opal.
+                        </p>
+                    </div>
+                )}
             </Section>
         </div>
     );
