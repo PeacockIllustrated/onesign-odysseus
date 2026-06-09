@@ -5,18 +5,15 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
     ArrowLeft,
-    Plus,
     Loader2,
-    Save,
     FileText,
     CheckCircle2,
-    RotateCcw,
     Trash2,
     Info,
+    Check,
 } from 'lucide-react';
 import {
     updateSurvey,
-    saveSurveyItems,
     setSurveyStatus,
     deleteSurvey,
 } from '@/lib/site-surveys/actions';
@@ -28,205 +25,135 @@ import {
     type SurveyPhotoWithUrl,
     type SurveyStatus,
 } from '@/lib/site-surveys/types';
-import { ItemEditor } from './ItemEditor';
-import { PhotoGrid } from './PhotoGrid';
+import { SurveyPhotos } from './SurveyPhotos';
 import {
-    blankItem,
     clearSurveyDraft,
-    itemToInput,
     readSurveyDraft,
-    rowToEditItem,
     writeSurveyDraft,
-    type EditItem,
 } from './editor-types';
-import {
-    panelCls,
-    labelCls,
-    inputCls,
-    sectionTitleCls,
-    checkboxCls,
-    primaryBtnCls,
-    secondaryBtnCls,
-} from '../ui';
-
-interface HeaderState {
-    title: string;
-    orgId: string;
-    clientName: string;
-    siteId: string;
-    siteAddress: string;
-    contactId: string;
-    surveyDate: string;
-}
+import { panelCls, sectionTitleCls, secondaryBtnCls } from '../ui';
 
 interface Props {
     detail: SurveyDetail;
-    orgs: { id: string; name: string }[];
-    contacts: { id: string; org_id: string; first_name: string; last_name: string }[];
-    sites: { id: string; org_id: string; name: string }[];
+    // accepted for symmetry with the route loader; unused in the simple flow
+    orgs?: unknown;
+    contacts?: unknown;
+    sites?: unknown;
 }
 
-function StatusBadge({ status }: { status: SurveyStatus }) {
-    const done = status === 'completed';
-    return (
-        <span
-            className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
-                done ? 'bg-[#e8f0f3] text-[#3a5f6a]' : 'bg-neutral-100 text-neutral-600'
-            }`}
-        >
-            {SURVEY_STATUS_LABELS[status]}
-        </span>
-    );
-}
+const bigInput =
+    'w-full rounded-lg border border-neutral-300 px-3.5 py-3 text-base transition-colors focus:border-[#4e7e8c] focus:outline-none focus:ring-2 focus:ring-[#e8f0f3]';
 
-function buildInitial(detail: SurveyDetail): {
-    header: HeaderState;
-    conditions: SurveyConditions;
-    notes: string;
-    items: EditItem[];
-} {
-    const s = detail.survey;
-    return {
-        header: {
-            title: s.title ?? '',
-            orgId: s.org_id ?? '',
-            clientName: s.client_name ?? '',
-            siteId: s.site_id ?? '',
-            siteAddress: s.site_address ?? '',
-            contactId: s.contact_id ?? '',
-            surveyDate: s.survey_date,
-        },
-        conditions: s.conditions_json ?? {},
-        notes: s.notes ?? '',
-        items: detail.items.map(rowToEditItem),
-    };
-}
+type SaveState = 'idle' | 'saving' | 'saved';
 
-export function SurveyClient({ detail, orgs, contacts, sites }: Props) {
+export function SurveyClient({ detail }: Props) {
     const router = useRouter();
     const id = detail.survey.id;
-    const serverInitial = useMemo(() => buildInitial(detail), [detail]);
 
-    const [header, setHeader] = useState<HeaderState>(serverInitial.header);
-    const [conditions, setConditions] = useState<SurveyConditions>(
-        serverInitial.conditions,
+    const initial = useMemo(
+        () => ({
+            client: detail.survey.client_name ?? '',
+            job: detail.survey.title ?? '',
+            date: detail.survey.survey_date,
+            conditions: (detail.survey.conditions_json ?? {}) as SurveyConditions,
+            notes: detail.survey.notes ?? '',
+        }),
+        [detail],
     );
-    const [notes, setNotes] = useState(serverInitial.notes);
-    const [items, setItems] = useState<EditItem[]>(serverInitial.items);
+
+    const [client, setClient] = useState(initial.client);
+    const [job, setJob] = useState(initial.job);
+    const [surveyDate, setSurveyDate] = useState(initial.date);
+    const [conditions, setConditions] = useState<SurveyConditions>(
+        initial.conditions,
+    );
+    const [notes, setNotes] = useState(initial.notes);
     const [photos, setPhotos] = useState<SurveyPhotoWithUrl[]>(detail.photos);
     const [status, setStatus] = useState<SurveyStatus>(detail.survey.status);
 
     const [draftRestored, setDraftRestored] = useState(false);
-    const [savedAt, setSavedAt] = useState<string | null>(null);
+    const [saveState, setSaveState] = useState<SaveState>('idle');
     const [error, setError] = useState<string | null>(null);
-    const [saving, startSave] = useTransition();
-    const [statusPending, startStatus] = useTransition();
+    const [busy, startBusy] = useTransition();
 
-    // Restore a local draft AFTER mount (never in the initializer — that would
-    // mismatch the SSR'd HTML). This is the "don't lose work on-site" guarantee.
+    // Restore an on-device draft after mount (hydration-safe).
     useEffect(() => {
         const d = readSurveyDraft(id);
         if (!d) return;
-        /* eslint-disable react-hooks/set-state-in-effect --
-           one-time, hydration-safe restore of the on-device draft: localStorage
-           is unavailable during SSR, so it must be read after mount, not in the
-           state initializer (that would cause a hydration mismatch). */
-        setHeader(d.header);
+        /* eslint-disable react-hooks/set-state-in-effect -- localStorage is
+           unavailable during SSR; restoring here avoids a hydration mismatch. */
+        setClient(d.client);
+        setJob(d.job);
+        setSurveyDate(d.date);
         setConditions(d.conditions);
         setNotes(d.notes);
-        setItems(d.items);
         setDraftRestored(true);
         /* eslint-enable react-hooks/set-state-in-effect */
     }, [id]);
 
-    // Autosave the typed state to the device (photos are server-side already).
+    // Silent auto-save: write the device draft immediately, persist to the
+    // server debounced. No "Save" button to forget.
     const firstRun = useRef(true);
+    const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
     useEffect(() => {
         if (firstRun.current) {
             firstRun.current = false;
             return;
         }
-        const t = setTimeout(
-            () => writeSurveyDraft(id, { header, conditions, notes, items }),
-            500,
-        );
-        return () => clearTimeout(t);
-    }, [id, header, conditions, notes, items]);
-
-    const orgContacts = header.orgId
-        ? contacts.filter((c) => c.org_id === header.orgId)
-        : [];
-    const orgSites = header.orgId
-        ? sites.filter((s) => s.org_id === header.orgId)
-        : [];
-
-    const generalPhotos = useMemo(
-        () => photos.filter((p) => !p.item_id),
-        [photos],
-    );
-
-    const patchHeader = (patch: Partial<HeaderState>) =>
-        setHeader((h) => ({ ...h, ...patch }));
-    const patchCondition = (patch: Partial<SurveyConditions>) =>
-        setConditions((c) => ({ ...c, ...patch }));
-
-    const updateItem = (key: string, patch: Partial<EditItem>) =>
-        setItems((prev) => prev.map((it) => (it.key === key ? { ...it, ...patch } : it)));
-    const removeItem = (key: string) =>
-        setItems((prev) => prev.filter((it) => it.key !== key));
-    const addItem = () => setItems((prev) => [...prev, blankItem()]);
-
-    const addPhoto = (p: SurveyPhotoWithUrl) => setPhotos((prev) => [...prev, p]);
-    const updatePhotoState = (p: SurveyPhotoWithUrl) =>
-        setPhotos((prev) => prev.map((x) => (x.id === p.id ? p : x)));
-    const deletePhotoState = (pid: string) =>
-        setPhotos((prev) => prev.filter((x) => x.id !== pid));
-
-    function handleSave() {
-        setError(null);
-        startSave(async () => {
-            const headerRes = await updateSurvey(id, {
-                title: header.title,
-                org_id: header.orgId || null,
-                client_name: header.clientName,
-                site_id: header.siteId || null,
-                site_address: header.siteAddress,
-                contact_id: header.contactId || null,
-                survey_date: header.surveyDate,
+        writeSurveyDraft(id, { client, job, date: surveyDate, conditions, notes });
+        // "Saving…" is UI feedback for the debounced device/server write below.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setSaveState('saving');
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = setTimeout(async () => {
+            const res = await updateSurvey(id, {
+                client_name: client,
+                title: job,
+                survey_date: surveyDate,
                 conditions,
                 notes,
             });
-            if (!headerRes.ok) {
-                setError(headerRes.error);
-                return;
+            if (res.ok) {
+                clearSurveyDraft(id);
+                setDraftRestored(false);
+                setSaveState('saved');
+            } else {
+                setError(res.error);
+                setSaveState('idle');
             }
+        }, 900);
+        return () => {
+            if (timer.current) clearTimeout(timer.current);
+        };
+    }, [id, client, job, surveyDate, conditions, notes]);
 
-            const itemsRes = await saveSurveyItems(
-                id,
-                items.map((it, i) => itemToInput(it, i)),
-            );
-            if (!itemsRes.ok) {
-                setError(itemsRes.error);
-                return;
-            }
+    const toggleCondition = (key: keyof SurveyConditions) =>
+        setConditions((c) => ({ ...c, [key]: !c[key] }));
 
-            // Reconcile: rows now carry DB ids (so per-item photos can attach).
-            setItems(itemsRes.data.map(rowToEditItem));
-            clearSurveyDraft(id);
-            setDraftRestored(false);
-            firstRun.current = true; // don't immediately re-persist a fresh draft
-            setSavedAt(new Date().toLocaleTimeString());
-        });
-    }
+    const addPhoto = (p: SurveyPhotoWithUrl) => setPhotos((prev) => [...prev, p]);
+    const updatePhoto = (p: SurveyPhotoWithUrl) =>
+        setPhotos((prev) => prev.map((x) => (x.id === p.id ? p : x)));
+    const removePhoto = (pid: string) =>
+        setPhotos((prev) => prev.filter((x) => x.id !== pid));
 
-    function toggleStatus() {
+    function finish() {
+        if (timer.current) clearTimeout(timer.current);
         const next: SurveyStatus = status === 'completed' ? 'draft' : 'completed';
-        startStatus(async () => {
+        startBusy(async () => {
+            await updateSurvey(id, {
+                client_name: client,
+                title: job,
+                survey_date: surveyDate,
+                conditions,
+                notes,
+            });
             const res = await setSurveyStatus(id, next);
             if (!res.ok) {
                 setError(res.error);
                 return;
             }
+            clearSurveyDraft(id);
+            setSaveState('saved');
             setStatus(next);
         });
     }
@@ -238,7 +165,7 @@ export function SurveyClient({ detail, orgs, contacts, sites }: Props) {
             )
         )
             return;
-        startSave(async () => {
+        startBusy(async () => {
             const res = await deleteSurvey(id);
             if (!res.ok) {
                 setError(res.error);
@@ -249,20 +176,10 @@ export function SurveyClient({ detail, orgs, contacts, sites }: Props) {
         });
     }
 
-    function discardDraft() {
-        clearSurveyDraft(id);
-        const init = serverInitial;
-        setHeader(init.header);
-        setConditions(init.conditions);
-        setNotes(init.notes);
-        setItems(init.items);
-        setDraftRestored(false);
-    }
-
     return (
-        <div className="mx-auto max-w-5xl p-4 md:p-6">
+        <div className="mx-auto max-w-2xl p-4 md:p-6">
             {/* Top bar */}
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="mb-4 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                     <Link
                         href="/admin/site-surveys"
@@ -270,289 +187,175 @@ export function SurveyClient({ detail, orgs, contacts, sites }: Props) {
                     >
                         <ArrowLeft size={18} />
                     </Link>
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <h1 className="font-mono text-lg font-bold tracking-tight text-[#3a5f6a]">
-                                {detail.survey.reference}
-                            </h1>
-                            <StatusBadge status={status} />
-                        </div>
-                        {header.title && (
-                            <p className="text-sm text-neutral-500">{header.title}</p>
-                        )}
+                    <div className="flex items-center gap-2">
+                        <span className="font-mono text-sm font-bold text-[#3a5f6a]">
+                            {detail.survey.reference}
+                        </span>
+                        <span
+                            className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                                status === 'completed'
+                                    ? 'bg-[#e8f0f3] text-[#3a5f6a]'
+                                    : 'bg-neutral-100 text-neutral-600'
+                            }`}
+                        >
+                            {SURVEY_STATUS_LABELS[status]}
+                        </span>
                     </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                    <Link
-                        href={`/admin/site-surveys/${id}/pack`}
-                        target="_blank"
-                        className={secondaryBtnCls}
-                    >
-                        <FileText size={15} /> Survey pack
-                    </Link>
-                    <button
-                        onClick={toggleStatus}
-                        disabled={statusPending}
-                        className={secondaryBtnCls}
-                    >
-                        {statusPending ? (
-                            <Loader2 size={15} className="animate-spin" />
-                        ) : (
-                            <CheckCircle2 size={15} />
-                        )}
-                        {status === 'completed' ? 'Reopen' : 'Mark complete'}
-                    </button>
-                    <button
-                        onClick={handleSave}
-                        disabled={saving}
-                        className={primaryBtnCls}
-                    >
-                        {saving ? (
-                            <Loader2 size={15} className="animate-spin" />
-                        ) : (
-                            <Save size={15} />
-                        )}
-                        Save
-                    </button>
-                </div>
+                <span className="text-xs text-neutral-400">
+                    {saveState === 'saving'
+                        ? 'Saving…'
+                        : saveState === 'saved'
+                          ? 'Saved ✓'
+                          : ''}
+                </span>
             </div>
 
             {draftRestored && (
-                <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                    <span className="inline-flex items-center gap-2">
-                        <Info size={15} /> Restored unsaved changes from this device.
-                    </span>
-                    <button
-                        onClick={discardDraft}
-                        className="inline-flex items-center gap-1 text-xs font-semibold hover:underline"
-                    >
-                        <RotateCcw size={13} /> discard
-                    </button>
+                <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    <Info size={15} /> Picked up where you left off on this device.
                 </div>
             )}
-
             {error && (
                 <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                     {error}
                 </div>
             )}
-            {savedAt && !error && (
-                <p className="mb-4 text-xs text-neutral-400">Saved at {savedAt}</p>
-            )}
 
-            <div className="space-y-4">
-                {/* Header / client */}
-                <div className={`${panelCls} space-y-3 p-5`}>
-                    <h3 className={sectionTitleCls}>Survey details</h3>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div>
-                            <label className={labelCls}>Title</label>
-                            <input
-                                value={header.title}
-                                onChange={(e) => patchHeader({ title: e.target.value })}
-                                className={inputCls}
-                                placeholder="e.g. Frontage signage survey"
-                            />
-                        </div>
-                        <div>
-                            <label className={labelCls}>Survey date</label>
-                            <input
-                                type="date"
-                                value={header.surveyDate}
-                                onChange={(e) => patchHeader({ surveyDate: e.target.value })}
-                                className={inputCls}
-                            />
-                        </div>
-                        <div>
-                            <label className={labelCls}>Client (existing)</label>
-                            <select
-                                value={header.orgId}
-                                onChange={(e) =>
-                                    patchHeader({
-                                        orgId: e.target.value,
-                                        siteId: '',
-                                        contactId: '',
-                                    })
-                                }
-                                className={inputCls}
-                            >
-                                <option value="">— none / prospect —</option>
-                                {orgs.map((o) => (
-                                    <option key={o.id} value={o.id}>
-                                        {o.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label className={labelCls}>
-                                Client name {header.orgId ? '(override)' : '(if not listed)'}
-                            </label>
-                            <input
-                                value={header.clientName}
-                                onChange={(e) => patchHeader({ clientName: e.target.value })}
-                                className={inputCls}
-                                placeholder="e.g. Slick Construction"
-                            />
-                        </div>
-                        {header.orgId && (
-                            <>
-                                <div>
-                                    <label className={labelCls}>Site</label>
-                                    <select
-                                        value={header.siteId}
-                                        onChange={(e) => patchHeader({ siteId: e.target.value })}
-                                        className={inputCls}
-                                    >
-                                        <option value="">— none —</option>
-                                        {orgSites.map((s) => (
-                                            <option key={s.id} value={s.id}>
-                                                {s.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className={labelCls}>Contact</label>
-                                    <select
-                                        value={header.contactId}
-                                        onChange={(e) => patchHeader({ contactId: e.target.value })}
-                                        className={inputCls}
-                                    >
-                                        <option value="">— none —</option>
-                                        {orgContacts.map((c) => (
-                                            <option key={c.id} value={c.id}>
-                                                {c.first_name} {c.last_name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </>
-                        )}
-                        <div className="sm:col-span-2">
-                            <label className={labelCls}>Site address</label>
-                            <input
-                                value={header.siteAddress}
-                                onChange={(e) => patchHeader({ siteAddress: e.target.value })}
-                                className={inputCls}
-                                placeholder="e.g. 14 High St, Gateshead NE8"
-                            />
-                        </div>
+            <div className="space-y-5">
+                {/* Who & what */}
+                <div className={`${panelCls} space-y-3 p-4`}>
+                    <div>
+                        <label className="mb-1 block text-sm font-semibold text-neutral-700">
+                            Who is this for?
+                        </label>
+                        <input
+                            value={client}
+                            onChange={(e) => setClient(e.target.value)}
+                            className={bigInput}
+                            placeholder="Client name, e.g. Slick Construction"
+                        />
+                    </div>
+                    <div>
+                        <label className="mb-1 block text-sm font-semibold text-neutral-700">
+                            What’s the job?
+                        </label>
+                        <input
+                            value={job}
+                            onChange={(e) => setJob(e.target.value)}
+                            className={bigInput}
+                            placeholder="e.g. Shop frontage signage"
+                        />
+                    </div>
+                    <div>
+                        <label className="mb-1 block text-sm font-semibold text-neutral-700">
+                            Date
+                        </label>
+                        <input
+                            type="date"
+                            value={surveyDate}
+                            onChange={(e) => setSurveyDate(e.target.value)}
+                            className={bigInput}
+                        />
                     </div>
                 </div>
 
-                {/* Access & build conditions */}
-                <div className={`${panelCls} space-y-3 p-5`}>
-                    <h3 className={sectionTitleCls}>Access &amp; build conditions</h3>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        {CONDITION_FLAGS.map(({ key, label }) => (
-                            <label
-                                key={key}
-                                className="inline-flex items-center gap-2 text-sm text-neutral-700"
-                            >
-                                <input
-                                    type="checkbox"
-                                    checked={!!conditions[key]}
-                                    onChange={(e) =>
-                                        patchCondition({ [key]: e.target.checked })
-                                    }
-                                    className={checkboxCls}
-                                />
-                                {label}
-                            </label>
-                        ))}
-                    </div>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div>
-                            <label className={labelCls}>Access notes</label>
-                            <textarea
-                                value={conditions.access_notes ?? ''}
-                                onChange={(e) => patchCondition({ access_notes: e.target.value })}
-                                rows={2}
-                                className={inputCls}
-                                placeholder="height, obstructions, working hours…"
-                            />
-                        </div>
-                        <div>
-                            <label className={labelCls}>Parking / loading</label>
-                            <textarea
-                                value={conditions.parking_notes ?? ''}
-                                onChange={(e) => patchCondition({ parking_notes: e.target.value })}
-                                rows={2}
-                                className={inputCls}
-                                placeholder="where the van/MEWP can go"
-                            />
-                        </div>
-                    </div>
+                {/* How it works */}
+                <div className="rounded-lg border border-[#b8d0d8] bg-[#e8f0f3] px-4 py-3 text-sm text-[#2f4d56]">
+                    <p className="mb-1 font-semibold">How to do this survey</p>
+                    <ol className="list-decimal space-y-0.5 pl-5">
+                        <li>Take a photo of each sign or part.</li>
+                        <li>Draw the sizes on the photo and type the width × height.</li>
+                        <li>Tick anything special and add a note.</li>
+                        <li>Tap <strong>Finish survey</strong>.</li>
+                    </ol>
                 </div>
 
-                {/* Items */}
-                <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-bold tracking-tight text-neutral-900">
-                            Measured items ({items.length})
-                        </h3>
-                        <button onClick={addItem} className={secondaryBtnCls}>
-                            <Plus size={14} /> Add item
-                        </button>
+                {/* Photos */}
+                <div>
+                    <div className={`mb-2 ${sectionTitleCls}`}>
+                        Photos &amp; measurements
                     </div>
-                    {items.length === 0 ? (
-                        <div className={`${panelCls} p-5`}>
-                            <p className="py-6 text-center text-sm text-neutral-500">
-                                No items yet — add the signs / parts you measured.
-                            </p>
-                        </div>
-                    ) : (
-                        items.map((it, i) => (
-                            <ItemEditor
-                                key={it.key}
-                                item={it}
-                                index={i}
-                                surveyId={id}
-                                photos={photos.filter((p) => p.item_id === it.id)}
-                                onChange={(patch) => updateItem(it.key, patch)}
-                                onRemove={() => removeItem(it.key)}
-                                onAddPhoto={addPhoto}
-                                onUpdatePhoto={updatePhotoState}
-                                onDeletePhoto={deletePhotoState}
-                            />
-                        ))
-                    )}
-                </div>
-
-                {/* General photos */}
-                <div className={`${panelCls} space-y-2 p-5`}>
-                    <h3 className={sectionTitleCls}>General site photos</h3>
-                    <PhotoGrid
+                    <SurveyPhotos
                         surveyId={id}
-                        itemId={null}
-                        photos={generalPhotos}
+                        photos={photos}
                         onAdd={addPhoto}
-                        onUpdate={updatePhotoState}
-                        onDelete={deletePhotoState}
+                        onUpdate={updatePhoto}
+                        onDelete={removePhoto}
                     />
                 </div>
 
-                {/* Survey notes */}
-                <div className={`${panelCls} space-y-2 p-5`}>
-                    <h3 className={sectionTitleCls}>Survey notes</h3>
+                {/* Anything special */}
+                <div>
+                    <div className={`mb-2 ${sectionTitleCls}`}>
+                        Anything special? (tap any that apply)
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {CONDITION_FLAGS.map(({ key, label }) => {
+                            const on = !!conditions[key];
+                            return (
+                                <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => toggleCondition(key)}
+                                    className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold transition-colors ${
+                                        on
+                                            ? 'bg-[#4e7e8c] text-white shadow-sm'
+                                            : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                                    }`}
+                                >
+                                    {on && <Check size={15} />}
+                                    {label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Notes */}
+                <div>
+                    <div className={`mb-2 ${sectionTitleCls}`}>
+                        Notes for the office (optional)
+                    </div>
                     <textarea
                         value={notes}
                         onChange={(e) => setNotes(e.target.value)}
                         rows={3}
-                        className={inputCls}
-                        placeholder="overall observations, anything else the designer/estimator needs"
+                        className={bigInput}
+                        placeholder="Anything else the designer or estimator should know"
                     />
                 </div>
 
-                {/* Danger zone */}
-                <div className="pt-2">
+                {/* Actions */}
+                <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center">
+                    <button
+                        onClick={finish}
+                        disabled={busy}
+                        className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#4e7e8c] px-4 py-3.5 text-base font-semibold text-white shadow-sm transition-colors hover:bg-[#3a5f6a] disabled:opacity-60"
+                    >
+                        {busy ? (
+                            <Loader2 size={18} className="animate-spin" />
+                        ) : (
+                            <CheckCircle2 size={18} />
+                        )}
+                        {status === 'completed' ? 'Re-open survey' : 'Finish survey'}
+                    </button>
+                    <Link
+                        href={`/admin/site-surveys/${id}/pack`}
+                        target="_blank"
+                        className={`${secondaryBtnCls} justify-center px-4 py-3.5`}
+                    >
+                        <FileText size={16} /> Survey pack
+                    </Link>
+                </div>
+
+                <div className="pt-2 text-center">
                     <button
                         onClick={handleDelete}
-                        disabled={saving}
-                        className="inline-flex items-center gap-2 text-sm font-medium text-red-600 hover:text-red-700"
+                        disabled={busy}
+                        className="inline-flex items-center gap-1.5 text-xs font-medium text-neutral-400 hover:text-red-600"
                     >
-                        <Trash2 size={15} /> delete survey
+                        <Trash2 size={13} /> delete this survey
                     </button>
                 </div>
             </div>

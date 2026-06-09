@@ -302,6 +302,8 @@ export async function updatePhoto(
     if (d.caption !== undefined) updates.caption = d.caption;
     if (d.annotations !== undefined) updates.annotations_json = d.annotations;
     if (d.item_id !== undefined) updates.item_id = d.item_id ?? null;
+    if (d.sign_width_mm !== undefined) updates.sign_width_mm = d.sign_width_mm;
+    if (d.sign_height_mm !== undefined) updates.sign_height_mm = d.sign_height_mm;
     if (Object.keys(updates).length === 0) return okVoid();
 
     const supabase = createAdminClient();

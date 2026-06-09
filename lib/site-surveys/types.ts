@@ -75,6 +75,7 @@ export const SurveyConditionsSchema = z
     .object({
         scaffolding_required: z.boolean(),
         cherrypicker_required: z.boolean(),
+        new_fascia_required: z.boolean(),
         traffic_management_required: z.boolean(),
         power_available: z.boolean(),
         permit_required: z.boolean(),
@@ -84,12 +85,14 @@ export const SurveyConditionsSchema = z
     .partial();
 export type SurveyConditions = z.infer<typeof SurveyConditionsSchema>;
 
+// Big tap-toggle chips on the survey screen — kept short and obvious.
 export const CONDITION_FLAGS = [
-    { key: 'scaffolding_required', label: 'Scaffolding required' },
-    { key: 'cherrypicker_required', label: 'Cherrypicker / MEWP required' },
-    { key: 'traffic_management_required', label: 'Traffic management required' },
-    { key: 'power_available', label: 'Power available on site' },
-    { key: 'permit_required', label: 'Permit / permission required' },
+    { key: 'scaffolding_required', label: 'Scaffolding' },
+    { key: 'cherrypicker_required', label: 'Cherrypicker' },
+    { key: 'new_fascia_required', label: 'New fascia' },
+    { key: 'power_available', label: 'Power on site' },
+    { key: 'traffic_management_required', label: 'Traffic management' },
+    { key: 'permit_required', label: 'Permit needed' },
 ] as const satisfies ReadonlyArray<{
     key: keyof SurveyConditions;
     label: string;
@@ -178,6 +181,8 @@ export const UpdatePhotoSchema = z.object({
     caption: z.string().max(200).nullable().optional(),
     annotations: AnnotationsSchema.optional(),
     item_id: z.string().uuid().nullable().optional(),
+    sign_width_mm: z.number().nonnegative().max(1_000_000).nullable().optional(),
+    sign_height_mm: z.number().nonnegative().max(1_000_000).nullable().optional(),
 });
 export type UpdatePhotoInput = z.infer<typeof UpdatePhotoSchema>;
 
@@ -227,6 +232,8 @@ export interface SurveyPhotoRow {
     file_path: string;
     width_px: number | null;
     height_px: number | null;
+    sign_width_mm: number | null;
+    sign_height_mm: number | null;
     caption: string | null;
     annotations_json: Annotation[];
     sort_order: number;

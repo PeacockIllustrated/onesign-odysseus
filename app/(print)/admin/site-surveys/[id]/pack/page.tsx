@@ -1,13 +1,10 @@
 import { requireAdmin } from '@/lib/auth';
 import { notFound } from 'next/navigation';
 import { getSurveyDetail } from '@/lib/site-surveys/queries';
-import { buildSurveySketch } from '@/lib/site-surveys/sketch';
 import { buildPhotoSvg } from '@/lib/site-surveys/annotation-svg';
 import {
     CONDITION_FLAGS,
-    type Measurements,
     type SurveyConditions,
-    type SurveyItemRow,
     type SurveyPhotoWithUrl,
 } from '@/lib/site-surveys/types';
 
@@ -24,31 +21,15 @@ function formatDate(d: string | null): string {
     });
 }
 
-function measurementRows(m: Measurements): { label: string; value: string }[] {
-    const rows: { label: string; value: string }[] = [];
-    const push = (label: string, v: number | undefined) => {
-        if (v !== undefined) rows.push({ label, value: `${Math.round(v)} mm` });
-    };
-    push('Width', m.width_mm);
-    push('Height', m.height_mm);
-    push('Depth', m.depth_mm);
-    push('Return depth', m.return_depth_mm);
-    push('Shadow gap', m.shadow_gap_mm);
-    for (const e of m.extra ?? [])
-        rows.push({ label: e.label, value: `${Math.round(e.value_mm)} mm` });
-    return rows;
+function sizeLabel(p: SurveyPhotoWithUrl): string | null {
+    if (p.sign_width_mm != null && p.sign_height_mm != null)
+        return `${Math.round(p.sign_width_mm)} × ${Math.round(p.sign_height_mm)} mm`;
+    if (p.sign_width_mm != null) return `${Math.round(p.sign_width_mm)} mm wide`;
+    if (p.sign_height_mm != null) return `${Math.round(p.sign_height_mm)} mm tall`;
+    return null;
 }
 
-function itemFlags(it: SurveyItemRow): string[] {
-    const f: string[] = [];
-    if (it.has_returns) f.push('Returns');
-    if (it.shadow_gap_required) f.push('Shadow gap');
-    if (it.new_fascia_required) f.push('New fascia');
-    if (it.illuminated) f.push('Illuminated');
-    return f;
-}
-
-function PhotoBlock({ photo }: { photo: SurveyPhotoWithUrl }) {
+function PhotoBlock({ photo, n }: { photo: SurveyPhotoWithUrl; n: number }) {
     if (!photo.url) return null;
     const w = photo.width_px ?? 0;
     const h = photo.height_px ?? 0;
@@ -56,10 +37,16 @@ function PhotoBlock({ photo }: { photo: SurveyPhotoWithUrl }) {
         w > 0 && h > 0
             ? buildPhotoSvg(photo.url, photo.annotations_json ?? [], w, h)
             : `<img src="${photo.url}" style="width:100%;height:auto;display:block" alt="survey photo" />`;
+    const size = sizeLabel(photo);
     return (
-        <div className="photo">
-            <div dangerouslySetInnerHTML={{ __html: inner }} />
-            {photo.caption && <p className="photo-cap">{photo.caption}</p>}
+        <div className="photo avoid-break">
+            <div className="photo-img" dangerouslySetInnerHTML={{ __html: inner }} />
+            <div className="photo-meta">
+                <span>
+                    <strong>{n}.</strong> {photo.caption || 'Photo'}
+                </span>
+                {size && <span className="photo-size">{size}</span>}
+            </div>
         </div>
     );
 }
@@ -75,11 +62,10 @@ export default async function SurveyPackPage({
     const detail = await getSurveyDetail(id);
     if (!detail) notFound();
 
-    const { survey, items, photos } = detail;
+    const { survey, photos } = detail;
     const conditions: SurveyConditions = survey.conditions_json ?? {};
     const clientName = detail.org_name ?? survey.client_name ?? '—';
-    const siteName = detail.site_name ?? survey.site_address ?? '—';
-    const generalPhotos = photos.filter((p) => !p.item_id);
+    const flagged = CONDITION_FLAGS.filter(({ key }) => conditions[key]);
 
     return (
         <>
@@ -87,40 +73,29 @@ export default async function SurveyPackPage({
                 @media print {
                     @page { margin: 14mm; size: A4; }
                     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-                    .page-break { page-break-after: always; }
                     .no-print { display: none !important; }
                     .avoid-break { page-break-inside: avoid; }
                 }
                 .pack { font-family: 'Gilroy', system-ui, sans-serif; color: #111; background: #fff; max-width: 210mm; margin: 0 auto; padding: 18px; }
-                .pack h1 { font-size: 30px; font-weight: 700; margin: 0; }
-                .pack h2 { font-size: 18px; font-weight: 700; margin: 0 0 10px; }
+                .pack h1 { font-size: 28px; font-weight: 700; margin: 0; }
+                .pack h2 { font-size: 16px; font-weight: 700; margin: 0 0 10px; }
                 .muted { color: #6b7280; }
                 .rule { border: 0; border-top: 2px solid #4e7e8c; margin: 14px 0; }
                 .eyebrow { margin: 0; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #4e7e8c; }
                 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; }
-                .kv { font-size: 13px; }
-                .kv .k { color: #6b7280; margin-right: 6px; }
-                .chip { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: #eef2f7; color: #111; margin: 0 6px 6px 0; }
-                .chip.on { background: #4e7e8c; color: #fff; }
-                .chip.off { background: #f3f4f6; color: #9ca3af; }
-                .item { border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; margin-bottom: 16px; }
-                .item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-                .item-head .n { font-weight: 700; }
-                .item-num { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 999px; background: #4e7e8c; color: #fff; font-size: 12px; font-weight: 700; }
-                .item-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
-                table.meas { width: 100%; border-collapse: collapse; font-size: 13px; }
-                table.meas td { padding: 4px 0; border-bottom: 1px dotted #e5e7eb; }
-                table.meas td.v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
-                .photos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
-                .photo { border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; }
-                .photo-cap { font-size: 11px; color: #6b7280; padding: 4px 8px; margin: 0; }
-                .notes { white-space: pre-wrap; font-size: 13px; }
+                .kv { font-size: 13px; } .kv .k { color: #6b7280; margin-right: 6px; }
+                .chip { display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: #4e7e8c; color: #fff; margin: 0 6px 6px 0; }
                 .section { margin-bottom: 22px; }
+                .photo { border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; margin-bottom: 14px; }
+                .photo-img { max-width: 560px; margin: 0 auto; }
+                .photo-meta { display: flex; justify-content: space-between; gap: 8px; padding: 6px 10px; font-size: 12px; border-top: 1px solid #f0f0f0; }
+                .photo-size { font-weight: 700; color: #3a5f6a; white-space: nowrap; }
+                .notes { white-space: pre-wrap; font-size: 13px; }
             `}</style>
 
             <script
                 dangerouslySetInnerHTML={{
-                    __html: `if (typeof window !== 'undefined') { window.addEventListener('load', () => setTimeout(() => window.print(), 600)); }`,
+                    __html: `if (typeof window !== 'undefined') { window.addEventListener('load', () => setTimeout(() => window.print(), 700)); }`,
                 }}
             />
 
@@ -155,144 +130,42 @@ export default async function SurveyPackPage({
                             <span className="k">Date</span>
                             {formatDate(survey.survey_date)}
                         </div>
-                        <div className="kv">
-                            <span className="k">Site</span>
-                            {siteName}
-                        </div>
-                        <div className="kv">
-                            <span className="k">Contact</span>
-                            {detail.contact_name ?? '—'}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Access & build conditions */}
-                <div className="section avoid-break">
-                    <h2>Access &amp; build conditions</h2>
-                    <div>
-                        {CONDITION_FLAGS.map(({ key, label }) => (
-                            <span
-                                key={key}
-                                className={`chip ${conditions[key] ? 'on' : 'off'}`}
-                            >
-                                {conditions[key] ? '✓ ' : '○ '}
-                                {label}
-                            </span>
-                        ))}
-                    </div>
-                    {(conditions.access_notes || conditions.parking_notes) && (
-                        <div className="grid2" style={{ marginTop: 10 }}>
-                            {conditions.access_notes && (
-                                <div className="kv">
-                                    <span className="k">Access</span>
-                                    {conditions.access_notes}
-                                </div>
-                            )}
-                            {conditions.parking_notes && (
-                                <div className="kv">
-                                    <span className="k">Parking / loading</span>
-                                    {conditions.parking_notes}
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
-
-                {/* Items */}
-                <div className="section">
-                    <h2>Measured items</h2>
-                    {items.length === 0 && (
-                        <p className="muted" style={{ fontSize: 13 }}>
-                            No items recorded.
-                        </p>
-                    )}
-                    {items.map((it, i) => {
-                        const rows = measurementRows(it.measurements_json ?? {});
-                        const flags = itemFlags(it);
-                        const itemPhotos = photos.filter((p) => p.item_id === it.id);
-                        const sketch = buildSurveySketch(it.measurements_json ?? {}, {
-                            hasReturns: it.has_returns,
-                            shadowGap: it.shadow_gap_required,
-                            title: it.label,
-                        });
-                        return (
-                            <div key={it.id} className="item avoid-break">
-                                <div className="item-head">
-                                    <span className="item-num">{i + 1}</span>
-                                    <span className="n">{it.label}</span>
-                                    {it.sign_type && (
-                                        <span className="muted" style={{ fontSize: 13 }}>
-                                            · {it.sign_type}
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="item-grid">
-                                    <div dangerouslySetInnerHTML={{ __html: sketch }} />
-                                    <div>
-                                        {rows.length > 0 ? (
-                                            <table className="meas">
-                                                <tbody>
-                                                    {rows.map((r, j) => (
-                                                        <tr key={j}>
-                                                            <td>{r.label}</td>
-                                                            <td className="v">{r.value}</td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        ) : (
-                                            <p className="muted" style={{ fontSize: 13 }}>
-                                                No dimensions recorded.
-                                            </p>
-                                        )}
-                                        {flags.length > 0 && (
-                                            <div style={{ marginTop: 10 }}>
-                                                {flags.map((f) => (
-                                                    <span key={f} className="chip on">
-                                                        {f}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        )}
-                                        {it.fixing_substrate && (
-                                            <div className="kv" style={{ marginTop: 8 }}>
-                                                <span className="k">Substrate</span>
-                                                {it.fixing_substrate}
-                                            </div>
-                                        )}
-                                        {it.item_notes && (
-                                            <p
-                                                className="notes"
-                                                style={{ marginTop: 8 }}
-                                            >
-                                                {it.item_notes}
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
-                                {itemPhotos.length > 0 && (
-                                    <div className="photos">
-                                        {itemPhotos.map((p) => (
-                                            <PhotoBlock key={p.id} photo={p} />
-                                        ))}
-                                    </div>
-                                )}
+                        {survey.site_address && (
+                            <div className="kv">
+                                <span className="k">Site</span>
+                                {survey.site_address}
                             </div>
-                        );
-                    })}
+                        )}
+                    </div>
                 </div>
 
-                {/* General site photos */}
-                {generalPhotos.length > 0 && (
-                    <div className="section">
-                        <h2>Site photos</h2>
-                        <div className="photos">
-                            {generalPhotos.map((p) => (
-                                <PhotoBlock key={p.id} photo={p} />
+                {/* Conditions */}
+                {flagged.length > 0 && (
+                    <div className="section avoid-break">
+                        <h2>Access &amp; build notes</h2>
+                        <div>
+                            {flagged.map(({ key, label }) => (
+                                <span key={key} className="chip">
+                                    {label}
+                                </span>
                             ))}
                         </div>
                     </div>
                 )}
+
+                {/* Photos */}
+                <div className="section">
+                    <h2>Photos &amp; measurements</h2>
+                    {photos.length === 0 ? (
+                        <p className="muted" style={{ fontSize: 13 }}>
+                            No photos recorded.
+                        </p>
+                    ) : (
+                        photos.map((p, i) => (
+                            <PhotoBlock key={p.id} photo={p} n={i + 1} />
+                        ))
+                    )}
+                </div>
 
                 {/* Notes */}
                 {survey.notes && (

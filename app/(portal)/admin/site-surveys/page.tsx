@@ -1,5 +1,4 @@
 import { requireAdmin } from '@/lib/auth';
-import { createAdminClient } from '@/lib/supabase-admin';
 import { Ruler } from 'lucide-react';
 import { listSurveys } from '@/lib/site-surveys/queries';
 import { SurveysClient } from './SurveysClient';
@@ -11,18 +10,8 @@ export default async function SiteSurveysPage() {
 
     const surveys = await listSurveys();
 
-    const supabase = createAdminClient();
-    const [orgsRes, contactsRes, sitesRes] = await Promise.all([
-        supabase.from('orgs').select('id, name').order('name').limit(300),
-        supabase
-            .from('contacts')
-            .select('id, org_id, first_name, last_name')
-            .order('first_name'),
-        supabase.from('org_sites').select('id, org_id, name').order('name'),
-    ]);
-
     return (
-        <div className="mx-auto max-w-6xl p-4 md:p-6">
+        <div className="mx-auto max-w-5xl p-4 md:p-6">
             <div className="mb-6 flex items-center gap-3">
                 <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#4e7e8c] text-white">
                     <Ruler size={18} />
@@ -32,16 +21,11 @@ export default async function SiteSurveysPage() {
                         Site Surveys
                     </h1>
                     <p className="text-[11px] uppercase tracking-widest text-neutral-400">
-                        On-site measure-ups · annotated photos · survey packs
+                        Snap · measure · send to the office
                     </p>
                 </div>
             </div>
-            <SurveysClient
-                initialSurveys={surveys}
-                orgs={orgsRes.data ?? []}
-                contacts={(contactsRes.data ?? []) as never}
-                sites={(sitesRes.data ?? []) as never}
-            />
+            <SurveysClient initialSurveys={surveys} />
         </div>
     );
 }

@@ -57,10 +57,21 @@ export function PhotoAnnotator({
 }: {
     photo: SurveyPhotoWithUrl;
     onClose: () => void;
-    onSaved: (annotations: Annotation[], caption: string) => void;
+    onSaved: (result: {
+        annotations: Annotation[];
+        caption: string | null;
+        sign_width_mm: number | null;
+        sign_height_mm: number | null;
+    }) => void;
 }) {
     const [annos, setAnnos] = useState<Annotation[]>(photo.annotations_json ?? []);
     const [caption, setCaption] = useState(photo.caption ?? '');
+    const [signW, setSignW] = useState(
+        photo.sign_width_mm != null ? String(photo.sign_width_mm) : '',
+    );
+    const [signH, setSignH] = useState(
+        photo.sign_height_mm != null ? String(photo.sign_height_mm) : '',
+    );
     const [tool, setTool] = useState<Tool>('measure');
     const [pendingA, setPendingA] = useState<Pt | null>(null);
     const [cursor, setCursor] = useState<Pt | null>(null);
@@ -127,17 +138,28 @@ export function PhotoAnnotator({
 
     function save() {
         setError(null);
+        const parseMm = (s: string): number | null => {
+            const t = s.trim();
+            if (t === '') return null;
+            const v = Number(t);
+            return Number.isFinite(v) && v >= 0 ? v : null;
+        };
+        const cap = caption.trim() === '' ? null : caption.trim();
+        const w = parseMm(signW);
+        const h = parseMm(signH);
         startSave(async () => {
             const res = await updatePhoto({
                 photoId: photo.id,
                 annotations: annos,
-                caption: caption.trim() === '' ? null : caption.trim(),
+                caption: cap,
+                sign_width_mm: w,
+                sign_height_mm: h,
             });
             if (!res.ok) {
                 setError(res.error);
                 return;
             }
-            onSaved(annos, caption);
+            onSaved({ annotations: annos, caption: cap, sign_width_mm: w, sign_height_mm: h });
             onClose();
         });
     }
@@ -390,10 +412,34 @@ export function PhotoAnnotator({
                     </div>
                 )}
                 <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-semibold text-neutral-500">
+                        Size (mm)
+                    </span>
+                    <input
+                        type="number"
+                        inputMode="decimal"
+                        min={0}
+                        value={signW}
+                        onChange={(e) => setSignW(e.target.value)}
+                        placeholder="width"
+                        className="w-24 rounded-md border border-neutral-300 px-3 py-2 text-sm transition-colors focus:border-[#4e7e8c] focus:outline-none focus:ring-2 focus:ring-[#e8f0f3]"
+                    />
+                    <span className="text-neutral-400">×</span>
+                    <input
+                        type="number"
+                        inputMode="decimal"
+                        min={0}
+                        value={signH}
+                        onChange={(e) => setSignH(e.target.value)}
+                        placeholder="height"
+                        className="w-24 rounded-md border border-neutral-300 px-3 py-2 text-sm transition-colors focus:border-[#4e7e8c] focus:outline-none focus:ring-2 focus:ring-[#e8f0f3]"
+                    />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
                     <input
                         value={caption}
                         onChange={(e) => setCaption(e.target.value)}
-                        placeholder="Photo caption (optional)"
+                        placeholder="Caption (e.g. which sign / where)"
                         className="flex-1 rounded-md border border-neutral-300 px-3 py-2 text-sm transition-colors focus:border-[#4e7e8c] focus:outline-none focus:ring-2 focus:ring-[#e8f0f3]"
                     />
                     <button
