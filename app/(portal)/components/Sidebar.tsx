@@ -21,6 +21,7 @@ import {
     AlertTriangle,
     Box,
     PenTool,
+    Ruler,
     X,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -78,6 +79,7 @@ const adminNavGroups: NavGroup[] = [
         items: [
             { label: 'Clients', href: '/admin/clients', icon: Building2 },
             { label: 'Approvals', href: '/admin/approvals', icon: BadgeCheck },
+            { label: 'Site Surveys', href: '/admin/site-surveys', icon: Ruler },
             { label: 'Maintenance', href: '/admin/maintenance', icon: Wrench },
             { label: 'Reports', href: '/admin/reports', icon: FileText },
         ],
