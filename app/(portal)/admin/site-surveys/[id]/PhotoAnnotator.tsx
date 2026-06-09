@@ -145,15 +145,15 @@ export function PhotoAnnotator({
     const selText = sel !== null && annos[sel] ? textOf(annos[sel]) : '';
 
     return (
-        <div className="fixed inset-0 z-50 flex flex-col bg-black/80">
+        <div className="fixed inset-0 z-50 flex flex-col bg-neutral-50">
             {/* Header */}
-            <div className="flex items-center justify-between gap-3 bg-neutral-900 px-4 py-2 text-white">
+            <div className="flex items-center justify-between gap-3 bg-[#4e7e8c] px-4 py-2.5 text-white">
                 <div className="flex items-center gap-2 text-sm font-semibold">
                     <Ruler size={16} /> Annotate photo
                 </div>
                 <button
                     onClick={onClose}
-                    className="rounded p-1 text-neutral-300 hover:bg-white/10 hover:text-white"
+                    className="rounded p-1 text-white/80 hover:bg-white/15 hover:text-white"
                     aria-label="Close"
                 >
                     <X size={18} />
@@ -161,7 +161,7 @@ export function PhotoAnnotator({
             </div>
 
             {/* Toolbar */}
-            <div className="flex flex-wrap items-center gap-2 bg-neutral-800 px-4 py-2">
+            <div className="flex flex-wrap items-center gap-2 border-b border-neutral-200 bg-white px-4 py-2">
                 {TOOLS.map(({ key, label, Icon }) => (
                     <button
                         key={key}
@@ -169,16 +169,16 @@ export function PhotoAnnotator({
                             setTool(key);
                             setPendingA(null);
                         }}
-                        className={`inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-semibold ${
+                        className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors ${
                             tool === key
-                                ? 'bg-white text-neutral-900'
-                                : 'bg-white/10 text-neutral-200 hover:bg-white/20'
+                                ? 'bg-[#4e7e8c] text-white shadow-sm'
+                                : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
                         }`}
                     >
                         <Icon size={14} /> {label}
                     </button>
                 ))}
-                <span className="ml-1 text-xs text-neutral-400">
+                <span className="ml-1 text-xs text-neutral-500">
                     {tool === 'measure'
                         ? pendingA
                             ? 'tap the end point'
@@ -192,7 +192,7 @@ export function PhotoAnnotator({
             </div>
 
             {/* Canvas */}
-            <div className="flex-1 overflow-auto p-4">
+            <div className="flex-1 overflow-auto bg-neutral-100 p-4">
                 <div className="relative mx-auto max-w-3xl select-none">
                     {photo.url ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -209,7 +209,7 @@ export function PhotoAnnotator({
                             className="block h-auto w-full rounded"
                         />
                     ) : (
-                        <div className="rounded bg-neutral-700 p-12 text-center text-sm text-neutral-300">
+                        <div className="rounded bg-neutral-200 p-12 text-center text-sm text-neutral-500">
                             Image unavailable
                         </div>
                     )}
@@ -365,7 +365,7 @@ export function PhotoAnnotator({
             </div>
 
             {/* Footer controls */}
-            <div className="space-y-2 bg-neutral-900 px-4 py-3 text-white">
+            <div className="space-y-2 border-t border-neutral-200 bg-white px-4 py-3">
                 {sel !== null && annos[sel] && (
                     <div className="flex items-center gap-2">
                         <input
@@ -379,11 +379,11 @@ export function PhotoAnnotator({
                                       ? 'pin note'
                                       : 'note text'
                             }
-                            className="flex-1 rounded border border-neutral-600 bg-neutral-800 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-white"
+                            className="flex-1 rounded-md border border-neutral-300 px-3 py-2 text-sm transition-colors focus:border-[#4e7e8c] focus:outline-none focus:ring-2 focus:ring-[#e8f0f3]"
                         />
                         <button
                             onClick={deleteSel}
-                            className="inline-flex items-center gap-1 rounded bg-red-600 px-3 py-2 text-xs font-semibold hover:bg-red-500"
+                            className="inline-flex items-center gap-1 rounded-md bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-500"
                         >
                             <Trash2 size={14} /> delete
                         </button>
@@ -394,23 +394,23 @@ export function PhotoAnnotator({
                         value={caption}
                         onChange={(e) => setCaption(e.target.value)}
                         placeholder="Photo caption (optional)"
-                        className="flex-1 rounded border border-neutral-600 bg-neutral-800 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-white"
+                        className="flex-1 rounded-md border border-neutral-300 px-3 py-2 text-sm transition-colors focus:border-[#4e7e8c] focus:outline-none focus:ring-2 focus:ring-[#e8f0f3]"
                     />
                     <button
                         onClick={onClose}
-                        className="rounded bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/20"
+                        className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
                     >
                         cancel
                     </button>
                     <button
                         onClick={save}
                         disabled={saving}
-                        className="inline-flex items-center gap-2 rounded bg-white px-4 py-2 text-sm font-semibold text-neutral-900 hover:bg-neutral-200 disabled:opacity-60"
+                        className="inline-flex items-center gap-2 rounded-md bg-[#4e7e8c] px-4 py-2 text-sm font-semibold text-white hover:bg-[#3a5f6a] disabled:opacity-60"
                     >
                         {saving && <Loader2 size={14} className="animate-spin" />} save markup
                     </button>
                 </div>
-                {error && <p className="text-sm text-red-400">{error}</p>}
+                {error && <p className="text-sm text-red-600">{error}</p>}
             </div>
         </div>
     );

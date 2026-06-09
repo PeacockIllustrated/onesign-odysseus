@@ -14,7 +14,6 @@ import {
     Trash2,
     Info,
 } from 'lucide-react';
-import { Card, Chip } from '@/app/(portal)/components/ui';
 import {
     updateSurvey,
     saveSurveyItems,
@@ -40,6 +39,15 @@ import {
     writeSurveyDraft,
     type EditItem,
 } from './editor-types';
+import {
+    panelCls,
+    labelCls,
+    inputCls,
+    sectionTitleCls,
+    checkboxCls,
+    primaryBtnCls,
+    secondaryBtnCls,
+} from '../ui';
 
 interface HeaderState {
     title: string;
@@ -56,6 +64,19 @@ interface Props {
     orgs: { id: string; name: string }[];
     contacts: { id: string; org_id: string; first_name: string; last_name: string }[];
     sites: { id: string; org_id: string; name: string }[];
+}
+
+function StatusBadge({ status }: { status: SurveyStatus }) {
+    const done = status === 'completed';
+    return (
+        <span
+            className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                done ? 'bg-[#e8f0f3] text-[#3a5f6a]' : 'bg-neutral-100 text-neutral-600'
+            }`}
+        >
+            {SURVEY_STATUS_LABELS[status]}
+        </span>
+    );
 }
 
 function buildInitial(detail: SurveyDetail): {
@@ -80,9 +101,6 @@ function buildInitial(detail: SurveyDetail): {
         items: detail.items.map(rowToEditItem),
     };
 }
-
-const inputCls =
-    'w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black';
 
 export function SurveyClient({ detail, orgs, contacts, sites }: Props) {
     const router = useRouter();
@@ -248,18 +266,16 @@ export function SurveyClient({ detail, orgs, contacts, sites }: Props) {
                 <div className="flex items-center gap-3">
                     <Link
                         href="/admin/site-surveys"
-                        className="rounded p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-black"
+                        className="rounded p-1.5 text-neutral-400 transition-colors hover:bg-[#e8f0f3] hover:text-[#3a5f6a]"
                     >
                         <ArrowLeft size={18} />
                     </Link>
                     <div>
                         <div className="flex items-center gap-2">
-                            <h1 className="text-lg font-bold tracking-tight">
+                            <h1 className="font-mono text-lg font-bold tracking-tight text-[#3a5f6a]">
                                 {detail.survey.reference}
                             </h1>
-                            <Chip variant={status === 'completed' ? 'approved' : 'draft'}>
-                                {SURVEY_STATUS_LABELS[status]}
-                            </Chip>
+                            <StatusBadge status={status} />
                         </div>
                         {header.title && (
                             <p className="text-sm text-neutral-500">{header.title}</p>
@@ -270,39 +286,39 @@ export function SurveyClient({ detail, orgs, contacts, sites }: Props) {
                     <Link
                         href={`/admin/site-surveys/${id}/pack`}
                         target="_blank"
-                        className="inline-flex items-center gap-2 rounded border border-neutral-300 px-3 py-2 text-sm font-medium hover:bg-neutral-50"
+                        className={secondaryBtnCls}
                     >
-                        <FileText size={15} /> survey pack
+                        <FileText size={15} /> Survey pack
                     </Link>
                     <button
                         onClick={toggleStatus}
                         disabled={statusPending}
-                        className="inline-flex items-center gap-2 rounded border border-neutral-300 px-3 py-2 text-sm font-medium hover:bg-neutral-50"
+                        className={secondaryBtnCls}
                     >
                         {statusPending ? (
                             <Loader2 size={15} className="animate-spin" />
                         ) : (
                             <CheckCircle2 size={15} />
                         )}
-                        {status === 'completed' ? 'reopen' : 'mark complete'}
+                        {status === 'completed' ? 'Reopen' : 'Mark complete'}
                     </button>
                     <button
                         onClick={handleSave}
                         disabled={saving}
-                        className="btn-primary inline-flex items-center gap-2"
+                        className={primaryBtnCls}
                     >
                         {saving ? (
                             <Loader2 size={15} className="animate-spin" />
                         ) : (
                             <Save size={15} />
                         )}
-                        save
+                        Save
                     </button>
                 </div>
             </div>
 
             {draftRestored && (
-                <div className="mb-4 flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                     <span className="inline-flex items-center gap-2">
                         <Info size={15} /> Restored unsaved changes from this device.
                     </span>
@@ -316,7 +332,7 @@ export function SurveyClient({ detail, orgs, contacts, sites }: Props) {
             )}
 
             {error && (
-                <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                     {error}
                 </div>
             )}
@@ -326,11 +342,11 @@ export function SurveyClient({ detail, orgs, contacts, sites }: Props) {
 
             <div className="space-y-4">
                 {/* Header / client */}
-                <Card className="space-y-3">
-                    <h3 className="text-sm font-bold">Survey details</h3>
+                <div className={`${panelCls} space-y-3 p-5`}>
+                    <h3 className={sectionTitleCls}>Survey details</h3>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div>
-                            <label className="text-xs font-medium text-neutral-600">Title</label>
+                            <label className={labelCls}>Title</label>
                             <input
                                 value={header.title}
                                 onChange={(e) => patchHeader({ title: e.target.value })}
@@ -339,9 +355,7 @@ export function SurveyClient({ detail, orgs, contacts, sites }: Props) {
                             />
                         </div>
                         <div>
-                            <label className="text-xs font-medium text-neutral-600">
-                                Survey date
-                            </label>
+                            <label className={labelCls}>Survey date</label>
                             <input
                                 type="date"
                                 value={header.surveyDate}
@@ -350,9 +364,7 @@ export function SurveyClient({ detail, orgs, contacts, sites }: Props) {
                             />
                         </div>
                         <div>
-                            <label className="text-xs font-medium text-neutral-600">
-                                Client (existing)
-                            </label>
+                            <label className={labelCls}>Client (existing)</label>
                             <select
                                 value={header.orgId}
                                 onChange={(e) =>
@@ -373,7 +385,7 @@ export function SurveyClient({ detail, orgs, contacts, sites }: Props) {
                             </select>
                         </div>
                         <div>
-                            <label className="text-xs font-medium text-neutral-600">
+                            <label className={labelCls}>
                                 Client name {header.orgId ? '(override)' : '(if not listed)'}
                             </label>
                             <input
@@ -386,9 +398,7 @@ export function SurveyClient({ detail, orgs, contacts, sites }: Props) {
                         {header.orgId && (
                             <>
                                 <div>
-                                    <label className="text-xs font-medium text-neutral-600">
-                                        Site
-                                    </label>
+                                    <label className={labelCls}>Site</label>
                                     <select
                                         value={header.siteId}
                                         onChange={(e) => patchHeader({ siteId: e.target.value })}
@@ -403,9 +413,7 @@ export function SurveyClient({ detail, orgs, contacts, sites }: Props) {
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="text-xs font-medium text-neutral-600">
-                                        Contact
-                                    </label>
+                                    <label className={labelCls}>Contact</label>
                                     <select
                                         value={header.contactId}
                                         onChange={(e) => patchHeader({ contactId: e.target.value })}
@@ -422,9 +430,7 @@ export function SurveyClient({ detail, orgs, contacts, sites }: Props) {
                             </>
                         )}
                         <div className="sm:col-span-2">
-                            <label className="text-xs font-medium text-neutral-600">
-                                Site address
-                            </label>
+                            <label className={labelCls}>Site address</label>
                             <input
                                 value={header.siteAddress}
                                 onChange={(e) => patchHeader({ siteAddress: e.target.value })}
@@ -433,11 +439,11 @@ export function SurveyClient({ detail, orgs, contacts, sites }: Props) {
                             />
                         </div>
                     </div>
-                </Card>
+                </div>
 
                 {/* Access & build conditions */}
-                <Card className="space-y-3">
-                    <h3 className="text-sm font-bold">Access &amp; build conditions</h3>
+                <div className={`${panelCls} space-y-3 p-5`}>
+                    <h3 className={sectionTitleCls}>Access &amp; build conditions</h3>
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                         {CONDITION_FLAGS.map(({ key, label }) => (
                             <label
@@ -450,7 +456,7 @@ export function SurveyClient({ detail, orgs, contacts, sites }: Props) {
                                     onChange={(e) =>
                                         patchCondition({ [key]: e.target.checked })
                                     }
-                                    className="h-4 w-4 rounded border-neutral-300"
+                                    className={checkboxCls}
                                 />
                                 {label}
                             </label>
@@ -458,9 +464,7 @@ export function SurveyClient({ detail, orgs, contacts, sites }: Props) {
                     </div>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div>
-                            <label className="text-xs font-medium text-neutral-600">
-                                Access notes
-                            </label>
+                            <label className={labelCls}>Access notes</label>
                             <textarea
                                 value={conditions.access_notes ?? ''}
                                 onChange={(e) => patchCondition({ access_notes: e.target.value })}
@@ -470,9 +474,7 @@ export function SurveyClient({ detail, orgs, contacts, sites }: Props) {
                             />
                         </div>
                         <div>
-                            <label className="text-xs font-medium text-neutral-600">
-                                Parking / loading
-                            </label>
+                            <label className={labelCls}>Parking / loading</label>
                             <textarea
                                 value={conditions.parking_notes ?? ''}
                                 onChange={(e) => patchCondition({ parking_notes: e.target.value })}
@@ -482,27 +484,24 @@ export function SurveyClient({ detail, orgs, contacts, sites }: Props) {
                             />
                         </div>
                     </div>
-                </Card>
+                </div>
 
                 {/* Items */}
                 <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-bold">
+                        <h3 className="text-sm font-bold tracking-tight text-neutral-900">
                             Measured items ({items.length})
                         </h3>
-                        <button
-                            onClick={addItem}
-                            className="inline-flex items-center gap-2 rounded border border-neutral-300 px-3 py-1.5 text-sm font-medium hover:bg-neutral-50"
-                        >
-                            <Plus size={14} /> add item
+                        <button onClick={addItem} className={secondaryBtnCls}>
+                            <Plus size={14} /> Add item
                         </button>
                     </div>
                     {items.length === 0 ? (
-                        <Card>
+                        <div className={`${panelCls} p-5`}>
                             <p className="py-6 text-center text-sm text-neutral-500">
                                 No items yet — add the signs / parts you measured.
                             </p>
-                        </Card>
+                        </div>
                     ) : (
                         items.map((it, i) => (
                             <ItemEditor
@@ -522,8 +521,8 @@ export function SurveyClient({ detail, orgs, contacts, sites }: Props) {
                 </div>
 
                 {/* General photos */}
-                <Card className="space-y-2">
-                    <h3 className="text-sm font-bold">General site photos</h3>
+                <div className={`${panelCls} space-y-2 p-5`}>
+                    <h3 className={sectionTitleCls}>General site photos</h3>
                     <PhotoGrid
                         surveyId={id}
                         itemId={null}
@@ -532,11 +531,11 @@ export function SurveyClient({ detail, orgs, contacts, sites }: Props) {
                         onUpdate={updatePhotoState}
                         onDelete={deletePhotoState}
                     />
-                </Card>
+                </div>
 
                 {/* Survey notes */}
-                <Card className="space-y-2">
-                    <h3 className="text-sm font-bold">Survey notes</h3>
+                <div className={`${panelCls} space-y-2 p-5`}>
+                    <h3 className={sectionTitleCls}>Survey notes</h3>
                     <textarea
                         value={notes}
                         onChange={(e) => setNotes(e.target.value)}
@@ -544,7 +543,7 @@ export function SurveyClient({ detail, orgs, contacts, sites }: Props) {
                         className={inputCls}
                         placeholder="overall observations, anything else the designer/estimator needs"
                     />
-                </Card>
+                </div>
 
                 {/* Danger zone */}
                 <div className="pt-2">

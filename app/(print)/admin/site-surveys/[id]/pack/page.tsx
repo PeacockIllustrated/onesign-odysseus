@@ -95,16 +95,18 @@ export default async function SurveyPackPage({
                 .pack h1 { font-size: 30px; font-weight: 700; margin: 0; }
                 .pack h2 { font-size: 18px; font-weight: 700; margin: 0 0 10px; }
                 .muted { color: #6b7280; }
-                .rule { border: 0; border-top: 2px solid #111; margin: 14px 0; }
+                .rule { border: 0; border-top: 2px solid #4e7e8c; margin: 14px 0; }
+                .eyebrow { margin: 0; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #4e7e8c; }
                 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; }
                 .kv { font-size: 13px; }
                 .kv .k { color: #6b7280; margin-right: 6px; }
                 .chip { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: #eef2f7; color: #111; margin: 0 6px 6px 0; }
-                .chip.on { background: #111; color: #fff; }
+                .chip.on { background: #4e7e8c; color: #fff; }
                 .chip.off { background: #f3f4f6; color: #9ca3af; }
                 .item { border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; margin-bottom: 16px; }
-                .item-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+                .item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
                 .item-head .n { font-weight: 700; }
+                .item-num { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 999px; background: #4e7e8c; color: #fff; font-size: 12px; font-weight: 700; }
                 .item-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
                 table.meas { width: 100%; border-collapse: collapse; font-size: 13px; }
                 table.meas td { padding: 4px 0; border-bottom: 1px dotted #e5e7eb; }
@@ -141,9 +143,7 @@ export default async function SurveyPackPage({
 
                 {/* Header */}
                 <div className="section">
-                    <p className="muted" style={{ fontSize: 13, margin: 0 }}>
-                        Site survey · {survey.reference}
-                    </p>
+                    <p className="eyebrow">Site survey · {survey.reference}</p>
                     <h1>{survey.title || 'Site survey'}</h1>
                     <hr className="rule" />
                     <div className="grid2">
@@ -218,7 +218,8 @@ export default async function SurveyPackPage({
                         return (
                             <div key={it.id} className="item avoid-break">
                                 <div className="item-head">
-                                    <span className="n">{i + 1}. {it.label}</span>
+                                    <span className="item-num">{i + 1}</span>
+                                    <span className="n">{it.label}</span>
                                     {it.sign_type && (
                                         <span className="muted" style={{ fontSize: 13 }}>
                                             · {it.sign_type}

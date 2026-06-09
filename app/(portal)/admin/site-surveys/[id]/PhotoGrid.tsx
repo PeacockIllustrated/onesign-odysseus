@@ -74,9 +74,9 @@ export function PhotoGrid({
         <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-3">
                 <label
-                    className={`inline-flex items-center gap-2 rounded border border-neutral-300 px-3 py-2 text-sm font-medium ${
+                    className={`inline-flex items-center gap-2 rounded-md border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 transition-colors ${
                         canUpload && !busy
-                            ? 'cursor-pointer hover:bg-neutral-50'
+                            ? 'cursor-pointer hover:border-[#4e7e8c] hover:bg-[#e8f0f3] hover:text-[#3a5f6a]'
                             : 'cursor-not-allowed opacity-50'
                     }`}
                 >
@@ -133,7 +133,7 @@ export function PhotoGrid({
                                 </button>
 
                                 {marks > 0 && (
-                                    <span className="absolute left-1.5 top-1.5 rounded bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                                    <span className="absolute left-1.5 top-1.5 rounded bg-[#4e7e8c] px-1.5 py-0.5 text-[10px] font-semibold text-white">
                                         {marks} mark{marks === 1 ? '' : 's'}
                                     </span>
                                 )}

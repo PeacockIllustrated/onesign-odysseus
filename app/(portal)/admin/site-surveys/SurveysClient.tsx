@@ -3,13 +3,18 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Loader2, X, Camera, Ruler } from 'lucide-react';
-import { Card, Chip } from '@/app/(portal)/components/ui';
 import { createSurvey } from '@/lib/site-surveys/actions';
 import {
     SURVEY_STATUS_LABELS,
     type SurveyListItem,
     type SurveyStatus,
 } from '@/lib/site-surveys/types';
+import {
+    panelCls,
+    labelCls,
+    inputCls,
+    primaryBtnCls,
+} from './ui';
 
 interface Props {
     initialSurveys: SurveyListItem[];
@@ -18,12 +23,22 @@ interface Props {
     sites: { id: string; org_id: string; name: string }[];
 }
 
-const STATUS_VARIANTS: Record<SurveyStatus, 'draft' | 'approved'> = {
-    draft: 'draft',
-    completed: 'approved',
-};
-
 const TABS = ['all', 'draft', 'completed'] as const;
+
+function StatusBadge({ status }: { status: SurveyStatus }) {
+    const done = status === 'completed';
+    return (
+        <span
+            className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                done
+                    ? 'bg-[#e8f0f3] text-[#3a5f6a]'
+                    : 'bg-neutral-100 text-neutral-600'
+            }`}
+        >
+            {SURVEY_STATUS_LABELS[status]}
+        </span>
+    );
+}
 
 export function SurveysClient({ initialSurveys, orgs, contacts, sites }: Props) {
     const router = useRouter();
@@ -74,39 +89,43 @@ export function SurveysClient({ initialSurveys, orgs, contacts, sites }: Props) 
         });
     };
 
-    const inputCls =
-        'w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black';
-
     return (
-        <div className="mt-4 space-y-4">
+        <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex gap-1">
-                    {TABS.map((t) => (
-                        <button
-                            key={t}
-                            onClick={() => setTab(t)}
-                            className={`px-3 py-1.5 text-xs font-semibold rounded ${
-                                tab === t
-                                    ? 'bg-black text-white'
-                                    : 'bg-neutral-100 text-neutral-600'
-                            }`}
-                        >
-                            {t === 'all' ? 'All' : SURVEY_STATUS_LABELS[t as SurveyStatus]}
-                        </button>
-                    ))}
+                    {TABS.map((t) => {
+                        const active = tab === t;
+                        return (
+                            <button
+                                key={t}
+                                onClick={() => setTab(t)}
+                                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                                    active
+                                        ? 'bg-[#4e7e8c] text-white shadow-sm'
+                                        : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                                }`}
+                            >
+                                {t === 'all'
+                                    ? 'All'
+                                    : SURVEY_STATUS_LABELS[t as SurveyStatus]}
+                            </button>
+                        );
+                    })}
                 </div>
                 <button
                     onClick={() => setShowCreate(true)}
-                    className="btn-primary inline-flex items-center gap-2 text-sm"
+                    className={primaryBtnCls}
                 >
-                    <Plus size={14} /> new survey
+                    <Plus size={15} /> New survey
                 </button>
             </div>
 
             {showCreate && (
-                <Card className="space-y-3">
-                    <div className="flex justify-between items-center">
-                        <h3 className="text-sm font-bold">Start a site survey</h3>
+                <div className={`${panelCls} space-y-3 p-5`}>
+                    <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-bold tracking-tight">
+                            Start a site survey
+                        </h3>
                         <button
                             onClick={() => setShowCreate(false)}
                             className="text-neutral-400 hover:text-black"
@@ -114,11 +133,9 @@ export function SurveysClient({ initialSurveys, orgs, contacts, sites }: Props) 
                             <X size={16} />
                         </button>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div>
-                            <label className="text-xs font-medium text-neutral-600">
-                                Client (existing)
-                            </label>
+                            <label className={labelCls}>Client (existing)</label>
                             <select
                                 value={orgId}
                                 onChange={(e) => {
@@ -137,7 +154,7 @@ export function SurveysClient({ initialSurveys, orgs, contacts, sites }: Props) 
                             </select>
                         </div>
                         <div>
-                            <label className="text-xs font-medium text-neutral-600">
+                            <label className={labelCls}>
                                 Client name {orgId ? '(override)' : '(if not listed)'}
                             </label>
                             <input
@@ -150,9 +167,7 @@ export function SurveysClient({ initialSurveys, orgs, contacts, sites }: Props) 
                         {orgId && (
                             <>
                                 <div>
-                                    <label className="text-xs font-medium text-neutral-600">
-                                        Site
-                                    </label>
+                                    <label className={labelCls}>Site</label>
                                     <select
                                         value={siteId}
                                         onChange={(e) => setSiteId(e.target.value)}
@@ -167,9 +182,7 @@ export function SurveysClient({ initialSurveys, orgs, contacts, sites }: Props) 
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="text-xs font-medium text-neutral-600">
-                                        Contact
-                                    </label>
+                                    <label className={labelCls}>Contact</label>
                                     <select
                                         value={contactId}
                                         onChange={(e) => setContactId(e.target.value)}
@@ -186,7 +199,7 @@ export function SurveysClient({ initialSurveys, orgs, contacts, sites }: Props) 
                             </>
                         )}
                         <div>
-                            <label className="text-xs font-medium text-neutral-600">
+                            <label className={labelCls}>
                                 Site address {orgId ? '(if no site record)' : ''}
                             </label>
                             <input
@@ -197,9 +210,7 @@ export function SurveysClient({ initialSurveys, orgs, contacts, sites }: Props) 
                             />
                         </div>
                         <div>
-                            <label className="text-xs font-medium text-neutral-600">
-                                Survey date *
-                            </label>
+                            <label className={labelCls}>Survey date *</label>
                             <input
                                 type="date"
                                 value={surveyDate}
@@ -208,9 +219,7 @@ export function SurveysClient({ initialSurveys, orgs, contacts, sites }: Props) 
                             />
                         </div>
                         <div className="sm:col-span-2">
-                            <label className="text-xs font-medium text-neutral-600">
-                                Title
-                            </label>
+                            <label className={labelCls}>Title</label>
                             <input
                                 value={title}
                                 onChange={(e) => setTitle(e.target.value)}
@@ -224,47 +233,47 @@ export function SurveysClient({ initialSurveys, orgs, contacts, sites }: Props) 
                         <button
                             onClick={handleCreate}
                             disabled={pending}
-                            className="btn-primary inline-flex items-center gap-2"
+                            className={primaryBtnCls}
                         >
                             {pending && <Loader2 size={14} className="animate-spin" />}
-                            create &amp; open
+                            Create &amp; open
                         </button>
                     </div>
-                </Card>
+                </div>
             )}
 
             {filtered.length === 0 ? (
-                <Card>
+                <div className={`${panelCls} p-5`}>
                     <div className="flex flex-col items-center justify-center py-12 text-center">
-                        <div className="w-12 h-12 rounded-full bg-neutral-100 flex items-center justify-center mb-3">
-                            <Ruler size={22} className="text-neutral-400" />
+                        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#e8f0f3]">
+                            <Ruler size={22} className="text-[#4e7e8c]" />
                         </div>
                         <p className="text-sm text-neutral-500">
                             No {tab === 'all' ? '' : tab + ' '}surveys yet.
                         </p>
                     </div>
-                </Card>
+                </div>
             ) : (
-                <div className="border border-neutral-200 rounded-lg overflow-hidden bg-white">
+                <div className={`${panelCls} overflow-hidden`}>
                     <table className="w-full text-sm">
                         <thead>
-                            <tr className="bg-neutral-50 border-b border-neutral-200 text-left">
-                                <th className="px-4 py-3 text-xs font-semibold text-neutral-600 uppercase tracking-wider">
+                            <tr className="border-b border-neutral-200 bg-neutral-50 text-left">
+                                <th className="px-4 py-3 text-[10px] font-semibold uppercase tracking-widest text-neutral-500">
                                     Reference
                                 </th>
-                                <th className="px-4 py-3 text-xs font-semibold text-neutral-600 uppercase tracking-wider">
+                                <th className="px-4 py-3 text-[10px] font-semibold uppercase tracking-widest text-neutral-500">
                                     Client
                                 </th>
-                                <th className="px-4 py-3 text-xs font-semibold text-neutral-600 uppercase tracking-wider">
+                                <th className="px-4 py-3 text-[10px] font-semibold uppercase tracking-widest text-neutral-500">
                                     Site
                                 </th>
-                                <th className="px-4 py-3 text-xs font-semibold text-neutral-600 uppercase tracking-wider">
+                                <th className="px-4 py-3 text-[10px] font-semibold uppercase tracking-widest text-neutral-500">
                                     Date
                                 </th>
-                                <th className="px-4 py-3 text-xs font-semibold text-neutral-600 uppercase tracking-wider">
+                                <th className="px-4 py-3 text-[10px] font-semibold uppercase tracking-widest text-neutral-500">
                                     Items
                                 </th>
-                                <th className="px-4 py-3 text-xs font-semibold text-neutral-600 uppercase tracking-wider">
+                                <th className="px-4 py-3 text-[10px] font-semibold uppercase tracking-widest text-neutral-500">
                                     Status
                                 </th>
                             </tr>
@@ -273,13 +282,13 @@ export function SurveysClient({ initialSurveys, orgs, contacts, sites }: Props) 
                             {filtered.map((s) => (
                                 <tr
                                     key={s.id}
-                                    className="hover:bg-neutral-50 cursor-pointer"
+                                    className="cursor-pointer transition-colors hover:bg-[#f3f8fa]"
                                     onClick={() =>
                                         router.push(`/admin/site-surveys/${s.id}`)
                                     }
                                 >
                                     <td className="px-4 py-3">
-                                        <div className="text-xs font-mono font-semibold">
+                                        <div className="font-mono text-xs font-semibold text-[#3a5f6a]">
                                             {s.reference}
                                         </div>
                                         {s.title && (
@@ -291,7 +300,7 @@ export function SurveysClient({ initialSurveys, orgs, contacts, sites }: Props) 
                                     <td className="px-4 py-3 text-xs font-medium">
                                         {s.org_name ?? s.client_name ?? '—'}
                                     </td>
-                                    <td className="px-4 py-3 text-xs text-neutral-600 max-w-[220px] truncate">
+                                    <td className="max-w-[220px] truncate px-4 py-3 text-xs text-neutral-600">
                                         {s.site_name ?? s.site_address ?? '—'}
                                     </td>
                                     <td className="px-4 py-3 text-xs">{s.survey_date}</td>
@@ -306,9 +315,7 @@ export function SurveysClient({ initialSurveys, orgs, contacts, sites }: Props) 
                                         </span>
                                     </td>
                                     <td className="px-4 py-3">
-                                        <Chip variant={STATUS_VARIANTS[s.status]}>
-                                            {SURVEY_STATUS_LABELS[s.status]}
-                                        </Chip>
+                                        <StatusBadge status={s.status} />
                                     </td>
                                 </tr>
                             ))}
