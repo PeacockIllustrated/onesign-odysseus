@@ -1,6 +1,14 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+    createContext,
+    useContext,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+    type ReactNode,
+} from 'react';
 import { Plus } from 'lucide-react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls, Edges, Html } from '@react-three/drei';
@@ -203,6 +211,86 @@ function displayColor(hex: string, night: boolean): string {
     return night ? shadeHex(hex, NIGHT_AMBIENT) : hex;
 }
 
+/* ------------------------------------------------------------------ *
+ * Exploded assembly view
+ *
+ * A single 0..1 `explodeT` fans the panel's layer stack apart along the
+ * assembly axis (Z). Each layer group is wrapped in <ExplodeGroup> with a
+ * signed `rank` — back layers negative, front layers positive — so its
+ * target offset is `t * spacing * rank`: rank 0 (the face) never moves and
+ * everything else separates symmetrically around it. A single <ExplodeDriver>
+ * damps one shared scalar toward the target each frame (frame-rate
+ * independent), so toggling explodeT 0↔1 eases automatically and scrubbing
+ * the slider feels live. `prefers-reduced-motion` snaps instead of damping.
+ * ------------------------------------------------------------------ */
+const ExplodeCtx = createContext<{ current: number } | null>(null);
+
+function ExplodeDriver({
+    target,
+    reduced,
+    tRef,
+}: {
+    target: number;
+    reduced: boolean;
+    tRef: { current: number };
+}) {
+    useFrame((_, dt) => {
+        if (reduced) {
+            tRef.current = target;
+            return;
+        }
+        // Critically-damped approach — lambda ~7 settles in ~0.4s, reading as
+        // a premium ease-out rather than a linear slide. Snap once within
+        // epsilon so the scene can go idle instead of micro-easing forever.
+        const next = THREE.MathUtils.damp(tRef.current, target, 7, dt);
+        tRef.current = Math.abs(next - target) < 0.0005 ? target : next;
+    });
+    return null;
+}
+
+/** Provide a damped explode scalar to descendant <ExplodeGroup>s + Flaps. */
+function ExplodeProvider({
+    target,
+    reduced,
+    children,
+}: {
+    target: number;
+    reduced: boolean;
+    children: ReactNode;
+}) {
+    const tRef = useRef(target);
+    return (
+        <ExplodeCtx.Provider value={tRef}>
+            <ExplodeDriver target={target} reduced={reduced} tRef={tRef} />
+            {children}
+        </ExplodeCtx.Provider>
+    );
+}
+
+/**
+ * Wrap a layer group so it slides along Z by `t * spacing * rank` when the
+ * assembly explodes. Outside an <ExplodeProvider> (e.g. the projecting
+ * composite) it's an inert pass-through group resting at its home position.
+ */
+function ExplodeGroup({
+    rank,
+    spacing,
+    children,
+}: {
+    rank: number;
+    spacing: number;
+    children: ReactNode;
+}) {
+    const tRef = useContext(ExplodeCtx);
+    const ref = useRef<THREE.Group>(null);
+    useFrame(() => {
+        if (ref.current) {
+            ref.current.position.z = (tRef?.current ?? 0) * spacing * rank;
+        }
+    });
+    return <group ref={ref}>{children}</group>;
+}
+
 /** Pick black or white based on the perceptual luminance of `hex`. */
 function contrastTo(hex: string): string {
     const h = hex.replace('#', '');
@@ -369,6 +457,37 @@ function Flap({
     const a = fold * HALF_PI;
     const hasLip = Sg > 0;
 
+    // Exploded-view unfold: as the assembly explodes (t→1) the returns hinge
+    // back toward flat, so the tray visibly opens out — a real "teardown"
+    // read. Driven per-frame off the shared explode scalar; with no provider
+    // (t=0) the angle equals the static folded rotation, so non-exploded
+    // scenes are untouched. The sign/axis per edge mirror the static tuples
+    // below (return + its shadow-gap lip rotate on the same axis).
+    const tRef = useContext(ExplodeCtx);
+    const groupRef = useRef<THREE.Group>(null);
+    const lipRef = useRef<THREE.Group>(null);
+    const rotAxis: 'x' | 'y' = edge === 'top' || edge === 'bottom' ? 'x' : 'y';
+    const returnSign = edge === 'bottom' || edge === 'right' ? 1 : -1;
+    const lipSign = edge === 'top' || edge === 'right' ? 1 : -1;
+    useFrame(() => {
+        const t = tRef?.current ?? 0;
+        const ang = fold * (1 - t) * HALF_PI;
+        if (groupRef.current) {
+            groupRef.current.rotation.set(
+                rotAxis === 'x' ? returnSign * ang : 0,
+                rotAxis === 'y' ? returnSign * ang : 0,
+                0,
+            );
+        }
+        if (lipRef.current) {
+            lipRef.current.rotation.set(
+                rotAxis === 'x' ? lipSign * ang : 0,
+                rotAxis === 'y' ? lipSign * ang : 0,
+                0,
+            );
+        }
+    });
+
     let groupPos: [number, number, number];
     let groupRot: [number, number, number];
     let planeArgs: [number, number];
@@ -424,7 +543,7 @@ function Flap({
     }
 
     return (
-        <group position={groupPos} rotation={groupRot}>
+        <group ref={groupRef} position={groupPos} rotation={groupRot}>
             <PanelPlane
                 args={planeArgs}
                 position={planePos}
@@ -432,7 +551,7 @@ function Flap({
                 outlines={outlines}
             />
             {hasLip && (
-                <group position={lipPos} rotation={lipRot}>
+                <group ref={lipRef} position={lipPos} rotation={lipRot}>
                     <PanelPlane
                         args={lipArgs}
                         position={lipPlanePos}
@@ -1851,6 +1970,14 @@ function Panel({
     const T = params.materialThicknessMm;
     const D = params.returnDepthMm;
     const Sg = params.shadowGapMm;
+    // Per-rank gap for the exploded view, scaled to the sign so the
+    // separation always reads at the framed camera distance: ~12% of the
+    // largest face dimension, clamped so tiny panels still separate and huge
+    // ones don't fly off-screen. Ranks span -2..+2, so the full spread is ~4×.
+    const explodeSpacing = Math.min(
+        Math.max(Math.max(W, H) * S * 0.12, 0.4),
+        2.4,
+    );
     const r = params.returns;
     const lipEdges = params.shadowGapEdges ?? { top: true, bottom: true };
     // Shadow-gap lips only sit on top + bottom — left/right never get
@@ -2067,24 +2194,28 @@ function Panel({
                 (vinylPieces.length > 0 ||
                     acrylicPieces.length > 0 ||
                     solidPieces.length > 0) && (
-                    <MaterialPieces
-                        face={face}
-                        vinyl={vinylPieces}
-                        acrylic={acrylicPieces}
-                        solid={solidPieces}
-                        vinylPrintDataUrl={vinylPrintDataUrl}
-                        outlines={showOutlines}
-                        night={night}
-                    />
+                    <ExplodeGroup rank={1} spacing={explodeSpacing}>
+                        <MaterialPieces
+                            face={face}
+                            vinyl={vinylPieces}
+                            acrylic={acrylicPieces}
+                            solid={solidPieces}
+                            vinylPrintDataUrl={vinylPrintDataUrl}
+                            outlines={showOutlines}
+                            night={night}
+                        />
+                    </ExplodeGroup>
                 )}
 
             {/* Backlit apertures glow through the cut (opal behind, lit). */}
             {face && (backlightPieces?.length ?? 0) > 0 && (
-                <BacklightGlow
-                    face={face}
-                    pieces={backlightPieces ?? []}
-                    night={night}
-                />
+                <ExplodeGroup rank={-1} spacing={explodeSpacing}>
+                    <BacklightGlow
+                        face={face}
+                        pieces={backlightPieces ?? []}
+                        night={night}
+                    />
+                </ExplodeGroup>
             )}
 
             {/* Click-to-select hit targets — one transparent mesh per
@@ -2162,28 +2293,32 @@ function Panel({
                 backlit apertures. It's the lit diffuser visible through both
                 the keyline shoulder and the backlit cut, so when a sign mixes
                 the two they sensibly share the same panel. Glows in the dark
-                view when keyline illumination is on or backlit pieces exist. */}
+                view when keyline illumination is on or backlit pieces exist.
+                Explodes back as the deepest layer (rank -2). */}
             {face &&
                 (pushThroughPieces.length > 0 ||
                     (backlightPieces?.length ?? 0) > 0) && (
-                    <PushThroughBacking
-                        face={face}
-                        pieces={pushThroughPieces}
-                        backlightPieces={backlightPieces ?? []}
-                        materialThicknessMm={T}
-                        splitToSave={params.splitBacking ?? false}
-                        outlines={showOutlines}
-                        night={night}
-                        lit={backingLit}
-                        glowColor={backingGlowColor}
-                        glowIntensity={backingGlowIntensity}
-                    />
+                    <ExplodeGroup rank={-2} spacing={explodeSpacing}>
+                        <PushThroughBacking
+                            face={face}
+                            pieces={pushThroughPieces}
+                            backlightPieces={backlightPieces ?? []}
+                            materialThicknessMm={T}
+                            splitToSave={params.splitBacking ?? false}
+                            outlines={showOutlines}
+                            night={night}
+                            lit={backingLit}
+                            glowColor={backingGlowColor}
+                            glowIntensity={backingGlowIntensity}
+                        />
+                    </ExplodeGroup>
                 )}
 
             {/* Push-through inserts (letters pressed through the keyline hole)
-                plus their retained counter islands. */}
+                plus their retained counter islands. Move with the backing as
+                one behind-the-face sub-assembly (rank -2). */}
             {face && pushThroughPieces.length > 0 && (
-                <>
+                <ExplodeGroup rank={-2} spacing={explodeSpacing}>
                     <PushThroughPieces
                         face={face}
                         pieces={pushThroughPieces}
@@ -2211,7 +2346,7 @@ function Panel({
                             )}
                         </mesh>
                     ))}
-                </>
+                </ExplodeGroup>
             )}
 
             {/* Backlit retained counter islands — the inner counters stay on
@@ -2248,7 +2383,7 @@ function Panel({
                 even mix standoff with vinyl / acrylic / cut on the same
                 panel. */}
             {face && standoffPieces.length > 0 && (
-                <>
+                <ExplodeGroup rank={2} spacing={explodeSpacing}>
                     {showStandoffLocators &&
                         standoffPieces.map((piece) => {
                             const pieceFixings = filterFixingsInside(
@@ -2302,7 +2437,7 @@ function Panel({
                                 />
                             );
                         })}
-                </>
+                </ExplodeGroup>
             )}
 
             {/* Returns. Square signs fold four flat flaps; a circle sign has a
@@ -2737,6 +2872,10 @@ export default function Scene3D(props: {
         isBlade: boolean;
     } | null;
     mount?: ResolvedMount;
+    /** 0 = assembled, 1 = fully exploded — fans the layer stack along Z. */
+    explodeT?: number;
+    /** Honour prefers-reduced-motion: snap the explode instead of easing it. */
+    reducedMotion?: boolean;
 }) {
     const fold = props.fold ?? 1;
     const autoFixings = props.autoFixings ?? [];
@@ -2755,6 +2894,8 @@ export default function Scene3D(props: {
     const showStandoffLetters = props.showStandoffLetters ?? true;
     const showStandoffLocators = props.showStandoffLocators ?? true;
     const illuminationView = props.illuminationView ?? false;
+    const explodeT = props.explodeT ?? 0;
+    const reducedMotion = props.reducedMotion ?? false;
 
     // A projecting-sign design renders BOTH panels in fixed in-situ positions —
     // the fascia at the origin, the projecting sign mounted perpendicular off
@@ -2872,6 +3013,12 @@ export default function Scene3D(props: {
                 goalPos={goalPos}
                 goalLook={goalLook}
             />
+
+            {/* One explode rig wraps the whole composite so the fascia AND the
+                projecting sign (and a double-sided sign's back face) all fan
+                apart together off the same damped scalar — every Panel below
+                consumes the shared context; outside it they rest assembled. */}
+            <ExplodeProvider target={explodeT} reduced={reducedMotion}>
 
             {/* Fascia at the origin — the full editable panel when it's the
                 focus; otherwise its full design from the cached bundle (so it
@@ -3017,6 +3164,8 @@ export default function Scene3D(props: {
                     />
                 )
             )}
+
+            </ExplodeProvider>
 
             <OrbitControls enablePan makeDefault />
         </Canvas>

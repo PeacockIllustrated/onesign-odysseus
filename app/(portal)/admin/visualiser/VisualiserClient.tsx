@@ -162,6 +162,9 @@ export function VisualiserClient({
     // 1 = folded, 0 = flat. Scrubbed by the unfold slider / replay.
     const [fold, setFold] = useState(1);
     const [unfoldKey, setUnfoldKey] = useState(0);
+    // 0 = assembled, 1 = fully exploded. Drives the Z-explode of the layer
+    // stack on the folded (3D) tab. Pure view state — never saved.
+    const [explodeT, setExplodeT] = useState(0);
     // View-layer toggles. Defaults keep the production-realistic look on
     // first paint; the operator turns layers off for clarity when needed.
     const [showStandoffLetters, setShowStandoffLetters] = useState(true);
@@ -184,6 +187,22 @@ export function VisualiserClient({
     // sidebar so the operator can reclaim canvas width when they're not
     // loading designs. On mobile the rail is a full pane via the tab bar.
     const [designsOpen, setDesignsOpen] = useState(true);
+    // Honour the OS "reduce motion" preference — the exploded view snaps
+    // straight to its target instead of easing when this is set.
+    const [reducedMotion, setReducedMotion] = useState(false);
+    useEffect(() => {
+        const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+        const sync = () => setReducedMotion(mq.matches);
+        sync();
+        mq.addEventListener('change', sync);
+        return () => mq.removeEventListener('change', sync);
+    }, []);
+
+    // The exploded view only applies to the assembled (folded) tab; reset it
+    // when navigating away so re-entering always starts assembled.
+    useEffect(() => {
+        if (tab !== 'folded') setExplodeT(0);
+    }, [tab]);
 
     // Auto-play the unfold (folded → flat) when the tab opens or on replay.
     useEffect(() => {
@@ -1123,6 +1142,8 @@ export function VisualiserClient({
                                     : null
                             }
                             mount={resolveMount(mount)}
+                            explodeT={tab === 'folded' ? explodeT : 0}
+                            reducedMotion={reducedMotion}
                         />
                     )}
 
@@ -1244,6 +1265,43 @@ export function VisualiserClient({
                                     Display
                                 </span>
                             </button>
+                        </div>
+                    )}
+
+                    {tab === 'folded' && (
+                        <div className="pointer-events-none absolute inset-x-2 bottom-3 flex justify-center md:inset-x-0 md:bottom-4">
+                            <div className="pointer-events-auto flex max-w-full items-center gap-2 md:gap-3 rounded-full border border-neutral-200 bg-white/95 px-3 md:px-4 py-2 shadow backdrop-blur">
+                                <span className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">
+                                    Assembled
+                                </span>
+                                <input
+                                    type="range"
+                                    min={0}
+                                    max={100}
+                                    value={Math.round(explodeT * 100)}
+                                    onChange={(e) =>
+                                        setExplodeT(
+                                            Number(e.target.value) / 100,
+                                        )
+                                    }
+                                    className="h-2 w-32 md:w-48"
+                                    style={{ accentColor: ACCENT }}
+                                    aria-label="Explode amount"
+                                />
+                                <span className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">
+                                    Exploded
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        setExplodeT((v) => (v > 0.5 ? 0 : 1))
+                                    }
+                                    className="ml-1 rounded-full px-3 py-1 text-[11px] font-medium text-white"
+                                    style={{ background: ACCENT }}
+                                >
+                                    {explodeT > 0.5 ? 'Collapse' : 'Explode'}
+                                </button>
+                            </div>
                         </div>
                     )}
 
