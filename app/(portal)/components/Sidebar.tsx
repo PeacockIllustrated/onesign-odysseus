@@ -52,6 +52,14 @@ const adminOverview: NavItem = { label: 'Overview', href: '/admin', icon: Shield
 
 const adminNavGroups: NavGroup[] = [
     {
+        // A site survey is the first touchpoint of the journey (measure-up →
+        // quote → artwork → production), so it gets its own section up top.
+        label: 'Surveys',
+        items: [
+            { label: 'Site Surveys', href: '/admin/site-surveys', icon: Ruler },
+        ],
+    },
+    {
         // Ordered to match the actual flow: Quote → Artwork → Job Board →
         // Shop Floor → Deliveries. Artwork is the spec-bearing step that
         // gates production (CLAUDE.md §1).
@@ -79,7 +87,6 @@ const adminNavGroups: NavGroup[] = [
         items: [
             { label: 'Clients', href: '/admin/clients', icon: Building2 },
             { label: 'Approvals', href: '/admin/approvals', icon: BadgeCheck },
-            { label: 'Site Surveys', href: '/admin/site-surveys', icon: Ruler },
             { label: 'Maintenance', href: '/admin/maintenance', icon: Wrench },
             { label: 'Reports', href: '/admin/reports', icon: FileText },
         ],
