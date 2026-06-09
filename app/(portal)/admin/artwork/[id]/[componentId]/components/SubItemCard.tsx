@@ -8,7 +8,6 @@ import {
     updateSubItem,
     deleteSubItem,
     signOffSubItemDesign,
-    submitSubItemProduction,
     reverseSubItemSignOff,
     uploadSubItemThumbnail,
     removeSubItemThumbnail,
@@ -32,21 +31,23 @@ export function SubItemCard({ subItem, stages, jobCompleted }: Props) {
     const [pending, startTransition] = useTransition();
     const [error, setError] = useState<string | null>(null);
 
+    // Streamlined sub-item — only the fields staff actually need to fill
+    // at artwork time. Application method, finish, returns, and target
+    // department were removed from the UI: method / finish can be folded
+    // into the single "spec" field (stored in material), target_stage_id
+    // is set later in the production flow, returns are edge-case and
+    // can go in notes when relevant. Columns stay untouched in the DB.
     const [name, setName] = useState(subItem.name ?? '');
     const [material, setMaterial] = useState(subItem.material ?? '');
-    const [method, setMethod] = useState(subItem.application_method ?? '');
-    const [finish, setFinish] = useState(subItem.finish ?? '');
     const [widthMm, setWidthMm] = useState(subItem.width_mm?.toString() ?? '');
     const [heightMm, setHeightMm] = useState(subItem.height_mm?.toString() ?? '');
-    const [returnsMm, setReturnsMm] = useState(subItem.returns_mm?.toString() ?? '');
     const [quantity, setQuantity] = useState(subItem.quantity);
     const [notes, setNotes] = useState(subItem.notes ?? '');
-    const [stageId, setStageId] = useState(subItem.target_stage_id ?? '');
 
-    const [measuredW, setMeasuredW] = useState(subItem.measured_width_mm?.toString() ?? '');
-    const [measuredH, setMeasuredH] = useState(subItem.measured_height_mm?.toString() ?? '');
-    const [materialConfirmed, setMaterialConfirmed] = useState(subItem.material_confirmed);
-    const [ripConfirmed, setRipConfirmed] = useState(subItem.rip_no_scaling_confirmed);
+    // Production fields (measured dimensions, material_confirmed,
+    // rip_no_scaling_confirmed) are no longer edited here — those belong
+    // to the shop-floor / QA check that the production lads handle.
+    // The underlying columns still exist on artwork_component_items.
 
     const designLocked = !!subItem.design_signed_off_at;
     const productionLocked = !!subItem.production_signed_off_at;
@@ -62,14 +63,13 @@ export function SubItemCard({ subItem, stages, jobCompleted }: Props) {
     const buildDesignPatch = () => ({
         name: name || null,
         material: material || null,
-        application_method: method || null,
-        finish: finish || null,
         quantity,
         notes: notes || null,
         width_mm: widthMm ? Number(widthMm) : null,
         height_mm: heightMm ? Number(heightMm) : null,
-        returns_mm: returnsMm ? Number(returnsMm) : null,
-        target_stage_id: stageId || null,
+        // application_method, finish, returns_mm, target_stage_id are
+        // no longer surfaced on the artwork card; existing values in the
+        // DB are left alone rather than clobbered with null.
     });
 
     const saveDesign = () => {
@@ -90,28 +90,6 @@ export function SubItemCard({ subItem, stages, jobCompleted }: Props) {
                 return;
             }
             const res = await signOffSubItemDesign(subItem.id);
-            if ('error' in res) setError(res.error);
-            else router.refresh();
-        });
-    };
-
-    const submitProduction = (alsoSignOff: boolean) => {
-        setError(null);
-        if (!measuredW || !measuredH) {
-            setError('measured width and height are required');
-            return;
-        }
-        startTransition(async () => {
-            const res = await submitSubItemProduction(
-                subItem.id,
-                {
-                    measured_width_mm: Number(measuredW),
-                    measured_height_mm: Number(measuredH),
-                    material_confirmed: materialConfirmed,
-                    rip_no_scaling_confirmed: ripConfirmed,
-                },
-                alsoSignOff
-            );
             if ('error' in res) setError(res.error);
             else router.refresh();
         });
@@ -195,7 +173,7 @@ export function SubItemCard({ subItem, stages, jobCompleted }: Props) {
                                 <span className="text-green-700 normal-case">· signed off</span>
                             )}
                         </h3>
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-[1fr_80px] gap-3">
                             <Field label="name">
                                 <input
                                     disabled={designLocked || readOnly}
@@ -205,7 +183,7 @@ export function SubItemCard({ subItem, stages, jobCompleted }: Props) {
                                     className={INPUT_CLS}
                                 />
                             </Field>
-                            <Field label="quantity">
+                            <Field label="qty">
                                 <input
                                     type="number"
                                     min={1}
@@ -215,49 +193,20 @@ export function SubItemCard({ subItem, stages, jobCompleted }: Props) {
                                     className={INPUT_CLS}
                                 />
                             </Field>
-                            <Field label="material">
+                        </div>
+                        <div className="mt-3">
+                            <Field label="spec">
                                 <input
                                     disabled={designLocked || readOnly}
                                     value={material}
                                     onChange={(e) => setMaterial(e.target.value)}
-                                    placeholder="e.g. 5mm rose-gold mirrored acrylic"
+                                    placeholder="e.g. 5mm rose-gold mirrored acrylic, stuck to face"
                                     className={INPUT_CLS}
                                 />
                             </Field>
-                            <Field label="application method">
-                                <input
-                                    disabled={designLocked || readOnly}
-                                    value={method}
-                                    onChange={(e) => setMethod(e.target.value)}
-                                    placeholder="e.g. stuck to face"
-                                    className={INPUT_CLS}
-                                />
-                            </Field>
-                            <Field label="finish">
-                                <input
-                                    disabled={designLocked || readOnly}
-                                    value={finish}
-                                    onChange={(e) => setFinish(e.target.value)}
-                                    placeholder="e.g. rose gold mirror"
-                                    className={INPUT_CLS}
-                                />
-                            </Field>
-                            <Field label="target department">
-                                <select
-                                    disabled={designLocked || readOnly}
-                                    value={stageId}
-                                    onChange={(e) => setStageId(e.target.value)}
-                                    className={INPUT_CLS}
-                                >
-                                    <option value="">— select —</option>
-                                    {stages.map((s) => (
-                                        <option key={s.id} value={s.id}>
-                                            {s.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </Field>
-                            <Field label="width (mm)">
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 mt-3">
+                            <Field label="width (mm) — optional">
                                 <input
                                     type="number"
                                     step="0.1"
@@ -267,7 +216,7 @@ export function SubItemCard({ subItem, stages, jobCompleted }: Props) {
                                     className={INPUT_CLS}
                                 />
                             </Field>
-                            <Field label="height (mm)">
+                            <Field label="height (mm) — optional">
                                 <input
                                     type="number"
                                     step="0.1"
@@ -277,19 +226,9 @@ export function SubItemCard({ subItem, stages, jobCompleted }: Props) {
                                     className={INPUT_CLS}
                                 />
                             </Field>
-                            <Field label="returns (mm)">
-                                <input
-                                    type="number"
-                                    step="0.1"
-                                    disabled={designLocked || readOnly}
-                                    value={returnsMm}
-                                    onChange={(e) => setReturnsMm(e.target.value)}
-                                    className={INPUT_CLS}
-                                />
-                            </Field>
                         </div>
                         <div className="mt-3">
-                            <Field label="notes">
+                            <Field label="notes — optional">
                                 <textarea
                                     disabled={designLocked || readOnly}
                                     value={notes}
@@ -332,96 +271,11 @@ export function SubItemCard({ subItem, stages, jobCompleted }: Props) {
                         )}
                     </section>
 
-                    {/* PRODUCTION */}
-                    {designLocked && (
-                        <section className="pt-3 border-t border-neutral-100">
-                            <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-2">
-                                production{' '}
-                                {productionLocked && (
-                                    <span className="text-green-700 normal-case">· signed off</span>
-                                )}
-                            </h3>
-                            <div className="grid grid-cols-2 gap-3">
-                                <Field label="measured width (mm)">
-                                    <input
-                                        type="number"
-                                        step="0.1"
-                                        disabled={productionLocked || readOnly}
-                                        value={measuredW}
-                                        onChange={(e) => setMeasuredW(e.target.value)}
-                                        className={INPUT_CLS}
-                                    />
-                                </Field>
-                                <Field label="measured height (mm)">
-                                    <input
-                                        type="number"
-                                        step="0.1"
-                                        disabled={productionLocked || readOnly}
-                                        value={measuredH}
-                                        onChange={(e) => setMeasuredH(e.target.value)}
-                                        className={INPUT_CLS}
-                                    />
-                                </Field>
-                            </div>
-                            {subItem.dimension_flag === 'out_of_tolerance' && (
-                                <p className="mt-2 text-xs text-red-700">
-                                    ⚠ Out of tolerance — Δw {subItem.width_deviation_mm ?? '?'} mm,
-                                    Δh {subItem.height_deviation_mm ?? '?'} mm
-                                </p>
-                            )}
-                            <div className="flex flex-wrap gap-4 mt-3">
-                                <label className="text-xs flex items-center gap-1.5">
-                                    <input
-                                        type="checkbox"
-                                        disabled={productionLocked || readOnly}
-                                        checked={materialConfirmed}
-                                        onChange={(e) => setMaterialConfirmed(e.target.checked)}
-                                    />
-                                    material confirmed
-                                </label>
-                                <label className="text-xs flex items-center gap-1.5">
-                                    <input
-                                        type="checkbox"
-                                        disabled={productionLocked || readOnly}
-                                        checked={ripConfirmed}
-                                        onChange={(e) => setRipConfirmed(e.target.checked)}
-                                    />
-                                    RIP no-scaling confirmed
-                                </label>
-                            </div>
-                            {!readOnly && (
-                                <div className="flex gap-2 mt-3">
-                                    {!productionLocked && (
-                                        <>
-                                            <button
-                                                disabled={pending}
-                                                onClick={() => submitProduction(false)}
-                                                className="btn-secondary text-xs"
-                                            >
-                                                save measurements
-                                            </button>
-                                            <button
-                                                disabled={pending}
-                                                onClick={() => submitProduction(true)}
-                                                className="btn-primary text-xs inline-flex items-center gap-1"
-                                            >
-                                                <Check size={12} /> sign off production
-                                            </button>
-                                        </>
-                                    )}
-                                    {productionLocked && (
-                                        <button
-                                            disabled={pending}
-                                            onClick={() => reverse('production')}
-                                            className="btn-secondary text-xs inline-flex items-center gap-1"
-                                        >
-                                            <RotateCcw size={12} /> reverse production sign-off
-                                        </button>
-                                    )}
-                                </div>
-                            )}
-                        </section>
-                    )}
+                    {/* PRODUCTION section moved to the shop-floor / QA step —
+                        intentionally hidden here. Measured dimensions,
+                        material_confirmed, and rip_no_scaling_confirmed are
+                        filled in by the production lads during fabrication,
+                        not by designers on the artwork page. */}
 
                     {/* DELETE */}
                     {!readOnly && !designLocked && !productionLocked && (

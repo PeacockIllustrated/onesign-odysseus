@@ -14,6 +14,7 @@ import { getUser } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 import {
     ArtworkApproval,
+    ArtworkComponentDecision,
     SubmitApprovalInput,
     SubmitApprovalInputSchema,
 } from './approval-types';
@@ -53,6 +54,7 @@ export interface ApprovalPackData {
                 label: string;
                 sort_order: number;
                 name: string | null;
+                notes: string | null;
                 material: string | null;
                 application_method: string | null;
                 finish: string | null;
@@ -189,6 +191,45 @@ export async function generateApprovalLink(
 }
 
 /**
+ * Latest per-sub-item (and per-component fallback) decisions for a job.
+ *
+ * Returns two maps from the most recent non-pending approval:
+ *   * bySubItem    — keyed by sub_item_id, the fine-grained decisions
+ *   * byComponent  — keyed by component_id, only populated for components
+ *                    that have no sub-items (fallback)
+ */
+export async function getComponentDecisionsForJob(
+    jobId: string
+): Promise<{
+    bySubItem: Record<string, ArtworkComponentDecision>;
+    byComponent: Record<string, ArtworkComponentDecision>;
+}> {
+    const supabase = await createServerClient();
+    const { data: latest } = await supabase
+        .from('artwork_approvals')
+        .select('id')
+        .eq('job_id', jobId)
+        .in('status', ['approved', 'changes_requested'])
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (!latest) return { bySubItem: {}, byComponent: {} };
+
+    const { data: rows } = await supabase
+        .from('artwork_component_decisions')
+        .select('*')
+        .eq('approval_id', latest.id);
+
+    const bySubItem: Record<string, ArtworkComponentDecision> = {};
+    const byComponent: Record<string, ArtworkComponentDecision> = {};
+    for (const r of (rows ?? []) as ArtworkComponentDecision[]) {
+        if (r.sub_item_id) bySubItem[r.sub_item_id] = r;
+        else byComponent[r.component_id] = r;
+    }
+    return { bySubItem, byComponent };
+}
+
+/**
  * Get the latest approval for a job (admin only)
  */
 export async function getApprovalForJob(
@@ -239,8 +280,23 @@ export async function revokeApproval(
 }
 
 // =============================================================================
-// PUBLIC ACTIONS (token-gated, no auth required)
+// PUBLIC ACTIONS (token-gated, NO AUTH)
 // =============================================================================
+//
+// Do NOT add getUser() / requireAuth() to any action below this line.
+// Clients reach these actions via /sign-off/[token] — they don't have a
+// Supabase session, they're external businesses clicking a link from an
+// email. The 64-char hex token from artwork_approvals is the only
+// authorisation needed.
+//
+// Every action here must use createAdminClient() (service role) so the
+// writes aren't blocked by the super-admin-only RLS policies on
+// artwork_approvals, artwork_component_decisions, artwork_variants, and
+// artwork_jobs. The token check is the gate; RLS bypass is intentional.
+//
+// When adding new writes (e.g. a future per-line feedback endpoint),
+// keep both properties: token-lookup first, admin client for every
+// subsequent query in the same call.
 
 /**
  * Fetch approval pack data by token (public access via admin client)
@@ -330,6 +386,7 @@ export async function getApprovalByToken(
                     label: si.label,
                     sort_order: si.sort_order,
                     name: si.name ?? null,
+                    notes: si.notes ?? null,
                     material: si.material ?? null,
                     application_method: si.application_method ?? null,
                     finish: si.finish ?? null,
@@ -430,23 +487,75 @@ export async function submitApproval(
         .eq('id', approval.job_id)
         .maybeSingle();
 
-    if (job?.job_type === 'visual_approval') {
+    // Visual approval with the artwork_variants table (legacy VariantPicker
+    // path). Only enforce variant selection when the payload actually
+    // carries variant_selections — if the client used the sub-item path
+    // below (component_decisions), we validate that instead.
+    if (job?.job_type === 'visual_approval' && (validation.data.variant_selections?.length ?? 0) > 0) {
         const selections = validation.data.variant_selections ?? [];
-        if (selections.length === 0) {
-            return { error: 'visual approval requires variant selections' };
-        }
-
-        // Validate every component on the job has a selection.
         const { data: components } = await supabase
             .from('artwork_components')
-            .select('id')
+            .select('id, variants:artwork_variants(id)')
             .eq('job_id', approval.job_id);
-        const componentIds = new Set((components ?? []).map((c: any) => c.id));
+        // Only require a selection for components that actually have variants.
+        const componentsWithVariants = (components ?? []).filter(
+            (c: any) => (c.variants ?? []).length > 0
+        );
         const selectedComponents = new Set(selections.map((s) => s.componentId));
-        for (const cid of componentIds) {
-            if (!selectedComponents.has(cid)) {
-                return { error: `component ${cid} has no chosen variant` };
+        for (const c of componentsWithVariants) {
+            if (!selectedComponents.has(c.id)) {
+                return { error: `component ${c.id} has no chosen variant` };
             }
+        }
+    }
+
+    // Per-sub-item decisions. Sub-items are treated as variants — only one
+    // per component can be approved. A component is valid with exactly ONE
+    // approved sub-item OR at least one changes_requested decision
+    // (lets the client reject every option and leave notes). Components
+    // that have no sub-items still need a single component-level decision.
+    const decisions = validation.data.component_decisions ?? [];
+    let overallStatus: 'approved' | 'changes_requested' = 'approved';
+    {
+        const { data: jobComponents } = await supabase
+            .from('artwork_components')
+            .select('id, sub_items:artwork_component_items(id)')
+            .eq('job_id', approval.job_id);
+
+        const decisionsByComponent = new Map<string, typeof decisions>();
+        for (const d of decisions) {
+            const arr = decisionsByComponent.get(d.componentId) ?? [];
+            arr.push(d);
+            decisionsByComponent.set(d.componentId, arr);
+        }
+        const decidedComponentsOnly = new Set(
+            decisions.filter((d) => !d.subItemId).map((d) => d.componentId)
+        );
+
+        for (const c of (jobComponents ?? []) as any[]) {
+            const subs = (c.sub_items ?? []) as Array<{ id: string }>;
+            if (subs.length === 0) {
+                if (!decidedComponentsOnly.has(c.id)) {
+                    return { error: 'every component must be approved or have changes requested' };
+                }
+                continue;
+            }
+            const subIds = new Set(subs.map((s) => s.id));
+            const decs = (decisionsByComponent.get(c.id) ?? []).filter(
+                (d) => d.subItemId && subIds.has(d.subItemId as string)
+            );
+            const approvedCount = decs.filter((d) => d.decision === 'approved').length;
+            const anyChanges = decs.some((d) => d.decision === 'changes_requested');
+            if (approvedCount > 1) {
+                return { error: 'only one sub-item per component can be approved' };
+            }
+            if (approvedCount === 0 && !anyChanges) {
+                return { error: 'each component needs one approved option, or at least one request for changes' };
+            }
+        }
+
+        if (decisions.some((d) => d.decision === 'changes_requested')) {
+            overallStatus = 'changes_requested';
         }
     }
 
@@ -454,13 +563,13 @@ export async function submitApproval(
     const { error: updateError } = await supabase
         .from('artwork_approvals')
         .update({
-            status: 'approved',
+            status: overallStatus,
             client_name: validation.data.client_name,
             client_email: validation.data.client_email,
             client_company: validation.data.client_company || null,
             signature_data: validation.data.signature_data,
             client_comments: validation.data.client_comments?.trim() || null,
-            approved_at: new Date().toISOString(),
+            approved_at: overallStatus === 'approved' ? new Date().toISOString() : null,
         })
         .eq('id', approval.id);
 
@@ -469,11 +578,39 @@ export async function submitApproval(
         return { error: 'failed to submit approval' };
     }
 
-    // If this was a visual_approval job, write variant choices and flip job status.
+    // Write per-sub-item (or per-component) decisions. The uniqueness
+    // constraint on (approval_id, sub_item_id|component_id) is enforced
+    // by two partial indexes (migration 053), so we clear-then-insert
+    // within this approval rather than trying to express both in a
+    // single onConflict target.
+    if (decisions.length > 0) {
+        await supabase
+            .from('artwork_component_decisions')
+            .delete()
+            .eq('approval_id', approval.id);
+
+        const rows = decisions.map((d) => ({
+            approval_id: approval.id,
+            component_id: d.componentId,
+            sub_item_id: d.subItemId ?? null,
+            decision: d.decision,
+            comment: d.comment?.trim() || null,
+        }));
+        const { error: decErr } = await supabase
+            .from('artwork_component_decisions')
+            .insert(rows);
+        if (decErr) {
+            console.error('error writing component decisions:', decErr);
+            return { error: 'failed to record component decisions' };
+        }
+    }
+
+    // Visual approval post-processing: write variant choices (legacy path)
+    // and flip the job to completed only on a clean approval. If the client
+    // rejected any variant (overallStatus === 'changes_requested'), we leave
+    // the job status alone so "create production" stays greyed out.
     if (job?.job_type === 'visual_approval') {
         const selections = validation.data.variant_selections ?? [];
-
-        // Write the is_chosen flags.
         for (const sel of selections) {
             await supabase
                 .from('artwork_variants')
@@ -485,11 +622,12 @@ export async function submitApproval(
                 .eq('component_id', sel.componentId);
         }
 
-        // Flip the job status to completed so the "create production" button lights up.
-        await supabase
-            .from('artwork_jobs')
-            .update({ status: 'completed' })
-            .eq('id', approval.job_id);
+        if (overallStatus === 'approved') {
+            await supabase
+                .from('artwork_jobs')
+                .update({ status: 'completed' })
+                .eq('id', approval.job_id);
+        }
     }
 
     revalidatePath(`/admin/artwork/${approval.job_id}`);

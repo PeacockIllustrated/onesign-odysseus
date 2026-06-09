@@ -1,216 +1,159 @@
 import { requireAdmin } from '@/lib/auth';
-import { createServerClient } from '@/lib/supabase-server';
-import { PageHeader, Card, Chip } from '@/app/(portal)/components/ui';
-import Link from 'next/link';
-import { formatDate } from '@/lib/artwork/utils';
+import { createAdminClient } from '@/lib/supabase-admin';
+import { PageHeader } from '@/app/(portal)/components/ui';
+import { ApprovalsListClient, type ApprovalRow, type EffectiveState } from './ApprovalsListClient';
 
 export const dynamic = 'force-dynamic';
 
-type ApprovalStatus = 'pending' | 'approved' | 'expired' | 'revoked' | 'changes_requested';
+type RawStatus = 'pending' | 'approved' | 'expired' | 'revoked' | 'changes_requested';
 
-function statusVariant(status: ApprovalStatus): 'draft' | 'approved' | 'review' | 'paused' {
-    switch (status) {
-        case 'approved': return 'approved';
-        case 'pending': return 'draft';
-        case 'changes_requested': return 'review';
-        default: return 'paused';
-    }
+interface DecisionRow {
+    approval_id: string;
+    component_id: string;
+    sub_item_id: string | null;
+    decision: 'approved' | 'changes_requested';
+    comment: string | null;
 }
-
-function statusLabel(status: ApprovalStatus): string {
-    switch (status) {
-        case 'approved': return 'approved';
-        case 'pending': return 'pending';
-        case 'changes_requested': return 'changes requested';
-        case 'expired': return 'expired';
-        case 'revoked': return 'revoked';
-    }
-}
+interface SubItemInfo { id: string; label: string; name: string | null; component_id: string; }
+interface ComponentInfo { id: string; name: string; job_id: string; }
 
 export default async function ApprovalsPage() {
     await requireAdmin();
-
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
 
     const { data: approvals } = await supabase
         .from('artwork_approvals')
         .select(`
-            id,
-            token,
-            status,
-            expires_at,
-            client_name,
-            client_email,
-            client_company,
-            client_comments,
-            approved_at,
-            created_at,
-            snapshot_contact_name,
-            snapshot_site_name,
-            job_id,
+            id, token, status, expires_at, client_name, client_email,
+            client_company, client_comments, approved_at, created_at,
+            snapshot_contact_name, snapshot_site_name, job_id,
             artwork_jobs!inner(
-                id,
-                job_name,
-                job_reference,
-                job_type,
-                status,
-                org_id,
-                orgs(name)
+                id, job_name, job_reference, job_type, status,
+                org_id, orgs(name)
             )
         `)
         .order('created_at', { ascending: false })
         .limit(200);
 
-    const rows = (approvals ?? []) as any[];
+    const raw = (approvals ?? []) as any[];
+    const approvalIds = raw.map((r) => r.id);
 
-    // Counts for the summary bar.
-    const total = rows.length;
-    const pending = rows.filter((r) => r.status === 'pending').length;
-    const approved = rows.filter((r) => r.status === 'approved').length;
-    const changesRequested = rows.filter((r) => r.status === 'changes_requested').length;
+    let decisionsByApproval: Record<string, DecisionRow[]> = {};
+    const subItemsById: Record<string, SubItemInfo> = {};
+    const componentsById: Record<string, ComponentInfo> = {};
+
+    if (approvalIds.length > 0) {
+        const { data: decisions } = await supabase
+            .from('artwork_component_decisions')
+            .select('approval_id, component_id, sub_item_id, decision, comment')
+            .in('approval_id', approvalIds);
+
+        const dRows = (decisions ?? []) as DecisionRow[];
+        for (const d of dRows) {
+            (decisionsByApproval[d.approval_id] ??= []).push(d);
+        }
+
+        const subIds = Array.from(new Set(dRows.map((d) => d.sub_item_id).filter(Boolean))) as string[];
+        const componentIds = Array.from(new Set(dRows.map((d) => d.component_id)));
+
+        if (subIds.length > 0) {
+            const { data: subs } = await supabase
+                .from('artwork_component_items')
+                .select('id, label, name, component_id')
+                .in('id', subIds);
+            for (const s of (subs ?? []) as SubItemInfo[]) subItemsById[s.id] = s;
+        }
+        if (componentIds.length > 0) {
+            const { data: comps } = await supabase
+                .from('artwork_components')
+                .select('id, name, job_id')
+                .in('id', componentIds);
+            for (const c of (comps ?? []) as ComponentInfo[]) componentsById[c.id] = c;
+        }
+    }
+
+    // Derive effective state. Approving with any comment or any line-level
+    // feedback promotes the row out of "clean approval" and into
+    // "approved_with_feedback" so it stays on the needs-action list.
+    const derive = (row: any): EffectiveState => {
+        const rs = row.status as RawStatus;
+        if (rs === 'pending' && new Date(row.expires_at) < new Date()) return 'expired';
+        if (rs === 'pending') return 'pending';
+        if (rs === 'revoked') return 'revoked';
+        if (rs === 'expired') return 'expired';
+        if (rs === 'changes_requested') return 'changes_requested';
+
+        const decisions = decisionsByApproval[row.id] ?? [];
+        const hasOverall = !!(row.client_comments ?? '').trim();
+        const hasLine = decisions.some((d) => d.decision === 'changes_requested' || !!(d.comment ?? '').trim());
+        return (hasOverall || hasLine) ? 'approved_with_feedback' : 'approved_clean';
+    };
+
+    const enriched: ApprovalRow[] = raw.map((row) => {
+        const state = derive(row);
+        const job = row.artwork_jobs;
+        const decisions = decisionsByApproval[row.id] ?? [];
+        const lineFeedback = decisions
+            .filter((d) => d.decision === 'changes_requested' || !!(d.comment ?? '').trim())
+            .map((d) => {
+                const sub = d.sub_item_id ? subItemsById[d.sub_item_id] : null;
+                const comp = componentsById[d.component_id];
+                return {
+                    key: d.sub_item_id ?? d.component_id,
+                    decision: d.decision,
+                    comment: d.comment ?? '',
+                    label: sub?.label ?? '',
+                    heading: sub?.name ?? comp?.name ?? 'component',
+                };
+            });
+
+        return {
+            id: row.id,
+            state,
+            jobId: row.job_id,
+            jobName: job?.job_name ?? 'untitled',
+            jobReference: job?.job_reference ?? '',
+            isVisual: job?.job_type === 'visual_approval',
+            orgName: job?.orgs?.name ?? row.snapshot_contact_name ?? null,
+            siteName: row.snapshot_site_name ?? null,
+            clientName: row.client_name ?? null,
+            clientEmail: row.client_email ?? null,
+            clientCompany: row.client_company ?? null,
+            approvedAt: row.approved_at ?? null,
+            createdAt: row.created_at,
+            expiresAt: row.expires_at,
+            clientComments: row.client_comments ?? null,
+            lineFeedback,
+        };
+    });
+
+    const order: Record<EffectiveState, number> = {
+        changes_requested: 0, approved_with_feedback: 1, pending: 2,
+        expired: 3, approved_clean: 4, revoked: 5,
+    };
+    enriched.sort((a, b) => {
+        const s = order[a.state] - order[b.state];
+        if (s !== 0) return s;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    const counts = {
+        all: enriched.length,
+        changesRequested: enriched.filter((e) => e.state === 'changes_requested').length,
+        approvedWithFeedback: enriched.filter((e) => e.state === 'approved_with_feedback').length,
+        pending: enriched.filter((e) => e.state === 'pending').length,
+        approvedClean: enriched.filter((e) => e.state === 'approved_clean').length,
+        expired: enriched.filter((e) => e.state === 'expired').length,
+        revoked: enriched.filter((e) => e.state === 'revoked').length,
+    };
 
     return (
-        <div className="p-6 max-w-6xl mx-auto">
+        <div className="p-6 max-w-5xl mx-auto">
             <PageHeader
                 title="Approvals"
-                description="all artwork approval links — sent, pending, approved, and change requests"
+                description="every artwork approval link sent to clients — sorted so what needs attention sits on top"
             />
-
-            {/* Summary counters */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-                <Card className="!py-3 text-center">
-                    <div className="text-2xl font-bold text-neutral-900">{total}</div>
-                    <div className="text-xs text-neutral-500 uppercase tracking-wider">total</div>
-                </Card>
-                <Card className="!py-3 text-center">
-                    <div className="text-2xl font-bold text-amber-600">{pending}</div>
-                    <div className="text-xs text-neutral-500 uppercase tracking-wider">pending</div>
-                </Card>
-                <Card className="!py-3 text-center">
-                    <div className="text-2xl font-bold text-green-700">{approved}</div>
-                    <div className="text-xs text-neutral-500 uppercase tracking-wider">approved</div>
-                </Card>
-                <Card className="!py-3 text-center">
-                    <div className="text-2xl font-bold text-orange-600">{changesRequested}</div>
-                    <div className="text-xs text-neutral-500 uppercase tracking-wider">changes requested</div>
-                </Card>
-            </div>
-
-            {/* Table */}
-            {rows.length === 0 ? (
-                <Card>
-                    <p className="text-sm text-neutral-500 text-center py-8">
-                        No approval links generated yet. Create one from an artwork job.
-                    </p>
-                </Card>
-            ) : (
-                <div className="border border-neutral-200 rounded-lg overflow-hidden bg-white">
-                    <table className="w-full text-sm">
-                        <thead>
-                            <tr className="bg-neutral-50 border-b border-neutral-200 text-left">
-                                <th className="px-4 py-3 font-semibold text-neutral-600 text-xs uppercase tracking-wider">Job</th>
-                                <th className="px-4 py-3 font-semibold text-neutral-600 text-xs uppercase tracking-wider">Client</th>
-                                <th className="px-4 py-3 font-semibold text-neutral-600 text-xs uppercase tracking-wider">Type</th>
-                                <th className="px-4 py-3 font-semibold text-neutral-600 text-xs uppercase tracking-wider">Status</th>
-                                <th className="px-4 py-3 font-semibold text-neutral-600 text-xs uppercase tracking-wider">Sent</th>
-                                <th className="px-4 py-3 font-semibold text-neutral-600 text-xs uppercase tracking-wider">Approved by</th>
-                                <th className="px-4 py-3 font-semibold text-neutral-600 text-xs uppercase tracking-wider">Comments</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-neutral-100">
-                            {rows.map((row) => {
-                                const job = row.artwork_jobs;
-                                const orgName = job?.orgs?.name ?? null;
-                                const isVisual = job?.job_type === 'visual_approval';
-                                const isPending = row.status === 'pending';
-                                const isExpired = isPending && new Date(row.expires_at) < new Date();
-                                const effectiveStatus: ApprovalStatus = isExpired ? 'expired' : row.status;
-
-                                return (
-                                    <tr key={row.id} className="hover:bg-neutral-50 transition-colors">
-                                        {/* Job */}
-                                        <td className="px-4 py-3">
-                                            <Link
-                                                href={`/admin/artwork/${row.job_id}`}
-                                                className="text-[#4e7e8c] hover:underline font-medium"
-                                            >
-                                                {job?.job_name ?? '—'}
-                                            </Link>
-                                            <div className="text-[11px] font-mono text-neutral-400 mt-0.5">
-                                                {job?.job_reference ?? ''}
-                                            </div>
-                                        </td>
-
-                                        {/* Client */}
-                                        <td className="px-4 py-3">
-                                            <div className="font-medium text-neutral-900 text-xs">
-                                                {orgName ?? row.snapshot_contact_name ?? '—'}
-                                            </div>
-                                            {row.snapshot_site_name && (
-                                                <div className="text-[11px] text-neutral-400">{row.snapshot_site_name}</div>
-                                            )}
-                                        </td>
-
-                                        {/* Type */}
-                                        <td className="px-4 py-3">
-                                            <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
-                                                isVisual ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'
-                                            }`}>
-                                                {isVisual ? 'Visual' : 'Production'}
-                                            </span>
-                                        </td>
-
-                                        {/* Status */}
-                                        <td className="px-4 py-3">
-                                            <Chip variant={statusVariant(effectiveStatus)}>
-                                                {statusLabel(effectiveStatus)}
-                                            </Chip>
-                                        </td>
-
-                                        {/* Sent */}
-                                        <td className="px-4 py-3 text-xs text-neutral-500">
-                                            {formatDate(row.created_at)}
-                                        </td>
-
-                                        {/* Approved by */}
-                                        <td className="px-4 py-3">
-                                            {row.client_name ? (
-                                                <div>
-                                                    <div className="text-xs font-medium text-neutral-900">{row.client_name}</div>
-                                                    {row.client_email && (
-                                                        <div className="text-[11px] text-neutral-400">{row.client_email}</div>
-                                                    )}
-                                                    {row.approved_at && (
-                                                        <div className="text-[10px] text-neutral-400 mt-0.5">
-                                                            {formatDate(row.approved_at)}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            ) : (
-                                                <span className="text-xs text-neutral-300">—</span>
-                                            )}
-                                        </td>
-
-                                        {/* Comments */}
-                                        <td className="px-4 py-3">
-                                            {row.client_comments ? (
-                                                <div
-                                                    className="text-xs text-neutral-600 max-w-[200px] truncate"
-                                                    title={row.client_comments}
-                                                >
-                                                    {row.client_comments}
-                                                </div>
-                                            ) : (
-                                                <span className="text-xs text-neutral-300">—</span>
-                                            )}
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-            )}
+            <ApprovalsListClient approvals={enriched} counts={counts} />
         </div>
     );
 }

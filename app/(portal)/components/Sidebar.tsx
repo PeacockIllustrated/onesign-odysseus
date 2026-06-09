@@ -17,6 +17,10 @@ import {
     Truck,
     BadgeCheck,
     Wrench,
+    Inbox,
+    AlertTriangle,
+    Box,
+    PenTool,
     X,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -53,9 +57,11 @@ const adminNavGroups: NavGroup[] = [
         label: 'Production',
         items: [
             { label: 'Quotes', href: '/admin/quotes', icon: Calculator },
+            { label: 'Visualiser', href: '/admin/visualiser', icon: Box },
             { label: 'Artwork', href: '/admin/artwork', icon: ClipboardCheck },
             { label: 'Job Board', href: '/admin/jobs', icon: LayoutGrid },
             { label: 'Shop Floor', href: '/shop-floor', icon: Zap },
+            { label: 'Flags', href: '/admin/flags', icon: AlertTriangle },
             { label: 'Deliveries', href: '/admin/deliveries', icon: Truck },
         ],
     },
@@ -74,6 +80,13 @@ const adminNavGroups: NavGroup[] = [
             { label: 'Approvals', href: '/admin/approvals', icon: BadgeCheck },
             { label: 'Maintenance', href: '/admin/maintenance', icon: Wrench },
             { label: 'Reports', href: '/admin/reports', icon: FileText },
+        ],
+    },
+    {
+        label: 'Inbound',
+        items: [
+            { label: 'External Orders', href: '/admin/external-orders', icon: Inbox },
+            { label: 'Design Requests', href: '/admin/design-requests', icon: PenTool },
         ],
     },
 ];

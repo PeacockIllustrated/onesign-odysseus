@@ -241,13 +241,12 @@ export async function signOffSubItemDesign(
         .single();
     if (!si) return { error: 'sub-item not found' };
     if (si.design_signed_off_at) return { error: 'design already signed off' };
-    if (!si.material) return { error: 'material is required before sign-off' };
-    if (si.width_mm == null || si.height_mm == null) {
-        return { error: 'dimensions are required before sign-off' };
-    }
-    if (!si.target_stage_id) {
-        return { error: 'target department is required before sign-off' };
-    }
+    if (!si.material) return { error: 'spec is required before sign-off' };
+    // Dimensions (width_mm / height_mm) and target_stage_id are no longer
+    // required at sign-off. Both are explicitly optional in the simplified
+    // sub-item card UI — width/height because visual packs rarely have
+    // measured dimensions at approval time, target_stage_id because
+    // production routing is handled in the production flow, not here.
 
     const { error } = await supabase
         .from('artwork_component_items')

@@ -1,5 +1,4 @@
 import { requireAdmin } from '@/lib/auth';
-import { createServerClient } from '@/lib/supabase-server';
 import { createAdminClient } from '@/lib/supabase-admin';
 import { getDeliveries } from '@/lib/deliveries/queries';
 import { getActiveDrivers, getAllDrivers } from '@/lib/drivers/actions';
@@ -26,7 +25,6 @@ export default async function DeliveriesPage({ searchParams }: PageProps) {
     endDay.setDate(endDay.getDate() + (includeWeekends ? 6 : 4));
     const endDate = endDay.toISOString().slice(0, 10);
 
-    const supabase = await createServerClient();
     // Admin client for map + planning queries — bypasses RLS so all sites
     // and record counts are visible regardless of org membership.
     const adminDb = createAdminClient();

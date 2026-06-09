@@ -1,7 +1,7 @@
 import { requireAdmin } from '@/lib/auth';
 import { getArtworkJob, getArtworkJobLineage } from '@/lib/artwork/actions';
 import { getProductionStages } from '@/lib/production/queries';
-import { createServerClient } from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase-admin';
 import { notFound } from 'next/navigation';
 import { PageHeader, Card, Chip } from '@/app/(portal)/components/ui';
 import Link from 'next/link';
@@ -17,11 +17,12 @@ import {
     formatDate,
 } from '@/lib/artwork/utils';
 import { ArtworkJobStatus, ComponentStatus } from '@/lib/artwork/types';
-import { getApprovalForJob } from '@/lib/artwork/approval-actions';
+import { getApprovalForJob, getComponentDecisionsForJob } from '@/lib/artwork/approval-actions';
+import { getActiveProductionApprovalForJob } from '@/lib/artwork/production-approval-actions';
 import { AddComponentForm } from './components/AddComponentForm';
 import { ApprovalLinkSection } from './components/ApprovalLinkSection';
+import { ProductionApprovalLinkSection } from './components/ProductionApprovalLinkSection';
 import { ClientDeliveryCard } from './components/ClientDeliveryCard';
-import { CoverImageUpload } from './components/CoverImageUpload';
 import { JobFieldsForm } from './components/JobFieldsForm';
 import { ReleaseToProductionButton } from './components/ReleaseToProductionButton';
 import { DeleteArtworkJobButton } from './components/DeleteArtworkJobButton';
@@ -37,27 +38,20 @@ export default async function ArtworkJobDetailPage({
     await requireAdmin();
 
     const { id } = await params;
-    const [job, approval, stages, lineage] = await Promise.all([
+    const [job, approval, stages, lineage, componentDecisions, productionApproval] = await Promise.all([
         getArtworkJob(id),
         getApprovalForJob(id),
         getProductionStages(),
         getArtworkJobLineage(id),
+        getComponentDecisionsForJob(id),
+        getActiveProductionApprovalForJob(id),
     ]);
 
     if (!job) {
         notFound();
     }
 
-    const supabaseClient = await createServerClient();
-
-    // Generate signed URL for cover image if present
-    let coverImageUrl: string | null = null;
-    if (job.cover_image_path) {
-        const { data } = await supabaseClient.storage
-            .from('artwork-assets')
-            .createSignedUrl(job.cover_image_path, 3600);
-        coverImageUrl = data?.signedUrl || null;
-    }
+    const supabaseClient = createAdminClient();
 
     // Visual-approval extra data
     let spawnedProduction: { id: string } | null = null;
@@ -253,78 +247,137 @@ export default async function ArtworkJobDetailPage({
                             </Card>
                         ) : (
                             <div className="space-y-3">
-                                {job.components.map((component, index) => (
-                                    <Link
-                                        key={component.id}
-                                        href={`/admin/artwork/${id}/${component.id}`}
-                                        className="block"
-                                    >
-                                        <Card className="hover:border-neutral-300 transition-colors cursor-pointer">
-                                            <div className="flex items-start justify-between gap-3">
-                                                <ReorderControls
-                                                    componentId={component.id}
-                                                    isFirst={index === 0}
-                                                    isLast={index === job.components.length - 1}
-                                                />
-                                                <div className="flex-1">
-                                                    <div className="flex items-center gap-2 mb-1">
-                                                        <span className="text-xs font-mono text-neutral-400">
-                                                            {String(index + 1).padStart(2, '0')}
-                                                        </span>
-                                                        <h3 className="text-sm font-semibold text-neutral-900">
-                                                            {component.name}
-                                                        </h3>
-                                                        <Chip variant="default">
-                                                            {getComponentTypeLabel(component.component_type)}
+                                {job.components.map((component, index) => {
+                                    const subs = ((component as any).sub_items ?? []) as Array<{ id: string; label?: string; name?: string | null }>;
+                                    // Aggregate per-sub-item decisions into a component-level verdict:
+                                    //   * any changes_requested → amber
+                                    //   * all approved          → green
+                                    //   * mixed / incomplete    → neutral
+                                    const subDecisions = subs
+                                        .map((si) => componentDecisions.bySubItem[si.id])
+                                        .filter(Boolean);
+                                    const componentOnly = componentDecisions.byComponent[component.id];
+                                    const anyChanges = subDecisions.some((d) => d.decision === 'changes_requested')
+                                        || componentOnly?.decision === 'changes_requested';
+                                    const allApproved = subs.length > 0
+                                        ? subDecisions.length === subs.length && subDecisions.every((d) => d.decision === 'approved')
+                                        : componentOnly?.decision === 'approved';
+                                    const cardBorder = anyChanges
+                                        ? 'border-amber-400 bg-amber-50 hover:border-amber-500'
+                                        : allApproved
+                                        ? 'border-green-400 bg-green-50 hover:border-green-500'
+                                        : 'hover:border-neutral-300';
+                                    const subComments = subs
+                                        .map((si) => {
+                                            const d = componentDecisions.bySubItem[si.id];
+                                            if (!d?.comment) return null;
+                                            return { label: si.label ?? '?', name: si.name ?? '', comment: d.comment };
+                                        })
+                                        .filter(Boolean) as Array<{ label: string; name: string; comment: string }>;
+                                    return (
+                                        <Link
+                                            key={component.id}
+                                            href={`/admin/artwork/${id}/${component.id}`}
+                                            className="block"
+                                        >
+                                            <Card className={`${cardBorder} transition-colors cursor-pointer`}>
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <ReorderControls
+                                                        componentId={component.id}
+                                                        isFirst={index === 0}
+                                                        isLast={index === job.components.length - 1}
+                                                    />
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <span className="text-xs font-mono text-neutral-400">
+                                                                {String(index + 1).padStart(2, '0')}
+                                                            </span>
+                                                            <h3 className="text-sm font-semibold text-neutral-900">
+                                                                {component.name}
+                                                            </h3>
+                                                            <Chip variant="default">
+                                                                {getComponentTypeLabel(component.component_type)}
+                                                            </Chip>
+                                                            {allApproved && !anyChanges && (
+                                                                <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-green-600 text-white">
+                                                                    client approved
+                                                                </span>
+                                                            )}
+                                                            {anyChanges && (
+                                                                <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500 text-white">
+                                                                    changes requested
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {component.width_mm && component.height_mm ? (
+                                                            <p className="text-xs text-neutral-500 mt-1">
+                                                                {formatDimensionWithReturns(
+                                                                    Number(component.width_mm),
+                                                                    Number(component.height_mm),
+                                                                    component.returns_mm ? Number(component.returns_mm) : null
+                                                                )}
+                                                                {component.material && ` — ${component.material}`}
+                                                            </p>
+                                                        ) : (
+                                                            <p className="text-xs text-neutral-400 mt-1">
+                                                                dimensions not yet specified
+                                                            </p>
+                                                        )}
+                                                        {subComments.length > 0 && (
+                                                            <div className="mt-2 space-y-1">
+                                                                {subComments.map((sc) => (
+                                                                    <div key={sc.label} className="p-2 rounded border border-amber-300 bg-amber-100 text-xs text-amber-900">
+                                                                        <span className="font-mono font-bold text-[10px] bg-neutral-900 text-white px-1 py-0.5 rounded mr-1.5">
+                                                                            {sc.label}
+                                                                        </span>
+                                                                        {sc.name && <span className="font-semibold mr-1">{sc.name}:</span>}
+                                                                        <span className="whitespace-pre-wrap">{sc.comment}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                        {componentOnly?.comment && subComments.length === 0 && (
+                                                            <div className="mt-2 p-2 rounded border border-amber-300 bg-amber-100 text-xs text-amber-900">
+                                                                <span className="font-semibold uppercase tracking-wider text-[10px] text-amber-800 mr-1">
+                                                                    client:
+                                                                </span>
+                                                                <span className="whitespace-pre-wrap">{componentOnly.comment}</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        {component.target_stage_id && (() => {
+                                                            const stage = stages.find(s => s.id === component.target_stage_id);
+                                                            return stage ? (
+                                                                <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: `${stage.color}20`, color: stage.color }}>
+                                                                    {stage.name}
+                                                                </span>
+                                                            ) : null;
+                                                        })()}
+                                                        {component.design_signed_off_at && (
+                                                            <span className="text-xs text-green-600" title="design signed off">
+                                                                design ok
+                                                            </span>
+                                                        )}
+                                                        {component.production_signed_off_at && (
+                                                            <span className="text-xs text-emerald-600" title="production signed off">
+                                                                prod ok
+                                                            </span>
+                                                        )}
+                                                        {component.dimension_flag === 'out_of_tolerance' && (
+                                                            <span className="text-xs text-red-600 font-medium" title="out of tolerance">
+                                                                OOT
+                                                            </span>
+                                                        )}
+                                                        <Chip variant={getComponentStatusVariant(component.status as ComponentStatus)}>
+                                                            {getComponentStatusLabel(component.status as ComponentStatus)}
                                                         </Chip>
                                                     </div>
-                                                    {component.width_mm && component.height_mm ? (
-                                                        <p className="text-xs text-neutral-500 mt-1">
-                                                            {formatDimensionWithReturns(
-                                                                Number(component.width_mm),
-                                                                Number(component.height_mm),
-                                                                component.returns_mm ? Number(component.returns_mm) : null
-                                                            )}
-                                                            {component.material && ` — ${component.material}`}
-                                                        </p>
-                                                    ) : (
-                                                        <p className="text-xs text-neutral-400 mt-1">
-                                                            dimensions not yet specified
-                                                        </p>
-                                                    )}
                                                 </div>
-                                                <div className="flex items-center gap-2">
-                                                    {component.target_stage_id && (() => {
-                                                        const stage = stages.find(s => s.id === component.target_stage_id);
-                                                        return stage ? (
-                                                            <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: `${stage.color}20`, color: stage.color }}>
-                                                                {stage.name}
-                                                            </span>
-                                                        ) : null;
-                                                    })()}
-                                                    {component.design_signed_off_at && (
-                                                        <span className="text-xs text-green-600" title="design signed off">
-                                                            design ok
-                                                        </span>
-                                                    )}
-                                                    {component.production_signed_off_at && (
-                                                        <span className="text-xs text-emerald-600" title="production signed off">
-                                                            prod ok
-                                                        </span>
-                                                    )}
-                                                    {component.dimension_flag === 'out_of_tolerance' && (
-                                                        <span className="text-xs text-red-600 font-medium" title="out of tolerance">
-                                                            OOT
-                                                        </span>
-                                                    )}
-                                                    <Chip variant={getComponentStatusVariant(component.status as ComponentStatus)}>
-                                                        {getComponentStatusLabel(component.status as ComponentStatus)}
-                                                    </Chip>
-                                                </div>
-                                            </div>
-                                        </Card>
-                                    </Link>
-                                ))}
+                                            </Card>
+                                        </Link>
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
@@ -466,11 +519,9 @@ export default async function ArtworkJobDetailPage({
                         paintColour={job.paint_colour}
                     />
 
-                    {/* Cover Image */}
-                    <CoverImageUpload
-                        jobId={id}
-                        coverImageUrl={coverImageUrl}
-                    />
+                    {/* Cover image intentionally removed — sub-item thumbnails
+                        carry the visual on the sign-off page, so the job-level
+                        cover upload is one more step staff don't need. */}
 
                     {/* Client Approval */}
                     <ApprovalLinkSection
@@ -483,6 +534,14 @@ export default async function ArtworkJobDetailPage({
                                 : undefined
                         }
                     />
+
+                    {/* Internal production sign-off — production-flavour jobs only */}
+                    {job.job_type !== 'visual_approval' && (
+                        <ProductionApprovalLinkSection
+                            jobId={id}
+                            activeApproval={productionApproval}
+                        />
+                    )}
                 </div>
             </div>
         </div>

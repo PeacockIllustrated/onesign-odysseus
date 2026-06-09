@@ -42,3 +42,6 @@ yarn-error.log*
 next-env.d.ts
 
 .superpowers/
+
+# claude code worktrees (local agent scratch — never commit)
+.claude/worktrees/

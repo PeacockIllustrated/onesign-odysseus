@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase-admin';
 import { getUser, requireSuperAdminOrError } from '@/lib/auth';
 import { geocodeAddress } from '@/lib/mapbox/client';
+import { ok, okVoid, err, type Result } from '@/lib/result';
 import {
     CreateDriverSchema,
     UpdateDriverSchema,
@@ -52,14 +53,14 @@ async function geocodeDriverHome(
 
 export async function createDriver(
     input: CreateDriverInput
-): Promise<{ id: string } | { error: string }> {
+): Promise<Result<{ id: string }>> {
     const user = await getUser();
-    if (!user) return { error: 'not authenticated' };
+    if (!user) return err('not authenticated');
     const gate = await requireSuperAdminOrError();
-    if (!gate.ok) return { error: gate.error };
+    if (!gate.ok) return err(gate.error);
 
     const validation = CreateDriverSchema.safeParse(input);
-    if (!validation.success) return { error: validation.error.issues[0].message };
+    if (!validation.success) return err(validation.error.issues[0].message);
     const parsed = validation.data;
 
     const supabase = createAdminClient();
@@ -74,25 +75,25 @@ export async function createDriver(
         .select('id')
         .single();
 
-    if (error || !data) return { error: error?.message ?? 'failed to create driver' };
+    if (error || !data) return err(error?.message ?? 'failed to create driver');
 
     geocodeDriverHome(supabase, data.id, parsed.home_postcode).catch(() => {});
 
     revalidatePath('/admin/planning');
-    return { id: data.id };
+    return ok({ id: data.id });
 }
 
 export async function updateDriver(
     driverId: string,
     patch: UpdateDriverInput
-): Promise<{ ok: true } | { error: string }> {
+): Promise<Result<null>> {
     const user = await getUser();
-    if (!user) return { error: 'not authenticated' };
+    if (!user) return err('not authenticated');
     const gate = await requireSuperAdminOrError();
-    if (!gate.ok) return { error: gate.error };
+    if (!gate.ok) return err(gate.error);
 
     const validation = UpdateDriverSchema.safeParse(patch);
-    if (!validation.success) return { error: validation.error.issues[0].message };
+    if (!validation.success) return err(validation.error.issues[0].message);
     const parsed = validation.data;
 
     const supabase = createAdminClient();
@@ -105,7 +106,7 @@ export async function updateDriver(
         .from('drivers')
         .update(updates)
         .eq('id', driverId);
-    if (error) return { error: error.message };
+    if (error) return err(error.message);
 
     if (parsed.home_postcode !== undefined) {
         await supabase.from('drivers').update({ home_lat: null, home_lng: null }).eq('id', driverId);
@@ -113,16 +114,16 @@ export async function updateDriver(
     }
 
     revalidatePath('/admin/planning');
-    return { ok: true };
+    return okVoid();
 }
 
 export async function toggleDriverActive(
     driverId: string
-): Promise<{ ok: true } | { error: string }> {
+): Promise<Result<null>> {
     const user = await getUser();
-    if (!user) return { error: 'not authenticated' };
+    if (!user) return err('not authenticated');
     const gate = await requireSuperAdminOrError();
-    if (!gate.ok) return { error: gate.error };
+    if (!gate.ok) return err(gate.error);
 
     const supabase = createAdminClient();
     const { data: driver } = await supabase
@@ -130,14 +131,14 @@ export async function toggleDriverActive(
         .select('is_active')
         .eq('id', driverId)
         .single();
-    if (!driver) return { error: 'driver not found' };
+    if (!driver) return err('driver not found');
 
     const { error } = await supabase
         .from('drivers')
         .update({ is_active: !driver.is_active })
         .eq('id', driverId);
-    if (error) return { error: error.message };
+    if (error) return err(error.message);
 
     revalidatePath('/admin/planning');
-    return { ok: true };
+    return okVoid();
 }

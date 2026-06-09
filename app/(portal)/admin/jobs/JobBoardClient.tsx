@@ -13,7 +13,7 @@ import {
     useSensors,
     useDroppable,
 } from '@dnd-kit/core';
-import { Plus, LayoutGrid, List as ListIcon, AlertCircle } from 'lucide-react';
+import { Plus, LayoutGrid, List as ListIcon, AlertCircle, X } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase';
 import { moveJobItemToStage } from '@/lib/production/actions';
 import type { ItemBoardColumn, JobItemWithJob, JobItem, ProductionStage } from '@/lib/production/types';
@@ -44,6 +44,7 @@ export function JobBoardClient({ initialBoard, stages }: JobBoardClientProps) {
     const [draggingItem, setDraggingItem] = useState<JobItemWithJob | null>(null);
     const preDragBoardRef = useRef<ItemBoardColumn[]>([]);
     const [view, setView] = useState<BoardView>('kanban');
+    const [moveError, setMoveError] = useState<string | null>(null);
 
     // Load persisted view preference
     useEffect(() => {
@@ -140,8 +141,12 @@ export function JobBoardClient({ initialBoard, stages }: JobBoardClientProps) {
 
         const result = await moveJobItemToStage(itemId, newStageId);
         if ('error' in result) {
-            // Revert on failure
+            // Revert on failure and surface the reason. The artwork-approval
+            // gate (lib/production/actions.ts:moveJobItemToStage) and other
+            // server-side checks return human-readable messages that the
+            // operator needs to see — silent revert was confusing.
             setBoard(preDragBoardRef.current);
+            setMoveError(result.error);
             console.error('Failed to move item:', result.error);
         }
     }
@@ -150,6 +155,20 @@ export function JobBoardClient({ initialBoard, stages }: JobBoardClientProps) {
 
     return (
         <>
+            {moveError && (
+                <div className="mb-3 p-3 rounded border border-red-200 bg-red-50 text-sm text-red-700 flex items-start gap-2">
+                    <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                    <span className="flex-1">{moveError}</span>
+                    <button
+                        type="button"
+                        onClick={() => setMoveError(null)}
+                        className="text-red-500 hover:text-red-700"
+                        aria-label="Dismiss"
+                    >
+                        <X size={14} />
+                    </button>
+                </div>
+            )}
             <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
                 <span className="text-sm text-neutral-500">
                     {totalItems} active item{totalItems !== 1 ? 's' : ''}

@@ -1,6 +1,6 @@
 import { requireAdmin } from '@/lib/auth';
 import { getArtworkDashboardData } from '@/lib/artwork/actions';
-import { createServerClient } from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase-admin';
 import { PageHeader, Card, Chip } from '@/app/(portal)/components/ui';
 import Link from 'next/link';
 import { formatDate, getJobStatusLabel, getJobStatusVariant } from '@/lib/artwork/utils';
@@ -52,7 +52,7 @@ export default async function ArtworkJobsPage({
         ? allJobs
         : allJobs.filter((j) => j.job_type === typeFilter);
 
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
     const { data: orgs } = await supabase
         .from('orgs')
         .select('id, name')

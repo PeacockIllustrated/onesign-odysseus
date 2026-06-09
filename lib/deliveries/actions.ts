@@ -437,7 +437,14 @@ export async function generatePodLink(
 }
 
 // ---------------------------------------------------------------------------
-// Public actions (token-gated, no auth required)
+// Public actions (token-gated, NO AUTH)
+// ---------------------------------------------------------------------------
+//
+// Do NOT add getUser() / requireAuth() to any action below this line.
+// Drivers and recipients reach these via /delivery/[token] without a
+// Supabase session — the pod_token on the deliveries row is the only
+// authorisation. Every query must use createAdminClient() so the
+// service-role key bypasses RLS on deliveries / delivery_items.
 // ---------------------------------------------------------------------------
 
 export async function getPodByToken(

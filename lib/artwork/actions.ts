@@ -48,8 +48,9 @@ import { advanceItemToNextRoutedStage } from '@/lib/production/actions';
  *  - 'linked': spawned from a production job_item; org_id is inherited from the
  *    parent production_job. The partial unique index on artwork_jobs.job_item_id
  *    prevents duplicate creation per item.
- *  - 'orphan': warranty/rework/speculative. Requires explicit acknowledgement
- *    and an org_id — never left unlinked to both an item AND an org.
+ *  - 'orphan': warranty/rework/speculative. Requires explicit acknowledgement;
+ *    sets is_orphan=true, which alone satisfies the `org_id OR is_orphan`
+ *    invariant (migration 038), so org_id is optional here.
  */
 export async function createArtworkJob(
     input: CreateArtworkJobInput
@@ -1412,15 +1413,22 @@ export async function completeArtworkAndAdvanceItem(
         return { error: `Failed to update item routing: ${routingError.message}` };
     }
 
+    // Mark artwork completed BEFORE advancing the item. The artwork-approval
+    // gate in moveJobItemToStage rejects forward moves when the linked
+    // artwork is not yet completed — flipping status here is what authorises
+    // this legitimate release. See lib/production/actions.ts:moveJobItemToStage.
+    const { error: artworkStatusError } = await supabase
+        .from('artwork_jobs')
+        .update({ status: 'completed' })
+        .eq('id', artworkJobId);
+    if (artworkStatusError) {
+        return { error: `Failed to mark artwork completed: ${artworkStatusError.message}` };
+    }
+
     const advanceResult = await advanceItemToNextRoutedStage(artworkJob.job_item_id);
     if ('error' in advanceResult) {
         return { error: `Routing updated but failed to advance item: ${advanceResult.error}` };
     }
-
-    await supabase
-        .from('artwork_jobs')
-        .update({ status: 'completed' })
-        .eq('id', artworkJobId);
 
     revalidatePath('/admin/artwork');
     revalidatePath(`/admin/artwork/${artworkJobId}`);

@@ -63,13 +63,15 @@ describe('CreateArtworkJobInputSchema', () => {
         expect(res.success).toBe(true);
     });
 
-    it('rejects orphan input missing org_id', () => {
+    // org_id is optional for orphans: kind:'orphan' sets is_orphan=true, which
+    // alone satisfies the `org_id OR is_orphan` invariant (migration 038 CHECK).
+    it('accepts orphan input without org_id (is_orphan satisfies org_id-OR-is_orphan)', () => {
         const res = CreateArtworkJobInputSchema.safeParse({
             kind: 'orphan',
             job_name: 'rework',
             acknowledge_orphan: true,
         });
-        expect(res.success).toBe(false);
+        expect(res.success).toBe(true);
     });
 
     it('rejects empty job_name on linked path', () => {

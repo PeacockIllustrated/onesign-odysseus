@@ -1,6 +1,6 @@
 import { requireAdmin, isSuperAdmin } from '@/lib/auth';
 import { redirect, notFound } from 'next/navigation';
-import { createServerClient } from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase-admin';
 import { PageHeader, Card, Chip } from '@/app/(portal)/components/ui';
 import Link from 'next/link';
 import { ArrowLeft, AlertTriangle } from 'lucide-react';
@@ -30,7 +30,7 @@ export default async function ActivatePricingSetPage({ params }: PageProps) {
     }
 
     const { setId } = await params;
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
 
     // Get the pricing set to activate
     const { data: pricingSet, error } = await supabase

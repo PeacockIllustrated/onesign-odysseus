@@ -1,4 +1,4 @@
-import { createServerClient } from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase-admin';
 import { requireAdmin } from '@/lib/auth';
 import { PageHeader } from '@/app/(portal)/components/ui';
 import { DeliverablesClient } from './DeliverablesClient';
@@ -6,7 +6,7 @@ import { DeliverablesClient } from './DeliverablesClient';
 export default async function AdminDeliverablesPage() {
     await requireAdmin();
 
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
 
     // Fetch all orgs
     const { data: orgs } = await supabase

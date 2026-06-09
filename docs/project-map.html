@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Onesign Odysseus — Project Map</title>
+<style>
+  :root {
+    --accent: #4e7e8c;
+    --accent-dark: #3a5f6a;
+    --accent-light: #e8f0f3;
+    --bg: #0f1418;
+    --bg-2: #1a1f23;
+    --bg-3: #242a30;
+    --border: #2e363d;
+    --text: #e8edf0;
+    --text-dim: #9aa8b1;
+    --text-mute: #6b7680;
+    --ok: #4ade80;
+    --ok-bg: #14301e;
+    --warn: #fbbf24;
+    --warn-bg: #3a2a0b;
+    --todo: #f87171;
+    --todo-bg: #3a1515;
+    --legacy: #6b7680;
+    --legacy-bg: #1e2428;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { padding: 32px; max-width: 1400px; margin: 0 auto; }
+  h1 { font-size: 28px; margin: 0 0 4px; letter-spacing: -0.02em; }
+  h2 { font-size: 18px; margin: 48px 0 16px; color: var(--text); letter-spacing: -0.01em; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 14px; margin: 0 0 8px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; }
+  .sub { color: var(--text-dim); margin: 0 0 24px; }
+  .meta { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--text-mute); margin-top: 8px; }
+  .meta span strong { color: var(--text-dim); }
+
+  /* Legend */
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; padding: 12px 16px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; }
+  .legend .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .dot.ok { background: var(--ok); }
+  .dot.warn { background: var(--warn); }
+  .dot.todo { background: var(--todo); }
+  .dot.legacy { background: var(--legacy); }
+
+  /* Pipeline flow */
+  .pipeline { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; margin-top: 24px; position: relative; }
+  .stage { background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; position: relative; z-index: 2; }
+  .stage h4 { margin: 0 0 6px; font-size: 13px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.06em; }
+  .stage .title { font-size: 16px; font-weight: 600; margin-bottom: 8px; color: var(--text); }
+  .stage ul { padding: 0; margin: 0; list-style: none; font-size: 12px; color: var(--text-dim); }
+  .stage ul li { padding: 2px 0; }
+  .stage .route { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--accent); }
+  .arrow { display: flex; align-items: center; justify-content: center; padding: 0 4px; font-size: 11px; font-weight: 600; }
+  .arrow .a-inner { background: var(--bg-3); border: 1px solid var(--border); padding: 6px 10px; border-radius: 20px; text-align: center; }
+  .arrow.ok .a-inner { border-color: var(--ok); color: var(--ok); background: var(--ok-bg); }
+  .arrow.warn .a-inner { border-color: var(--warn); color: var(--warn); background: var(--warn-bg); }
+  .arrow.todo .a-inner { border-color: var(--todo); color: var(--todo); background: var(--todo-bg); }
+  .arrow .hop { font-size: 10px; opacity: 0.75; display: block; margin-top: 2px; font-weight: 400; }
+
+  /* Route cards grid */
+  .nav-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+  .card { background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .card.ok { border-left: 3px solid var(--ok); }
+  .card.warn { border-left: 3px solid var(--warn); }
+  .card.todo { border-left: 3px solid var(--todo); }
+  .card.legacy { border-left: 3px solid var(--legacy); opacity: 0.78; }
+  .card header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+  .card .name { font-weight: 600; font-size: 14px; }
+  .card .path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--accent); margin-bottom: 8px; word-break: break-all; }
+  .card .desc { font-size: 12px; color: var(--text-dim); }
+  .card .meta-row { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; font-size: 10px; }
+  .tag { background: var(--bg-3); color: var(--text-dim); padding: 2px 6px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .tag.ok { background: var(--ok-bg); color: var(--ok); }
+  .tag.warn { background: var(--warn-bg); color: var(--warn); }
+  .tag.todo { background: var(--todo-bg); color: var(--todo); }
+
+  /* Section label row */
+  .section-label { display: flex; align-items: center; gap: 12px; margin: 24px 0 12px; }
+  .section-label h3 { margin: 0; }
+  .section-label .rule { flex: 1; height: 1px; background: var(--border); }
+
+  /* Todo list */
+  .todo-list { background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; padding: 4px 0; }
+  .todo-item { padding: 14px 20px; border-bottom: 1px solid var(--border); display: grid; grid-template-columns: 100px 1fr auto; gap: 16px; align-items: center; }
+  .todo-item:last-child { border-bottom: none; }
+  .todo-item .prio { font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .todo-item .prio.p0 { color: var(--todo); }
+  .todo-item .prio.p1 { color: var(--warn); }
+  .todo-item .prio.p2 { color: var(--text-dim); }
+  .todo-item .desc { font-size: 13px; }
+  .todo-item .desc .t { font-weight: 600; color: var(--text); display: block; }
+  .todo-item .desc .d { color: var(--text-dim); font-size: 12px; margin-top: 2px; }
+  .todo-item .loc { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--text-mute); text-align: right; max-width: 300px; }
+
+  /* Summary stats */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 24px 0; }
+  .stat { background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+  .stat .n { font-size: 28px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; }
+  .stat .l { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
+  .stat.ok .n { color: var(--ok); }
+  .stat.warn .n { color: var(--warn); }
+  .stat.todo .n { color: var(--todo); }
+
+  /* Mobile */
+  @media (max-width: 900px) {
+    .pipeline { grid-template-columns: 1fr; }
+    .arrow { transform: rotate(90deg); padding: 8px 0; }
+    .todo-item { grid-template-columns: 80px 1fr; }
+    .todo-item .loc { grid-column: 1 / -1; text-align: left; }
+  }
+
+  /* Footer */
+  footer { margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--border); color: var(--text-mute); font-size: 12px; text-align: center; }
+
+  /* Header badge */
+  .accent-badge { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); margin-right: 8px; vertical-align: middle; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span class="accent-badge"></span>Onesign Odysseus — Project Map</h1>
+  <p class="sub">Dynamic view of routes, pipeline wiring, and outstanding work. Snapshot: 2026-04-18.</p>
+  <div class="meta">
+    <span><strong>Stack:</strong> Next.js 16 • TS • Supabase • Tailwind 4</span>
+    <span><strong>Migrations:</strong> 50 applied</span>
+    <span><strong>Repo:</strong> PeacockIllustrated/onesign-odysseus</span>
+    <span><strong>Branch:</strong> master</span>
+  </div>
+</header>
+
+<section class="stats">
+  <div class="stat ok"><div class="n">7</div><div class="l">Pipeline edges wired</div></div>
+  <div class="stat warn"><div class="n">4</div><div class="l">Partial / manual</div></div>
+  <div class="stat todo"><div class="n">1</div><div class="l">Not implemented</div></div>
+  <div class="stat"><div class="n">54</div><div class="l">Page routes</div></div>
+  <div class="stat"><div class="n">6</div><div class="l">API routes</div></div>
+  <div class="stat"><div class="n">9</div><div class="l">Print views</div></div>
+</section>
+
+<div class="legend">
+  <span class="pill"><span class="dot ok"></span> Wired — end to end, used</span>
+  <span class="pill"><span class="dot warn"></span> Partial — works but manual / gap</span>
+  <span class="pill"><span class="dot todo"></span> Missing — TODO</span>
+  <span class="pill"><span class="dot legacy"></span> Legacy / orphaned — no sidebar link</span>
+</div>
+
+<!-- ============ PIPELINE FLOW ============ -->
+<h2>Core pipeline — quote → artwork → production → delivery → invoice</h2>
+
+<div class="pipeline">
+  <div class="stage">
+    <h4>Stage 1</h4>
+    <div class="title">Quote</div>
+    <ul>
+      <li><span class="route">/admin/quotes</span></li>
+      <li>Line items (prod-work or service)</li>
+      <li>Carries org_id / contact_id / site_id</li>
+      <li>Ref: OSD-YYYY-NNNNNN</li>
+    </ul>
+  </div>
+
+  <div class="arrow ok">
+    <div class="a-inner">✓ Generate artwork<span class="hop">generateArtworkFromQuote()</span></div>
+  </div>
+
+  <div class="stage">
+    <h4>Stage 2</h4>
+    <div class="title">Artwork</div>
+    <ul>
+      <li><span class="route">/admin/artwork</span></li>
+      <li>Skeleton components per line item</li>
+      <li>Sub-items = spec-bearing row</li>
+      <li>Ref: AWC-YYYY-NNNNNN</li>
+    </ul>
+  </div>
+
+  <div class="arrow ok">
+    <div class="a-inner">✓ Release to production<span class="hop">completeArtworkAndAdvanceItem()</span></div>
+  </div>
+
+  <div class="stage">
+    <h4>Stage 3</h4>
+    <div class="title">Production</div>
+    <ul>
+      <li><span class="route">/admin/jobs</span> (kanban)</li>
+      <li><span class="route">/shop-floor</span> (dept queue)</li>
+      <li>stage_routing rebuilt from sub-items</li>
+    </ul>
+  </div>
+
+  <div class="arrow ok">
+    <div class="a-inner">✓ Goods out → delivery<span class="hop">autoCreateDeliveryForCompletedJob()</span></div>
+  </div>
+
+  <div class="stage">
+    <h4>Stage 4</h4>
+    <div class="title">Delivery</div>
+    <ul>
+      <li><span class="route">/admin/deliveries</span></li>
+      <li>PoD via <span class="route">/delivery/[token]</span></li>
+      <li>Driver assignment wired</li>
+    </ul>
+  </div>
+</div>
+
+<div style="display:grid; grid-template-columns: 1fr 240px 1fr 240px 1fr; gap: 0; margin-top: 24px; align-items: center;">
+  <div></div>
+  <div class="arrow warn"><div class="a-inner">⚠ Manual button — quote → invoice<span class="hop">CreateInvoiceButton on quote page</span></div></div>
+  <div class="stage">
+    <h4>Branch</h4>
+    <div class="title">Invoice</div>
+    <ul>
+      <li><span class="route">/admin/invoices</span></li>
+      <li>Manual, not auto on accept</li>
+      <li>Ref: INV-YYYY-NNNNNN</li>
+    </ul>
+  </div>
+  <div class="arrow todo"><div class="a-inner">✗ No email send<span class="hop">Resend not wired</span></div></div>
+  <div></div>
+</div>
+
+<!-- ============ EXTERNAL TOKEN FLOWS ============ -->
+<h2>External (no-auth) token routes</h2>
+
+<div class="nav-grid">
+  <div class="card warn">
+    <header><span class="name">Artwork approval</span><span class="tag warn">Partial</span></header>
+    <div class="path">/approve/artwork/[token]</div>
+    <div class="desc">Client signs off on artwork via 32-byte token (7-day expiry). Token generation + copy-to-clipboard wired. <strong>Email send not wired</strong> — admin must paste URL manually.</div>
+    <div class="meta-row"><span class="tag">migration 018</span><span class="tag">approval-actions.ts</span></div>
+  </div>
+  <div class="card warn">
+    <header><span class="name">Delivery PoD</span><span class="tag warn">Partial</span></header>
+    <div class="path">/delivery/[token]</div>
+    <div class="desc">Driver + client signature capture. Page exists and works. <strong>Token send action missing</strong> — no "send PoD link" button, no email/SMS integration.</div>
+    <div class="meta-row"><span class="tag">migration 035</span><span class="tag">deliveries/actions.ts</span></div>
+  </div>
+</div>
+
+<!-- ============ NAV ROUTES ============ -->
+<h2>Portal routes by sidebar section</h2>
+
+<div class="section-label"><h3>Production</h3><div class="rule"></div></div>
+<div class="nav-grid">
+  <div class="card ok">
+    <header><span class="name">Admin overview</span><span class="tag ok">Wired</span></header>
+    <div class="path">/admin</div>
+    <div class="desc">Tile dashboard linking to jobs, quotes, invoices, deliveries, design-packs, POs.</div>
+  </div>
+  <div class="card ok">
+    <header><span class="name">Quotes</span><span class="tag ok">Wired</span></header>
+    <div class="path">/admin/quotes · /new · /[id]</div>
+    <div class="desc">Full CRUD. Accepts → Generate Artwork button. Print view + client print view.</div>
+  </div>
+  <div class="card ok">
+    <header><span class="name">Artwork</span><span class="tag ok">Wired</span></header>
+    <div class="path">/admin/artwork · /[id] · /[id]/[componentId]</div>
+    <div class="desc">Components + sub-items. Sign-off releases to production. Approval pack + print views.</div>
+  </div>
+  <div class="card ok">
+    <header><span class="name">Job board</span><span class="tag ok">Wired</span></header>
+    <div class="path">/admin/jobs</div>
+    <div class="desc">Kanban across real Onesign departments (from migration 028).</div>
+  </div>
+  <div class="card warn">
+    <header><span class="name">Shop floor</span><span class="tag warn">Partial</span></header>
+    <div class="path">/shop-floor · /check/[itemId]</div>
+    <div class="desc">Standalone tablet-friendly route. Auth gated. <strong>No department filter</strong> — all users see all jobs.</div>
+  </div>
+  <div class="card ok">
+    <header><span class="name">Deliveries</span><span class="tag ok">Wired</span></header>
+    <div class="path">/admin/deliveries · /[id]</div>
+    <div class="desc">Driver planner, map, geocoding backfill, print view, PoD token flow.</div>
+  </div>
+</div>
+
+<div class="section-label"><h3>Sales</h3><div class="rule"></div></div>
+<div class="nav-grid">
+  <div class="card ok">
+    <header><span class="name">Invoices</span><span class="tag ok">Wired</span></header>
+    <div class="path">/admin/invoices · /[id]</div>
+    <div class="desc">Draft → send. Generated manually from accepted quotes. Print view.</div>
+  </div>
+  <div class="card warn">
+    <header><span class="name">Purchase orders</span><span class="tag warn">Partial</span></header>
+    <div class="path">/admin/purchase-orders · /[id]</div>
+    <div class="desc">CRUD + print. Can link to quote/job post-hoc, but <strong>no auto-trigger</strong> from either.</div>
+  </div>
+  <div class="card ok">
+    <header><span class="name">Pricing</span><span class="tag ok">Wired</span></header>
+    <div class="path">/admin/pricing · /[setId] · /activate</div>
+    <div class="desc">Rate-card sets; quoter engine pulls from active set.</div>
+  </div>
+</div>
+
+<div class="section-label"><h3>Clients</h3><div class="rule"></div></div>
+<div class="nav-grid">
+  <div class="card ok">
+    <header><span class="name">Clients</span><span class="tag ok">Wired</span></header>
+    <div class="path">/admin/clients · /[id]</div>
+    <div class="desc">Orgs + contacts + sites CRUD with address flags (primary / billing / site / delivery).</div>
+  </div>
+  <div class="card ok">
+    <header><span class="name">Approvals</span><span class="tag ok">Wired</span></header>
+    <div class="path">/admin/approvals</div>
+    <div class="desc">Cross-client view of pending artwork approvals.</div>
+  </div>
+  <div class="card ok">
+    <header><span class="name">Maintenance</span><span class="tag ok">Wired</span></header>
+    <div class="path">/admin/maintenance</div>
+    <div class="desc">Migration 048 visits table, CRUD in lib/maintenance/actions.ts.</div>
+  </div>
+  <div class="card ok">
+    <header><span class="name">Reports</span><span class="tag ok">Wired</span></header>
+    <div class="path">/admin/reports</div>
+    <div class="desc">Monthly reports upload/view, org-scoped.</div>
+  </div>
+</div>
+
+<div class="section-label"><h3>Utility &amp; user</h3><div class="rule"></div></div>
+<div class="nav-grid">
+  <div class="card ok">
+    <header><span class="name">Settings</span><span class="tag ok">Wired</span></header>
+    <div class="path">/settings</div>
+    <div class="desc">Reachable via topbar user menu.</div>
+  </div>
+  <div class="card ok">
+    <header><span class="name">Auth</span><span class="tag ok">Wired</span></header>
+    <div class="path">/login · /signup · /api/auth/*</div>
+    <div class="desc">Supabase SSR. Root redirects authed users to /admin.</div>
+  </div>
+</div>
+
+<!-- ============ ORPHANED ROUTES ============ -->
+<h2>Orphaned &amp; legacy routes (exist, not in sidebar)</h2>
+<p class="sub">These pages compile and some are reachable from detail pages or direct URL, but they aren't linked from the main nav. Decision: surface, retire, or leave as admin-only tool.</p>
+
+<div class="nav-grid">
+  <div class="card legacy">
+    <header><span class="name">Leads</span><span class="tag">Legacy</span></header>
+    <div class="path">/admin/leads</div>
+    <div class="desc">Marketing + architect leads. Odysseus is internal-only; HubSpot owns CRM. Candidate for removal.</div>
+  </div>
+  <div class="card legacy">
+    <header><span class="name">Subscriptions</span><span class="tag">Legacy</span></header>
+    <div class="path">/admin/subscriptions</div>
+    <div class="desc">Multi-tenant SaaS holdover. Not in single-tenant scope.</div>
+  </div>
+  <div class="card legacy">
+    <header><span class="name">Orgs (old)</span><span class="tag">Legacy</span></header>
+    <div class="path">/admin/orgs</div>
+    <div class="desc">Superseded by <span class="route">/admin/clients</span>. Verify and remove.</div>
+  </div>
+  <div class="card legacy">
+    <header><span class="name">Deliverables (admin)</span><span class="tag">Legacy</span></header>
+    <div class="path">/admin/deliverables</div>
+    <div class="desc">Legacy marketing deliverables. CLAUDE.md flags as kept-for-reference.</div>
+  </div>
+  <div class="card warn">
+    <header><span class="name">Artwork reconcile</span><span class="tag warn">Admin tool</span></header>
+    <div class="path">/admin/artwork/reconcile</div>
+    <div class="desc">Reconcile artwork/production drift. Useful — consider surfacing in artwork index.</div>
+  </div>
+  <div class="card warn">
+    <header><span class="name">Artwork settings</span><span class="tag warn">Admin tool</span></header>
+    <div class="path">/admin/artwork/settings</div>
+    <div class="desc">Not linked from artwork index. Consider adding a cog icon.</div>
+  </div>
+  <div class="card legacy">
+    <header><span class="name">Design packs</span><span class="tag">Partial</span></header>
+    <div class="path">/admin/design-packs · /[id] · /present · /new</div>
+    <div class="desc">Linked only from /admin landing. Export URL includes malformed <code>(print)</code> group segment — broken link.</div>
+  </div>
+  <div class="card legacy">
+    <header><span class="name">Client-side views</span><span class="tag">Legacy</span></header>
+    <div class="path">/dashboard · /assets · /billing · /deliverables · /reports</div>
+    <div class="desc">Multi-tenant holdovers. Clients do not log in to Odysseus. Retire or firewall behind a flag.</div>
+  </div>
+  <div class="card legacy">
+    <header><span class="name">Dev sandbox</span><span class="tag">Legacy</span></header>
+    <div class="path">/components</div>
+    <div class="desc">Appears to be a component playground. Delete or move to Storybook.</div>
+  </div>
+</div>
+
+<!-- ============ API ROUTES ============ -->
+<h2>API routes</h2>
+<div class="nav-grid">
+  <div class="card ok"><header><span class="name">Auth logout</span><span class="tag ok">Used</span></header><div class="path">/api/auth/logout</div><div class="desc">Called from Topbar.</div></div>
+  <div class="card ok"><header><span class="name">Auth signup</span><span class="tag ok">Used</span></header><div class="path">/api/auth/signup</div><div class="desc">Called from /signup page.</div></div>
+  <div class="card ok"><header><span class="name">Generate deliverables</span><span class="tag ok">Used</span></header><div class="path">/api/admin/generate-deliverables</div><div class="desc">Called from AdminOrgRow.</div></div>
+  <div class="card ok"><header><span class="name">Architect leads (admin)</span><span class="tag ok">Used</span></header><div class="path">/api/admin/architect-leads/[id]</div><div class="desc">Called from LeadsClient.</div></div>
+  <div class="card legacy"><header><span class="name">Marketing leads</span><span class="tag">Orphaned</span></header><div class="path">/api/leads</div><div class="desc">No caller found. Legacy marketing.</div></div>
+  <div class="card legacy"><header><span class="name">Architect leads (public)</span><span class="tag">Orphaned</span></header><div class="path">/api/architect-leads</div><div class="desc">No caller found. Legacy marketing wizard.</div></div>
+</div>
+
+<!-- ============ TO-DO LIST ============ -->
+<h2>What still needs wired</h2>
+
+<div class="todo-list">
+
+  <div class="todo-item">
+    <div class="prio p0">P0 · Blocker</div>
+    <div class="desc">
+      <span class="t">Email sending (Resend) — approval &amp; PoD links</span>
+      <span class="d">Zero email infrastructure. Approval link + PoD link = manual copy-paste today. Wire Resend; fire on generateApprovalLink + new sendDeliveryLink action.</span>
+    </div>
+    <div class="loc">lib/artwork/approval-actions.ts<br>lib/deliveries/actions.ts</div>
+  </div>
+
+  <div class="todo-item">
+    <div class="prio p0">P0 · Blocker</div>
+    <div class="desc">
+      <span class="t">Delivery token send action</span>
+      <span class="d">/delivery/[token] exists and works, but no action to send the URL. Add sendDeliveryLink(deliveryId) that generates URL and (once Resend is in) emails the site contact.</span>
+    </div>
+    <div class="loc">lib/deliveries/actions.ts</div>
+  </div>
+
+  <div class="todo-item">
+    <div class="prio p1">P1 · High</div>
+    <div class="desc">
+      <span class="t">Shop floor department filter</span>
+      <span class="d">Currently every authed user sees every stage. Needs per-user department assignment (reuse org_members or new staff table) and stage-scoped queue.</span>
+    </div>
+    <div class="loc">app/(portal)/shop-floor/page.tsx<br>lib/production/actions.ts</div>
+  </div>
+
+  <div class="todo-item">
+    <div class="prio p1">P1 · High</div>
+    <div class="desc">
+      <span class="t">Design pack export URL is broken</span>
+      <span class="d">href includes the <code>(print)</code> route-group segment literally, producing 404. Fix path to /admin/design-packs/[id]/export.</span>
+    </div>
+    <div class="loc">app/(portal)/admin/design-packs/[id]/page.tsx</div>
+  </div>
+
+  <div class="todo-item">
+    <div class="prio p1">P1 · High</div>
+    <div class="desc">
+      <span class="t">Quote → Invoice auto-create (opt-in)</span>
+      <span class="d">Today admin clicks CreateInvoiceButton. Consider auto-drafting an invoice on quote acceptance so it's always present, just unsent.</span>
+    </div>
+    <div class="loc">lib/quoter/actions.ts<br>lib/invoices/actions.ts</div>
+  </div>
+
+  <div class="todo-item">
+    <div class="prio p1">P1 · High</div>
+    <div class="desc">
+      <span class="t">Quote → Purchase order suggestions</span>
+      <span class="d">Line items with non-stock material should suggest a PO. Currently PO creation is entirely manual and disconnected.</span>
+    </div>
+    <div class="loc">lib/purchase-orders/actions.ts</div>
+  </div>
+
+  <div class="todo-item">
+    <div class="prio p2">P2 · Cleanup</div>
+    <div class="desc">
+      <span class="t">Retire legacy client-side routes</span>
+      <span class="d">/dashboard, /assets, /billing, /deliverables, /reports (client view), /admin/deliverables, /admin/subscriptions, /admin/orgs, /admin/leads — either delete or firewall. Dormant per CLAUDE.md §3.</span>
+    </div>
+    <div class="loc">app/(portal)/*</div>
+  </div>
+
+  <div class="todo-item">
+    <div class="prio p2">P2 · Cleanup</div>
+    <div class="desc">
+      <span class="t">Delete orphan API routes</span>
+      <span class="d">/api/leads and /api/architect-leads have no callers. Confirm and delete.</span>
+    </div>
+    <div class="loc">app/api/leads/route.ts<br>app/api/architect-leads/route.ts</div>
+  </div>
+
+  <div class="todo-item">
+    <div class="prio p2">P2 · Polish</div>
+    <div class="desc">
+      <span class="t">Surface artwork settings + reconcile</span>
+      <span class="d">Both exist but aren't linked. Add a settings cog on /admin/artwork index.</span>
+    </div>
+    <div class="loc">app/(portal)/admin/artwork/page.tsx</div>
+  </div>
+
+  <div class="todo-item">
+    <div class="prio p2">P2 · Polish</div>
+    <div class="desc">
+      <span class="t">Remove /components sandbox</span>
+      <span class="d">Dev component playground shouldn't ship in production build.</span>
+    </div>
+    <div class="loc">app/components/page.tsx</div>
+  </div>
+
+  <div class="todo-item">
+    <div class="prio p2">P2 · Observability</div>
+    <div class="desc">
+      <span class="t">Sentry DSN</span>
+      <span class="d">Error boundaries are in place; just needs provisioning (per CLAUDE.md "Deferred").</span>
+    </div>
+    <div class="loc">—</div>
+  </div>
+
+  <div class="todo-item">
+    <div class="prio p2">P2 · Later</div>
+    <div class="desc">
+      <span class="t">Integration tests vs live Supabase</span>
+      <span class="d">Quoter engine has Vitest fixtures. Server actions lack coverage. Dedicated test project needed (deferred).</span>
+    </div>
+    <div class="loc">vitest.config.ts</div>
+  </div>
+
+  <div class="todo-item">
+    <div class="prio p2">P2 · Later</div>
+    <div class="desc">
+      <span class="t">Sage 50c + HubSpot sync</span>
+      <span class="d">Outbound integrations for accounting and CRM. Separate infra workstream.</span>
+    </div>
+    <div class="loc">—</div>
+  </div>
+
+</div>
+
+<footer>
+  Generated from static analysis on 2026-04-18. Re-run <code>/loop</code> on this project with a map-regeneration prompt to keep fresh.
+</footer>
+
+</body>
+</html>

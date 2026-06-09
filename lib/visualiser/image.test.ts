@@ -1,0 +1,136 @@
+import { describe, it, expect } from 'vitest';
+import { findContentBounds, svgWithPixelSize } from './image';
+
+/** Build a WxH RGBA buffer, fill with bg, then paint a solid rect of fg. */
+function makeImage(
+    w: number,
+    h: number,
+    bg: [number, number, number, number],
+    rect: { x: number; y: number; w: number; h: number } | null,
+    fg: [number, number, number, number] = [0, 0, 0, 255],
+): Uint8ClampedArray {
+    const data = new Uint8ClampedArray(w * h * 4);
+    for (let i = 0; i < w * h; i++) {
+        data[i * 4] = bg[0];
+        data[i * 4 + 1] = bg[1];
+        data[i * 4 + 2] = bg[2];
+        data[i * 4 + 3] = bg[3];
+    }
+    if (rect) {
+        for (let y = rect.y; y < rect.y + rect.h; y++) {
+            for (let x = rect.x; x < rect.x + rect.w; x++) {
+                const i = (y * w + x) * 4;
+                data[i] = fg[0];
+                data[i + 1] = fg[1];
+                data[i + 2] = fg[2];
+                data[i + 3] = fg[3];
+            }
+        }
+    }
+    return data;
+}
+
+const WHITE: [number, number, number, number] = [255, 255, 255, 255];
+const TRANSPARENT: [number, number, number, number] = [0, 0, 0, 0];
+
+describe('findContentBounds', () => {
+    it('finds a dark rect on a white background', () => {
+        const data = makeImage(20, 20, WHITE, { x: 5, y: 6, w: 8, h: 4 });
+        expect(findContentBounds(data, 20, 20)).toEqual({
+            x: 5,
+            y: 6,
+            w: 8,
+            h: 4,
+        });
+    });
+
+    it('finds content on a transparent background via alpha', () => {
+        const data = makeImage(16, 16, TRANSPARENT, { x: 3, y: 3, w: 6, h: 6 });
+        expect(findContentBounds(data, 16, 16)).toEqual({
+            x: 3,
+            y: 3,
+            w: 6,
+            h: 6,
+        });
+    });
+
+    it('returns null for a uniform image (nothing to crop)', () => {
+        const data = makeImage(12, 12, WHITE, null);
+        expect(findContentBounds(data, 12, 12)).toBeNull();
+    });
+
+    it('returns null when content already fills the frame', () => {
+        const data = makeImage(10, 10, WHITE, { x: 0, y: 0, w: 10, h: 10 });
+        expect(findContentBounds(data, 10, 10)).toBeNull();
+    });
+
+    it('ignores faint noise within tolerance of the background', () => {
+        // A near-white pixel (within tolerance) must not widen the bounds.
+        const data = makeImage(20, 20, WHITE, { x: 8, y: 8, w: 3, h: 3 });
+        const i = (2 * 20 + 2) * 4;
+        data[i] = 250;
+        data[i + 1] = 250;
+        data[i + 2] = 250; // distance 15 < tol 28
+        expect(findContentBounds(data, 20, 20)).toEqual({
+            x: 8,
+            y: 8,
+            w: 3,
+            h: 3,
+        });
+    });
+
+    it('guards against malformed input', () => {
+        expect(findContentBounds(new Uint8ClampedArray(0), 0, 0)).toBeNull();
+        expect(
+            findContentBounds(new Uint8ClampedArray(4), 10, 10),
+        ).toBeNull();
+    });
+});
+
+describe('svgWithPixelSize', () => {
+    it('forces the given px width/height, replacing any existing size', () => {
+        const out = svgWithPixelSize(
+            '<svg width="10mm" height="5mm" viewBox="0 0 10 5"><rect/></svg>',
+            200,
+            100,
+        );
+        expect(out).toMatch(/width="200"/);
+        expect(out).toMatch(/height="100"/);
+        // The original mm sizing must be gone (no stray width="10mm").
+        expect(out).not.toMatch(/10mm/);
+        // Inner content is untouched.
+        expect(out).toContain('<rect/>');
+    });
+
+    it('forces an explicit content viewBox (alignment to the cut geometry)', () => {
+        const out = svgWithPixelSize(
+            '<svg viewBox="0 0 100 100"><path d="M0 0"/></svg>',
+            64,
+            64,
+            { x: 12, y: 8, w: 40, h: 30 },
+        );
+        expect(out).toMatch(/viewBox="12 8 40 30"/);
+        // Only one viewBox survives (the old one is stripped).
+        expect(out.match(/viewBox=/g)).toHaveLength(1);
+    });
+
+    it('synthesises a viewBox from numeric width/height when none exists', () => {
+        const out = svgWithPixelSize(
+            '<svg width="80" height="40"><g/></svg>',
+            160,
+            80,
+        );
+        expect(out).toMatch(/viewBox="0 0 80 40"/);
+        expect(out).toMatch(/width="160"/);
+    });
+
+    it('preserves gradient defs so full-colour artwork keeps its fills', () => {
+        const svg =
+            '<svg viewBox="0 0 10 10"><defs><linearGradient id="g">' +
+            '<stop offset="0" stop-color="#f00"/></linearGradient></defs>' +
+            '<rect fill="url(#g)"/></svg>';
+        const out = svgWithPixelSize(svg, 100, 100);
+        expect(out).toContain('<linearGradient id="g">');
+        expect(out).toContain('fill="url(#g)"');
+    });
+});

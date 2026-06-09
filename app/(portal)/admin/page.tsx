@@ -1,15 +1,21 @@
-import { createServerClient } from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase-admin';
 import { requireAdmin } from '@/lib/auth';
 import { PageHeader } from '@/app/(portal)/components/ui';
 import { AlertCircle, LayoutGrid, FileText, ShoppingCart, Zap, Receipt, Truck } from 'lucide-react';
 import Link from 'next/link';
 import { getProductionStats } from '@/lib/production/queries';
+import { getAttentionItems } from '@/lib/notifications/queries';
+import { NeedsAttentionLive } from './NeedsAttentionLive';
 import { formatPence, INVOICE_STATUS_COLORS, INVOICE_STATUS_LABELS } from '@/lib/invoices/utils';
 import type { InvoiceStatus } from '@/lib/invoices/types';
 
 export default async function AdminPage() {
     await requireAdmin();
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
+
+    const attention = await getAttentionItems().catch(() => ({ items: [], counts: {} as Record<string, number> }));
+    const urgentCount = attention.items.filter(i => i.severity === 'urgent').length;
+    const actionCount = attention.items.filter(i => i.severity === 'action').length;
 
     // Production pipeline stats
     let productionStats: {
@@ -143,6 +149,13 @@ export default async function AdminPage() {
                 title="Dashboard"
                 description="Production pipeline and operations overview"
             />
+
+            <NeedsAttentionLive
+                items={attention.items}
+                urgentCount={urgentCount}
+                actionCount={actionCount}
+            />
+
 
             {/* Production Pipeline — hero section */}
             <div className="mb-6">

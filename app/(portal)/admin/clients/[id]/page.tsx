@@ -1,6 +1,6 @@
 import { requireAdmin } from '@/lib/auth';
 import { getClientWithDetails } from '@/lib/clients/queries';
-import { createServerClient } from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase-admin';
 import { ClientDetailClient } from './ClientDetailClient';
 import { notFound } from 'next/navigation';
 
@@ -15,7 +15,7 @@ export default async function ClientDetailPage({ params }: PageProps) {
     if (!client) notFound();
 
     // Fetch activity counts in parallel
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
     const [quotesResult, jobsResult, invoicesResult, deliveriesResult] = await Promise.all([
         supabase
             .from('quotes')

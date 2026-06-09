@@ -1,5 +1,5 @@
 import { requireAdmin } from '@/lib/auth';
-import { createServerClient } from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase-admin';
 import { PageHeader, Card, Chip } from '@/app/(portal)/components/ui';
 import { notFound } from 'next/navigation';
 import { getRateCardForPricingSet } from '@/lib/quoter/rate-card';
@@ -49,7 +49,7 @@ export default async function QuoteDetailPage({ params }: PageProps) {
     await requireAdmin();
 
     const { id } = await params;
-    const supabase = await createServerClient();
+    const supabase = createAdminClient();
 
     // Fetch quote with items
     const { data: quote, error: quoteError } = await supabase

@@ -351,14 +351,47 @@ export async function moveJobItemToStage(
 
     if (!item) return { error: 'Item not found' };
 
+    const { job_id, current_stage_id: fromStageId } = item as { job_id: string; current_stage_id: string | null };
+
+    // Artwork-approval gate. If the item is currently sitting at the
+    // artwork-approval stage AND has a linked artwork_job that isn't
+    // completed yet, refuse to move it forward. Without this guard a
+    // shop-floor "complete → next stage" or a Kanban drag could march
+    // an item through the rest of the routing (and trigger auto-delivery)
+    // before the client has signed the artwork off — see audit finding #18.
+    //
+    // The release flow (completeArtworkAndAdvanceItem) hoists the artwork
+    // status update to BEFORE its call here so the legitimate path passes.
+    // Items that skip artwork entirely (service-only, no linked artwork)
+    // are unaffected — the guard only fires when a linked artwork exists.
+    if (fromStageId && fromStageId !== stageId) {
+        const { data: fromStage } = await supabase
+            .from('production_stages')
+            .select('slug')
+            .eq('id', fromStageId)
+            .single();
+        if (fromStage?.slug === 'artwork-approval') {
+            const { data: linkedArtwork } = await supabase
+                .from('artwork_jobs')
+                .select('id, status')
+                .eq('job_item_id', jobItemId)
+                .maybeSingle();
+            if (linkedArtwork && linkedArtwork.status !== 'completed') {
+                return {
+                    error:
+                        'Artwork sign-off not complete — release the artwork first ' +
+                        '(open the linked artwork job and click "Release to production").',
+                };
+            }
+        }
+    }
+
     const { error } = await supabase
         .from('job_items')
         .update({ current_stage_id: stageId, status: 'in_progress' })
         .eq('id', jobItemId);
 
     if (error) return { error: error.message };
-
-    const { job_id, current_stage_id: fromStageId } = item as { job_id: string; current_stage_id: string | null };
 
     await supabase.from('job_stage_log').insert({
         job_id,
@@ -489,6 +522,34 @@ export async function advanceItemToNextRoutedStage(
                 `(routing length=${routing.length}, currentIdx=${currentIdx}). Completing item as fallback.`
             );
         }
+
+        // Mirror of the artwork-approval gate in moveJobItemToStage. The
+        // forward-move branch above already passes through that guard, but
+        // this completion-fallback branch writes job_items directly, so we
+        // re-apply the check here. Without this, an item parked at
+        // artwork-approval with a malformed single-stage routing would be
+        // marked completed and trigger auto-delivery before the client has
+        // ever seen the artwork.
+        const { data: currentStage } = await supabase
+            .from('production_stages')
+            .select('slug')
+            .eq('id', item.current_stage_id ?? '')
+            .maybeSingle();
+        if (currentStage?.slug === 'artwork-approval') {
+            const { data: linkedArtwork } = await supabase
+                .from('artwork_jobs')
+                .select('id, status')
+                .eq('job_item_id', itemId)
+                .maybeSingle();
+            if (linkedArtwork && linkedArtwork.status !== 'completed') {
+                return {
+                    error:
+                        'Artwork sign-off not complete — release the artwork first ' +
+                        '(open the linked artwork job and click "Release to production").',
+                };
+            }
+        }
+
         await supabase
             .from('job_items')
             .update({ status: 'completed' })

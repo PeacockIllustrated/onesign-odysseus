@@ -62,7 +62,7 @@ export function MaintenanceClient({ initialVisits, orgs, contacts, sites }: Prop
                 scheduled_date: scheduledDate,
                 notes: notes || undefined,
             });
-            if ('error' in res) { setError(res.error); return; }
+            if (!res.ok) { setError(res.error); return; }
             setShowCreate(false);
             setOrgId(''); setSiteId(''); setContactId('');
             setVisitType('inspection'); setNotes('');

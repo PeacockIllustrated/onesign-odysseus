@@ -131,7 +131,7 @@ Artwork is the spec-bearing record; production is the fabrication tracker derive
 Briefly:
 1. **Quote** line items capture what Onesign is making. Each line is either production-work or service (fitting, removal, survey). Each carries inherited `org_id` / `contact_id` / `site_id`.
 2. **On acceptance**, staff click "Generate artwork" → each production-work line spawns an artwork component skeleton with sub-items pre-filled from the line's structured spec. Service lines are skipped.
-3. **Designer** uploads artwork files, verifies spec, gets client sign-off via `/approve/artwork/[token]` (no auth — token-based).
+3. **Designer** uploads artwork files, verifies spec, gets client sign-off via `/sign-off/[token]` (no auth — token-based; per-component approve / request-changes + comment; legacy `/approve/artwork/[token]` redirects).
 4. **Release to production** → the linked production_job's items appear on the department Kanban. Per-sub-item `target_stage_id` drives routing (CNC / Vinyl / Fabrication / Assembly / etc.).
 5. **Delivery** on completion inherits install address from upstream. `/delivery/[token]` captures PoD signature.
 6. **Invoice** branches from quote acceptance; not gated on production completion.
