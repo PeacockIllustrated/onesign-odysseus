@@ -18,6 +18,7 @@ import {
     ChevronRight,
     Download,
     FileText,
+    Minimize2,
     Play,
     RotateCcw,
     Square,
@@ -57,6 +58,8 @@ interface RunSnapshot {
     config: NestConfig;
     key: string;
     baseName: string;
+    /** True for a "find smallest panel" run (auto-sized single sheet). */
+    smallest?: boolean;
 }
 
 function download(blob: Blob, filename: string) {
@@ -296,22 +299,74 @@ export function NestingClient() {
         setActiveSheet(0);
     };
 
-    const startNest = () => {
-        if (!canNest) return;
-        // Fresh seed each run so "Nest again" explores a different path.
+    // Fresh seed each run so a re-run explores a different path. Seeded
+    // lazily in this event handler — render stays pure.
+    const nextSeed = () => {
         if (seedRef.current === 0) {
             seedRef.current = ((Date.now() % 0x7fffffff) | 1) >>> 0;
         }
         seedRef.current = (seedRef.current * 1664525 + 1013904223) >>> 0;
+        return seedRef.current || 1;
+    };
+
+    const startNest = () => {
+        if (!canNest) return;
+        setSnapshot({ pieces, groups, config: cfg, key: runKey, baseName });
+        setActiveSheet(0);
+        nest.start(pieces, cfg, ITERATIONS, nextSeed());
+    };
+
+    // "Smallest panel": nest onto a generously-auto-sized single sheet, then
+    // the improvement loop (which minimises the used footprint) settles the
+    // pieces into the tightest bounding box it can find — that box, plus the
+    // edge margin, is the smallest panel/offcut that will hold the job.
+    const startSmallest = () => {
+        if (!canNest) return;
+        let bboxArea = 0;
+        let maxDim = 0;
+        for (const p of pieces) {
+            bboxArea += (p.widthMm + cfg.gapMm) * (p.heightMm + cfg.gapMm);
+            maxDim = Math.max(maxDim, p.widthMm, p.heightMm);
+        }
+        // ~45% target fill leaves the packer room to compact without overflow.
+        const side = Math.ceil(
+            Math.max(maxDim, Math.sqrt(bboxArea) * 1.5) + 2 * cfg.marginMm,
+        );
+        const c2: NestConfig = {
+            ...cfg,
+            sheetWidthMm: side,
+            sheetHeightMm: side,
+            maxSheets: 1,
+        };
         setSnapshot({
             pieces,
             groups,
-            config: cfg,
+            config: c2,
             key: runKey,
             baseName,
+            smallest: true,
         });
         setActiveSheet(0);
-        nest.start(pieces, cfg, ITERATIONS, seedRef.current || 1);
+        nest.start(pieces, c2, ITERATIONS, nextSeed());
+    };
+
+    // Cut files are sized to the snapshot sheet — except a smallest-panel run,
+    // where the deliverable should be the tight panel, not the virtual canvas.
+    const effConfig = (sheetIndex: number): NestConfig => {
+        if (!snapshot) return cfg;
+        const st = solution?.sheets[sheetIndex];
+        if (snapshot.smallest && st && st.pieceCount > 0) {
+            return {
+                ...snapshot.config,
+                sheetWidthMm: Math.ceil(
+                    st.usedWidthMm + 2 * snapshot.config.marginMm,
+                ),
+                sheetHeightMm: Math.ceil(
+                    st.usedHeightMm + 2 * snapshot.config.marginMm,
+                ),
+            };
+        }
+        return snapshot.config;
     };
 
     const exportSheetSvg = (sheetIndex: number) => {
@@ -321,7 +376,7 @@ export function NestingClient() {
             placements: solution.placements.filter(
                 (p) => p.sheetIndex === sheetIndex,
             ),
-            config: snapshot.config,
+            config: effConfig(sheetIndex),
             title: `${snapshot.baseName} — sheet ${sheetIndex + 1} of ${sheets.length}`,
         });
         download(
@@ -337,7 +392,7 @@ export function NestingClient() {
             placements: solution.placements.filter(
                 (p) => p.sheetIndex === sheetIndex,
             ),
-            config: snapshot.config,
+            config: effConfig(sheetIndex),
             title: `${snapshot.baseName} — sheet ${sheetIndex + 1} of ${sheets.length}`,
         });
         download(
@@ -360,7 +415,7 @@ export function NestingClient() {
             pieces: snapshot.pieces,
             groups: snapshot.groups,
             solution,
-            config: snapshot.config,
+            config: effConfig(0),
             generatedAt: new Date(),
         });
         download(blob, `${snapshot.baseName}-nesting-summary.pdf`);
@@ -388,7 +443,26 @@ export function NestingClient() {
     // The canvas + exports always draw the SNAPSHOT pieces (what was nested),
     // not the live ones — otherwise rescaling mid-result would lie.
     const canvasPieces = snapshot?.pieces ?? pieces;
-    const canvasConfig = snapshot?.config ?? cfg;
+    // In smallest-panel mode the nested footprint + edge margin IS the panel,
+    // so crop the displayed sheet to it (pieces hug the origin under BLF).
+    const smallestPanel =
+        snapshot?.smallest && activeStats && activeStats.pieceCount > 0
+            ? {
+                  w: Math.ceil(
+                      activeStats.usedWidthMm + 2 * snapshot.config.marginMm,
+                  ),
+                  h: Math.ceil(
+                      activeStats.usedHeightMm + 2 * snapshot.config.marginMm,
+                  ),
+              }
+            : null;
+    const canvasConfig = smallestPanel
+        ? {
+              ...snapshot!.config,
+              sheetWidthMm: smallestPanel.w,
+              sheetHeightMm: smallestPanel.h,
+          }
+        : (snapshot?.config ?? cfg);
 
     return (
         <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
@@ -671,6 +745,7 @@ export function NestingClient() {
 
                 <Section step={3} title="Nest" active={!!solution}>
                     {!nest.running ? (
+                      <div className="space-y-2">
                         <button
                             type="button"
                             onClick={startNest}
@@ -687,10 +762,26 @@ export function NestingClient() {
                             }}
                         >
                             <Play size={15} aria-hidden />
-                            {solution
+                            {solution && !snapshot?.smallest
                                 ? 'Nest again'
-                                : `Nest ${pieces.length || ''} piece${pieces.length === 1 ? '' : 's'}`}
+                                : `Nest ${pieces.length || ''} piece${pieces.length === 1 ? '' : 's'} on the sheet`}
                         </button>
+                        <button
+                            type="button"
+                            onClick={startSmallest}
+                            disabled={!canNest}
+                            className="flex min-h-[36px] w-full items-center justify-center gap-2 rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                            style={{
+                                borderColor: ACCENT_TINT_BORDER,
+                                color: ACCENT_DARK,
+                                background: ACCENT_TINT_BG,
+                            }}
+                            title="Pack onto the smallest possible panel and report its size — handy for checking offcuts"
+                        >
+                            <Minimize2 size={13} aria-hidden />
+                            Find smallest panel
+                        </button>
+                      </div>
                     ) : (
                         <div className="space-y-2">
                             <button
@@ -746,6 +837,32 @@ export function NestingClient() {
                                         : ''}
                                 </p>
                             )}
+                        </div>
+                    )}
+                    {snapshot?.smallest && smallestPanel && (
+                        <div
+                            className="rounded-md border p-2.5 text-center"
+                            style={{
+                                borderColor: ACCENT,
+                                background: ACCENT_TINT_BG,
+                            }}
+                        >
+                            <p
+                                className="text-[10px] font-semibold uppercase tracking-wide"
+                                style={{ color: ACCENT_DARK }}
+                            >
+                                Smallest panel needed
+                            </p>
+                            <p
+                                className="text-lg font-bold"
+                                style={{ color: ACCENT_DARK }}
+                            >
+                                {smallestPanel.w} × {smallestPanel.h} mm
+                            </p>
+                            <p className="text-[10px] text-neutral-500">
+                                Includes {snapshot.config.marginMm}mm edge margin —
+                                an offcut at least this big will fit the job.
+                            </p>
                         </div>
                     )}
                 </Section>
