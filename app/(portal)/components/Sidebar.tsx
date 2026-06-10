@@ -22,6 +22,7 @@ import {
     Box,
     PenTool,
     Package,
+    Puzzle,
     Ruler,
     X,
 } from 'lucide-react';
@@ -68,6 +69,7 @@ const adminNavGroups: NavGroup[] = [
         items: [
             { label: 'Quotes', href: '/admin/quotes', icon: Calculator },
             { label: 'Visualiser', href: '/admin/visualiser', icon: Box },
+            { label: 'Nesting', href: '/admin/nesting', icon: Puzzle },
             { label: 'Artwork', href: '/admin/artwork', icon: ClipboardCheck },
             { label: 'Production Packs', href: '/admin/production-packs', icon: Package },
             { label: 'Job Board', href: '/admin/jobs', icon: LayoutGrid },
