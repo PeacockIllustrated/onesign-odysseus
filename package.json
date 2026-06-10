@@ -24,6 +24,7 @@
     "lucide-react": "^0.562.0",
     "mapbox-gl": "^3.21.0",
     "next": "16.1.1",
+    "pdfjs-dist": "^6.0.227",
     "polygon-clipping": "^0.15.7",
     "qrcode": "^1.5.4",
     "react": "19.2.3",
