@@ -79,6 +79,7 @@ onesign-odysseus/
 │   │   │   ├── design-packs/  # Printable design pack export
 │   │   │   ├── jobs/          # ★ NEW — Production job board (Phase 1)
 │   │   │   ├── leads/         # Marketing leads (legacy, kept for reference)
+│   │   │   ├── nesting/       # ★ NEW — Acrylic nesting tool (SVG → packed sheets)
 │   │   │   ├── orgs/          # Org/client management
 │   │   │   ├── pricing/       # Rate card administration
 │   │   │   ├── purchase-orders/ # ★ NEW — PO generation (Phase 2)
@@ -122,6 +123,7 @@ onesign-odysseus/
 │   ├── invoices/              # Invoice generation from accepted quotes
 │   ├── maintenance/           # Maintenance visits (surveys, inspections, repairs, cleaning)
 │   ├── mapbox/                # Map rendering helpers
+│   ├── nesting/               # Acrylic nesting: SVG → pieces (islands kept) → raster BLF engine in a Web Worker → SVG/DXF/PDF
 │   ├── offers/                # Marketing offers logic
 │   ├── planning/              # Scheduling / planning helpers
 │   ├── production/            # Production job + shop-floor actions
@@ -254,6 +256,7 @@ The `/admin/booking` module (287K of code) was experimental and is not part of O
 ## Build plan — current state
 
 ### Shipped
+- **Acrylic nesting tool** (`/admin/nesting`, no DB) — uploads an outlined-artwork SVG, splits it into cut pieces (letter counters stay welded as islands; an island inside a hole becomes a piece again), and packs them onto configurable sheets via a raster bottom-left-fill engine in a Web Worker: gap tolerance via full-gap dilation, rotation steps (15° default), optional nesting inside letter counters, multi-sheet overflow with an off-cut size suggestion. Grouped piece list hover-highlights related pieces on the canvas. Exports per-sheet SVG + DXF (R12) and a jsPDF summary — always from a frozen snapshot of the nested run. Engine is DOM-free and Vitest-covered (`lib/nesting/`).
 - **Public design studio** (`/design`, migration 060) — unauthenticated customer-facing visualiser with a guided spotlight tour; submissions land in the `/admin/design-requests` inbox. See §2c.
 - **Production job board** (`/admin/jobs`) with Kanban across real Onesign departments, shop-floor queue at `/shop-floor`
 - **Quote → production handoff** (`createJobFromQuote`) with item-level stage routing
