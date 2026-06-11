@@ -135,8 +135,14 @@ export function importNestSvg(svgText: string): ImportedNestSvg {
     let textSeen = 0;
     let imageSeen = 0;
     let sourceIndex = -1;
+    let gCounter = 0;
 
-    const walk = (el: Element, parent: Matrix, groupLabel: string | undefined) => {
+    const walk = (
+        el: Element,
+        parent: Matrix,
+        groupKey: string | undefined,
+        groupName: string | undefined,
+    ) => {
         const tag = el.tagName.toUpperCase();
         if (SKIP.has(tag)) return;
         if (tag === 'TEXT' || tag === 'TSPAN') {
@@ -149,13 +155,18 @@ export function importNestSvg(svgText: string): ImportedNestSvg {
         }
         const m = mul(parent, parseTransform(el.getAttribute('transform')));
 
-        // Track the nearest NAMED group — that's the label the piece list
-        // shows ("RETAIL", "Opening hours", …). Anonymous <g>s pass the
-        // current label through.
-        let label = groupLabel;
+        // A drawable belongs to its IMMEDIATE enclosing <g> (the section).
+        // Entering a <g> mints a new group id for its children; its own name
+        // (if any) becomes their label. Crucially the name does NOT inherit —
+        // an anonymous sub-group is its own section, not lumped under an outer
+        // named layer (which is why a single "Layer 1" wrapper no longer
+        // collapses every piece into one group).
+        let childKey = groupKey;
+        let childName = groupName;
         if (tag === 'G') {
-            const name = decodeGroupName(el);
-            if (name) label = name;
+            gCounter += 1;
+            childKey = `g${gCounter}`;
+            childName = decodeGroupName(el) ?? undefined;
         }
 
         const isShape =
@@ -171,7 +182,13 @@ export function importNestSvg(svgText: string): ImportedNestSvg {
         const push = (raw: number[][], closed: boolean) => {
             const points = raw.map(([x, y]) => apply(m, x, y)) as Ring;
             if (points.length > 1) {
-                paths.push({ points, closed, groupLabel: label, sourceIndex });
+                paths.push({
+                    points,
+                    closed,
+                    groupKey,
+                    groupLabel: groupName,
+                    sourceIndex,
+                });
             }
         };
         const n = (a: string) => parseFloat(el.getAttribute(a) || '0');
@@ -227,10 +244,11 @@ export function importNestSvg(svgText: string): ImportedNestSvg {
             push(ring, tag === 'POLYGON');
         }
 
-        for (const child of Array.from(el.children)) walk(child, m, label);
+        for (const child of Array.from(el.children))
+            walk(child, m, childKey, childName);
     };
 
-    walk(root, unitM, undefined);
+    walk(root, unitM, undefined, undefined);
 
     if (textSeen > 0) {
         warnings.push(

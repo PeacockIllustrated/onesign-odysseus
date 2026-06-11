@@ -24,6 +24,7 @@ import type {
 } from './types';
 
 const BRAND: [number, number, number] = [78, 126, 140];
+const BRAND_DARK: [number, number, number] = [58, 95, 106];
 const INK: [number, number, number] = [26, 31, 35];
 const PAGE_W = 297;
 const PAGE_H = 210;
@@ -182,58 +183,180 @@ export function generateNestingPdfBlob(opts: NestPdfOptions): Blob {
         );
     }
 
-    // ---- piece schedule ----
-    doc.addPage();
-    strap('Acrylic nesting - piece schedule');
-    let y = 24;
-    const lineH = 5;
-    const colW = (PAGE_W - 20) / 3;
-    let col = 0;
-    const nextLine = () => {
-        y += lineH;
-        if (y > PAGE_H - 12) {
-            col++;
-            y = 24;
-            if (col > 2) {
-                doc.addPage();
-                strap('Acrylic nesting - piece schedule (cont.)');
-                col = 0;
-            }
-        }
-    };
-    const placedSheet = new Map(
+    // ---- grouped visual reference ----
+    // Each SVG group (a named layer, or the subpaths of one compound path —
+    // e.g. an outlined word) becomes a block: a per-sheet locator with THIS
+    // group's pieces filled in brand teal and everything else faint, so the
+    // shop can see at a glance where a group's pieces ended up. A compact
+    // piece list (label, size, sheet) sits underneath.
+    const sheetOf = new Map(
         solution.placements.map((p) => [p.pieceId, p.sheetIndex]),
     );
+    const placementsBySheet = new Map<number, typeof solution.placements>();
+    for (const pl of solution.placements) {
+        const arr = placementsBySheet.get(pl.sheetIndex);
+        if (arr) arr.push(pl);
+        else placementsBySheet.set(pl.sheetIndex, [pl]);
+    }
+
+    /** Draw sheet `s` into a box; group pieces accent, the rest faint. Returns drawn height. */
+    const drawLocator = (
+        s: number,
+        x0: number,
+        y0: number,
+        boxW: number,
+        boxH: number,
+        groupSet: Set<string>,
+    ): number => {
+        const scale = Math.min(
+            boxW / config.sheetWidthMm,
+            boxH / config.sheetHeightMm,
+        );
+        const w = config.sheetWidthMm * scale;
+        const h = config.sheetHeightMm * scale;
+        doc.setDrawColor(190, 190, 190);
+        doc.setLineWidth(0.2);
+        doc.rect(x0, y0, w, h, 'S');
+        const pls = placementsBySheet.get(s) ?? [];
+        const paint = (inGroup: boolean) => {
+            for (const pl of pls) {
+                if (groupSet.has(pl.pieceId) !== inGroup) continue;
+                const piece = pieceById.get(pl.pieceId);
+                if (!piece) continue;
+                const rings = placedPieceRings(piece, pl);
+                if (inGroup) {
+                    doc.setFillColor(...BRAND);
+                    doc.setDrawColor(...BRAND_DARK);
+                } else {
+                    doc.setFillColor(224, 224, 224);
+                    doc.setDrawColor(200, 200, 200);
+                }
+                doc.setLineWidth(0.1);
+                drawRing(doc, rings.outer, x0, y0, scale, 'FD');
+                doc.setFillColor(255, 255, 255);
+                for (const hole of rings.holes) {
+                    drawRing(doc, hole, x0, y0, scale, 'F');
+                }
+            }
+        };
+        paint(false); // faint context first…
+        paint(true); // …group pieces on top
+        return h;
+    };
+
+    doc.addPage();
+    strap("Grouped reference - where each group's pieces are");
+    const LX = 10;
+    const SIL_W = 56; // group silhouette box (the section's own shape)
+    const LOC_W = 44; // per-sheet locator box (where its pieces are)
+    const BAND = 36; // height of the silhouette/locator band
+    const GAP = 5;
+    let gy = 22;
+
+    /**
+     * Draw a group's pieces in their ORIGINAL artwork positions, fit to a box
+     * and accent-filled — so the section reads as the word/shape it is and the
+     * shop can recognise it at a glance.
+     */
+    const drawGroupSilhouette = (
+        group: PieceGroup,
+        x0: number,
+        y0: number,
+        boxW: number,
+        boxH: number,
+    ): void => {
+        const gps = group.pieceIds
+            .map((id) => pieceById.get(id))
+            .filter((p): p is NestPiece => !!p);
+        if (gps.length === 0) return;
+        const bb = ringsBBox(gps.flatMap((p) => [p.outer, ...p.holes]));
+        const bw = bb.maxX - bb.minX || 1;
+        const bh = bb.maxY - bb.minY || 1;
+        const scale = Math.min(boxW / bw, boxH / bh);
+        const ox = x0 + (boxW - bw * scale) / 2 - bb.minX * scale;
+        const oy = y0 + (boxH - bh * scale) / 2 - bb.minY * scale;
+        for (const p of gps) {
+            doc.setFillColor(...BRAND);
+            doc.setDrawColor(...BRAND_DARK);
+            doc.setLineWidth(0.1);
+            drawRing(doc, p.outer, ox, oy, scale, 'FD');
+            doc.setFillColor(255, 255, 255);
+            for (const hole of p.holes) drawRing(doc, hole, ox, oy, scale, 'F');
+        }
+    };
+
     for (const group of groups) {
+        const groupSet = new Set(group.pieceIds);
+        const spanned = Array.from(
+            new Set(
+                group.pieceIds
+                    .map((id) => sheetOf.get(id))
+                    .filter((v): v is number => v !== undefined),
+            ),
+        ).sort((a, b) => a - b);
+        const gps = group.pieceIds
+            .map((id) => pieceById.get(id))
+            .filter((p): p is NestPiece => !!p);
+        const dims = gps.map((p) => Math.max(p.widthMm, p.heightMm));
+        const minD = dims.length ? Math.floor(Math.min(...dims)) : 0;
+        const maxD = dims.length ? Math.ceil(Math.max(...dims)) : 0;
+
+        const headerH = 6;
+        const blockH = headerH + BAND + 9;
+        if (gy + blockH > PAGE_H - 8) {
+            doc.addPage();
+            strap('Grouped reference (cont.)');
+            gy = 22;
+        }
+
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(9);
         doc.setTextColor(...INK);
+        const sheetsLabel = spanned.length
+            ? `sheet${spanned.length > 1 ? 's' : ''} ${spanned.map((s) => s + 1).join(', ')}`
+            : 'not placed';
         doc.text(
-            txt(`${group.label} (${group.pieceIds.length})`),
-            10 + col * colW,
-            y,
+            txt(
+                `${group.label}    ${group.pieceIds.length} piece${group.pieceIds.length === 1 ? '' : 's'}  -  ${sheetsLabel}${maxD ? `  -  ${minD}-${maxD}mm` : ''}`,
+            ),
+            LX,
+            gy,
         );
-        nextLine();
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8);
-        for (const id of group.pieceIds) {
-            const piece = pieceById.get(id);
-            if (!piece) continue;
-            const sheet = placedSheet.get(id);
+        gy += headerH;
+
+        // The section's own shape, so it's recognisable…
+        doc.setDrawColor(232, 232, 232);
+        doc.setLineWidth(0.2);
+        doc.rect(LX, gy, SIL_W, BAND, 'S');
+        drawGroupSilhouette(group, LX + 1, gy + 1, SIL_W - 2, BAND - 2);
+
+        // …then a locator per sheet showing WHERE its pieces landed.
+        let lx = LX + SIL_W + 8;
+        for (const s of spanned) {
+            if (lx + LOC_W > PAGE_W - 10) break;
+            drawLocator(s, lx, gy, LOC_W, BAND, groupSet);
+            const cnt = group.pieceIds.filter(
+                (id) => sheetOf.get(id) === s,
+            ).length;
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(6.5);
             doc.setTextColor(90, 90, 90);
-            doc.text(
-                txt(
-                    `${piece.label} - ${Math.ceil(piece.widthMm)} x ${Math.ceil(piece.heightMm)} mm - ${sheet !== undefined ? `sheet ${sheet + 1}` : 'NOT PLACED'}`,
-                ),
-                12 + col * colW,
-                y,
-            );
-            nextLine();
+            doc.text(txt(`Sheet ${s + 1} (${cnt})`), lx, gy + BAND + 3);
+            lx += LOC_W + GAP;
         }
-        nextLine();
+        gy += BAND + 9;
+
+        doc.setDrawColor(232, 232, 232);
+        doc.setLineWidth(0.2);
+        doc.line(LX, gy - 4, PAGE_W - 10, gy - 4);
     }
 
     if (solution.unplacedPieceIds.length > 0) {
+        if (gy > PAGE_H - 18) {
+            doc.addPage();
+            strap('Grouped reference (cont.)');
+            gy = 22;
+        }
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(9);
         doc.setTextColor(180, 30, 30);
@@ -241,8 +364,8 @@ export function generateNestingPdfBlob(opts: NestPdfOptions): Blob {
             txt(
                 `${solution.unplacedPieceIds.length} piece(s) did not fit - increase sheets, shrink the artwork, or check piece sizes.`,
             ),
-            10 + col * colW,
-            y,
+            LX,
+            gy + 2,
         );
     }
 
