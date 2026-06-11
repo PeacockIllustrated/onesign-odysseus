@@ -18,7 +18,14 @@ export type Ring = Pt[];
 export interface NestPath {
     points: Ring;
     closed: boolean;
-    /** Nearest named ancestor <g> (Illustrator layer/group name), if any. */
+    /**
+     * Stable id of the IMMEDIATE enclosing <g> (named or anonymous). This is
+     * the primary grouping key — an Illustrator "group" is a <g>, so the
+     * tightest <g> a path sits in is its natural section, even when only an
+     * outer layer carries a name.
+     */
+    groupKey?: string;
+    /** The immediate group's own name (Illustrator layer/group name), if it has one. */
     groupLabel?: string;
     /** Ordinal of the source SVG element — fallback grouping for compound paths. */
     sourceIndex: number;

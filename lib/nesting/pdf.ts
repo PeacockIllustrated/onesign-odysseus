@@ -247,19 +247,43 @@ export function generateNestingPdfBlob(opts: NestPdfOptions): Blob {
     doc.addPage();
     strap("Grouped reference - where each group's pieces are");
     const LX = 10;
-    const CW = PAGE_W - 20;
-    const LOC_W = 58;
-    const LOC_H = 46;
-    const LOC_GAP = 6;
-    const CAP = 4;
-    const perRow = Math.max(
-        1,
-        Math.floor((CW + LOC_GAP) / (LOC_W + LOC_GAP)),
-    );
-    const locH =
-        config.sheetHeightMm *
-        Math.min(LOC_W / config.sheetWidthMm, LOC_H / config.sheetHeightMm);
+    const SIL_W = 56; // group silhouette box (the section's own shape)
+    const LOC_W = 44; // per-sheet locator box (where its pieces are)
+    const BAND = 36; // height of the silhouette/locator band
+    const GAP = 5;
     let gy = 22;
+
+    /**
+     * Draw a group's pieces in their ORIGINAL artwork positions, fit to a box
+     * and accent-filled — so the section reads as the word/shape it is and the
+     * shop can recognise it at a glance.
+     */
+    const drawGroupSilhouette = (
+        group: PieceGroup,
+        x0: number,
+        y0: number,
+        boxW: number,
+        boxH: number,
+    ): void => {
+        const gps = group.pieceIds
+            .map((id) => pieceById.get(id))
+            .filter((p): p is NestPiece => !!p);
+        if (gps.length === 0) return;
+        const bb = ringsBBox(gps.flatMap((p) => [p.outer, ...p.holes]));
+        const bw = bb.maxX - bb.minX || 1;
+        const bh = bb.maxY - bb.minY || 1;
+        const scale = Math.min(boxW / bw, boxH / bh);
+        const ox = x0 + (boxW - bw * scale) / 2 - bb.minX * scale;
+        const oy = y0 + (boxH - bh * scale) / 2 - bb.minY * scale;
+        for (const p of gps) {
+            doc.setFillColor(...BRAND);
+            doc.setDrawColor(...BRAND_DARK);
+            doc.setLineWidth(0.1);
+            drawRing(doc, p.outer, ox, oy, scale, 'FD');
+            doc.setFillColor(255, 255, 255);
+            for (const hole of p.holes) drawRing(doc, hole, ox, oy, scale, 'F');
+        }
+    };
 
     for (const group of groups) {
         const groupSet = new Set(group.pieceIds);
@@ -270,26 +294,15 @@ export function generateNestingPdfBlob(opts: NestPdfOptions): Blob {
                     .filter((v): v is number => v !== undefined),
             ),
         ).sort((a, b) => a - b);
+        const gps = group.pieceIds
+            .map((id) => pieceById.get(id))
+            .filter((p): p is NestPiece => !!p);
+        const dims = gps.map((p) => Math.max(p.widthMm, p.heightMm));
+        const minD = dims.length ? Math.floor(Math.min(...dims)) : 0;
+        const maxD = dims.length ? Math.ceil(Math.max(...dims)) : 0;
 
-        const listStr = group.pieceIds
-            .map((id) => {
-                const p = pieceById.get(id);
-                if (!p) return '';
-                const s = sheetOf.get(id);
-                return `${p.label.replace(/^Piece /, 'P')} ${Math.ceil(p.widthMm)}x${Math.ceil(p.heightMm)}${s !== undefined ? ` (S${s + 1})` : ' (-)'}`;
-            })
-            .filter(Boolean)
-            .join('    ');
-        const listLines = doc.splitTextToSize(txt(listStr), CW) as string[];
-
-        const rows = spanned.length
-            ? Math.ceil(spanned.length / perRow)
-            : 0;
-        const headerH = 7;
-        const locRowH = rows * (locH + CAP + 5);
-        const listH = listLines.length * 3.6 + 3;
-        const blockH = headerH + locRowH + listH + 5;
-
+        const headerH = 6;
+        const blockH = headerH + BAND + 9;
         if (gy + blockH > PAGE_H - 8) {
             doc.addPage();
             strap('Grouped reference (cont.)');
@@ -300,44 +313,42 @@ export function generateNestingPdfBlob(opts: NestPdfOptions): Blob {
         doc.setFontSize(9);
         doc.setTextColor(...INK);
         const sheetsLabel = spanned.length
-            ? `sheets ${spanned.map((s) => s + 1).join(', ')}`
+            ? `sheet${spanned.length > 1 ? 's' : ''} ${spanned.map((s) => s + 1).join(', ')}`
             : 'not placed';
         doc.text(
             txt(
-                `${group.label}  -  ${group.pieceIds.length} piece${group.pieceIds.length === 1 ? '' : 's'}  -  ${sheetsLabel}`,
+                `${group.label}    ${group.pieceIds.length} piece${group.pieceIds.length === 1 ? '' : 's'}  -  ${sheetsLabel}${maxD ? `  -  ${minD}-${maxD}mm` : ''}`,
             ),
             LX,
             gy,
         );
         gy += headerH;
 
-        if (spanned.length) {
-            spanned.forEach((s, i) => {
-                const colIdx = i % perRow;
-                if (i > 0 && colIdx === 0) gy += locH + CAP + 5;
-                const lx = LX + colIdx * (LOC_W + LOC_GAP);
-                const h = drawLocator(s, lx, gy, LOC_W, LOC_H, groupSet);
-                const cnt = group.pieceIds.filter(
-                    (id) => sheetOf.get(id) === s,
-                ).length;
-                doc.setFont('helvetica', 'normal');
-                doc.setFontSize(7);
-                doc.setTextColor(90, 90, 90);
-                doc.text(txt(`Sheet ${s + 1} - ${cnt} pc`), lx, gy + h + CAP);
-            });
-            gy += locH + CAP + 5;
-        }
-
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(7.5);
-        doc.setTextColor(110, 110, 110);
-        doc.text(listLines, LX, gy);
-        gy += listH + 3;
-
-        doc.setDrawColor(228, 228, 228);
+        // The section's own shape, so it's recognisable…
+        doc.setDrawColor(232, 232, 232);
         doc.setLineWidth(0.2);
-        doc.line(LX, gy, PAGE_W - 10, gy);
-        gy += 4;
+        doc.rect(LX, gy, SIL_W, BAND, 'S');
+        drawGroupSilhouette(group, LX + 1, gy + 1, SIL_W - 2, BAND - 2);
+
+        // …then a locator per sheet showing WHERE its pieces landed.
+        let lx = LX + SIL_W + 8;
+        for (const s of spanned) {
+            if (lx + LOC_W > PAGE_W - 10) break;
+            drawLocator(s, lx, gy, LOC_W, BAND, groupSet);
+            const cnt = group.pieceIds.filter(
+                (id) => sheetOf.get(id) === s,
+            ).length;
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(6.5);
+            doc.setTextColor(90, 90, 90);
+            doc.text(txt(`Sheet ${s + 1} (${cnt})`), lx, gy + BAND + 3);
+            lx += LOC_W + GAP;
+        }
+        gy += BAND + 9;
+
+        doc.setDrawColor(232, 232, 232);
+        doc.setLineWidth(0.2);
+        doc.line(LX, gy - 4, PAGE_W - 10, gy - 4);
     }
 
     if (solution.unplacedPieceIds.length > 0) {

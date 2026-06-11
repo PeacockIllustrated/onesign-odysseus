@@ -102,7 +102,7 @@ describe('buildPieces', () => {
         ]);
         expect(groups).toHaveLength(1);
         expect(groups[0].pieceIds).toHaveLength(2);
-        expect(groups[0].label).toMatch(/Shape group/);
+        expect(groups[0].label).toMatch(/Section/);
     });
 });
 

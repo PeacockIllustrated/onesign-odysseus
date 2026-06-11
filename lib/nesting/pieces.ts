@@ -138,6 +138,10 @@ export function buildPieces(paths: NestPath[]): BuiltPieces {
     // several pieces (an outlined word), else a per-piece singleton.
     const groupKeyOf = (pathIndex: number): { key: string; label: string | null } => {
         const p = paths[pathIndex];
+        // Primary: the immediate <g> (a real Illustrator group/section), with
+        // its own name as the label when it has one. Then a named ancestor,
+        // then the source element (splits an outlined word that's one path).
+        if (p.groupKey) return { key: p.groupKey, label: p.groupLabel ?? null };
         if (p.groupLabel) return { key: `g:${p.groupLabel}`, label: p.groupLabel };
         return { key: `src:${p.sourceIndex}`, label: null };
     };
@@ -169,7 +173,7 @@ export function buildPieces(paths: NestPath[]): BuiltPieces {
         if (g.autoLabel) {
             if (g.pieceIds.length > 1) {
                 autoN++;
-                g.label = `Shape group ${autoN}`;
+                g.label = `Section ${autoN}`;
             } else {
                 g.label = pieceById.get(g.pieceIds[0])?.label ?? 'Piece';
             }
