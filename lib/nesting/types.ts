@@ -48,6 +48,12 @@ export interface NestPiece {
     /** Display label, e.g. "Piece 4". */
     label: string;
     groupId: string;
+    /**
+     * When set, the engine packs every piece sharing this id as ONE rigid unit
+     * (a "kept together" group), preserving their original relative layout.
+     * Unset → the piece nests freely. Set by the client per group toggle.
+     */
+    clusterId?: string;
     outer: Ring;
     holes: Ring[];
     /** Net material area (outer minus holes), mm². */
@@ -168,6 +174,8 @@ export interface NestingDesignConfig {
     widthCalMm: number | null;
     /** Original upload filename, for display + export naming. */
     fileName: string | null;
+    /** Group ids the operator marked "keep together" (packed as one unit). */
+    keptGroupIds?: string[];
 }
 
 /** Lightweight list item (no SVG / config payload) for the saved-nests rail. */

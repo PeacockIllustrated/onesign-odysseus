@@ -145,6 +145,62 @@ export function transformPieceRings(
     };
 }
 
+/**
+ * Orient a CLUSTER of pieces (a "kept" group) as one rigid body: rotate every
+ * member's rings about the origin by the same angle, then snap the combined
+ * bounding box's min corner to (0,0). Members keep their original relative
+ * arrangement (their rings share the artwork coordinate space).
+ *
+ * Returns the combined rings (for rasterising the footprint) and, per member,
+ * the offset of its own bbox-min within the oriented unit. The engine adds the
+ * unit's sheet position to that offset to get each member's absolute
+ * placement — so a clustered member reconstructs through the SAME
+ * `placedPieceRings(piece, {xMm,yMm,rotationDeg})` path as a free piece, with
+ * no special-casing downstream. A single-piece cluster degenerates to the
+ * usual per-piece transform (offset 0,0).
+ */
+export interface OrientedCluster {
+    /** All member rings (outer + holes), snapped to (0,0). */
+    rings: Ring[];
+    /** Member outer rings only — used when hole-nesting is off. */
+    outers: Ring[];
+    widthMm: number;
+    heightMm: number;
+    members: { pieceId: string; offX: number; offY: number }[];
+}
+
+export function transformClusterRings(
+    members: Pick<NestPiece, 'id' | 'outer' | 'holes'>[],
+    rotationDeg: number,
+): OrientedCluster {
+    const rotated = members.map((m) => ({
+        id: m.id,
+        outer: rotateRing(m.outer, rotationDeg),
+        holes: m.holes.map((h) => rotateRing(h, rotationDeg)),
+    }));
+    const bb = ringsBBox(rotated.flatMap((r) => [r.outer, ...r.holes]));
+    const dx = -bb.minX;
+    const dy = -bb.minY;
+    const rings: Ring[] = [];
+    const outers: Ring[] = [];
+    const memberInfos: OrientedCluster['members'] = [];
+    for (const r of rotated) {
+        const mb = ringsBBox([r.outer]); // holes ⊂ outer, so outer = member bbox
+        memberInfos.push({ pieceId: r.id, offX: mb.minX + dx, offY: mb.minY + dy });
+        const o = translateRing(r.outer, dx, dy);
+        outers.push(o);
+        rings.push(o);
+        for (const h of r.holes) rings.push(translateRing(h, dx, dy));
+    }
+    return {
+        rings,
+        outers,
+        widthMm: bb.maxX - bb.minX,
+        heightMm: bb.maxY - bb.minY,
+        members: memberInfos,
+    };
+}
+
 /** Rings of a piece in final sheet coordinates for a given placement. */
 export function placedPieceRings(
     piece: Pick<NestPiece, 'outer' | 'holes'>,
