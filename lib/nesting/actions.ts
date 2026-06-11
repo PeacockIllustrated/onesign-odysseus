@@ -42,6 +42,7 @@ const SaveSchema = z.object({
     config: NestConfigSchema,
     widthCalMm: z.number().positive().nullable().optional(),
     fileName: z.string().max(260).nullable().optional(),
+    keptGroupIds: z.array(z.string().max(64)).max(2000).optional(),
 });
 export type SaveNestingDesignInput = z.infer<typeof SaveSchema>;
 
@@ -93,7 +94,8 @@ export async function saveNestingDesign(
     if (!parsed.success) {
         return err(parsed.error.issues[0]?.message ?? 'invalid input');
     }
-    const { id, name, svgSource, config, widthCalMm, fileName } = parsed.data;
+    const { id, name, svgSource, config, widthCalMm, fileName, keptGroupIds } =
+        parsed.data;
 
     const supabase = createAdminClient();
     const row = {
@@ -103,6 +105,7 @@ export async function saveNestingDesign(
             config,
             widthCalMm: widthCalMm ?? null,
             fileName: fileName ?? null,
+            keptGroupIds: keptGroupIds ?? [],
         },
         updated_at: new Date().toISOString(),
     };

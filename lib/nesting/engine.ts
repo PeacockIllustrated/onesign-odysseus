@@ -29,7 +29,7 @@
  * DOM-free: runs in a Web Worker and in Vitest's node environment.
  */
 
-import { transformPieceRings } from './geom';
+import { transformClusterRings } from './geom';
 import { dilateMask, rasterizeRings, runsFromMask } from './raster';
 import type {
     NestConfig,
@@ -52,10 +52,19 @@ interface Orientation {
     dilatedRuns: number[][];
     /** Dilation radius in cells; the dilated origin is offset (-d, -d). */
     dilCells: number;
+    /** Per-member bbox-min offset within the oriented unit (for placement). */
+    members: { pieceId: string; offX: number; offY: number }[];
 }
 
-interface PrepPiece {
-    piece: NestPiece;
+/**
+ * A placement unit: one free piece, or several pieces "kept together" as a
+ * rigid cluster. The packer treats it as a single body; on placement it
+ * expands to one Placement per member piece.
+ */
+interface PrepUnit {
+    unitId: string;
+    pieceIds: string[];
+    areaMm2: number;
     orientations: Orientation[];
 }
 
@@ -78,28 +87,48 @@ function rotationAngles(stepDeg: number): number[] {
     return out;
 }
 
+/** Group pieces into placement units, preserving input order of first sight. */
+function buildUnits(
+    pieces: NestPiece[],
+): { unitId: string; members: NestPiece[] }[] {
+    const order: string[] = [];
+    const byKey = new Map<string, NestPiece[]>();
+    for (const p of pieces) {
+        const key = p.clusterId ? `c:${p.clusterId}` : `s:${p.id}`;
+        let arr = byKey.get(key);
+        if (!arr) {
+            arr = [];
+            byKey.set(key, arr);
+            order.push(key);
+        }
+        arr.push(p);
+    }
+    return order.map((key) => {
+        const members = byKey.get(key)!;
+        return { unitId: members[0].clusterId ?? members[0].id, members };
+    });
+}
+
 function prepare(
     pieces: NestPiece[],
     config: NestConfig,
     usableCols: number,
     usableRows: number,
-): { prepped: PrepPiece[]; unplacedPieceIds: string[] } {
+): { prepped: PrepUnit[]; unplacedPieceIds: string[] } {
     const res = config.resolutionMm;
     const dil = config.gapMm > 0 ? Math.ceil(config.gapMm / res) : 0;
     const angles = rotationAngles(config.rotationStepDeg);
-    const prepped: PrepPiece[] = [];
+    const prepped: PrepUnit[] = [];
     const unplacedPieceIds: string[] = [];
 
-    for (const piece of pieces) {
+    for (const unit of buildUnits(pieces)) {
         const orientations: Orientation[] = [];
         for (const deg of angles) {
-            const o = transformPieceRings(piece, deg);
+            const o = transformClusterRings(unit.members, deg);
             const wCells = Math.max(1, Math.ceil(o.widthMm / res - 1e-9));
             const hCells = Math.max(1, Math.ceil(o.heightMm / res - 1e-9));
             if (wCells > usableCols || hCells > usableRows) continue;
-            const rings = config.allowHoleNesting
-                ? [o.outer, ...o.holes]
-                : [o.outer];
+            const rings = config.allowHoleNesting ? o.rings : o.outers;
             const solid = rasterizeRings(rings, o.widthMm, o.heightMm, res);
             const solidRuns = runsFromMask(solid);
             const dilatedRuns =
@@ -113,12 +142,19 @@ function prepare(
                 solidRuns,
                 dilatedRuns,
                 dilCells: dil,
+                members: o.members,
             });
         }
         if (orientations.length === 0) {
-            unplacedPieceIds.push(piece.id);
+            // The unit doesn't fit an empty sheet in any rotation.
+            unplacedPieceIds.push(...unit.members.map((m) => m.id));
         } else {
-            prepped.push({ piece, orientations });
+            prepped.push({
+                unitId: unit.unitId,
+                pieceIds: unit.members.map((m) => m.id),
+                areaMm2: unit.members.reduce((a, m) => a + m.areaMm2, 0),
+                orientations,
+            });
         }
     }
     return { prepped, unplacedPieceIds };
@@ -226,7 +262,7 @@ interface FoundSpot {
 
 function findPlacement(
     occ: OccRows,
-    prep: PrepPiece,
+    prep: PrepUnit,
     usableCols: number,
     usableRows: number,
 ): FoundSpot | null {
@@ -255,7 +291,7 @@ function writePlacement(occ: OccRows, spot: FoundSpot, usableRows: number): void
 }
 
 function pack(
-    order: PrepPiece[],
+    order: PrepUnit[],
     config: NestConfig,
     usableCols: number,
     usableRows: number,
@@ -287,7 +323,7 @@ function pack(
         }
         if (!spot) {
             if (sheetOccs.length >= config.maxSheets) {
-                overflow.push(prep.piece.id);
+                overflow.push(...prep.pieceIds);
                 continue;
             }
             sheetOccs.push(newSheet(usableRows));
@@ -304,27 +340,31 @@ function pack(
             if (!spot) {
                 // Cannot happen: prepare() proved an orientation fits an
                 // empty sheet. Defensive all the same.
-                overflow.push(prep.piece.id);
+                overflow.push(...prep.pieceIds);
                 continue;
             }
         }
         writePlacement(sheetOccs[sheetIndex], spot, usableRows);
-        const xMm = config.marginMm + spot.x * res;
-        const yMm = config.marginMm + spot.y * res;
-        placements.push({
-            pieceId: prep.piece.id,
-            sheetIndex,
-            xMm,
-            yMm,
-            rotationDeg: spot.o.rotationDeg,
-        });
+        const unitXMm = config.marginMm + spot.x * res;
+        const unitYMm = config.marginMm + spot.y * res;
+        // Expand the unit into one placement per member; a member's bbox-min
+        // lands at the unit origin plus its offset within the oriented unit.
+        for (const m of spot.o.members) {
+            placements.push({
+                pieceId: m.pieceId,
+                sheetIndex,
+                xMm: unitXMm + m.offX,
+                yMm: unitYMm + m.offY,
+                rotationDeg: spot.o.rotationDeg,
+            });
+        }
         const e = ext[sheetIndex];
-        e.minX = Math.min(e.minX, xMm);
-        e.minY = Math.min(e.minY, yMm);
-        e.maxX = Math.max(e.maxX, xMm + spot.o.wMm);
-        e.maxY = Math.max(e.maxY, yMm + spot.o.hMm);
-        e.area += prep.piece.areaMm2;
-        e.count++;
+        e.minX = Math.min(e.minX, unitXMm);
+        e.minY = Math.min(e.minY, unitYMm);
+        e.maxX = Math.max(e.maxX, unitXMm + spot.o.wMm);
+        e.maxY = Math.max(e.maxY, unitYMm + spot.o.hMm);
+        e.area += prep.areaMm2;
+        e.count += spot.o.members.length;
     }
 
     const sheetArea = config.sheetWidthMm * config.sheetHeightMm;
@@ -361,7 +401,7 @@ function pack(
     };
 }
 
-function mutateOrder(order: PrepPiece[], rng: () => number): PrepPiece[] {
+function mutateOrder(order: PrepUnit[], rng: () => number): PrepUnit[] {
     const out = order.slice();
     if (out.length < 2) return out;
     const i = Math.floor(rng() * out.length);
@@ -424,8 +464,7 @@ export function* runNest(
         .slice()
         .sort(
             (a, b) =>
-                b.piece.areaMm2 - a.piece.areaMm2 ||
-                a.piece.id.localeCompare(b.piece.id),
+                b.areaMm2 - a.areaMm2 || a.unitId.localeCompare(b.unitId),
         );
     let bestOrder = initial;
     let best = pack(initial, config, usableCols, usableRows, unplacedPieceIds);

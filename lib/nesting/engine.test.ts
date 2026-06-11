@@ -204,6 +204,54 @@ describe('nestOnce — core invariants', () => {
     });
 });
 
+describe('nestOnce — clustering (keep together)', () => {
+    it('keeps a clustered group on one sheet with relative layout preserved', () => {
+        pieceN = 0;
+        const a = piece(square(0, 0, 50));
+        const b = piece(square(120, 0, 50)); // 120mm right of a in artwork space
+        a.clusterId = 'c1';
+        b.clusterId = 'c1';
+        const config = cfg({
+            sheetWidthMm: 400,
+            sheetHeightMm: 200,
+            marginMm: 10,
+            gapMm: 3,
+            rotationStepDeg: 0,
+        });
+        const sol = nestOnce([a, b], config);
+        expect(sol.placements).toHaveLength(2);
+        const pa = sol.placements.find((p) => p.pieceId === a.id)!;
+        const pb = sol.placements.find((p) => p.pieceId === b.id)!;
+        expect(pa.sheetIndex).toBe(pb.sheetIndex);
+        expect(pa.rotationDeg).toBe(pb.rotationDeg);
+        const ba = placedBBox(a, pa);
+        const bb = placedBBox(b, pb);
+        expect(bb.minX - ba.minX).toBeCloseTo(120, 6); // gap preserved
+        expect(ba.minY).toBeCloseTo(bb.minY, 6); // still on the same baseline
+    });
+
+    it('forces a clustered pair onto the same sheet that free pieces would split', () => {
+        pieceN = 0;
+        // Sheet only ~one square tall; two free squares would overflow to 2
+        // sheets. Clustered side-by-side they fit one sheet (wide, short).
+        const a = piece(square(0, 0, 80));
+        const b = piece(square(100, 0, 80));
+        a.clusterId = 'g';
+        b.clusterId = 'g';
+        const config = cfg({
+            sheetWidthMm: 400,
+            sheetHeightMm: 100,
+            marginMm: 5,
+            gapMm: 2,
+            rotationStepDeg: 0,
+        });
+        const sol = nestOnce([a, b], config);
+        expect(sol.placements).toHaveLength(2);
+        expect(sol.sheets).toHaveLength(1);
+        expect(sol.placements[0].sheetIndex).toBe(sol.placements[1].sheetIndex);
+    });
+});
+
 describe('runNest — improvement loop', () => {
     it('is deterministic for a given seed', () => {
         const config = cfg({

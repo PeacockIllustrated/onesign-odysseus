@@ -18,6 +18,7 @@ import {
     ChevronRight,
     Download,
     FileText,
+    Link2,
     Minimize2,
     Play,
     RotateCcw,
@@ -201,6 +202,8 @@ export function NestingClient({
     const [designName, setDesignName] = useState('');
     const [saveError, setSaveError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
+    // Group ids the operator wants packed together as one rigid unit.
+    const [keptGroups, setKeptGroups] = useState<Set<string>>(new Set());
 
     const nest = useNestWorker();
 
@@ -223,6 +226,30 @@ export function NestingClient({
         [pieces],
     );
 
+    // Only multi-piece groups can be "kept together"; tag those pieces with a
+    // clusterId so the engine packs each such group as one rigid unit.
+    const keptEffective = useMemo(() => {
+        const multi = new Set(
+            groups.filter((g) => g.pieceIds.length > 1).map((g) => g.id),
+        );
+        return new Set([...keptGroups].filter((id) => multi.has(id)));
+    }, [keptGroups, groups]);
+    const keptKey = useMemo(
+        () => [...keptEffective].sort().join(','),
+        [keptEffective],
+    );
+    const enginePieces = useMemo(
+        () =>
+            keptEffective.size === 0
+                ? pieces
+                : pieces.map((p) =>
+                      keptEffective.has(p.groupId)
+                          ? { ...p, clusterId: p.groupId }
+                          : p,
+                  ),
+        [pieces, keptEffective],
+    );
+
     const baseName = useMemo(() => {
         const raw = (fileName ?? 'nest').replace(/\.svg$/i, '');
         const slug = raw.replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '');
@@ -231,8 +258,8 @@ export function NestingClient({
 
     // A run is "stale" when anything that feeds the engine changed since.
     const runKey = useMemo(
-        () => JSON.stringify({ cfg, factor, fileName, n: pieces.length }),
-        [cfg, factor, fileName, pieces.length],
+        () => JSON.stringify({ cfg, factor, fileName, n: pieces.length, keptKey }),
+        [cfg, factor, fileName, pieces.length, keptKey],
     );
     const stale = !!snapshot && snapshot.key !== runKey && !nest.running;
 
@@ -305,6 +332,7 @@ export function NestingClient({
             setCurrentDesignId(null);
             setDesignName(file.name.replace(/\.svg$/i, ''));
             setSaveError(null);
+            setKeptGroups(new Set());
         } catch (e) {
             setImportError(
                 e instanceof Error ? e.message : 'Could not read that SVG',
@@ -325,6 +353,7 @@ export function NestingClient({
         setCurrentDesignId(null);
         setDesignName('');
         setSaveError(null);
+        setKeptGroups(new Set());
     };
 
     // ---- saved-nests rail ----
@@ -340,6 +369,7 @@ export function NestingClient({
             config: cfg,
             widthCalMm: widthCal,
             fileName,
+            keptGroupIds: [...keptEffective],
         });
         setBusy(false);
         if (!res.ok) {
@@ -380,6 +410,7 @@ export function NestingClient({
             setCfg(row.config_json.config);
             setWidthCal(row.config_json.widthCalMm);
             setFileName(row.config_json.fileName ?? row.name);
+            setKeptGroups(new Set(row.config_json.keptGroupIds ?? []));
             setCurrentDesignId(row.id);
             setDesignName(row.name);
         } catch {
@@ -411,9 +442,15 @@ export function NestingClient({
 
     const startNest = () => {
         if (!canNest) return;
-        setSnapshot({ pieces, groups, config: cfg, key: runKey, baseName });
+        setSnapshot({
+            pieces: enginePieces,
+            groups,
+            config: cfg,
+            key: runKey,
+            baseName,
+        });
         setActiveSheet(0);
-        nest.start(pieces, cfg, ITERATIONS, nextSeed());
+        nest.start(enginePieces, cfg, ITERATIONS, nextSeed());
     };
 
     // "Smallest panel": nest onto a generously-auto-sized single sheet, then
@@ -439,7 +476,7 @@ export function NestingClient({
             maxSheets: 1,
         };
         setSnapshot({
-            pieces,
+            pieces: enginePieces,
             groups,
             config: c2,
             key: runKey,
@@ -447,7 +484,7 @@ export function NestingClient({
             smallest: true,
         });
         setActiveSheet(0);
-        nest.start(pieces, c2, ITERATIONS, nextSeed());
+        nest.start(enginePieces, c2, ITERATIONS, nextSeed());
     };
 
     // Cut files are sized to the snapshot sheet — except a smallest-panel run,
@@ -1065,7 +1102,9 @@ export function NestingClient({
                 {pieces.length > 0 && (
                     <Section step={4} title={`Pieces (${pieces.length})`}>
                         <p className="text-[10px] text-neutral-400">
-                            Hover a row to spot its pieces on the sheet.
+                            Hover a row to spot its pieces on the sheet. Toggle{' '}
+                            <span className="font-medium">Keep</span> to pack a
+                            group&apos;s pieces together as one block.
                         </p>
                         <ul className="max-h-[420px] space-y-1 overflow-y-auto pr-1">
                             {groups.map((g) => {
@@ -1094,19 +1133,10 @@ export function NestingClient({
                                     );
                                 }
                                 const open = expanded.has(g.id);
+                                const kept = keptGroups.has(g.id);
                                 return (
                                     <li key={g.id}>
-                                        <button
-                                            type="button"
-                                            onClick={() =>
-                                                setExpanded((prev) => {
-                                                    const next = new Set(prev);
-                                                    if (next.has(g.id))
-                                                        next.delete(g.id);
-                                                    else next.add(g.id);
-                                                    return next;
-                                                })
-                                            }
+                                        <div
                                             onMouseEnter={() =>
                                                 setHover({
                                                     kind: 'group',
@@ -1114,23 +1144,79 @@ export function NestingClient({
                                                 })
                                             }
                                             onMouseLeave={() => setHover(null)}
-                                            className="flex min-h-[36px] w-full items-center gap-2 rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-left hover:border-[#b8d0d8] hover:bg-[#e8f0f3]"
+                                            className={`flex min-h-[36px] w-full items-center gap-1.5 rounded-md border bg-white px-2 py-1.5 ${
+                                                kept
+                                                    ? 'border-[#4e7e8c]'
+                                                    : 'border-neutral-200 hover:border-[#b8d0d8] hover:bg-[#e8f0f3]'
+                                            }`}
                                         >
-                                            <ChevronRight
-                                                size={13}
-                                                aria-hidden
-                                                className={`shrink-0 text-neutral-400 transition-transform ${open ? 'rotate-90' : ''}`}
-                                            />
-                                            <span className="min-w-0 flex-1 truncate text-xs font-medium text-neutral-700">
-                                                {g.label}
-                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    setExpanded((prev) => {
+                                                        const next = new Set(
+                                                            prev,
+                                                        );
+                                                        if (next.has(g.id))
+                                                            next.delete(g.id);
+                                                        else next.add(g.id);
+                                                        return next;
+                                                    })
+                                                }
+                                                className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                            >
+                                                <ChevronRight
+                                                    size={13}
+                                                    aria-hidden
+                                                    className={`shrink-0 text-neutral-400 transition-transform ${open ? 'rotate-90' : ''}`}
+                                                />
+                                                <span className="min-w-0 flex-1 truncate text-xs font-medium text-neutral-700">
+                                                    {g.label}
+                                                </span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    setKeptGroups((prev) => {
+                                                        const next = new Set(
+                                                            prev,
+                                                        );
+                                                        if (next.has(g.id))
+                                                            next.delete(g.id);
+                                                        else next.add(g.id);
+                                                        return next;
+                                                    })
+                                                }
+                                                aria-pressed={kept}
+                                                title="Keep this group's pieces together when nesting"
+                                                className={`flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${
+                                                    kept
+                                                        ? 'text-white'
+                                                        : 'border-neutral-300 text-neutral-500 hover:border-[#4e7e8c] hover:text-[#3a5f6a]'
+                                                }`}
+                                                style={
+                                                    kept
+                                                        ? {
+                                                              background: ACCENT,
+                                                              borderColor:
+                                                                  ACCENT,
+                                                          }
+                                                        : undefined
+                                                }
+                                            >
+                                                <Link2
+                                                    size={10}
+                                                    aria-hidden
+                                                />
+                                                {kept ? 'Kept' : 'Keep'}
+                                            </button>
                                             <span
-                                                className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-white"
+                                                className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-white"
                                                 style={{ background: ACCENT }}
                                             >
                                                 {g.pieceIds.length}
                                             </span>
-                                        </button>
+                                        </div>
                                         {open && (
                                             <ul className="mt-1 space-y-1 pl-4">
                                                 {g.pieceIds.map((id) => {
