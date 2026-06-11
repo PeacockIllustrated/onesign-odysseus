@@ -148,3 +148,32 @@ export type NestWorkerResponse =
     | { type: 'progress'; iteration: number; totalIterations: number }
     | { type: 'done' }
     | { type: 'error'; message: string };
+
+// =============================================================================
+// SAVED DESIGNS (DB-backed — table nesting_designs, migration 064)
+// =============================================================================
+
+/** The restorable state of a saved nest (everything but the SVG, which is its
+ *  own column). Stored as the row's `config_json`. */
+export interface NestingDesignConfig {
+    config: NestConfig;
+    /** Artwork-width calibration override, or null to use the SVG's own size. */
+    widthCalMm: number | null;
+    /** Original upload filename, for display + export naming. */
+    fileName: string | null;
+}
+
+/** Lightweight list item (no SVG / config payload) for the saved-nests rail. */
+export interface NestingDesignSummary {
+    id: string;
+    name: string;
+    created_at: string;
+    updated_at: string;
+}
+
+/** Full saved-design row, fetched on load. */
+export interface NestingDesignRow extends NestingDesignSummary {
+    svg_source: string;
+    config_json: NestingDesignConfig;
+    created_by: string | null;
+}
