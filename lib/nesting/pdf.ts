@@ -24,6 +24,7 @@ import type {
 } from './types';
 
 const BRAND: [number, number, number] = [78, 126, 140];
+const BRAND_DARK: [number, number, number] = [58, 95, 106];
 const INK: [number, number, number] = [26, 31, 35];
 const PAGE_W = 297;
 const PAGE_H = 210;
@@ -182,58 +183,169 @@ export function generateNestingPdfBlob(opts: NestPdfOptions): Blob {
         );
     }
 
-    // ---- piece schedule ----
-    doc.addPage();
-    strap('Acrylic nesting - piece schedule');
-    let y = 24;
-    const lineH = 5;
-    const colW = (PAGE_W - 20) / 3;
-    let col = 0;
-    const nextLine = () => {
-        y += lineH;
-        if (y > PAGE_H - 12) {
-            col++;
-            y = 24;
-            if (col > 2) {
-                doc.addPage();
-                strap('Acrylic nesting - piece schedule (cont.)');
-                col = 0;
-            }
-        }
-    };
-    const placedSheet = new Map(
+    // ---- grouped visual reference ----
+    // Each SVG group (a named layer, or the subpaths of one compound path —
+    // e.g. an outlined word) becomes a block: a per-sheet locator with THIS
+    // group's pieces filled in brand teal and everything else faint, so the
+    // shop can see at a glance where a group's pieces ended up. A compact
+    // piece list (label, size, sheet) sits underneath.
+    const sheetOf = new Map(
         solution.placements.map((p) => [p.pieceId, p.sheetIndex]),
     );
+    const placementsBySheet = new Map<number, typeof solution.placements>();
+    for (const pl of solution.placements) {
+        const arr = placementsBySheet.get(pl.sheetIndex);
+        if (arr) arr.push(pl);
+        else placementsBySheet.set(pl.sheetIndex, [pl]);
+    }
+
+    /** Draw sheet `s` into a box; group pieces accent, the rest faint. Returns drawn height. */
+    const drawLocator = (
+        s: number,
+        x0: number,
+        y0: number,
+        boxW: number,
+        boxH: number,
+        groupSet: Set<string>,
+    ): number => {
+        const scale = Math.min(
+            boxW / config.sheetWidthMm,
+            boxH / config.sheetHeightMm,
+        );
+        const w = config.sheetWidthMm * scale;
+        const h = config.sheetHeightMm * scale;
+        doc.setDrawColor(190, 190, 190);
+        doc.setLineWidth(0.2);
+        doc.rect(x0, y0, w, h, 'S');
+        const pls = placementsBySheet.get(s) ?? [];
+        const paint = (inGroup: boolean) => {
+            for (const pl of pls) {
+                if (groupSet.has(pl.pieceId) !== inGroup) continue;
+                const piece = pieceById.get(pl.pieceId);
+                if (!piece) continue;
+                const rings = placedPieceRings(piece, pl);
+                if (inGroup) {
+                    doc.setFillColor(...BRAND);
+                    doc.setDrawColor(...BRAND_DARK);
+                } else {
+                    doc.setFillColor(224, 224, 224);
+                    doc.setDrawColor(200, 200, 200);
+                }
+                doc.setLineWidth(0.1);
+                drawRing(doc, rings.outer, x0, y0, scale, 'FD');
+                doc.setFillColor(255, 255, 255);
+                for (const hole of rings.holes) {
+                    drawRing(doc, hole, x0, y0, scale, 'F');
+                }
+            }
+        };
+        paint(false); // faint context first…
+        paint(true); // …group pieces on top
+        return h;
+    };
+
+    doc.addPage();
+    strap("Grouped reference - where each group's pieces are");
+    const LX = 10;
+    const CW = PAGE_W - 20;
+    const LOC_W = 58;
+    const LOC_H = 46;
+    const LOC_GAP = 6;
+    const CAP = 4;
+    const perRow = Math.max(
+        1,
+        Math.floor((CW + LOC_GAP) / (LOC_W + LOC_GAP)),
+    );
+    const locH =
+        config.sheetHeightMm *
+        Math.min(LOC_W / config.sheetWidthMm, LOC_H / config.sheetHeightMm);
+    let gy = 22;
+
     for (const group of groups) {
+        const groupSet = new Set(group.pieceIds);
+        const spanned = Array.from(
+            new Set(
+                group.pieceIds
+                    .map((id) => sheetOf.get(id))
+                    .filter((v): v is number => v !== undefined),
+            ),
+        ).sort((a, b) => a - b);
+
+        const listStr = group.pieceIds
+            .map((id) => {
+                const p = pieceById.get(id);
+                if (!p) return '';
+                const s = sheetOf.get(id);
+                return `${p.label.replace(/^Piece /, 'P')} ${Math.ceil(p.widthMm)}x${Math.ceil(p.heightMm)}${s !== undefined ? ` (S${s + 1})` : ' (-)'}`;
+            })
+            .filter(Boolean)
+            .join('    ');
+        const listLines = doc.splitTextToSize(txt(listStr), CW) as string[];
+
+        const rows = spanned.length
+            ? Math.ceil(spanned.length / perRow)
+            : 0;
+        const headerH = 7;
+        const locRowH = rows * (locH + CAP + 5);
+        const listH = listLines.length * 3.6 + 3;
+        const blockH = headerH + locRowH + listH + 5;
+
+        if (gy + blockH > PAGE_H - 8) {
+            doc.addPage();
+            strap('Grouped reference (cont.)');
+            gy = 22;
+        }
+
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(9);
         doc.setTextColor(...INK);
+        const sheetsLabel = spanned.length
+            ? `sheets ${spanned.map((s) => s + 1).join(', ')}`
+            : 'not placed';
         doc.text(
-            txt(`${group.label} (${group.pieceIds.length})`),
-            10 + col * colW,
-            y,
+            txt(
+                `${group.label}  -  ${group.pieceIds.length} piece${group.pieceIds.length === 1 ? '' : 's'}  -  ${sheetsLabel}`,
+            ),
+            LX,
+            gy,
         );
-        nextLine();
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8);
-        for (const id of group.pieceIds) {
-            const piece = pieceById.get(id);
-            if (!piece) continue;
-            const sheet = placedSheet.get(id);
-            doc.setTextColor(90, 90, 90);
-            doc.text(
-                txt(
-                    `${piece.label} - ${Math.ceil(piece.widthMm)} x ${Math.ceil(piece.heightMm)} mm - ${sheet !== undefined ? `sheet ${sheet + 1}` : 'NOT PLACED'}`,
-                ),
-                12 + col * colW,
-                y,
-            );
-            nextLine();
+        gy += headerH;
+
+        if (spanned.length) {
+            spanned.forEach((s, i) => {
+                const colIdx = i % perRow;
+                if (i > 0 && colIdx === 0) gy += locH + CAP + 5;
+                const lx = LX + colIdx * (LOC_W + LOC_GAP);
+                const h = drawLocator(s, lx, gy, LOC_W, LOC_H, groupSet);
+                const cnt = group.pieceIds.filter(
+                    (id) => sheetOf.get(id) === s,
+                ).length;
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(7);
+                doc.setTextColor(90, 90, 90);
+                doc.text(txt(`Sheet ${s + 1} - ${cnt} pc`), lx, gy + h + CAP);
+            });
+            gy += locH + CAP + 5;
         }
-        nextLine();
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(110, 110, 110);
+        doc.text(listLines, LX, gy);
+        gy += listH + 3;
+
+        doc.setDrawColor(228, 228, 228);
+        doc.setLineWidth(0.2);
+        doc.line(LX, gy, PAGE_W - 10, gy);
+        gy += 4;
     }
 
     if (solution.unplacedPieceIds.length > 0) {
+        if (gy > PAGE_H - 18) {
+            doc.addPage();
+            strap('Grouped reference (cont.)');
+            gy = 22;
+        }
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(9);
         doc.setTextColor(180, 30, 30);
@@ -241,8 +353,8 @@ export function generateNestingPdfBlob(opts: NestPdfOptions): Blob {
             txt(
                 `${solution.unplacedPieceIds.length} piece(s) did not fit - increase sheets, shrink the artwork, or check piece sizes.`,
             ),
-            10 + col * colW,
-            y,
+            LX,
+            gy + 2,
         );
     }
 
