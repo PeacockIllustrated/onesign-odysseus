@@ -21,7 +21,9 @@ import {
     Minimize2,
     Play,
     RotateCcw,
+    Save,
     Square,
+    Trash2,
     Upload,
     X,
 } from 'lucide-react';
@@ -33,10 +35,16 @@ import { buildSheetDxf } from '@/lib/nesting/dxf';
 import { generateNestingPdfBlob } from '@/lib/nesting/pdf';
 import { useNestWorker } from '@/lib/nesting/use-nest-worker';
 import {
+    deleteNestingDesign,
+    getNestingDesign,
+    saveNestingDesign,
+} from '@/lib/nesting/actions';
+import {
     DEFAULT_NEST_CONFIG,
     SHEET_PRESETS,
     type ImportedNestSvg,
     type NestConfig,
+    type NestingDesignSummary,
     type NestPiece,
     type PieceGroup,
 } from '@/lib/nesting/types';
@@ -167,7 +175,11 @@ function MiniThumb({ piece, fill }: { piece: NestPiece; fill: string }) {
     );
 }
 
-export function NestingClient() {
+export function NestingClient({
+    initialDesigns,
+}: {
+    initialDesigns: NestingDesignSummary[];
+}) {
     const inputRef = useRef<HTMLInputElement>(null);
     // Seeded lazily in startNest (an event handler) — render must stay pure.
     const seedRef = useRef<number>(0);
@@ -181,6 +193,14 @@ export function NestingClient() {
     const [activeSheet, setActiveSheet] = useState(0);
     const [hover, setHover] = useState<Hover>(null);
     const [expanded, setExpanded] = useState<Set<string>>(new Set());
+    // Saved-nests rail state.
+    const [svgText, setSvgText] = useState<string | null>(null);
+    const [designs, setDesigns] =
+        useState<NestingDesignSummary[]>(initialDesigns);
+    const [currentDesignId, setCurrentDesignId] = useState<string | null>(null);
+    const [designName, setDesignName] = useState('');
+    const [saveError, setSaveError] = useState<string | null>(null);
+    const [busy, setBusy] = useState(false);
 
     const nest = useNestWorker();
 
@@ -281,6 +301,10 @@ export function NestingClient() {
             setWidthCal(null);
             setFileName(file.name);
             setImported(result);
+            setSvgText(text);
+            setCurrentDesignId(null);
+            setDesignName(file.name.replace(/\.svg$/i, ''));
+            setSaveError(null);
         } catch (e) {
             setImportError(
                 e instanceof Error ? e.message : 'Could not read that SVG',
@@ -297,6 +321,82 @@ export function NestingClient() {
         setWidthCal(null);
         setHover(null);
         setActiveSheet(0);
+        setSvgText(null);
+        setCurrentDesignId(null);
+        setDesignName('');
+        setSaveError(null);
+    };
+
+    // ---- saved-nests rail ----
+    const doSave = async () => {
+        if (!svgText) return;
+        const name = designName.trim() || fileName || 'Untitled nest';
+        setBusy(true);
+        setSaveError(null);
+        const res = await saveNestingDesign({
+            id: currentDesignId ?? undefined,
+            name,
+            svgSource: svgText,
+            config: cfg,
+            widthCalMm: widthCal,
+            fileName,
+        });
+        setBusy(false);
+        if (!res.ok) {
+            setSaveError(res.error);
+            return;
+        }
+        const id = res.data.id;
+        setCurrentDesignId(id);
+        const nowIso = new Date().toISOString();
+        setDesigns((prev) => {
+            const created = prev.find((d) => d.id === id)?.created_at ?? nowIso;
+            return [
+                { id, name, created_at: created, updated_at: nowIso },
+                ...prev.filter((d) => d.id !== id),
+            ];
+        });
+    };
+
+    const doLoad = async (id: string) => {
+        setBusy(true);
+        setSaveError(null);
+        const res = await getNestingDesign(id);
+        setBusy(false);
+        if (!res.ok) {
+            setSaveError(res.error);
+            return;
+        }
+        const row = res.data;
+        try {
+            const result = importNestSvg(row.svg_source);
+            nest.reset();
+            setSnapshot(null);
+            setActiveSheet(0);
+            setHover(null);
+            setExpanded(new Set());
+            setSvgText(row.svg_source);
+            setImported(result);
+            setCfg(row.config_json.config);
+            setWidthCal(row.config_json.widthCalMm);
+            setFileName(row.config_json.fileName ?? row.name);
+            setCurrentDesignId(row.id);
+            setDesignName(row.name);
+        } catch {
+            setSaveError('Saved artwork could not be reopened.');
+        }
+    };
+
+    const doDelete = async (id: string) => {
+        setBusy(true);
+        const res = await deleteNestingDesign(id);
+        setBusy(false);
+        if (!res.ok) {
+            setSaveError(res.error);
+            return;
+        }
+        setDesigns((prev) => prev.filter((d) => d.id !== id));
+        if (currentDesignId === id) setCurrentDesignId(null);
     };
 
     // Fresh seed each run so a re-run explores a different path. Seeded
@@ -468,6 +568,101 @@ export function NestingClient() {
         <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
             {/* ------------------------------------------------ left rail */}
             <div className="space-y-3">
+                {/* Saved nests — save the current SVG + config, reopen to revise */}
+                <div className="space-y-2 rounded-lg border border-neutral-200 bg-white p-3">
+                    <div className="flex items-center justify-between gap-2">
+                        <h3 className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                            <Save size={12} aria-hidden /> Saved nests
+                        </h3>
+                        {currentDesignId && (
+                            <span
+                                className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
+                                style={{ background: ACCENT_TINT_BG, color: ACCENT_DARK }}
+                            >
+                                editing
+                            </span>
+                        )}
+                    </div>
+                    {imported ? (
+                        <>
+                            <div className="flex items-center gap-1.5">
+                                <input
+                                    value={designName}
+                                    onChange={(e) => setDesignName(e.target.value)}
+                                    placeholder="Name this nest"
+                                    className="min-w-0 flex-1 rounded border border-neutral-300 px-2 py-1 text-xs focus:border-black focus:outline-none"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={doSave}
+                                    disabled={busy || !designName.trim()}
+                                    className="flex min-h-[30px] items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                                    style={{ background: ACCENT }}
+                                >
+                                    <Save size={12} aria-hidden />
+                                    {currentDesignId ? 'Update' : 'Save'}
+                                </button>
+                            </div>
+                            {currentDesignId && (
+                                <button
+                                    type="button"
+                                    onClick={() => setCurrentDesignId(null)}
+                                    className="text-[10px] text-neutral-500 underline hover:text-neutral-700"
+                                >
+                                    Save as a new nest instead
+                                </button>
+                            )}
+                        </>
+                    ) : (
+                        <p className="text-[10px] text-neutral-400">
+                            Upload artwork to save a nest — or reopen one below to
+                            revise it.
+                        </p>
+                    )}
+                    {saveError && (
+                        <p className="text-[11px] text-red-600">{saveError}</p>
+                    )}
+                    {designs.length > 0 && (
+                        <ul className="max-h-44 space-y-1 overflow-y-auto pr-1">
+                            {designs.map((d) => (
+                                <li
+                                    key={d.id}
+                                    className={`flex items-center gap-1.5 rounded-md border px-2 py-1.5 ${
+                                        currentDesignId === d.id
+                                            ? 'border-[#4e7e8c] bg-[#e8f0f3]'
+                                            : 'border-neutral-200 hover:border-[#b8d0d8]'
+                                    }`}
+                                >
+                                    <button
+                                        type="button"
+                                        onClick={() => doLoad(d.id)}
+                                        disabled={busy}
+                                        className="min-w-0 flex-1 text-left disabled:opacity-50"
+                                    >
+                                        <span className="block truncate text-[11px] font-medium text-neutral-700">
+                                            {d.name}
+                                        </span>
+                                        <span className="block text-[9px] text-neutral-400">
+                                            {new Date(
+                                                d.updated_at,
+                                            ).toLocaleDateString('en-GB')}
+                                        </span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => doDelete(d.id)}
+                                        disabled={busy}
+                                        aria-label={`Delete ${d.name}`}
+                                        className="flex min-h-[28px] min-w-[28px] shrink-0 items-center justify-center rounded text-neutral-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                                    >
+                                        <Trash2 size={13} aria-hidden />
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </div>
+
                 <Section step={1} title="Artwork" active={!!imported}>
                     {!imported ? (
                         <button
