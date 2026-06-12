@@ -278,6 +278,7 @@ The `/admin/booking` module (287K of code) was experimental and is not part of O
 ### In flight
 - **`Result<T>` migration** — new server-action code uses the typed discriminated union from `lib/result.ts`; legacy `any`-typed returns are being retired module by module.
 - **Supabase test mocks** — shared factory in `lib/__mocks__/supabase.ts` enables Vitest coverage of server actions without hitting live DB; rollout ongoing.
+- **In-depth raster → SVG converter** — elevating the panel visualiser's silhouette tracer (`lib/visualiser/trace.ts`) into a first-class image-to-vector tool: median-cut colour quantization + stacked multi-layer vectorisation (`lib/visualiser/quantize.ts` + `vectorise.ts`), cleaner curve fitting, a dedicated Studio surface (Web Worker for big images), and export into the artwork (vinyl / cut) + nesting pipelines. Dependency-free + Vitest-covered, in the spirit of the nesting / returns engines.
 
 ### Deferred
 - **Email sending** (Resend wiring) — hook points exist in deliverables, leads, reports, and the approval flow; needs API key
@@ -285,6 +286,9 @@ The `/admin/booking` module (287K of code) was experimental and is not part of O
 - **Integration tests against live Supabase** — needs a dedicated test project
 - **AI artwork extraction** — scoped in `docs/artboard-template-example.html` / `docs/artboard-component-card-template.html`; standardised card template ready for Davey to trial
 - **Sage 50c invoice push, HubSpot contact sync** — downstream integrations; separate infra work
+
+### Planned
+- **Non-standard fabrication builder** — grow the built-up lettering panel (the visualiser + built-up returns tools) into a general bespoke-fabrication configurator for non-standard jobs, in the vein of the Halman Thompson app: parametric, customer- or staff-driven, feeding the same artwork → nesting → production pipeline. Strategic direction for the Studio suite; full scope to be detailed (Tom to expand).
 
 ## Clarity Go audit results (30 March 2026)
 

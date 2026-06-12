@@ -5,9 +5,12 @@ import {
     otsuThreshold,
     marchingSquares,
     simplifyLoops,
+    smoothContour,
     polygonArea,
     traceToSvg,
 } from './trace';
+
+type Pt = [number, number];
 
 /** White, fully-opaque RGBA image of size w×h. */
 function whiteImage(w: number, h: number): Uint8ClampedArray {
@@ -136,6 +139,73 @@ describe('simplifyLoops', () => {
         const raw = marchingSquares(field, w, h, 128);
         const kept = simplifyLoops(raw, { minAreaPx: 4 });
         expect(kept.length).toBe(1);
+    });
+});
+
+describe('smoothContour', () => {
+    it('leaves genuine sharp corners (long edges) untouched', () => {
+        const square: Pt[] = [
+            [0, 0],
+            [10, 0],
+            [10, 10],
+            [0, 10],
+        ];
+        const out = smoothContour(square, 3);
+        // Every original corner is still present at its exact position.
+        for (const c of square) {
+            expect(
+                out.some((p) => Math.hypot(p[0] - c[0], p[1] - c[1]) < 1e-6),
+            ).toBe(true);
+        }
+    });
+
+    it('melts a 1px staircase (total curvature collapses)', () => {
+        const stair: Pt[] = [];
+        for (let i = 0; i < 8; i++) {
+            stair.push([i, i]);
+            stair.push([i + 1, i]);
+        }
+        // The staircase's many 90° jogs carry lots of total turning; smoothing
+        // straightens them, so summed |turn| drops sharply (the right "melted"
+        // signal — mean offset is preserved by a symmetric zigzag).
+        const totalTurn = (pts: Pt[]) => {
+            const n = pts.length;
+            let t = 0;
+            for (let i = 0; i < n; i++) {
+                const p = pts[(i - 1 + n) % n];
+                const c = pts[i];
+                const q = pts[(i + 1) % n];
+                const ax = c[0] - p[0];
+                const ay = c[1] - p[1];
+                const bx = q[0] - c[0];
+                const by = q[1] - c[1];
+                const la = Math.hypot(ax, ay);
+                const lb = Math.hypot(bx, by);
+                if (la < 1e-9 || lb < 1e-9) continue;
+                const dot = (ax * bx + ay * by) / (la * lb);
+                t += Math.acos(Math.max(-1, Math.min(1, dot)));
+            }
+            return t;
+        };
+        expect(totalTurn(smoothContour(stair, 3))).toBeLessThan(
+            totalTurn(stair) * 0.6,
+        );
+    });
+
+    it('is a no-op for 0 passes or tiny loops', () => {
+        const tri: Pt[] = [
+            [0, 0],
+            [1, 0],
+            [0, 1],
+        ];
+        expect(smoothContour(tri, 2)).toBe(tri); // < 4 points
+        const sq: Pt[] = [
+            [0, 0],
+            [4, 0],
+            [4, 4],
+            [0, 4],
+        ];
+        expect(smoothContour(sq, 0)).toBe(sq); // 0 passes
     });
 });
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { Check, ImageUp, Loader2, X } from 'lucide-react';
 import { useVisualiser } from './store';
 import { importSvg } from '@/lib/visualiser/svg-import';
@@ -91,8 +92,8 @@ export function TraceImage({ onClose }: { onClose: () => void }) {
             invert,
             smoothing,
             blurRadius,
+            smoothPasses: 2,
         });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [img, threshold, invert, smoothing, blurRadius]);
 
     const previewSrc = useMemo(
@@ -143,6 +144,16 @@ export function TraceImage({ onClose }: { onClose: () => void }) {
                 Concept only — best with high-contrast logos / black-on-white.
                 The result is a rough silhouette to ballpark ideas, not a
                 production cut file.
+            </p>
+            <p className="text-[10px] text-neutral-500">
+                Need colour or more control?{' '}
+                <Link
+                    href="/admin/visualiser/vectorise"
+                    className="font-medium text-[#4e7e8c] hover:underline"
+                >
+                    Open the full Image&nbsp;→&nbsp;SVG converter
+                </Link>
+                .
             </p>
 
             {!img ? (

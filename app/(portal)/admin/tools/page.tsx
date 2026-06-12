@@ -6,6 +6,7 @@ import {
     Box,
     Globe,
     Hammer,
+    ImageUp,
     Palette,
     PenTool,
     Puzzle,
@@ -54,6 +55,14 @@ const TOOLS: Tool[] = [
         icon: Ruler,
         tag: 'Neon',
         meta: ['Measure', 'Glow', 'PDF'],
+    },
+    {
+        name: 'Image → SVG',
+        blurb: 'Vectorise a PNG / JPG — a clean cut silhouette or a full-colour layered trace, with live threshold, colour and detail controls. Download or drop into the visualiser.',
+        href: '/admin/visualiser/vectorise',
+        icon: ImageUp,
+        tag: 'Convert',
+        meta: ['Colour', 'Silhouette', 'SVG'],
     },
     {
         name: 'Acrylic nesting',
