@@ -32,6 +32,7 @@ import {
     X,
 } from 'lucide-react';
 import { importNestSvg } from '@/lib/nesting/svg-import';
+import { BinderButton } from '@/components/admin/BinderPicker';
 import { buildPieces, scalePieces } from '@/lib/nesting/pieces';
 import { ringsToPathData } from '@/lib/nesting/geom';
 import { buildSheetSvg } from '@/lib/nesting/svg-export';
@@ -731,19 +732,32 @@ export function NestingClient({
 
                 <Section step={1} title="Artwork" active={!!imported}>
                     {!imported ? (
-                        <button
-                            type="button"
-                            onClick={() => inputRef.current?.click()}
-                            className="flex w-full flex-col items-center gap-1 rounded-lg border-2 border-dashed border-neutral-300 px-4 py-6 text-neutral-400 hover:border-neutral-400 hover:text-neutral-600"
-                        >
-                            <Upload size={20} />
-                            <span className="text-xs">
-                                Upload an SVG (outlined artwork)
-                            </span>
-                            <span className="text-[10px] text-neutral-400">
-                                Text must be converted to outlines first
-                            </span>
-                        </button>
+                        <div className="space-y-2">
+                            <button
+                                type="button"
+                                onClick={() => inputRef.current?.click()}
+                                className="flex w-full flex-col items-center gap-1 rounded-lg border-2 border-dashed border-neutral-300 px-4 py-6 text-neutral-400 hover:border-neutral-400 hover:text-neutral-600"
+                            >
+                                <Upload size={20} />
+                                <span className="text-xs">
+                                    Upload an SVG (outlined artwork)
+                                </span>
+                                <span className="text-[10px] text-neutral-400">
+                                    Text must be converted to outlines first
+                                </span>
+                            </button>
+                            <BinderButton
+                                label="or pick from the binder"
+                                onPick={(a) =>
+                                    void handleFile(
+                                        new File([a.svgSource], `${a.name}.svg`, {
+                                            type: 'image/svg+xml',
+                                        }),
+                                    )
+                                }
+                                className="flex w-full items-center justify-center gap-1.5 rounded-md border border-neutral-200 px-3 py-2 text-[11px] font-medium text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700"
+                            />
+                        </div>
                     ) : (
                         <div className="space-y-2">
                             <div className="flex items-center justify-between gap-2 rounded-md border border-neutral-200 bg-neutral-50 px-2.5 py-2">

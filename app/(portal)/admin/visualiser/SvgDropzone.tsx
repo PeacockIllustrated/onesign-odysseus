@@ -5,6 +5,7 @@ import { useVisualiser } from './store';
 import { importSvg, detectInnerCounters } from '@/lib/visualiser/svg-import';
 import { composeLayers } from '@/lib/visualiser/compose';
 import { TraceImage } from './TraceImage';
+import { BinderButton } from '@/components/admin/BinderPicker';
 import { Section } from './Section';
 import { SwatchPicker, type SwatchItem } from './SwatchPicker';
 import { ACRYLIC_COLOURS } from '@/lib/visualiser/acrylic';
@@ -1037,6 +1038,17 @@ export function SvgDropzone() {
                             beta
                         </span>
                     </button>
+                    <BinderButton
+                        label="or pick from the binder"
+                        onPick={(a) =>
+                            void handleFile(
+                                new File([a.svgSource], `${a.name}.svg`, {
+                                    type: 'image/svg+xml',
+                                }),
+                            )
+                        }
+                        className="flex w-full items-center justify-center gap-1.5 rounded-md border border-neutral-200 px-3 py-2 text-[11px] font-medium text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700"
+                    />
                 </div>
             ) : composite ? (
                 <div className="space-y-2">
@@ -1214,6 +1226,17 @@ export function SvgDropzone() {
                         >
                             <ImageUp size={12} aria-hidden /> Trace
                         </button>
+                        <BinderButton
+                            label="Binder"
+                            onPick={(a) =>
+                                void handleFile(
+                                    new File([a.svgSource], `${a.name}.svg`, {
+                                        type: 'image/svg+xml',
+                                    }),
+                                )
+                            }
+                            className="flex min-h-[32px] flex-1 items-center justify-center gap-1 rounded-md border border-neutral-300 px-2 py-1.5 text-[11px] font-medium text-neutral-600 hover:bg-neutral-100"
+                        />
                     </div>
                     <p className="text-[10px] text-neutral-400">
                         Select a layer, then drag its handle on the Flat

@@ -39,6 +39,7 @@ import {
     type NeonDesignRow,
 } from '@/lib/visualiser/neon-actions';
 import type { FlatPath } from '@/lib/visualiser/types';
+import { BinderButton } from '@/components/admin/BinderPicker';
 
 const ACCENT = '#4e7e8c';
 
@@ -361,8 +362,12 @@ export function NeonMeasureClient({
                         </p>
                     </div>
                 </div>
-                {loaded && (
-                    <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                    <BinderButton
+                        onPick={(a) => loadSvgText(a.svgSource, a.name, null)}
+                    />
+                    {loaded && (
+                        <>
                         <div className="flex rounded-md border border-neutral-300 p-0.5">
                             <button
                                 type="button"
@@ -447,8 +452,9 @@ export function NeonMeasureClient({
                             <Download size={14} />
                             {busy ? 'Building…' : 'Download annotated PDF'}
                         </button>
-                    </div>
-                )}
+                        </>
+                    )}
+                </div>
             </header>
 
             <input
