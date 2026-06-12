@@ -92,6 +92,7 @@ export function TraceImage({ onClose }: { onClose: () => void }) {
             invert,
             smoothing,
             blurRadius,
+            smoothPasses: 2,
         });
     }, [img, threshold, invert, smoothing, blurRadius]);
 

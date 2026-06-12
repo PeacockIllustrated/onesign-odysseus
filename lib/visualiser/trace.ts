@@ -40,6 +40,10 @@ export interface TraceOptions {
     /** Loops with absolute area below this (px²) are dropped as specks.
      *  Default 24. */
     minAreaPx?: number;
+    /** Corner-preserving contour smoothing passes (melts the marching-squares
+     *  micro-staircase; corners stay crisp). Default 0 (off) — the converter
+     *  tool opts in; 2 suits most artwork. */
+    smoothPasses?: number;
 }
 
 type Pt = [number, number];
@@ -400,16 +404,79 @@ function simplifyClosed(loop: Pt[], eps: number): Pt[] {
     return sa.slice(0, -1).concat(sb.slice(0, -1));
 }
 
+/**
+ * Light, corner-preserving contour smoothing. Marching squares on a binary
+ * mask traces a micro-staircase along every non-axis edge (½-pixel steps that
+ * read as "lumpy" curves). Averaging each vertex with its neighbours melts that
+ * staircase away — but a vertex is left untouched when it's a GENUINE corner.
+ *
+ * A corner is judged over a k-PIXEL WINDOW, not its immediate neighbours: the
+ * contour has a vertex roughly every pixel, so a true letter tip and a 1px
+ * staircase jog look identical at one-pixel scale. Across a few pixels a real
+ * corner still turns sharply, while a staircase averages to a gentle diagonal —
+ * so the window cleanly separates the two. Vertex count is preserved;
+ * Douglas–Peucker reduces points afterwards.
+ *
+ * Exported + pure so both tracers share it and it unit-tests in node.
+ */
+export function smoothContour(
+    loop: Pt[],
+    passes: number,
+    turnDeg = 55,
+    window = 3,
+): Pt[] {
+    if (passes <= 0 || loop.length < 4) return loop;
+    const turnThresh = (turnDeg * Math.PI) / 180;
+    let pts = loop;
+    for (let pass = 0; pass < passes; pass++) {
+        const n = pts.length;
+        const k = Math.max(1, Math.min(window, Math.floor((n - 1) / 2)));
+        const out: Pt[] = new Array(n);
+        for (let i = 0; i < n; i++) {
+            const cur = pts[i];
+            const a = pts[(i - k + n) % n];
+            const c = pts[(i + k) % n];
+            const ax = cur[0] - a[0];
+            const ay = cur[1] - a[1];
+            const bx = c[0] - cur[0];
+            const by = c[1] - cur[1];
+            const la = Math.hypot(ax, ay);
+            const lb = Math.hypot(bx, by);
+            let keep = false;
+            if (la > 1e-9 && lb > 1e-9) {
+                const dot = (ax * bx + ay * by) / (la * lb);
+                if (Math.acos(Math.max(-1, Math.min(1, dot))) >= turnThresh) {
+                    keep = true; // a real corner across the window
+                }
+            }
+            const prev = pts[(i - 1 + n) % n];
+            const next = pts[(i + 1) % n];
+            out[i] = keep
+                ? cur
+                : [
+                      0.25 * prev[0] + 0.5 * cur[0] + 0.25 * next[0],
+                      0.25 * prev[1] + 0.5 * cur[1] + 0.25 * next[1],
+                  ];
+        }
+        pts = out;
+    }
+    return pts;
+}
+
 /** Clean + simplify raw marching-squares loops, dropping specks. */
 export function simplifyLoops(
     rawLoops: Pt[][],
-    opts: { smoothing?: number; minAreaPx?: number } = {},
+    opts: { smoothing?: number; minAreaPx?: number; smoothPasses?: number } = {},
 ): Pt[][] {
     const eps = smoothingToEpsilon(opts.smoothing ?? 40);
     const minArea = opts.minAreaPx ?? 24;
+    const passes = opts.smoothPasses ?? 0;
     const out: Pt[][] = [];
     for (const raw of rawLoops) {
-        const cleaned = simplifyClosed(mergeCollinear(dedupe(raw)), eps);
+        const cleaned = simplifyClosed(
+            mergeCollinear(smoothContour(dedupe(raw), passes)),
+            eps,
+        );
         if (cleaned.length < 3) continue;
         if (Math.abs(polygonArea(cleaned)) < minArea) continue;
         out.push(cleaned);
@@ -518,6 +585,7 @@ export function traceToSvg(
     const loops = simplifyLoops(raw, {
         smoothing: opts.smoothing,
         minAreaPx: opts.minAreaPx,
+        smoothPasses: opts.smoothPasses,
     });
     if (loops.length === 0) return null;
     const pointCount = loops.reduce((n, l) => n + l.length, 0);

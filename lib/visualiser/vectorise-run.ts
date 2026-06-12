@@ -21,6 +21,9 @@ export interface VectoriseParams {
     smoothing: number;
     /** Despeckle: loops below this area (px²) are dropped (shared). */
     minAreaPx: number;
+    /** Corner-preserving contour smoothing passes — melts the raster staircase
+     *  while keeping sharp tips. 0 = faithful, 2–3 = smoother (shared). */
+    smoothPasses: number;
     /** Silhouette: luminance cutoff 1..254. */
     threshold: number;
     /** Silhouette: trace the light regions instead of the dark. */
@@ -57,6 +60,7 @@ export function computeVectorise(
             maxColors: p.maxColors,
             smoothing: p.smoothing,
             minAreaPx: p.minAreaPx,
+            smoothPasses: p.smoothPasses,
         });
         if (!r) return null;
         return {
@@ -76,6 +80,7 @@ export function computeVectorise(
         smoothing: p.smoothing,
         blurRadius: p.blurRadius,
         minAreaPx: p.minAreaPx,
+        smoothPasses: p.smoothPasses,
     });
     if (!t) return null;
     return {

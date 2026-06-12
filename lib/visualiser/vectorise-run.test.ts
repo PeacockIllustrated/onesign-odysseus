@@ -5,6 +5,7 @@ const base: VectoriseParams = {
     mode: 'silhouette',
     smoothing: 40,
     minAreaPx: 1,
+    smoothPasses: 2,
     threshold: 128,
     invert: false,
     blurRadius: 0,

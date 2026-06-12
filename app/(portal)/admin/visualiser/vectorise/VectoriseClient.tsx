@@ -23,10 +23,11 @@ import {
 
 const ACCENT = '#4e7e8c';
 
-// Cap the traced raster so live re-traces stay snappy on the main thread while
-// keeping enough detail for signage artwork. The output SVG is resolution-
-// independent; this only bounds the trace grid.
-const MAX_TRACE_PX = 800;
+// Cap the traced raster so live re-traces stay responsive on the main thread
+// while keeping enough detail for fine artwork (thin script strokes need the
+// resolution). The output SVG is resolution-independent; this only bounds the
+// trace grid. Debounced + corner-preserving smoothing keep 1000px snappy.
+const MAX_TRACE_PX = 1000;
 
 type LoadedImage = {
     rgba: Uint8ClampedArray;
@@ -40,6 +41,7 @@ const DEFAULT_PARAMS: VectoriseParams = {
     mode: 'color',
     smoothing: 40,
     minAreaPx: 24,
+    smoothPasses: 2,
     threshold: 128,
     invert: false,
     blurRadius: 1,
@@ -454,7 +456,16 @@ export function VectoriseClient() {
                                         </>
                                     )}
                                     <Slider
-                                        label="Smoothing"
+                                        label="Curve smoothing"
+                                        value={params.smoothPasses}
+                                        min={0}
+                                        max={4}
+                                        step={1}
+                                        suffix=""
+                                        onChange={(v) => set('smoothPasses', v)}
+                                    />
+                                    <Slider
+                                        label="Simplify"
                                         value={params.smoothing}
                                         min={0}
                                         max={100}

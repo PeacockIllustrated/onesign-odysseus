@@ -27,6 +27,8 @@ export interface VectoriseOptions {
     smoothing?: number;
     /** Loops below this area (px²) are dropped as specks. Default 24. */
     minAreaPx?: number;
+    /** Corner-preserving contour smoothing passes. Default 0 (off). */
+    smoothPasses?: number;
 }
 
 export interface VectoriseLayer {
@@ -77,6 +79,7 @@ export function vectoriseColor(
         const loops = simplifyLoops(raw, {
             smoothing: opts.smoothing,
             minAreaPx: opts.minAreaPx,
+            smoothPasses: opts.smoothPasses,
         });
         if (loops.length === 0) continue;
 
