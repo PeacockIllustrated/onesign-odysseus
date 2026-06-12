@@ -176,6 +176,12 @@ export interface NestingDesignConfig {
     fileName: string | null;
     /** Group ids the operator marked "keep together" (packed as one unit). */
     keptGroupIds?: string[];
+    /**
+     * Display name of the source built-up-letter job, when this nest was
+     * created by "Send to nester" (denormalised so the banner needs no join).
+     * The authoritative link is the `source_job_id` column.
+     */
+    sourceJobName?: string;
 }
 
 /** Lightweight list item (no SVG / config payload) for the saved-nests rail. */
@@ -191,4 +197,8 @@ export interface NestingDesignRow extends NestingDesignSummary {
     svg_source: string;
     config_json: NestingDesignConfig;
     created_by: string | null;
+    /** Origin tag, e.g. 'letter_returns' — only set for tool-generated nests. */
+    source_kind?: string | null;
+    /** FK to the built-up-letter job that produced this nest (migration 065). */
+    source_job_id?: string | null;
 }

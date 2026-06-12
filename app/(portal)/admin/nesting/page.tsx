@@ -6,11 +6,22 @@ import { NestingClient } from './NestingClient';
 export const metadata = { title: 'Acrylic Nesting · Onesign Odysseus' };
 export const dynamic = 'force-dynamic';
 
-export default async function NestingPage() {
+export default async function NestingPage({
+    searchParams,
+}: {
+    searchParams: Promise<{ open?: string }>;
+}) {
     await requireAdmin();
+
+    const { open } = await searchParams;
 
     const res = await listNestingDesigns();
     const initialDesigns = res.ok ? res.data : [];
+
+    // "Send to nester" (built-up returns tool) deep-links here with ?open=<id>;
+    // auto-open it on mount, ignoring an unknown/stale id.
+    const initialOpenId =
+        open && initialDesigns.some((d) => d.id === open) ? open : null;
 
     return (
         <div className="mx-auto max-w-[1500px] p-4 md:p-6">
@@ -27,7 +38,10 @@ export default async function NestingPage() {
                     </p>
                 </div>
             </div>
-            <NestingClient initialDesigns={initialDesigns} />
+            <NestingClient
+                initialDesigns={initialDesigns}
+                initialOpenId={initialOpenId}
+            />
         </div>
     );
 }
