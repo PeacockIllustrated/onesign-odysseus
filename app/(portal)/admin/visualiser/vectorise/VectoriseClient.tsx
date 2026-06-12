@@ -7,10 +7,12 @@ import {
     Check,
     Copy,
     Download,
+    Eraser,
     ImageUp,
     Layers,
     Loader2,
     Palette,
+    Pipette,
     X,
 } from 'lucide-react';
 import { luminanceField, otsuThreshold } from '@/lib/visualiser/trace';
@@ -20,6 +22,11 @@ import {
     type VectoriseOutput,
     type VectoriseParams,
 } from '@/lib/visualiser/vectorise-run';
+import {
+    removeBackground,
+    sampleColor,
+    type RGB,
+} from '@/lib/visualiser/bg-remove';
 
 const ACCENT = '#4e7e8c';
 
@@ -48,6 +55,22 @@ const DEFAULT_PARAMS: VectoriseParams = {
     maxColors: 6,
 };
 
+type BgState = {
+    enabled: boolean;
+    color: RGB | null;
+    tolerance: number;
+    contiguous: boolean;
+    seed: [number, number] | null;
+};
+const DEFAULT_BG: BgState = {
+    enabled: false,
+    color: null,
+    tolerance: 30,
+    contiguous: true,
+    seed: null,
+};
+const rgbCss = ([r, g, b]: RGB) => `rgb(${r}, ${g}, ${b})`;
+
 function download(text: string, filename: string, type: string) {
     const blob = new Blob([text], { type });
     const url = URL.createObjectURL(blob);
@@ -71,6 +94,7 @@ export function VectoriseClient() {
     const [dragOver, setDragOver] = useState(false);
     const [showOriginal, setShowOriginal] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [bg, setBg] = useState<BgState>(DEFAULT_BG);
 
     const set = <K extends keyof VectoriseParams>(k: K, v: VectoriseParams[K]) =>
         setParams((p) => ({ ...p, [k]: v }));
@@ -107,6 +131,7 @@ export function VectoriseClient() {
                 setImg(loaded);
                 setName(file.name.replace(/\.[^.]+$/, '') || 'image');
                 setShowOriginal(false);
+                setBg(DEFAULT_BG);
                 // Seed a sensible silhouette threshold from the image.
                 setParams((p) => ({
                     ...p,
@@ -137,7 +162,18 @@ export function VectoriseClient() {
         setBusy(true);
         const t = setTimeout(() => {
             try {
-                const out = computeVectorise(img.rgba, img.w, img.h, params);
+                // Knock the background out (to transparent) before tracing, so a
+                // logo lands on a clean ground.
+                const src =
+                    bg.enabled && bg.color
+                        ? removeBackground(img.rgba, img.w, img.h, {
+                              color: bg.color,
+                              tolerance: bg.tolerance,
+                              contiguous: bg.contiguous,
+                              seed: bg.seed,
+                          })
+                        : img.rgba;
+                const out = computeVectorise(src, img.w, img.h, params);
                 setOutput(out);
                 setError(
                     out ? null : 'Nothing traced at these settings — adjust below.',
@@ -150,7 +186,7 @@ export function VectoriseClient() {
             }
         }, 140);
         return () => clearTimeout(t);
-    }, [img, params]);
+    }, [img, params, bg]);
 
     const resultSrc = useMemo(
         () =>
@@ -165,7 +201,26 @@ export function VectoriseClient() {
         setOutput(null);
         setError(null);
         setParams(DEFAULT_PARAMS);
+        setBg(DEFAULT_BG);
         if (inputRef.current) inputRef.current.value = '';
+    };
+
+    // Sample the pixel under the click (object-contain → trace-grid coords) as
+    // the background colour to clear. Only active while picking on the original.
+    const pickBackground = (e: React.MouseEvent<HTMLImageElement>) => {
+        if (!img || !bg.enabled || !showOriginal) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        const scale = Math.min(rect.width / img.w, rect.height / img.h);
+        if (scale <= 0) return;
+        const px = (e.clientX - rect.left - (rect.width - img.w * scale) / 2) / scale;
+        const py = (e.clientY - rect.top - (rect.height - img.h * scale) / 2) / scale;
+        if (px < 0 || py < 0 || px >= img.w || py >= img.h) return;
+        setBg((b) => ({
+            ...b,
+            color: sampleColor(img.rgba, img.w, img.h, px, py),
+            seed: [px, py],
+        }));
+        setShowOriginal(false);
     };
 
     const onCopy = async () => {
@@ -334,6 +389,12 @@ export function VectoriseClient() {
                                     Tracing…
                                 </div>
                             )}
+                            {showOriginal && bg.enabled && (
+                                <div className="pointer-events-none absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-md bg-black/60 px-2.5 py-1 text-[10px] font-medium text-white">
+                                    <Pipette size={11} /> Click the background to
+                                    pick its colour
+                                </div>
+                            )}
                             {/* Checkerboard so transparency + light colours read */}
                             <div
                                 className="flex flex-1 items-center justify-center p-4"
@@ -354,13 +415,88 @@ export function VectoriseClient() {
                                             : resultSrc) ?? img.src
                                     }
                                     alt={showOriginal ? 'Original' : 'Vectorised'}
-                                    className="max-h-full max-w-full object-contain"
+                                    onClick={pickBackground}
+                                    className={`max-h-full max-w-full object-contain ${
+                                        showOriginal && bg.enabled
+                                            ? 'cursor-crosshair'
+                                            : ''
+                                    }`}
                                 />
                             </div>
                         </div>
 
                         {/* Controls + stats */}
                         <div className="flex w-full md:w-80 shrink-0 flex-col gap-3 md:overflow-y-auto">
+                            {/* Background removal (pre-trace) */}
+                            <div className="shrink-0 rounded-xl border border-neutral-200 bg-white p-3">
+                                <h3 className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                                    <Eraser size={12} /> Background
+                                </h3>
+                                <Toggle
+                                    label="Remove background"
+                                    on={bg.enabled}
+                                    onChange={(on) => {
+                                        setBg((b) => ({ ...b, enabled: on }));
+                                        if (on && !bg.color) setShowOriginal(true);
+                                    }}
+                                />
+                                {bg.enabled && (
+                                    <div className="mt-3 space-y-3">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] text-neutral-500">
+                                                Colour
+                                            </span>
+                                            <span
+                                                className="h-5 w-5 rounded border border-neutral-300"
+                                                style={{
+                                                    background: bg.color
+                                                        ? rgbCss(bg.color)
+                                                        : '#fff',
+                                                }}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    setShowOriginal(true)
+                                                }
+                                                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#4e7e8c] hover:bg-[#e8f0f3]"
+                                            >
+                                                <Pipette size={12} /> Pick
+                                            </button>
+                                            {!bg.color && (
+                                                <span className="text-[10px] text-neutral-400">
+                                                    click the original
+                                                </span>
+                                            )}
+                                        </div>
+                                        <Slider
+                                            label="Tolerance"
+                                            value={bg.tolerance}
+                                            min={0}
+                                            max={100}
+                                            step={1}
+                                            suffix="%"
+                                            onChange={(v) =>
+                                                setBg((b) => ({
+                                                    ...b,
+                                                    tolerance: v,
+                                                }))
+                                            }
+                                        />
+                                        <Toggle
+                                            label="Contiguous (flood from click)"
+                                            on={bg.contiguous}
+                                            onChange={(on) =>
+                                                setBg((b) => ({
+                                                    ...b,
+                                                    contiguous: on,
+                                                }))
+                                            }
+                                        />
+                                    </div>
+                                )}
+                            </div>
+
                             {/* Mode */}
                             <div className="shrink-0 rounded-xl border border-neutral-200 bg-white p-3">
                                 <div className="flex rounded-md border border-neutral-300 p-0.5">
