@@ -21,6 +21,7 @@ import { getUser, requireSuperAdminOrError } from '@/lib/auth';
 import { ok, err, type Result } from '@/lib/result';
 import { DEFAULT_NEST_CONFIG } from '@/lib/nesting/types';
 import type { ReturnsConfig } from './returns';
+import type { FaceFinish } from './returns-finish';
 
 const JOBS = 'letter_return_jobs';
 const NESTS = 'nesting_designs';
@@ -32,6 +33,8 @@ export interface ReturnJobConfig {
     heightMm: number | null;
     /** Original upload filename, for display + export naming. */
     fileName: string | null;
+    /** 3D-preview + cut-sheet face finish. Optional for backward compat. */
+    faceFinish?: FaceFinish | null;
 }
 
 export interface ReturnJobSummary {
@@ -66,6 +69,7 @@ const ConfigSchema = z.object({
     widthMm: z.number().positive().nullable(),
     heightMm: z.number().positive().nullable(),
     fileName: z.string().max(260).nullable(),
+    faceFinish: z.enum(['brass', 'white', 'black']).nullable().optional(),
 });
 
 const SaveSchema = z.object({

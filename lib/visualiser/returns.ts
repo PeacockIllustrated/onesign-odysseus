@@ -408,3 +408,71 @@ export function formatMm(mm: number): string {
 export function formatM(mm: number): string {
     return `${(mm / 1000).toFixed(2)} m`;
 }
+
+// ---------------------------------------------------------------------------
+// Face grouping (faces ↔ counters) — for the 3D built-up preview + the PDF
+// ---------------------------------------------------------------------------
+
+/** An outer letter face with the counters that punch through it. */
+export interface ReturnFaceGroup {
+    outer: ReturnContour;
+    holes: ReturnContour[];
+}
+
+/** Even-odd ray cast — the same rule `detectInnerCounters` uses to classify. */
+function pointInPolygon(pt: Pt, ring: Pt[]): boolean {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const xi = ring[i][0];
+        const yi = ring[i][1];
+        const xj = ring[j][0];
+        const yj = ring[j][1];
+        if (
+            yi > pt[1] !== yj > pt[1] &&
+            pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi || 1e-12) + xi
+        ) {
+            inside = !inside;
+        }
+    }
+    return inside;
+}
+
+/** Unsigned polygon area (shoelace) — picks the tightest enclosing face. */
+function absArea(pts: Pt[]): number {
+    let a = 0;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        a += pts[j][0] * pts[i][1] - pts[i][0] * pts[j][1];
+    }
+    return Math.abs(a) / 2;
+}
+
+/**
+ * Pair every counter to the smallest outer face whose polygon encloses the
+ * counter's centroid, so a face-with-holes renderer (the 3D built-up preview,
+ * the PDF) can punch each counter out of its letter and wrap returns round
+ * both. Outer faces keep their reading order; a counter with no containing
+ * outer is dropped (it can't be a hole of anything).
+ */
+export function groupReturnFaces(analysis: ReturnsAnalysis): ReturnFaceGroup[] {
+    const outers = analysis.contours.filter((c) => c.kind === 'outer');
+    const groups: ReturnFaceGroup[] = outers.map((outer) => ({
+        outer,
+        holes: [],
+    }));
+
+    for (const counter of analysis.contours) {
+        if (counter.kind !== 'counter') continue;
+        let best = -1;
+        let bestArea = Infinity;
+        for (let i = 0; i < outers.length; i++) {
+            if (!pointInPolygon(counter.centroid, outers[i].points)) continue;
+            const area = absArea(outers[i].points);
+            if (area < bestArea) {
+                bestArea = area;
+                best = i;
+            }
+        }
+        if (best >= 0) groups[best].holes.push(counter);
+    }
+    return groups;
+}

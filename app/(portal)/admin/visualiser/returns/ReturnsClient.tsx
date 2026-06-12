@@ -2,15 +2,18 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {
     ArrowLeft,
     Bookmark,
+    Box,
     Download,
     ExternalLink,
     FileText,
     Hammer,
     Layers,
+    Ruler,
     Save,
     Send,
     Trash2,
@@ -20,12 +23,21 @@ import {
 import { importSvg } from '@/lib/visualiser/svg-import';
 import {
     analyzeReturns,
+    groupReturnFaces,
     formatMm,
     formatM,
     DEFAULT_RETURNS_CONFIG,
     type ReturnsConfig,
     type ReturnsAnalysis,
+    type ReturnFaceGroup,
 } from '@/lib/visualiser/returns';
+import {
+    FACE_FINISHES,
+    DEFAULT_FACE_FINISH,
+    type FaceFinish,
+} from '@/lib/visualiser/returns-finish';
+import { returnsCapture } from '@/lib/visualiser/returns-capture';
+import { trimImageDataUrl } from '@/lib/visualiser/image';
 import { buildReturnsNestSvg } from '@/lib/visualiser/returns-export';
 import { generateReturnsPdfBlob } from '@/lib/visualiser/returns-pdf';
 import {
@@ -43,7 +55,17 @@ import type { FlatPath } from '@/lib/visualiser/types';
 const ACCENT = '#4e7e8c';
 const WELD = '#d4661a';
 
+const ReturnsScene = dynamic(() => import('./ReturnsScene'), {
+    ssr: false,
+    loading: () => (
+        <div className="flex h-full items-center justify-center bg-[#eef1f3] text-sm text-neutral-400">
+            Rendering…
+        </div>
+    ),
+});
+
 type Bbox = { minX: number; minY: number; maxX: number; maxY: number };
+type View = 'measure' | '3d';
 
 interface Loaded {
     name: string;
@@ -63,6 +85,9 @@ function download(blob: Blob, filename: string) {
     URL.revokeObjectURL(url);
 }
 
+const finishShort = (id: FaceFinish) =>
+    id === 'brass' ? 'Brass' : id === 'white' ? 'White' : 'Black';
+
 export function ReturnsClient({
     initialJobs,
     initialLoadId,
@@ -77,13 +102,16 @@ export function ReturnsClient({
     const [dragOver, setDragOver] = useState(false);
     const [busy, setBusy] = useState(false);
     const [sendBusy, setSendBusy] = useState(false);
+    const [view, setView] = useState<View>('measure');
+    const [jobsOpen, setJobsOpen] = useState(false); // mobile drawer
 
     // Real-world calibration — Illustrator often exports in points, not mm.
     const [calWidth, setCalWidth] = useState('');
     const [calHeight, setCalHeight] = useState('');
 
-    // Returns config.
+    // Returns config + 3D/cut-sheet finish.
     const [cfg, setCfg] = useState<ReturnsConfig>(DEFAULT_RETURNS_CONFIG);
+    const [faceFinish, setFaceFinish] = useState<FaceFinish>(DEFAULT_FACE_FINISH);
 
     // Saved jobs (DB-backed, shared).
     const [jobs, setJobs] = useState<ReturnJobSummary[]>(initialJobs);
@@ -91,6 +119,9 @@ export function ReturnsClient({
     const [jobName, setJobName] = useState('');
     const [saveBusy, setSaveBusy] = useState(false);
     const [linkedNests, setLinkedNests] = useState<LinkedNest[]>([]);
+
+    // Last good 3D snapshot — dropped onto the cut-sheet PDF.
+    const snapshotRef = useRef<string | null>(null);
 
     const loadSvgText = (text: string, name: string, id: string | null) => {
         try {
@@ -118,6 +149,9 @@ export function ReturnsClient({
                 setCalWidth('');
                 setCalHeight('');
                 setLinkedNests([]);
+                setFaceFinish(DEFAULT_FACE_FINISH);
+                setView('measure');
+                snapshotRef.current = null;
             }
             return true;
         } catch {
@@ -148,6 +182,7 @@ export function ReturnsClient({
 
     const openJob = async (id: string) => {
         setError(null);
+        setJobsOpen(false);
         const res = await getReturnJob(id);
         if (!res.ok) {
             setError(res.error);
@@ -159,6 +194,9 @@ export function ReturnsClient({
         setCfg({ ...DEFAULT_RETURNS_CONFIG, ...(c.config ?? {}) });
         setCalWidth(c.widthMm != null ? String(c.widthMm) : '');
         setCalHeight(c.heightMm != null ? String(c.heightMm) : '');
+        setFaceFinish(c.faceFinish ?? DEFAULT_FACE_FINISH);
+        setView('measure');
+        snapshotRef.current = null;
         await refreshLinkedNests(row.id);
     };
 
@@ -177,6 +215,9 @@ export function ReturnsClient({
         setCalHeight('');
         setLinkedNests([]);
         setCfg(DEFAULT_RETURNS_CONFIG);
+        setFaceFinish(DEFAULT_FACE_FINISH);
+        setView('measure');
+        snapshotRef.current = null;
         if (fileRef.current) fileRef.current.value = '';
     };
 
@@ -212,6 +253,22 @@ export function ReturnsClient({
         };
     }, [loaded, scale, cfg]);
 
+    const groups: ReturnFaceGroup[] = useMemo(
+        () => (analysis ? groupReturnFaces(analysis) : []),
+        [analysis],
+    );
+
+    // Keep a fresh 3D snapshot while the operator is in the 3D view, so the cut
+    // sheet can include the preview even after they switch back to Measure.
+    useEffect(() => {
+        if (view !== '3d' || !loaded || groups.length === 0) return;
+        const t = setTimeout(() => {
+            const url = returnsCapture.fn?.();
+            if (url) snapshotRef.current = url;
+        }, 650);
+        return () => clearTimeout(t);
+    }, [view, loaded, groups, faceFinish, cfg.returnDepthMm]);
+
     const doSave = async (): Promise<string | null> => {
         if (!loaded) return null;
         const name = jobName.trim() || loaded.name;
@@ -227,6 +284,7 @@ export function ReturnsClient({
                     widthMm: parsedW > 0 ? parsedW : null,
                     heightMm: parsedW > 0 ? null : parsedH > 0 ? parsedH : null,
                     fileName: loaded.name,
+                    faceFinish,
                 },
             });
             if (!res.ok) {
@@ -286,10 +344,16 @@ export function ReturnsClient({
         if (!loaded || !analysis) return;
         setBusy(true);
         try {
+            const raw =
+                view === '3d'
+                    ? (returnsCapture.fn?.() ?? snapshotRef.current)
+                    : snapshotRef.current;
+            const snapshotDataUrl = raw ? await trimImageDataUrl(raw) : null;
             const blob = await generateReturnsPdfBlob({
                 name: jobName.trim() || loaded.name,
                 analysis,
                 config: cfg,
+                snapshotDataUrl,
             });
             download(blob, `${loaded.name}-returns-cut-sheet.pdf`);
         } finally {
@@ -328,8 +392,8 @@ export function ReturnsClient({
         };
 
     return (
-        <div className="flex flex-col gap-3 h-[calc(100dvh-7rem)] md:min-h-[560px] overflow-hidden">
-            <header className="shrink-0 flex items-center justify-between gap-4">
+        <div className="flex flex-col gap-3 md:h-[calc(100dvh-7rem)] md:min-h-[560px] md:overflow-hidden">
+            <header className="shrink-0 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                     <Link
                         href="/admin/visualiser"
@@ -344,56 +408,107 @@ export function ReturnsClient({
                         </h1>
                         <p className="hidden sm:block text-xs text-neutral-500">
                             Upload letters → measure faces &amp; return strips →
-                            cut sheet + send faces &amp; returns to the nester
+                            3D preview + cut sheet + send to the nester
                         </p>
                     </div>
                 </div>
-                {loaded && (
-                    <div className="flex flex-wrap items-center gap-2">
-                        <input
-                            type="text"
-                            value={jobName}
-                            onChange={(e) => setJobName(e.target.value)}
-                            placeholder="Job name"
-                            className="w-36 rounded-md border border-neutral-300 px-2 py-1.5 text-xs focus:border-[#4e7e8c] focus:outline-none"
-                        />
-                        <button
-                            type="button"
-                            onClick={() => void doSave()}
-                            disabled={saveBusy}
-                            className="flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-60"
-                        >
-                            <Save size={14} />
-                            {saveBusy ? 'Saving…' : jobId ? 'Update' : 'Save'}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={clear}
-                            className="flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-100"
-                        >
-                            <X size={14} /> Clear
-                        </button>
-                        <button
-                            type="button"
-                            onClick={onDownloadPdf}
-                            disabled={busy}
-                            className="flex items-center gap-1.5 rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-60"
-                        >
-                            <FileText size={14} />
-                            {busy ? 'Building…' : 'Cut sheet PDF'}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={onSendToNester}
-                            disabled={sendBusy || saveBusy}
-                            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
-                            style={{ background: ACCENT }}
-                        >
-                            <Send size={14} />
-                            {sendBusy ? 'Sending…' : 'Send to nester'}
-                        </button>
-                    </div>
-                )}
+                <div className="flex flex-wrap items-center gap-2">
+                    {/* Mobile: open the saved-jobs drawer (rail is desktop-only). */}
+                    <button
+                        type="button"
+                        onClick={() => setJobsOpen(true)}
+                        className="md:hidden flex items-center gap-1 rounded-md border border-neutral-300 px-2.5 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100"
+                    >
+                        <Bookmark size={14} /> Saved
+                        {jobs.length > 0 && (
+                            <span className="tabular-nums text-neutral-400">
+                                ({jobs.length})
+                            </span>
+                        )}
+                    </button>
+
+                    {loaded && (
+                        <>
+                            {/* Measure ↔ 3D view toggle. */}
+                            <div className="flex rounded-md border border-neutral-300 p-0.5">
+                                <button
+                                    type="button"
+                                    onClick={() => setView('measure')}
+                                    className={`flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium ${
+                                        view === 'measure'
+                                            ? 'text-white'
+                                            : 'text-neutral-600 hover:bg-neutral-100'
+                                    }`}
+                                    style={
+                                        view === 'measure'
+                                            ? { background: ACCENT }
+                                            : undefined
+                                    }
+                                >
+                                    <Ruler size={13} /> Measure
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setView('3d')}
+                                    className={`flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium ${
+                                        view === '3d'
+                                            ? 'text-white'
+                                            : 'text-neutral-600 hover:bg-neutral-100'
+                                    }`}
+                                    style={
+                                        view === '3d'
+                                            ? { background: ACCENT }
+                                            : undefined
+                                    }
+                                >
+                                    <Box size={13} /> 3D
+                                </button>
+                            </div>
+                            <input
+                                type="text"
+                                value={jobName}
+                                onChange={(e) => setJobName(e.target.value)}
+                                placeholder="Job name"
+                                className="w-32 md:w-36 rounded-md border border-neutral-300 px-2 py-1.5 text-xs focus:border-[#4e7e8c] focus:outline-none"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => void doSave()}
+                                disabled={saveBusy}
+                                className="flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-60"
+                            >
+                                <Save size={14} />
+                                {saveBusy ? 'Saving…' : jobId ? 'Update' : 'Save'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={clear}
+                                className="flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-100"
+                            >
+                                <X size={14} /> Clear
+                            </button>
+                            <button
+                                type="button"
+                                onClick={onDownloadPdf}
+                                disabled={busy}
+                                className="flex items-center gap-1.5 rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-60"
+                            >
+                                <FileText size={14} />
+                                {busy ? 'Building…' : 'Cut sheet PDF'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={onSendToNester}
+                                disabled={sendBusy || saveBusy}
+                                className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                                style={{ background: ACCENT }}
+                            >
+                                <Send size={14} />
+                                {sendBusy ? 'Sending…' : 'Send to nester'}
+                            </button>
+                        </>
+                    )}
+                </div>
             </header>
 
             <input
@@ -457,7 +572,7 @@ export function ReturnsClient({
                 </div>
             )}
 
-            <div className="flex flex-1 min-h-0 gap-3">
+            <div className="flex flex-1 min-h-0 flex-col md:flex-row gap-3">
                 {!loaded ? (
                     <button
                         type="button"
@@ -473,7 +588,7 @@ export function ReturnsClient({
                             const f = e.dataTransfer.files?.[0];
                             if (f) handleFile(f);
                         }}
-                        className={`flex flex-1 flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed transition-colors ${
+                        className={`flex flex-1 min-h-[320px] flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed transition-colors ${
                             dragOver
                                 ? 'border-[#4e7e8c] bg-[#e8f0f3]'
                                 : 'border-neutral-300 bg-neutral-50 hover:border-neutral-400'
@@ -496,71 +611,89 @@ export function ReturnsClient({
                     </button>
                 ) : (
                     <>
-                        {/* Annotated preview */}
-                        <div className="flex-1 min-w-0 overflow-hidden rounded-xl border border-neutral-200 bg-white p-3">
-                            <svg
-                                viewBox={`${bbox!.minX} ${bbox!.minY} ${w} ${h}`}
-                                className="h-full w-full"
-                                preserveAspectRatio="xMidYMid meet"
-                            >
-                                {analysis!.contours.map((c) => {
-                                    const d =
-                                        c.points
-                                            .map(
-                                                (p, i) =>
-                                                    `${i === 0 ? 'M' : 'L'}${p[0]} ${p[1]}`,
-                                            )
-                                            .join(' ') + (c.closed ? ' Z' : '');
-                                    return (
-                                        <path
-                                            key={`p${c.index}`}
-                                            d={d}
-                                            fill="none"
-                                            stroke={ACCENT}
-                                            strokeWidth={stroke}
-                                            strokeLinejoin="round"
-                                            strokeLinecap="round"
-                                        />
-                                    );
-                                })}
-                                {/* Weld points */}
-                                {analysis!.contours.flatMap((c) =>
-                                    c.weldPoints.map((wp, i) => (
-                                        <circle
-                                            key={`w${c.index}-${i}`}
-                                            cx={wp[0]}
-                                            cy={wp[1]}
-                                            r={weldR}
-                                            fill={WELD}
-                                        />
-                                    )),
-                                )}
-                                {/* Contour index balloons */}
-                                {analysis!.contours.map((c) => (
-                                    <g key={`b${c.index}`}>
-                                        <circle
-                                            cx={c.centroid[0]}
-                                            cy={c.centroid[1]}
-                                            r={balloonR}
-                                            fill={ACCENT}
-                                        />
-                                        <text
-                                            x={c.centroid[0]}
-                                            y={c.centroid[1] + balloonR * 0.36}
-                                            fontSize={balloonR * 1.1}
-                                            fontWeight="bold"
-                                            fill="#fff"
-                                            textAnchor="middle"
-                                        >
-                                            {c.index}
-                                        </text>
-                                    </g>
-                                ))}
-                            </svg>
+                        {/* Preview — annotated 2D measure view or the 3D build-up */}
+                        <div className="relative flex-1 min-w-0 min-h-[320px] md:min-h-0 overflow-hidden rounded-xl border border-neutral-200 bg-white">
+                            {view === 'measure' ? (
+                              <div className="h-full w-full p-3">
+                                <svg
+                                    viewBox={`${bbox!.minX} ${bbox!.minY} ${w} ${h}`}
+                                    className="h-full w-full"
+                                    preserveAspectRatio="xMidYMid meet"
+                                >
+                                    {analysis!.contours.map((c) => {
+                                        const d =
+                                            c.points
+                                                .map(
+                                                    (p, i) =>
+                                                        `${i === 0 ? 'M' : 'L'}${p[0]} ${p[1]}`,
+                                                )
+                                                .join(' ') +
+                                            (c.closed ? ' Z' : '');
+                                        return (
+                                            <path
+                                                key={`p${c.index}`}
+                                                d={d}
+                                                fill="none"
+                                                stroke={ACCENT}
+                                                strokeWidth={stroke}
+                                                strokeLinejoin="round"
+                                                strokeLinecap="round"
+                                            />
+                                        );
+                                    })}
+                                    {/* Weld points */}
+                                    {analysis!.contours.flatMap((c) =>
+                                        c.weldPoints.map((wp, i) => (
+                                            <circle
+                                                key={`w${c.index}-${i}`}
+                                                cx={wp[0]}
+                                                cy={wp[1]}
+                                                r={weldR}
+                                                fill={WELD}
+                                            />
+                                        )),
+                                    )}
+                                    {/* Contour index balloons */}
+                                    {analysis!.contours.map((c) => (
+                                        <g key={`b${c.index}`}>
+                                            <circle
+                                                cx={c.centroid[0]}
+                                                cy={c.centroid[1]}
+                                                r={balloonR}
+                                                fill={ACCENT}
+                                            />
+                                            <text
+                                                x={c.centroid[0]}
+                                                y={c.centroid[1] + balloonR * 0.36}
+                                                fontSize={balloonR * 1.1}
+                                                fontWeight="bold"
+                                                fill="#fff"
+                                                textAnchor="middle"
+                                            >
+                                                {c.index}
+                                            </text>
+                                        </g>
+                                    ))}
+                                </svg>
+                              </div>
+                            ) : (
+                                <>
+                                    <ReturnsScene
+                                        groups={groups}
+                                        bbox={analysis!.bbox}
+                                        returnDepthMm={cfg.returnDepthMm}
+                                        finish={faceFinish}
+                                    />
+                                    <div className="pointer-events-none absolute bottom-2 left-2 rounded-md bg-black/55 px-2 py-1 text-[10px] font-medium text-white">
+                                        Drag to orbit · this view prints on the cut
+                                        sheet
+                                    </div>
+                                </>
+                            )}
                         </div>
 
-                        {/* Right column: config + totals + table */}
-                        <div className="flex w-80 shrink-0 flex-col gap-3 overflow-y-auto">
+                        {/* Right column: totals + config + table */}
+                        <div className="flex w-full md:w-80 shrink-0 flex-col gap-3 md:overflow-y-auto">
                             {/* Totals */}
                             <div
                                 className="shrink-0 rounded-xl px-4 py-3 text-white"
@@ -633,6 +766,36 @@ export function ReturnsClient({
                                         />
                                     </label>
                                 </div>
+                                {/* Face finish — drives the 3D preview + cut sheet */}
+                                <div className="mt-3 border-t border-neutral-100 pt-2">
+                                    <span className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                                        Face finish
+                                    </span>
+                                    <div className="mt-1.5 flex rounded-md border border-neutral-300 p-0.5">
+                                        {FACE_FINISHES.map((f) => (
+                                            <button
+                                                key={f.id}
+                                                type="button"
+                                                onClick={() =>
+                                                    setFaceFinish(f.id)
+                                                }
+                                                aria-pressed={faceFinish === f.id}
+                                                className={`flex-1 rounded px-1.5 py-1 text-[11px] font-medium ${
+                                                    faceFinish === f.id
+                                                        ? 'text-white'
+                                                        : 'text-neutral-600 hover:bg-neutral-100'
+                                                }`}
+                                                style={
+                                                    faceFinish === f.id
+                                                        ? { background: ACCENT }
+                                                        : undefined
+                                                }
+                                            >
+                                                {finishShort(f.id)}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
                                 <p className="mt-1.5 text-[10px] text-neutral-400">
                                     A corner sharper than the break angle starts a
                                     new welded strip; runs over the stock length
@@ -665,8 +828,8 @@ export function ReturnsClient({
                             )}
 
                             {/* Contour table */}
-                            <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-neutral-200 bg-white">
-                                <div className="overflow-y-auto">
+                            <div className="flex flex-col md:min-h-0 md:flex-1 overflow-hidden rounded-xl border border-neutral-200 bg-white">
+                                <div className="overflow-y-auto max-h-[46vh] md:max-h-none">
                                     <table className="w-full text-sm">
                                         <thead className="sticky top-0 bg-neutral-50 text-[10px] uppercase tracking-wide text-neutral-500">
                                             <tr>
@@ -738,7 +901,7 @@ export function ReturnsClient({
                     </>
                 )}
 
-                {/* Saved jobs rail */}
+                {/* Saved jobs rail (desktop) */}
                 <aside className="hidden md:flex w-56 shrink-0 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white">
                     <div className="shrink-0 flex items-center gap-1.5 border-b border-neutral-100 px-3 py-2.5">
                         <Bookmark size={14} className="text-neutral-400" />
@@ -747,51 +910,105 @@ export function ReturnsClient({
                         </h2>
                     </div>
                     <div className="min-h-0 flex-1 overflow-y-auto">
-                        {jobs.length === 0 ? (
-                            <p className="px-3 py-4 text-xs text-neutral-400">
-                                No saved jobs yet. Load an SVG and hit Save.
-                            </p>
-                        ) : (
-                            <ul className="divide-y divide-neutral-100">
-                                {jobs.map((j) => (
-                                    <li
-                                        key={j.id}
-                                        className={`group flex items-center gap-2 px-3 py-2 ${
-                                            j.id === jobId
-                                                ? 'bg-[#e8f0f3]'
-                                                : 'hover:bg-neutral-50'
-                                        }`}
-                                    >
-                                        <button
-                                            type="button"
-                                            onClick={() => void openJob(j.id)}
-                                            className="min-w-0 flex-1 text-left"
-                                        >
-                                            <span className="block truncate text-xs font-medium text-neutral-800">
-                                                {j.name}
-                                            </span>
-                                            <span className="block text-[10px] text-neutral-400">
-                                                {new Date(
-                                                    j.updated_at,
-                                                ).toLocaleDateString('en-GB')}
-                                            </span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => void onDelete(j.id)}
-                                            aria-label={`Delete ${j.name}`}
-                                            className="shrink-0 rounded p-1 text-neutral-300 hover:bg-red-50 hover:text-red-500"
-                                        >
-                                            <Trash2 size={13} />
-                                        </button>
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
+                        <JobsList
+                            jobs={jobs}
+                            jobId={jobId}
+                            onOpen={(id) => void openJob(id)}
+                            onDelete={(id) => void onDelete(id)}
+                        />
                     </div>
                 </aside>
             </div>
+
+            {/* Saved jobs drawer (mobile) */}
+            {jobsOpen && (
+                <div className="fixed inset-0 z-40 md:hidden">
+                    <button
+                        type="button"
+                        aria-label="Close saved jobs"
+                        onClick={() => setJobsOpen(false)}
+                        className="absolute inset-0 bg-black/40"
+                    />
+                    <div className="absolute inset-y-0 right-0 flex w-72 max-w-[85vw] flex-col bg-white shadow-xl">
+                        <div className="flex items-center justify-between border-b border-neutral-100 px-3 py-3">
+                            <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-neutral-500">
+                                <Bookmark size={14} className="text-neutral-400" />
+                                Saved return jobs
+                            </h2>
+                            <button
+                                type="button"
+                                onClick={() => setJobsOpen(false)}
+                                aria-label="Close"
+                                className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+                        <div className="min-h-0 flex-1 overflow-y-auto">
+                            <JobsList
+                                jobs={jobs}
+                                jobId={jobId}
+                                onOpen={(id) => void openJob(id)}
+                                onDelete={(id) => void onDelete(id)}
+                            />
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
+    );
+}
+
+function JobsList({
+    jobs,
+    jobId,
+    onOpen,
+    onDelete,
+}: {
+    jobs: ReturnJobSummary[];
+    jobId: string | null;
+    onOpen: (id: string) => void;
+    onDelete: (id: string) => void;
+}) {
+    if (jobs.length === 0) {
+        return (
+            <p className="px-3 py-4 text-xs text-neutral-400">
+                No saved jobs yet. Load an SVG and hit Save.
+            </p>
+        );
+    }
+    return (
+        <ul className="divide-y divide-neutral-100">
+            {jobs.map((j) => (
+                <li
+                    key={j.id}
+                    className={`group flex items-center gap-2 px-3 py-2.5 ${
+                        j.id === jobId ? 'bg-[#e8f0f3]' : 'hover:bg-neutral-50'
+                    }`}
+                >
+                    <button
+                        type="button"
+                        onClick={() => onOpen(j.id)}
+                        className="min-w-0 flex-1 text-left"
+                    >
+                        <span className="block truncate text-xs font-medium text-neutral-800">
+                            {j.name}
+                        </span>
+                        <span className="block text-[10px] text-neutral-400">
+                            {new Date(j.updated_at).toLocaleDateString('en-GB')}
+                        </span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => onDelete(j.id)}
+                        aria-label={`Delete ${j.name}`}
+                        className="shrink-0 rounded p-1.5 text-neutral-300 hover:bg-red-50 hover:text-red-500"
+                    >
+                        <Trash2 size={14} />
+                    </button>
+                </li>
+            ))}
+        </ul>
     );
 }
 
