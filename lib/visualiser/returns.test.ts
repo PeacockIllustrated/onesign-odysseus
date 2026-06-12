@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
     analyzeReturns,
     segmentContour,
+    groupReturnFaces,
     DEFAULT_RETURNS_CONFIG,
     type ReturnsConfig,
     type Pt,
@@ -148,6 +149,58 @@ describe('analyzeReturns', () => {
         ]);
         const res = analyzeReturns([closedPath(square(100)), speck], cfg);
         expect(res.contours).toHaveLength(1);
+    });
+});
+
+describe('groupReturnFaces', () => {
+    it('groups a letter face with its counter (face + hole)', () => {
+        const res = analyzeReturns(
+            [closedPath(square(100)), closedPath(square(20, 10, 10))],
+            cfg,
+        );
+        const groups = groupReturnFaces(res);
+        expect(groups).toHaveLength(1); // one outer face
+        expect(groups[0].outer.kind).toBe('outer');
+        expect(groups[0].holes).toHaveLength(1);
+        expect(groups[0].holes[0].kind).toBe('counter');
+    });
+
+    it('assigns each counter to its own letter, not a neighbour', () => {
+        const res = analyzeReturns(
+            [
+                closedPath(square(100, 0, 0)),
+                closedPath(square(20, 10, 10)),
+                closedPath(square(100, 300, 0)),
+                closedPath(square(20, 310, 10)),
+            ],
+            cfg,
+        );
+        const groups = groupReturnFaces(res);
+        expect(groups).toHaveLength(2);
+        for (const g of groups) {
+            expect(g.holes).toHaveLength(1);
+            // The counter's centroid lands inside its assigned outer's bbox.
+            const [hx, hy] = g.holes[0].centroid;
+            const b = g.outer.bbox;
+            expect(hx).toBeGreaterThanOrEqual(b.minX);
+            expect(hx).toBeLessThanOrEqual(b.maxX);
+            expect(hy).toBeGreaterThanOrEqual(b.minY);
+            expect(hy).toBeLessThanOrEqual(b.maxY);
+        }
+        // Every counter is accounted for exactly once.
+        const grouped = groups.reduce((s, g) => s + g.holes.length, 0);
+        const counters = res.contours.filter((c) => c.kind === 'counter').length;
+        expect(grouped).toBe(counters);
+    });
+
+    it('leaves separate letters as hole-free groups', () => {
+        const res = analyzeReturns(
+            [closedPath(square(100)), closedPath(circle(50, 300, 50))],
+            cfg,
+        );
+        const groups = groupReturnFaces(res);
+        expect(groups).toHaveLength(2);
+        expect(groups.every((g) => g.holes.length === 0)).toBe(true);
     });
 });
 
