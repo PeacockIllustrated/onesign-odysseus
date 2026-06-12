@@ -24,6 +24,7 @@ import {
     Package,
     Puzzle,
     Ruler,
+    Shapes,
     X,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -69,6 +70,7 @@ const adminNavGroups: NavGroup[] = [
         items: [
             { label: 'Quotes', href: '/admin/quotes', icon: Calculator },
             { label: 'Visualiser', href: '/admin/visualiser', icon: Box },
+            { label: 'Studio', href: '/admin/tools', icon: Shapes },
             { label: 'Nesting', href: '/admin/nesting', icon: Puzzle },
             { label: 'Artwork', href: '/admin/artwork', icon: ClipboardCheck },
             { label: 'Production Packs', href: '/admin/production-packs', icon: Package },
