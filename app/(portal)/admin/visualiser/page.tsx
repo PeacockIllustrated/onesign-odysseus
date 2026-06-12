@@ -1,6 +1,6 @@
 // app/(portal)/admin/visualiser/page.tsx
 import Link from 'next/link';
-import { Ruler, Globe, Hammer } from 'lucide-react';
+import { Ruler, LayoutGrid, Hammer } from 'lucide-react';
 import { requireAdmin } from '@/lib/auth';
 import { listDesigns, prefillFromQuoteItem } from '@/lib/visualiser/actions';
 import { VisualiserClient } from './VisualiserClient';
@@ -64,18 +64,15 @@ export default async function VisualiserPage({
                         <Hammer size={14} />
                         Built-up returns
                     </Link>
-                    {/* Public, customer-facing version of the visualiser — opens
-                        the /design studio (unauth) in a new tab so staff keep
-                        their own session/tool open. */}
+                    {/* The Studio hub — a portfolio of every in-house design &
+                        fabrication tool (incl. the public customer studio). */}
                     <Link
-                        href="/design"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="Open the public customer design studio in a new tab"
+                        href="/admin/tools"
+                        title="Open the Studio — all design & fabrication tools"
                         className="flex items-center gap-1.5 rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:border-[#4e7e8c] hover:bg-[#e8f0f3] hover:text-[#3a5f6a]"
                     >
-                        <Globe size={14} />
-                        Public design studio
+                        <LayoutGrid size={14} />
+                        Studio
                     </Link>
                 </div>
             </header>
