@@ -429,8 +429,11 @@ const CORNER_TURN = (85 * Math.PI) / 180;
  * collapse their tangents so joins stay sharp; a corner-to-corner span
  * with no curvature is a straight line. After import the curves flatten
  * back to a dense, genuinely smooth polyline.
+ *
+ * Exported so the colour vectoriser (`vectorise.ts`) reuses the exact same
+ * curve fitting per layer as the silhouette tracer.
  */
-function loopToPathD(loop: Pt[]): string {
+export function loopToPathD(loop: Pt[]): string {
     const n = loop.length;
     if (n < 3) return '';
     const r = (v: number) => Math.round(v * 10) / 10;
