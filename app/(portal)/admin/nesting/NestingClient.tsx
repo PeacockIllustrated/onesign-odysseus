@@ -12,12 +12,15 @@
  * afterwards.
  */
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import {
     AlertTriangle,
     ChevronRight,
     Download,
+    ExternalLink,
     FileText,
+    Hammer,
     Link2,
     Minimize2,
     Play,
@@ -178,8 +181,11 @@ function MiniThumb({ piece, fill }: { piece: NestPiece; fill: string }) {
 
 export function NestingClient({
     initialDesigns,
+    initialOpenId = null,
 }: {
     initialDesigns: NestingDesignSummary[];
+    /** A nest id to auto-open on mount (from the returns tool's "Send to nester"). */
+    initialOpenId?: string | null;
 }) {
     const inputRef = useRef<HTMLInputElement>(null);
     // Seeded lazily in startNest (an event handler) — render must stay pure.
@@ -204,6 +210,11 @@ export function NestingClient({
     const [busy, setBusy] = useState(false);
     // Group ids the operator wants packed together as one rigid unit.
     const [keptGroups, setKeptGroups] = useState<Set<string>>(new Set());
+    // Set when the loaded nest came from a built-up-letter job (migration 065),
+    // so we can show a banner linking back to that job.
+    const [sourceJob, setSourceJob] = useState<{ id: string; name: string } | null>(
+        null,
+    );
 
     const nest = useNestWorker();
 
@@ -333,6 +344,7 @@ export function NestingClient({
             setDesignName(file.name.replace(/\.svg$/i, ''));
             setSaveError(null);
             setKeptGroups(new Set());
+            setSourceJob(null);
         } catch (e) {
             setImportError(
                 e instanceof Error ? e.message : 'Could not read that SVG',
@@ -354,6 +366,7 @@ export function NestingClient({
         setDesignName('');
         setSaveError(null);
         setKeptGroups(new Set());
+        setSourceJob(null);
     };
 
     // ---- saved-nests rail ----
@@ -413,10 +426,26 @@ export function NestingClient({
             setKeptGroups(new Set(row.config_json.keptGroupIds ?? []));
             setCurrentDesignId(row.id);
             setDesignName(row.name);
+            setSourceJob(
+                row.source_job_id
+                    ? {
+                          id: row.source_job_id,
+                          name:
+                              row.config_json.sourceJobName ??
+                              'built-up letter job',
+                      }
+                    : null,
+            );
         } catch {
             setSaveError('Saved artwork could not be reopened.');
         }
     };
+
+    // Auto-open a nest deep-linked from the returns tool's "Send to nester".
+    useEffect(() => {
+        if (initialOpenId) void doLoad(initialOpenId);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialOpenId]);
 
     const doDelete = async (id: string) => {
         setBusy(true);
@@ -1257,6 +1286,22 @@ export function NestingClient({
 
             {/* ------------------------------------------------ canvas side */}
             <div className="space-y-3">
+                {sourceJob && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#b8d0d8] bg-[#e8f0f3] px-3 py-2 text-xs text-[#3a5f6a]">
+                        <span className="flex items-center gap-1.5">
+                            <Hammer size={14} aria-hidden />
+                            Part of built-up job{' '}
+                            <b className="font-semibold">{sourceJob.name}</b> —
+                            faces + returns nested on one sheet.
+                        </span>
+                        <Link
+                            href={`/admin/visualiser/returns?id=${sourceJob.id}`}
+                            className="flex items-center gap-1 rounded-md border border-[#b8d0d8] bg-white px-2 py-1 font-medium hover:bg-white/70"
+                        >
+                            <ExternalLink size={12} aria-hidden /> Open job
+                        </Link>
+                    </div>
+                )}
                 {!imported ? (
                     <div className="flex min-h-[360px] flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-neutral-200 bg-white p-8 text-center">
                         <Upload size={28} className="text-neutral-300" />
