@@ -202,6 +202,23 @@ describe('groupReturnFaces', () => {
         expect(groups).toHaveLength(2);
         expect(groups.every((g) => g.holes.length === 0)).toBe(true);
     });
+
+    it('keeps a ring letter ("O") whose centroid falls in its own hole', () => {
+        // Concentric rings: the outer ring's vertex-average centroid is dead
+        // centre — inside the counter — which a centroid-based test misreads,
+        // dropping the whole letter. The face must survive as one face + hole.
+        const res = analyzeReturns(
+            [closedPath(circle(50)), closedPath(circle(25))],
+            cfg,
+        );
+        const groups = groupReturnFaces(res);
+        expect(groups).toHaveLength(1);
+        expect(groups[0].holes).toHaveLength(1);
+        // The outer (larger) ring is the face; the inner ring is the hole.
+        const facePerim = groups[0].outer.perimeterMm;
+        const holePerim = groups[0].holes[0].perimeterMm;
+        expect(facePerim).toBeGreaterThan(holePerim);
+    });
 });
 
 describe('buildReturnsNestSvg', () => {

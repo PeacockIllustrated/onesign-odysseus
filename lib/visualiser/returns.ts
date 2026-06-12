@@ -447,32 +447,54 @@ function absArea(pts: Pt[]): number {
 }
 
 /**
- * Pair every counter to the smallest outer face whose polygon encloses the
- * counter's centroid, so a face-with-holes renderer (the 3D built-up preview,
- * the PDF) can punch each counter out of its letter and wrap returns round
- * both. Outer faces keep their reading order; a counter with no containing
- * outer is dropped (it can't be a hole of anything).
+ * Pair every counter to the outer face that encloses it, so a face-with-holes
+ * renderer (the 3D built-up preview, the PDF) can punch each counter out of its
+ * letter and wrap returns round both.
+ *
+ * Nesting is worked out from a BOUNDARY VERTEX of each contour, not its
+ * centroid: a ring letter's vertex-average centroid falls inside its own hole
+ * (the centre of an 'O' sits inside the counter), so a centroid-based even-odd
+ * test misreads the outer ring as a counter and the whole letter disappears.
+ * A vertex sits on the contour itself, so containment is unambiguous: a contour
+ * at even depth (0, 2, …) is a filled face; odd depth is a hole of the smallest
+ * face that contains it. Independent of each contour's `kind`, which carries
+ * that same centroid quirk.
  */
 export function groupReturnFaces(analysis: ReturnsAnalysis): ReturnFaceGroup[] {
-    const outers = analysis.contours.filter((c) => c.kind === 'outer');
-    const groups: ReturnFaceGroup[] = outers.map((outer) => ({
-        outer,
-        holes: [],
-    }));
+    const cs = analysis.contours;
+    const sample = cs.map((c) => c.points[0] ?? c.centroid);
+    const areas = cs.map((c) => absArea(c.points));
+    const depth = cs.map((_, i) => {
+        let d = 0;
+        for (let j = 0; j < cs.length; j++) {
+            if (j !== i && pointInPolygon(sample[i], cs[j].points)) d++;
+        }
+        return d;
+    });
+    const isFace = depth.map((d) => d % 2 === 0);
 
-    for (const counter of analysis.contours) {
-        if (counter.kind !== 'counter') continue;
+    const groups: ReturnFaceGroup[] = [];
+    const groupOf = new Map<number, number>();
+    cs.forEach((c, i) => {
+        if (isFace[i]) {
+            groupOf.set(i, groups.length);
+            groups.push({ outer: c, holes: [] });
+        }
+    });
+
+    cs.forEach((c, i) => {
+        if (isFace[i]) return; // a hole — attach to its immediate face
         let best = -1;
         let bestArea = Infinity;
-        for (let i = 0; i < outers.length; i++) {
-            if (!pointInPolygon(counter.centroid, outers[i].points)) continue;
-            const area = absArea(outers[i].points);
-            if (area < bestArea) {
-                bestArea = area;
-                best = i;
+        for (let j = 0; j < cs.length; j++) {
+            if (j === i || !isFace[j]) continue;
+            if (!pointInPolygon(sample[i], cs[j].points)) continue;
+            if (areas[j] < bestArea) {
+                bestArea = areas[j];
+                best = j;
             }
         }
-        if (best >= 0) groups[best].holes.push(counter);
-    }
+        if (best >= 0) groups[groupOf.get(best)!].holes.push(c);
+    });
     return groups;
 }
