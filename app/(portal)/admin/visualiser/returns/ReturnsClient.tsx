@@ -51,6 +51,7 @@ import {
     type LinkedNest,
 } from '@/lib/visualiser/returns-actions';
 import type { FlatPath } from '@/lib/visualiser/types';
+import { BinderButton } from '@/components/admin/BinderPicker';
 
 const ACCENT = '#4e7e8c';
 const WELD = '#d4661a';
@@ -413,6 +414,9 @@ export function ReturnsClient({
                     </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                    <BinderButton
+                        onPick={(a) => loadSvgText(a.svgSource, a.name, null)}
+                    />
                     {/* Mobile: open the saved-jobs drawer (rail is desktop-only). */}
                     <button
                         type="button"

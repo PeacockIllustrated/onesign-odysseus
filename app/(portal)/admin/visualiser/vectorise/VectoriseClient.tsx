@@ -27,6 +27,7 @@ import {
     sampleColor,
     type RGB,
 } from '@/lib/visualiser/bg-remove';
+import { SaveToBinderButton } from '@/components/admin/BinderPicker';
 
 const ACCENT = '#4e7e8c';
 
@@ -273,6 +274,10 @@ export function VectoriseClient() {
                             {copied ? <Check size={14} /> : <Copy size={14} />}
                             {copied ? 'Copied' : 'Copy SVG'}
                         </button>
+                        <SaveToBinderButton
+                            svg={output?.svg ?? null}
+                            defaultName={name}
+                        />
                         <button
                             type="button"
                             onClick={() =>
