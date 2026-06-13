@@ -370,7 +370,10 @@ export function PublicWizard({ onShowHelp }: { onShowHelp?: () => void }) {
     const handleBuiltUp = (r: BuiltUpResult) => {
         addArtworkLayer(r.svgText, r.name);
         setParam('apertureMode', 'standoff');
-        setParam('letterThicknessMm', r.config.returnDepthMm);
+        // The build-up depth is the letter's extrusion depth. Clamp to the
+        // schema bound so a deep letter can't invalidate params (the true depth
+        // is always preserved in `builtUp.returnDepthMm` for production).
+        setParam('letterThicknessMm', Math.min(r.config.returnDepthMm, 200));
         setParam('letterColor', finishSpec(r.finish).face);
         setParam('builtUp', {
             finish: r.finish,

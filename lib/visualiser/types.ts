@@ -175,7 +175,7 @@ const PanelCoreSchema = z.object({
      * in standoff mode to render the lettering as 3D extruded geometry in
      * front of the panel.
      */
-    letterThicknessMm: z.number().positive().max(50).optional(),
+    letterThicknessMm: z.number().positive().max(200).optional(),
     standoffDistanceMm: z.number().min(0).max(300).optional(),
     letterColor: z
         .string()
