@@ -117,3 +117,35 @@ export async function deleteBinderAsset(id: string): Promise<Result<null>> {
     revalidatePath('/admin/binder');
     return ok(null);
 }
+
+const UpdateSchema = z.object({
+    id: z.string().uuid(),
+    name: z.string().trim().min(1, 'name is required').max(160),
+    orgId: z.string().uuid().nullable().optional(),
+});
+
+/** Rename / re-assign a binder asset's client (no SVG payload). */
+export async function updateBinderAsset(input: {
+    id: string;
+    name: string;
+    orgId?: string | null;
+}): Promise<Result<null>> {
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return err(gate.error);
+
+    const parsed = UpdateSchema.safeParse(input);
+    if (!parsed.success) {
+        return err(parsed.error.issues[0]?.message ?? 'invalid input');
+    }
+    const { id, name, orgId } = parsed.data;
+
+    const supabase = createAdminClient();
+    const { error } = await supabase
+        .from(TABLE)
+        .update({ name, org_id: orgId ?? null, updated_at: new Date().toISOString() })
+        .eq('id', id);
+    if (error) return err(error.message);
+    revalidatePath('/admin/binder');
+    return ok(null);
+}
+
