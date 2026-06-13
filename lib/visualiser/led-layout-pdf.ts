@@ -15,6 +15,7 @@
 
 import { jsPDF } from 'jspdf';
 import { registerVisualiserFonts } from './pdf-fonts';
+import { SYMBOLS, driverBlock, drawSymbol, WIRING_LEGEND } from './wiring-symbols';
 import {
     formatW,
     formatMm,
@@ -120,16 +121,17 @@ export async function generateLedLayoutPdfBlob(opts: LedLayoutPdfOptions): Promi
         if (p.length > 1) doc.line(px(p[p.length - 1][0]), py(p[p.length - 1][1]), px(p[0][0]), py(p[0][1]));
     }
 
-    // Feed lines: cable entry → each driver.
+    // Mains feed lines: cable entry → each driver (under the symbols).
     const entry = analysis.cableEntry;
     doc.setDrawColor(FEED[0], FEED[1], FEED[2]);
     doc.setLineWidth(0.5);
     for (const d of analysis.drivers) {
         doc.line(px(entry[0]), py(entry[1]), px(d.position[0]), py(d.position[1]));
     }
-    // Cable-in marker.
-    doc.setFillColor(FEED[0], FEED[1], FEED[2]);
-    doc.circle(px(entry[0]), py(entry[1]), 1.6, 'F');
+    // Mains supply + fuse + protective earth at the entry.
+    drawSymbol(doc, SYMBOLS.mains, px(entry[0]) - SYMBOLS.mains.w / 2, py(entry[1]) - SYMBOLS.mains.h / 2, 1, FEED);
+    drawSymbol(doc, SYMBOLS.fuse, px(entry[0]) + SYMBOLS.mains.w / 2 + 2, py(entry[1]) - SYMBOLS.fuse.h / 2, 1, FEED);
+    drawSymbol(doc, SYMBOLS.earth, px(entry[0]) - SYMBOLS.earth.w / 2, py(entry[1]) + SYMBOLS.mains.h / 2 + 1, 1, INK);
 
     // Runs: polyline through each run's modules, coloured by driver.
     for (const run of analysis.runs) {
@@ -143,19 +145,48 @@ export async function generateLedLayoutPdfBlob(opts: LedLayoutPdfOptions): Promi
         for (const mod of m) doc.circle(px(mod[0]), py(mod[1]), 0.7, 'F');
     }
 
-    // Driver boxes.
-    doc.setFontSize(7);
+    // Output → run conductors with a tap junction (drawn under the blocks).
+    const BW = 13;
+    const BH = 7;
+    for (const run of analysis.runs) {
+        const d = analysis.drivers.find((x) => x.index === run.driverIndex);
+        if (!d || run.modules.length === 0) continue;
+        const c = driverColor(d.index);
+        const blk = driverBlock(BW, BH, d.outputs);
+        const ox = blk.outputXs[run.outputIndex - 1] ?? blk.outputXs[0];
+        const tx = px(d.position[0]) - BW / 2 + ox;
+        const ty = py(d.position[1]) + BH / 2;
+        const m0 = run.modules[0];
+        doc.setDrawColor(c[0], c[1], c[2]);
+        doc.setLineWidth(0.3);
+        doc.line(tx, ty, px(m0[0]), py(m0[1]));
+        doc.setFillColor(c[0], c[1], c[2]);
+        doc.circle(px(m0[0]), py(m0[1]), 0.9, 'F'); // tap junction
+    }
+
+    // Driver blocks: a labelled AC~/DC= block with numbered output terminals.
     for (const d of analysis.drivers) {
         const c = driverColor(d.index);
         const bx = px(d.position[0]);
         const by = py(d.position[1]);
+        const blk = driverBlock(BW, BH, d.outputs);
         doc.setFillColor(255, 255, 255);
-        doc.setDrawColor(c[0], c[1], c[2]);
-        doc.setLineWidth(0.5);
-        doc.rect(bx - 5, by - 3, 10, 6, 'FD');
-        doc.setTextColor(c[0], c[1], c[2]);
+        doc.rect(bx - BW / 2, by - BH / 2, BW, BH, 'F');
+        drawSymbol(doc, blk, bx - BW / 2, by - BH / 2, 1, c);
         doc.setFont(font, 'bold');
-        doc.text(`D${d.index}`, bx, by + 1, { align: 'center' });
+        doc.setFontSize(6);
+        doc.setTextColor(c[0], c[1], c[2]);
+        doc.text(`D${d.index} ${d.type}`, bx, by - BH / 2 - 1, { align: 'center' });
+        doc.setFont(font, 'normal');
+        doc.setFontSize(4);
+        doc.setDrawColor(c[0], c[1], c[2]);
+        doc.setLineWidth(0.3);
+        const termY = by + BH / 2;
+        blk.outputXs.forEach((ox, oi) => {
+            const tx = bx - BW / 2 + ox;
+            doc.circle(tx, termY, 1, 'S'); // open output terminal
+            doc.text(String(oi + 1), tx, termY + 3, { align: 'center' });
+        });
     }
     doc.setTextColor(0);
 
@@ -258,6 +289,45 @@ export async function generateLedLayoutPdfBlob(opts: LedLayoutPdfOptions): Promi
     if (cost > 0) {
         doc.text(`Est. driver cost £${(cost / 100).toFixed(2)} (rate card)`, margin, sy + 23);
     }
+    doc.setTextColor(0);
+
+    // ---- Legend ----
+    const ly = PAGE_H - margin - 4;
+    doc.setDrawColor(200);
+    doc.setLineWidth(0.2);
+    doc.line(margin, ly - 7, PAGE_W - margin, ly - 7);
+    doc.setFont(font, 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(INK[0], INK[1], INK[2]);
+    doc.text('LEGEND', margin, ly - 3);
+    doc.setFont(font, 'normal');
+    const slot = (PAGE_W - 2 * margin) / WIRING_LEGEND.length;
+    WIRING_LEGEND.forEach((item, i) => {
+        const gx = margin + i * slot;
+        doc.setDrawColor(INK[0], INK[1], INK[2]);
+        doc.setFillColor(INK[0], INK[1], INK[2]);
+        doc.setLineWidth(0.3);
+        if (item.name === 'driver') {
+            doc.rect(gx, ly - 3, 6, 4.5, 'S');
+            doc.line(gx + 3, ly - 3, gx + 3, ly + 1.5);
+        } else if (item.name === 'conductor') {
+            doc.setDrawColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+            doc.line(gx, ly - 1, gx + 6, ly - 1);
+        } else if (item.name === 'terminal') {
+            doc.circle(gx + 2.5, ly - 1.2, 1.3, 'S');
+        } else if (item.name === 'junction') {
+            doc.circle(gx + 2.5, ly - 1.2, 1.2, 'F');
+        } else if (item.name === 'mains') {
+            doc.rect(gx, ly - 3, 7, 4.5, 'S');
+            doc.setFontSize(5);
+            doc.text('~', gx + 3.5, ly, { align: 'center' });
+        } else {
+            drawSymbol(doc, SYMBOLS[item.name], gx, ly - 4.5, 0.55, item.name === 'earth' ? INK : FEED);
+        }
+        doc.setFontSize(6);
+        doc.setTextColor(90);
+        doc.text(item.label, gx + 9, ly - 0.5);
+    });
     doc.setTextColor(0);
 
     // ===================== PAGE 3 — electrical notes =====================
