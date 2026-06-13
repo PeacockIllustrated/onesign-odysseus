@@ -26,6 +26,7 @@
  */
 
 import type { FlatPath } from './types';
+import type { FaceType } from './led-modules';
 
 export type Pt = [number, number];
 
@@ -72,6 +73,12 @@ export interface LedLayoutConfig {
     cableSide: CableSide;
     /** IP rating recorded on the schedule (exterior needs IP65+). */
     ipRating: string;
+    /** Catalogue module id driving the spacing lookup (null = custom/manual). */
+    moduleId: string | null;
+    /** Can depth (mm) — keys the module's depth→spacing table. */
+    canDepthMm: number;
+    /** Face translucency — tightens spacing for darker faces. */
+    faceType: FaceType;
 }
 
 export const DEFAULT_LED_CONFIG: LedLayoutConfig = {
@@ -87,6 +94,9 @@ export const DEFAULT_LED_CONFIG: LedLayoutConfig = {
     driverHeadroom: 0.8,
     cableSide: 'left',
     ipRating: 'IP65',
+    moduleId: null,
+    canDepthMm: 100,
+    faceType: 'standard',
 };
 
 /** Cascade limit roughly doubles from 12 V to 24 V (the supply tolerates a

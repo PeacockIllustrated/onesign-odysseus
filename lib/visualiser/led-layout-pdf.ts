@@ -16,6 +16,7 @@
 import { jsPDF } from 'jspdf';
 import { registerVisualiserFonts } from './pdf-fonts';
 import { SYMBOLS, driverBlock, drawSymbol, WIRING_LEGEND } from './wiring-symbols';
+import { findModule } from './led-modules';
 import {
     formatW,
     formatMm,
@@ -281,8 +282,10 @@ export async function generateLedLayoutPdfBlob(opts: LedLayoutPdfOptions): Promi
     doc.setFontSize(8);
     doc.setTextColor(90);
     doc.text(`Drivers: ${bom || '—'}`, margin, sy + 13);
+    const mod = findModule(config.moduleId);
+    const modStr = mod ? ` · ${mod.name} @ ${Math.round(config.canDepthMm)} mm ${config.faceType}` : '';
     doc.text(
-        `${config.voltageV} V · ${config.wattsPerModule} W/module · cascade ${config.cascadeLimit}/run · headroom ${Math.round(config.driverHeadroom * 100)}% · ${config.ipRating}`,
+        `${config.voltageV} V · ${config.wattsPerModule} W/module · cascade ${config.cascadeLimit}/run · headroom ${Math.round(config.driverHeadroom * 100)}% · ${config.ipRating}${modStr}`,
         margin,
         sy + 18,
     );

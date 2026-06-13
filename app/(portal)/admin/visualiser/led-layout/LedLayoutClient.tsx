@@ -29,6 +29,13 @@ import {
     type LedStrategy,
     type LightingMode,
 } from '@/lib/visualiser/led-layout';
+import {
+    LED_MODULE_CATALOG,
+    FACE_LABELS,
+    findModule,
+    resolveSpacing,
+    type FaceType,
+} from '@/lib/visualiser/led-modules';
 import { generateLedLayoutPdfBlob } from '@/lib/visualiser/led-layout-pdf';
 import { ledCapture } from '@/lib/visualiser/led-capture';
 import { trimImageDataUrl } from '@/lib/visualiser/image';
@@ -302,6 +309,28 @@ export function LedLayoutClient({
             const n = parseFloat(v);
             setCfg((c) => ({ ...c, [key]: Number.isFinite(n) && n >= min ? n : c[key] }));
         };
+
+    // Pick a catalogue module (or Custom) → derive pitch / row / watts / cascade
+    // / voltage from its depth × face spacing table. Manual edits below override.
+    const applyLookup = (moduleId: string | null, depthMm: number, face: FaceType) => {
+        const m = findModule(moduleId);
+        if (!m) {
+            setCfg((c) => ({ ...c, moduleId: null, canDepthMm: depthMm, faceType: face }));
+            return;
+        }
+        const r = resolveSpacing(m, depthMm, face);
+        setCfg((c) => ({
+            ...c,
+            moduleId: m.id,
+            canDepthMm: depthMm,
+            faceType: face,
+            voltageV: r.voltageV,
+            modulePitchMm: r.modulePitchMm,
+            rowPitchMm: r.rowPitchMm,
+            wattsPerModule: r.wattsPerModule,
+            cascadeLimit: r.cascadeLimit,
+        }));
+    };
 
     return (
         <div className="flex flex-col gap-3 md:h-[calc(100dvh-7rem)] md:min-h-[560px] md:overflow-hidden">
@@ -608,6 +637,51 @@ export function LedLayoutClient({
                             {/* Config */}
                             <div className="shrink-0 rounded-xl border border-neutral-200 bg-white p-3">
                                 <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">LED spec</h3>
+                                <div className="mb-2 space-y-2">
+                                    <label className="block">
+                                        <span className="text-[10px] text-neutral-500">LED module</span>
+                                        <select
+                                            value={cfg.moduleId ?? ''}
+                                            onChange={(e) => applyLookup(e.target.value || null, cfg.canDepthMm, cfg.faceType)}
+                                            className="mt-0.5 w-full rounded border border-neutral-300 px-1.5 py-1 text-xs focus:border-[#4e7e8c] focus:outline-none"
+                                        >
+                                            <option value="">Custom (manual)</option>
+                                            {LED_MODULE_CATALOG.map((m) => (
+                                                <option key={m.id} value={m.id}>
+                                                    {m.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </label>
+                                    {cfg.moduleId && (
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <NumField
+                                                label="Can depth (mm)"
+                                                value={cfg.canDepthMm}
+                                                step={5}
+                                                onChange={(v) => {
+                                                    const n = parseFloat(v);
+                                                    if (Number.isFinite(n) && n > 0)
+                                                        applyLookup(cfg.moduleId, n, cfg.faceType);
+                                                }}
+                                            />
+                                            <label className="block">
+                                                <span className="text-[10px] text-neutral-500">Face</span>
+                                                <select
+                                                    value={cfg.faceType}
+                                                    onChange={(e) => applyLookup(cfg.moduleId, cfg.canDepthMm, e.target.value as FaceType)}
+                                                    className="mt-0.5 w-full rounded border border-neutral-300 px-1.5 py-1 text-xs focus:border-[#4e7e8c] focus:outline-none"
+                                                >
+                                                    {(['standard', 'dark', 'perforated'] as FaceType[]).map((f) => (
+                                                        <option key={f} value={f}>
+                                                            {FACE_LABELS[f]}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </label>
+                                        </div>
+                                    )}
+                                </div>
                                 <div className="mb-2 flex gap-2">
                                     <Segmented
                                         options={[
