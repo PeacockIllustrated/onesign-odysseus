@@ -87,7 +87,17 @@ function textToSvg(font: opentype.Font, text: string): string | null {
     const w = bb.x2 - bb.x1;
     const h = bb.y2 - bb.y1;
     if (!(w > 0.5 && h > 0.5)) return null;
-    const d = path.toPathData(2);
+    // opentype omits the closing `Z` for each contour (fonts close implicitly).
+    // Make every subpath explicitly closed so the importer reads filled letter
+    // outlines (closed polygons), not open polylines — an open contour can't
+    // extrude into a built-up / stand-off letter and shows as just a face
+    // outline on the panel.
+    const d = path
+        .toPathData(2)
+        .split('M')
+        .filter((s) => s.trim())
+        .map((s) => 'M' + s.trim() + ' Z')
+        .join(' ');
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${bb.x1.toFixed(
         2,
     )} ${bb.y1.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)}"><path d="${d}" fill="#000000"/></svg>`;
