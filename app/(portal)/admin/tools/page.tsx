@@ -3,6 +3,7 @@ import Link from 'next/link';
 import {
     ArrowRight,
     ArrowUpRight,
+    BookMarked,
     Box,
     Globe,
     Hammer,
@@ -96,6 +97,14 @@ const TOOLS: Tool[] = [
         icon: PenTool,
         tag: 'Inbound',
         meta: ['Inbox', 'Realtime'],
+    },
+    {
+        name: 'Logo binder',
+        blurb: 'Your shared library of client logos — saved from the converter and selectable at every upload point. Browse, rename, re-assign clients, delete.',
+        href: '/admin/binder',
+        icon: BookMarked,
+        tag: 'Library',
+        meta: ['Logos', 'Per-client', 'Reusable'],
     },
     {
         name: 'Public design studio',
