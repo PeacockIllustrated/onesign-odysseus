@@ -38,6 +38,7 @@ import {
     Ruler,
     Send,
     ShieldCheck,
+    Sparkles,
 } from 'lucide-react';
 import { useVisualiser } from '../(portal)/admin/visualiser/store';
 import { ControlsPanel } from '../(portal)/admin/visualiser/ControlsPanel';
@@ -51,6 +52,8 @@ import { submitDesignRequest } from '@/lib/design-requests/actions';
 import { assembleDesignPayload } from './assemble';
 import { StudioStage } from '@/components/studio/StudioStage';
 import { DayNightSwitch } from '@/components/studio/StudioChrome';
+import { BuiltUpModal, type BuiltUpResult } from './BuiltUpModal';
+import { finishSpec } from '@/lib/visualiser/returns-finish';
 
 const ACCENT = '#4e7e8c';
 const ACCENT_GLOW = '#9ed0dc';
@@ -123,6 +126,7 @@ export function PublicWizard({ onShowHelp }: { onShowHelp?: () => void }) {
     const {
         params,
         setParam,
+        addArtworkLayer,
         svgSource,
         imported: storeImported,
         projectingEnabled,
@@ -163,6 +167,7 @@ export function PublicWizard({ onShowHelp }: { onShowHelp?: () => void }) {
     const [fold, setFold] = useState(1);
     const [unfoldKey, setUnfoldKey] = useState(0);
     const [dockOpen, setDockOpen] = useState(true);
+    const [builtUpOpen, setBuiltUpOpen] = useState(false);
     const [mounted, setMounted] = useState(false);
     const [reducedMotion, setReducedMotion] = useState(false);
 
@@ -359,6 +364,28 @@ export function PublicWizard({ onShowHelp }: { onShowHelp?: () => void }) {
 
     const firstName = name.trim().split(' ')[0] || 'there';
 
+    // Premium built-up lettering placed from the modal: add the lettering as a
+    // stand-off layer (the built-up look in 3D) and stash the full fabrication
+    // spec on the design so it reaches the enquiry for production.
+    const handleBuiltUp = (r: BuiltUpResult) => {
+        addArtworkLayer(r.svgText, r.name);
+        setParam('apertureMode', 'standoff');
+        setParam('letterThicknessMm', r.config.returnDepthMm);
+        setParam('letterColor', finishSpec(r.finish).face);
+        setParam('builtUp', {
+            finish: r.finish,
+            returnDepthMm: r.config.returnDepthMm,
+            materialThicknessMm: r.config.materialThicknessMm,
+            breakAngleDeg: r.config.breakAngleDeg,
+            stockLengthMm: r.config.stockLengthMm,
+            realHeightMm: r.realHeightMm,
+            totalReturnLengthMm: r.totalReturnLengthMm,
+            weldCount: r.weldCount,
+            faceCount: r.faceCount,
+        });
+        setBuiltUpOpen(false);
+    };
+
     return (
         <div className="flex h-full flex-col">
             <StudioStage night={night} className="relative flex-1 min-h-0">
@@ -496,7 +523,41 @@ export function PublicWizard({ onShowHelp }: { onShowHelp?: () => void }) {
                                 {step.key === 'size' && (
                                     <ControlsPanel hideIllumination />
                                 )}
-                                {step.key === 'artwork' && <SvgDropzone />}
+                                {step.key === 'artwork' && (
+                                    <div className="space-y-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => setBuiltUpOpen(true)}
+                                            className="flex w-full items-center gap-3 rounded-lg border border-[#cfe0e6] bg-[#e8f0f3] px-3 py-2.5 text-left transition-colors hover:border-[#4e7e8c]"
+                                        >
+                                            <span
+                                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white"
+                                                style={{ background: ACCENT }}
+                                            >
+                                                <Sparkles size={15} aria-hidden />
+                                            </span>
+                                            <span className="min-w-0 flex-1">
+                                                <span className="flex items-center gap-1.5 text-[13px] font-semibold text-[#3a5f6a]">
+                                                    Built-up lettering
+                                                    <span className="rounded-full bg-white px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#3a5f6a]">
+                                                        Premium
+                                                    </span>
+                                                </span>
+                                                <span className="block text-[11px] text-[#3a5f6a]/80">
+                                                    Fabricated metal letters with
+                                                    real depth — build &amp;
+                                                    preview in 3D.
+                                                </span>
+                                            </span>
+                                            <ArrowRight
+                                                size={15}
+                                                aria-hidden
+                                                className="shrink-0 text-[#4e7e8c]"
+                                            />
+                                        </button>
+                                        <SvgDropzone />
+                                    </div>
+                                )}
                                 {step.key === 'light' && (
                                     <LightStep
                                         night={night}
@@ -671,6 +732,11 @@ export function PublicWizard({ onShowHelp }: { onShowHelp?: () => void }) {
                     />
                 )}
             </StudioStage>
+            <BuiltUpModal
+                open={builtUpOpen}
+                onClose={() => setBuiltUpOpen(false)}
+                onConfirm={handleBuiltUp}
+            />
         </div>
     );
 }

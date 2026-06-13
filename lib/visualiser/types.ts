@@ -286,6 +286,26 @@ const PanelCoreSchema = z.object({
         )
         .optional(),
     /**
+     * Premium built-up lettering spec captured in the public studio — the same
+     * data the standalone built-up returns builder produces, so production can
+     * fulfil the job straight from the enquiry. Rides in params_json to the
+     * lead; the engine ignores it (the letters render as stand-off in-scene for
+     * now — the true face+returns asset render is a planned follow-up).
+     */
+    builtUp: z
+        .object({
+            finish: z.enum(['brass', 'white', 'black']),
+            returnDepthMm: z.number().positive(),
+            materialThicknessMm: z.number().positive(),
+            breakAngleDeg: z.number().nonnegative(),
+            stockLengthMm: z.number().positive(),
+            realHeightMm: z.number().nonnegative().optional(),
+            totalReturnLengthMm: z.number().nonnegative(),
+            weldCount: z.number().nonnegative(),
+            faceCount: z.number().nonnegative(),
+        })
+        .optional(),
+    /**
      * Material groups — the heart of the mixed-material model. Each
      * group bundles a set of imported SVG paths under a shared
      * material. A single sign can mix any combination of materials
