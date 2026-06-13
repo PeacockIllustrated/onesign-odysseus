@@ -16,7 +16,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import opentype from 'opentype.js';
+import * as opentype from 'opentype.js';
 import { Loader2, Sparkles, Type, Upload, X } from 'lucide-react';
 import { importSvg } from '@/lib/visualiser/svg-import';
 import {
