@@ -43,6 +43,7 @@ import { useVisualiser } from '../(portal)/admin/visualiser/store';
 import { ControlsPanel } from '../(portal)/admin/visualiser/ControlsPanel';
 import { SvgDropzone } from '../(portal)/admin/visualiser/SvgDropzone';
 import { usePanelDerivation } from '../(portal)/admin/visualiser/usePanelDerivation';
+import { useSceneInteraction } from '../(portal)/admin/visualiser/useSceneInteraction';
 import { sceneCapture } from '../(portal)/admin/visualiser/Scene3D';
 import { trimImageDataUrl } from '@/lib/visualiser/image';
 import { PanelParamsSchema } from '@/lib/visualiser/types';
@@ -149,6 +150,10 @@ export function PublicWizard({ onShowHelp }: { onShowHelp?: () => void }) {
         vinylPrintDataUrl,
         placedClipByIndex,
     } = deriv;
+
+    // 3D interactivity — path-picking + fixing / cable placement. The public
+    // studio has no flat tab to fall back to, so clicks must land in 3D.
+    const interaction = useSceneInteraction(deriv);
 
     // ── View state (never persisted) ──────────────────────────────────────
     const [stepIdx, setStepIdx] = useState(0);
@@ -384,6 +389,14 @@ export function PublicWizard({ onShowHelp }: { onShowHelp?: () => void }) {
                             backlightPieces={backlightPieces}
                             vinylPrintDataUrl={vinylPrintDataUrl}
                             placedPathsByIndex={placedClipByIndex}
+                            pathGroupColors={interaction.pathGroupColors}
+                            pendingPaths={interaction.pendingPathsSet}
+                            isEditingGroup={interaction.isEditingGroup}
+                            onPathToggle={interaction.handlePathPick}
+                            fixingMode={interaction.fixingMode}
+                            cableMode={interaction.cableMode}
+                            cableHoles={interaction.cableHoles}
+                            onFixingClick={interaction.handleFixingClick}
                             fold={view === 'folded' ? 1 : fold}
                             illuminationView={night}
                             illumination={params.illumination}
@@ -480,7 +493,9 @@ export function PublicWizard({ onShowHelp }: { onShowHelp?: () => void }) {
                                 <p className="mb-3 text-[12px] leading-relaxed text-neutral-500">
                                     {step.intro}
                                 </p>
-                                {step.key === 'size' && <ControlsPanel />}
+                                {step.key === 'size' && (
+                                    <ControlsPanel hideIllumination />
+                                )}
                                 {step.key === 'artwork' && <SvgDropzone />}
                                 {step.key === 'light' && (
                                     <LightStep
@@ -673,7 +688,7 @@ function ViewSwitch({
         ['unfold', 'Unfold'],
     ];
     return (
-        <div className="flex items-center gap-1 rounded-full border border-white/15 bg-white/10 p-1 backdrop-blur-md">
+        <div className="flex items-center gap-1 rounded-full border border-white/25 bg-[#0c1114]/60 p-1 shadow-lg backdrop-blur-md">
             {items.map(([key, label]) => {
                 const active = tab === key;
                 return (
@@ -683,7 +698,7 @@ function ViewSwitch({
                         onClick={() => onChange(key)}
                         aria-pressed={active}
                         className={`min-h-[36px] rounded-full px-3.5 text-[11px] font-semibold tracking-wide transition-colors ${
-                            active ? 'text-[#0c1114]' : 'text-white/60 hover:text-white'
+                            active ? 'text-[#0c1114]' : 'text-white/75 hover:text-white'
                         }`}
                         style={active ? { background: ACCENT_GLOW } : undefined}
                     >

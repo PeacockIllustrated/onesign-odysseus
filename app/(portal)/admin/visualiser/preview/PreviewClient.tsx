@@ -20,6 +20,7 @@ import { useVisualiser } from '../store';
 import { ControlsPanel } from '../ControlsPanel';
 import { SvgDropzone } from '../SvgDropzone';
 import { usePanelDerivation } from '../usePanelDerivation';
+import { useSceneInteraction } from '../useSceneInteraction';
 import { StudioStage } from '@/components/studio/StudioStage';
 import { DayNightSwitch } from '@/components/studio/StudioChrome';
 
@@ -93,7 +94,7 @@ function ViewSwitch({
         ['unfold', 'Unfold'],
     ];
     return (
-        <div className="flex items-center gap-1 rounded-full border border-white/15 bg-white/10 p-1 backdrop-blur-md">
+        <div className="flex items-center gap-1 rounded-full border border-white/25 bg-[#0c1114]/60 p-1 shadow-lg backdrop-blur-md">
             {items.map(([key, label]) => {
                 const active = tab === key;
                 return (
@@ -105,7 +106,7 @@ function ViewSwitch({
                         className={`rounded-full px-3.5 py-1.5 text-[11px] font-semibold tracking-wide transition-colors ${
                             active
                                 ? 'text-[#0c1114]'
-                                : 'text-white/60 hover:text-white'
+                                : 'text-white/75 hover:text-white'
                         }`}
                         style={active ? { background: ACCENT_GLOW } : undefined}
                     >
@@ -204,6 +205,9 @@ export function PreviewClient() {
         vinylPrintDataUrl,
         placedClipByIndex,
     } = deriv;
+
+    // 3D path-picking + fixing / cable placement, shared with the staff tool.
+    const interaction = useSceneInteraction(deriv);
 
     // ── View state (never persisted — pure presentation) ──────────────────
     const [tab, setTab] = useState<'folded' | 'unfold'>('folded');
@@ -314,7 +318,7 @@ export function PreviewClient() {
             Icon: Ruler,
             // The real, full-fidelity controls — every capability the staff
             // tool has, just reframed inside the journey.
-            body: <ControlsPanel />,
+            body: <ControlsPanel hideIllumination />,
         },
         {
             key: 'artwork',
@@ -472,6 +476,14 @@ export function PreviewClient() {
                             backlightPieces={backlightPieces}
                             vinylPrintDataUrl={vinylPrintDataUrl}
                             placedPathsByIndex={placedClipByIndex}
+                            pathGroupColors={interaction.pathGroupColors}
+                            pendingPaths={interaction.pendingPathsSet}
+                            isEditingGroup={interaction.isEditingGroup}
+                            onPathToggle={interaction.handlePathPick}
+                            fixingMode={interaction.fixingMode}
+                            cableMode={interaction.cableMode}
+                            cableHoles={interaction.cableHoles}
+                            onFixingClick={interaction.handleFixingClick}
                             fold={tab === 'folded' ? 1 : fold}
                             illuminationView={night}
                             illumination={params.illumination}

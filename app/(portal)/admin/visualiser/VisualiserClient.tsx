@@ -274,15 +274,10 @@ export function VisualiserClient({
         setCableMode,
     ]);
 
-    // Steer path-picking to the flat development view. Material grouping
-    // means clicking individual paths, which is far easier on the 2D
-    // flat layout than on the angled 3D model — so when group-edit mode
-    // begins (from the "New material group" button or a path click on a
-    // 3D tab) hop to the flat tab automatically.
-    useEffect(() => {
-        if (editingGroupId !== null) setTab('flat');
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [editingGroupId]);
+    // Path-picking works on whichever view the operator is on — we no longer
+    // force a hop to the flat tab when group-edit begins (it was disorienting,
+    // and 3D path-picking works fine). Material grouping is still easiest on
+    // the flat layout, but switching there is now the operator's choice.
 
     const valid = PanelParamsSchema.safeParse(params);
 

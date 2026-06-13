@@ -29,20 +29,20 @@ export function DayNightSwitch({
             aria-label="Toggle day / night preview"
             onClick={() => onChange(!night)}
             title="Day / night preview"
-            className="relative flex h-10 w-[5.5rem] items-center rounded-full border border-white/15 bg-white/10 px-1 backdrop-blur-md transition-colors hover:border-white/30"
+            className="relative flex h-10 w-[5.5rem] items-center rounded-full border border-white/25 bg-[#0c1114]/60 px-1 shadow-lg backdrop-blur-md transition-colors hover:border-white/45"
         >
             <Sun
                 size={15}
                 aria-hidden
                 className={`absolute left-2.5 transition-opacity ${
-                    night ? 'text-white/40 opacity-40' : 'text-amber-300 opacity-100'
+                    night ? 'text-white/60 opacity-70' : 'text-amber-300 opacity-100'
                 }`}
             />
             <Moon
                 size={14}
                 aria-hidden
                 className={`absolute right-2.5 transition-opacity ${
-                    night ? 'text-sky-200 opacity-100' : 'text-white/40 opacity-40'
+                    night ? 'text-sky-200 opacity-100' : 'text-white/60 opacity-70'
                 }`}
             />
             <span

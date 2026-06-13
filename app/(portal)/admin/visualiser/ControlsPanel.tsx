@@ -84,7 +84,13 @@ function NumberField({
 }
 
 
-export function ControlsPanel() {
+export function ControlsPanel({
+    hideIllumination = false,
+}: {
+    /** Hide the Illumination section — the guided wizard / concept have a
+     *  dedicated "Light" step, so it's redundant (and confusing) in stage 1. */
+    hideIllumination?: boolean;
+} = {}) {
     const {
         params,
         setParam,
@@ -461,6 +467,7 @@ export function ControlsPanel() {
                 </div>
             </Section>
 
+            {!hideIllumination && (
             <Section title="Illumination" defaultOpen={false}>
                 <p className="text-[10px] text-neutral-500">
                     Records the lighting built into the sign. Toggle the
@@ -633,6 +640,7 @@ export function ControlsPanel() {
                     </div>
                 )}
             </Section>
+            )}
         </div>
     );
 }
