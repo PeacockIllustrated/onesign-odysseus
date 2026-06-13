@@ -169,6 +169,9 @@ export function VisualiserClient({
     // first paint; the operator turns layers off for clarity when needed.
     const [showStandoffLetters, setShowStandoffLetters] = useState(true);
     const [showStandoffLocators, setShowStandoffLocators] = useState(true);
+    // Fixing-hole positions marked on the panel face (stood-off lettering) —
+    // an installer aid, off by default.
+    const [showFaceFixings, setShowFaceFixings] = useState(false);
     const [showOutlines, setShowOutlines] = useState(true);
     // Annotation layers — view-only visibility toggles surfaced in the
     // Display panel. Defaults keep every annotation on (the working
@@ -1116,6 +1119,7 @@ export function VisualiserClient({
                             showOutlines={showOutlines}
                             showStandoffLetters={showStandoffLetters}
                             showStandoffLocators={showStandoffLocators}
+                            showFaceFixings={showFaceFixings}
                             illuminationView={illuminationView}
                             illumination={params.illumination}
                             showDimensions={showDimensions}
@@ -1224,6 +1228,11 @@ export function VisualiserClient({
                                                     setOn={
                                                         setShowStandoffLocators
                                                     }
+                                                />
+                                                <DisplayRow
+                                                    label="Marks on face"
+                                                    on={showFaceFixings}
+                                                    setOn={setShowFaceFixings}
                                                 />
                                             </div>
                                         </>
