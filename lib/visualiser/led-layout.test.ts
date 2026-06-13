@@ -10,7 +10,7 @@ import type { FlatPath } from './types';
 
 const cfg = (over: Partial<LedLayoutConfig> = {}): LedLayoutConfig => ({
     ...DEFAULT_LED_CONFIG,
-    maxModulesPerRun: 999,
+    cascadeLimit: 999,
     maxRunLengthMm: 1e9,
     ...over,
 });
@@ -63,10 +63,10 @@ describe('layoutLeds — placement', () => {
 });
 
 describe('layoutLeds — runs', () => {
-    it('breaks runs at the module cap', () => {
+    it('breaks runs at the cascade limit', () => {
         const a = layoutLeds(
             [closed(rect(1000, 100))],
-            cfg({ strategy: 'stroke', modulePitchMm: 150, maxModulesPerRun: 5 }),
+            cfg({ strategy: 'stroke', modulePitchMm: 150, cascadeLimit: 5 }),
         );
         expect(a.runs).toHaveLength(3); // 15 modules / 5
         expect(a.runs.every((r) => r.moduleCount <= 5)).toBe(true);
@@ -85,24 +85,49 @@ describe('layoutLeds — runs', () => {
 describe('layoutLeds — drivers', () => {
     it('bin-packs runs onto drivers within capacity × headroom', () => {
         // 15 modules → 3 runs of 5 at 10 W each = 50 W/run; 150 W usable cap is
-        // 120 W (0.8), so two drivers (100 W + 50 W loads).
+        // 120 W (0.8), so two drivers.
         const a = layoutLeds(
             [closed(rect(1000, 100))],
             cfg({
                 strategy: 'stroke',
                 modulePitchMm: 150,
-                maxModulesPerRun: 5,
+                cascadeLimit: 5,
                 wattsPerModule: 10,
                 driverHeadroom: 0.8,
             }),
         );
         expect(a.drivers.length).toBe(2);
         expect(a.drivers.every((d) => d.loadW <= d.capacityW * 0.8 + 1e-6)).toBe(true);
-        // Every run is assigned to a driver.
         expect(a.runs.every((r) => r.driverIndex >= 1)).toBe(true);
-        // Driver type comes from the ladder.
         const types = new Set(DEFAULT_DRIVER_LADDER.map((d) => d.type));
         expect(a.drivers.every((d) => types.has(d.type))).toBe(true);
+    });
+
+    it('packs runs onto Class-2 outputs (≤ 5 A each), outputs onto drivers', () => {
+        const a = layoutLeds(
+            [closed(rect(2000, 100))],
+            cfg({ strategy: 'stroke', modulePitchMm: 100, cascadeLimit: 8, wattsPerModule: 2, voltageV: 12 }),
+        );
+        const outputCap = 5 * 12; // 60 W
+        const perOutput = new Map<string, number>();
+        for (const r of a.runs) {
+            expect(r.driverIndex).toBeGreaterThan(0);
+            expect(r.outputIndex).toBeGreaterThan(0);
+            const k = `${r.driverIndex}:${r.outputIndex}`;
+            perOutput.set(k, (perOutput.get(k) ?? 0) + r.moduleCount * 2);
+        }
+        for (const w of perOutput.values()) expect(w).toBeLessThanOrEqual(outputCap + 1e-6);
+        expect(a.drivers.some((d) => d.outputs >= 2)).toBe(true);
+        expect(a.drivers.every((d) => d.loadW <= d.capacityW * 0.8 + 1e-6)).toBe(true);
+    });
+
+    it('needs no more outputs at 24 V than 12 V for the same load', () => {
+        const base = { strategy: 'stroke' as const, modulePitchMm: 100, wattsPerModule: 2 };
+        const outs = (a: ReturnType<typeof layoutLeds>) =>
+            new Set(a.runs.map((r) => `${r.driverIndex}:${r.outputIndex}`)).size;
+        const out12 = layoutLeds([closed(rect(2000, 100))], cfg({ ...base, voltageV: 12 }));
+        const out24 = layoutLeds([closed(rect(2000, 100))], cfg({ ...base, voltageV: 24 }));
+        expect(outs(out24)).toBeLessThanOrEqual(outs(out12));
     });
 
     it('totals load from modules × watts', () => {

@@ -19,6 +19,7 @@ import { importSvg } from '@/lib/visualiser/svg-import';
 import {
     layoutLeds,
     formatW,
+    defaultCascadeLimit,
     DEFAULT_LED_CONFIG,
     DEFAULT_DRIVER_LADDER,
     type LedLayoutConfig,
@@ -26,6 +27,7 @@ import {
     type LedDriverSpec,
     type CableSide,
     type LedStrategy,
+    type LightingMode,
 } from '@/lib/visualiser/led-layout';
 import { generateLedLayoutPdfBlob } from '@/lib/visualiser/led-layout-pdf';
 import { ledCapture } from '@/lib/visualiser/led-capture';
@@ -613,7 +615,14 @@ export function LedLayoutClient({
                                             ['24', '24 V'],
                                         ]}
                                         value={String(cfg.voltageV)}
-                                        onChange={(v) => setCfg((c) => ({ ...c, voltageV: v === '24' ? 24 : 12 }))}
+                                        onChange={(v) => {
+                                            const nv = v === '24' ? 24 : 12;
+                                            setCfg((c) => ({
+                                                ...c,
+                                                voltageV: nv,
+                                                cascadeLimit: defaultCascadeLimit(nv),
+                                            }));
+                                        }}
                                     />
                                     <Segmented
                                         options={[
@@ -625,11 +634,22 @@ export function LedLayoutClient({
                                         onChange={(v) => setCfg((c) => ({ ...c, strategy: v as LedStrategy }))}
                                     />
                                 </div>
+                                <div className="mb-2">
+                                    <Segmented
+                                        options={[
+                                            ['front', 'Front-lit'],
+                                            ['halo', 'Halo'],
+                                            ['edge', 'Edge'],
+                                        ]}
+                                        value={cfg.lightingMode}
+                                        onChange={(v) => setCfg((c) => ({ ...c, lightingMode: v as LightingMode }))}
+                                    />
+                                </div>
                                 <div className="grid grid-cols-2 gap-2">
                                     <NumField label="Module pitch (mm)" value={cfg.modulePitchMm} step={5} onChange={setNum('modulePitchMm', 5)} />
                                     <NumField label="Row pitch (mm)" value={cfg.rowPitchMm} step={5} onChange={setNum('rowPitchMm', 5)} />
                                     <NumField label="Watts / module" value={cfg.wattsPerModule} step={0.1} onChange={setNum('wattsPerModule', 0.01)} />
-                                    <NumField label="Max modules/run" value={cfg.maxModulesPerRun} step={1} onChange={setNum('maxModulesPerRun', 1)} />
+                                    <NumField label="Cascade limit" value={cfg.cascadeLimit} step={1} onChange={setNum('cascadeLimit', 1)} />
                                     <NumField label="Max run (mm)" value={cfg.maxRunLengthMm} step={100} onChange={setNum('maxRunLengthMm', 100)} />
                                     <label className="block">
                                         <span className="flex items-center justify-between text-[10px] text-neutral-500">
@@ -644,6 +664,18 @@ export function LedLayoutClient({
                                             value={Math.round(cfg.driverHeadroom * 100)}
                                             onChange={(e) => setCfg((c) => ({ ...c, driverHeadroom: parseInt(e.target.value, 10) / 100 }))}
                                             className="mt-2 w-full accent-[#4e7e8c]"
+                                        />
+                                    </label>
+                                    {cfg.lightingMode === 'halo' && (
+                                        <NumField label="Standoff (mm)" value={cfg.standoffMm} step={5} onChange={setNum('standoffMm', 0)} />
+                                    )}
+                                    <label className="block">
+                                        <span className="text-[10px] text-neutral-500">IP rating</span>
+                                        <input
+                                            type="text"
+                                            value={cfg.ipRating}
+                                            onChange={(e) => setCfg((c) => ({ ...c, ipRating: e.target.value }))}
+                                            className="mt-0.5 w-full rounded border border-neutral-300 px-1.5 py-1 text-xs focus:border-[#4e7e8c] focus:outline-none"
                                         />
                                     </label>
                                 </div>
@@ -682,6 +714,7 @@ export function LedLayoutClient({
                                                 <th className="px-2 py-2 text-left font-semibold">Type</th>
                                                 <th className="px-2 py-2 text-right font-semibold">Load</th>
                                                 <th className="px-2 py-2 text-right font-semibold">% cap</th>
+                                                <th className="px-2 py-2 text-right font-semibold">Out</th>
                                                 <th className="px-2 py-2 text-right font-semibold">Mods</th>
                                             </tr>
                                         </thead>
@@ -699,12 +732,13 @@ export function LedLayoutClient({
                                                     <td className="px-2 py-1.5 text-neutral-600">{d.type}</td>
                                                     <td className="px-2 py-1.5 text-right tabular-nums text-neutral-700">{formatW(d.loadW)}</td>
                                                     <td className="px-2 py-1.5 text-right tabular-nums text-neutral-500">{Math.round(d.loadPct)}%</td>
+                                                    <td className="px-2 py-1.5 text-right tabular-nums text-neutral-500">{d.outputs}</td>
                                                     <td className="px-2 py-1.5 text-right tabular-nums text-neutral-500">{d.moduleCount}</td>
                                                 </tr>
                                             ))}
                                             {analysis!.drivers.length === 0 && (
                                                 <tr>
-                                                    <td colSpan={5} className="px-2 py-4 text-center text-xs text-neutral-400">
+                                                    <td colSpan={6} className="px-2 py-4 text-center text-xs text-neutral-400">
                                                         No modules placed — adjust the pitch or strategy.
                                                     </td>
                                                 </tr>
