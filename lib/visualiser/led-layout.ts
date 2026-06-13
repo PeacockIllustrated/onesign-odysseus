@@ -124,6 +124,8 @@ export interface LedLetter {
     /** 1-based label across the layout (reading order). */
     index: number;
     points: Pt[];
+    /** Counters punched through this letter (for the glowing 3D face). */
+    holes: Pt[][];
     centroid: Pt;
     bbox: Bbox;
     perimeterMm: number;
@@ -432,6 +434,7 @@ export function layoutLeds(
         letters.push({
             index: letterIndex,
             points: g.outer,
+            holes: g.holes,
             centroid: centroidOf(g.outer),
             bbox: bboxOf(g.outer),
             perimeterMm: polylineLength([...g.outer, g.outer[0]]),

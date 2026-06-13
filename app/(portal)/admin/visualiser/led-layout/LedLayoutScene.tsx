@@ -1,20 +1,24 @@
 'use client';
 
 /**
- * LED layout 3D preview — the lit version of the wiring drawing.
+ * LED layout 3D preview — day ↔ night.
  *
- * Letters as faint outlines, every LED module as an additive-glowing dot
- * coloured by its driver, the runs traced through them, driver boxes placed
- * central to their runs, and the amber mains feed routed from the entry point.
- * Same real-size `toScene` mapping + glow approach as NeonScene; publishes a
- * snapshot fn on `ledCapture` so the client can embed the view in the PDF.
+ * NIGHT: the sign lit up — glowing acrylic faces (additive emissive, counters
+ * punched out) and additive-haloed LED dots, the neon tool's bloom-faking
+ * technique (two additive shells, no postprocessing dependency), over a dusk
+ * background, with the wiring dimmed underneath.
+ * DAY: the sign off — solid faces, crisp outlines, the runs / drivers / feed
+ * shown as the technical overlay.
+ *
+ * Real-size `toScene` mapping shared with NeonScene; publishes a snapshot fn on
+ * `ledCapture` so the client can embed the view in the wiring PDF.
  */
 
 import { useMemo, useEffect } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Line } from '@react-three/drei';
 import * as THREE from 'three';
-import type { LedLayoutAnalysis } from '@/lib/visualiser/led-layout';
+import type { LedLayoutAnalysis, Pt } from '@/lib/visualiser/led-layout';
 import { ledCapture } from '@/lib/visualiser/led-capture';
 
 const FIT = 6;
@@ -29,6 +33,15 @@ const DRIVER_HEX = [
     '#5a646e',
 ];
 const driverHex = (i: number) => DRIVER_HEX[(i - 1 + DRIVER_HEX.length) % DRIVER_HEX.length];
+
+function dedupe(points: Pt[], eps = 1e-4): Pt[] {
+    const out: Pt[] = [];
+    for (const p of points) {
+        const q = out[out.length - 1];
+        if (!q || Math.hypot(p[0] - q[0], p[1] - q[1]) > eps) out.push(p);
+    }
+    return out;
+}
 
 function CaptureBinder() {
     const { gl, scene, camera } = useThree();
@@ -48,7 +61,19 @@ function CaptureBinder() {
     return null;
 }
 
-function ModuleDots({ positions, colors, size }: { positions: number[]; colors: number[]; size: number }) {
+function ModuleDots({
+    positions,
+    colors,
+    size,
+    opacity,
+    additive,
+}: {
+    positions: number[];
+    colors: number[];
+    size: number;
+    opacity: number;
+    additive: boolean;
+}) {
     const geom = useMemo(() => {
         const g = new THREE.BufferGeometry();
         g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -62,8 +87,8 @@ function ModuleDots({ positions, colors, size }: { positions: number[]; colors: 
                 size={size}
                 sizeAttenuation
                 transparent
-                opacity={0.95}
-                blending={THREE.AdditiveBlending}
+                opacity={opacity}
+                blending={additive ? THREE.AdditiveBlending : THREE.NormalBlending}
                 depthWrite={false}
                 toneMapped={false}
             />
@@ -71,7 +96,13 @@ function ModuleDots({ positions, colors, size }: { positions: number[]; colors: 
     );
 }
 
-export default function LedLayoutScene({ analysis }: { analysis: LedLayoutAnalysis }) {
+export default function LedLayoutScene({
+    analysis,
+    night,
+}: {
+    analysis: LedLayoutAnalysis;
+    night: boolean;
+}) {
     const bb = analysis.bbox;
     const wMm = Math.max(1, bb.maxX - bb.minX);
     const hMm = Math.max(1, bb.maxY - bb.minY);
@@ -79,6 +110,39 @@ export default function LedLayoutScene({ analysis }: { analysis: LedLayoutAnalys
     const cy = (bb.minY + bb.maxY) / 2;
     const S = FIT / Math.max(wMm, hMm);
     const toScene = (x: number, y: number): [number, number, number] => [(x - cx) * S, -(y - cy) * S, 0];
+
+    // Letter faces (outer minus counters) as flat shapes for the lit acrylic.
+    const faceShapes = useMemo(() => {
+        const shapes: THREE.Shape[] = [];
+        for (const l of analysis.letters) {
+            const ring = dedupe(l.points);
+            if (ring.length < 3) continue;
+            const shape = new THREE.Shape();
+            ring.forEach(([x, y], i) => {
+                const sx = (x - cx) * S;
+                const sy = -(y - cy) * S;
+                if (i === 0) shape.moveTo(sx, sy);
+                else shape.lineTo(sx, sy);
+            });
+            shape.closePath();
+            for (const h of l.holes) {
+                const hr = dedupe(h);
+                if (hr.length < 3) continue;
+                const path = new THREE.Path();
+                hr.forEach(([x, y], i) => {
+                    const sx = (x - cx) * S;
+                    const sy = -(y - cy) * S;
+                    if (i === 0) path.moveTo(sx, sy);
+                    else path.lineTo(sx, sy);
+                });
+                path.closePath();
+                shape.holes.push(path);
+            }
+            shapes.push(shape);
+        }
+        return shapes;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [analysis]);
 
     const { positions, colors } = useMemo(() => {
         const pos: number[] = [];
@@ -103,21 +167,40 @@ export default function LedLayoutScene({ analysis }: { analysis: LedLayoutAnalys
             gl={{ preserveDrawingBuffer: true, antialias: true }}
             className="h-full w-full"
         >
-            <color attach="background" args={['#0e131b']} />
+            <color attach="background" args={[night ? '#0e131b' : '#ccd4da']} />
             <CaptureBinder />
 
+            {/* Lit / off acrylic faces */}
+            {faceShapes.length > 0 && (
+                <mesh position={[0, 0, -0.02]}>
+                    <shapeGeometry args={[faceShapes]} />
+                    {night ? (
+                        <meshBasicMaterial
+                            color="#fff2d6"
+                            transparent
+                            opacity={0.55}
+                            blending={THREE.AdditiveBlending}
+                            depthWrite={false}
+                            toneMapped={false}
+                            side={THREE.DoubleSide}
+                        />
+                    ) : (
+                        <meshBasicMaterial color="#eef1f3" side={THREE.DoubleSide} />
+                    )}
+                </mesh>
+            )}
+
+            {/* Letter outlines */}
             {analysis.letters.map((l) => (
                 <Line
                     key={`l${l.index}`}
-                    points={[
-                        ...l.points.map((p) => toScene(p[0], p[1])),
-                        toScene(l.points[0][0], l.points[0][1]),
-                    ]}
-                    color="#3a4754"
+                    points={[...l.points.map((p) => toScene(p[0], p[1])), toScene(l.points[0][0], l.points[0][1])]}
+                    color={night ? '#7a6a48' : '#3a4754'}
                     lineWidth={1}
                 />
             ))}
 
+            {/* Runs (technical overlay; dimmed at night) */}
             {analysis.runs.map((run) =>
                 run.modules.length > 1 ? (
                     <Line
@@ -125,10 +208,13 @@ export default function LedLayoutScene({ analysis }: { analysis: LedLayoutAnalys
                         points={run.modules.map((m) => toScene(m[0], m[1]))}
                         color={driverHex(run.driverIndex)}
                         lineWidth={1.5}
+                        transparent
+                        opacity={night ? 0.35 : 1}
                     />
                 ) : null,
             )}
 
+            {/* Mains feed */}
             {analysis.drivers.map((d) => (
                 <Line
                     key={`f${d.index}`}
@@ -141,30 +227,32 @@ export default function LedLayoutScene({ analysis }: { analysis: LedLayoutAnalys
                     dashed
                     dashSize={0.09}
                     gapSize={0.06}
+                    transparent
+                    opacity={night ? 0.4 : 1}
                 />
             ))}
 
-            {positions.length > 0 && <ModuleDots positions={positions} colors={colors} size={dotSize} />}
+            {/* LED dots — glowing halo + core at night, plain markers by day */}
+            {positions.length > 0 &&
+                (night ? (
+                    <>
+                        <ModuleDots positions={positions} colors={colors} size={dotSize * 3.2} opacity={0.18} additive />
+                        <ModuleDots positions={positions} colors={colors} size={dotSize} opacity={0.95} additive />
+                    </>
+                ) : (
+                    <ModuleDots positions={positions} colors={colors} size={dotSize * 0.8} opacity={0.95} additive={false} />
+                ))}
 
+            {/* Driver boxes */}
             {analysis.drivers.map((d) => {
                 const [x, y] = toScene(d.position[0], d.position[1]);
                 return (
                     <mesh key={`d${d.index}`} position={[x, y, 0.1]}>
                         <boxGeometry args={[0.24, 0.15, 0.06]} />
-                        <meshBasicMaterial color={driverHex(d.index)} toneMapped={false} />
+                        <meshBasicMaterial color={driverHex(d.index)} toneMapped={false} transparent opacity={night ? 0.7 : 1} />
                     </mesh>
                 );
             })}
-
-            {(() => {
-                const [x, y] = toScene(analysis.cableEntry[0], analysis.cableEntry[1]);
-                return (
-                    <mesh position={[x, y, 0.12]}>
-                        <sphereGeometry args={[0.08, 16, 16]} />
-                        <meshBasicMaterial color="#ff7a1a" toneMapped={false} />
-                    </mesh>
-                );
-            })()}
 
             <OrbitControls makeDefault enablePan />
         </Canvas>
