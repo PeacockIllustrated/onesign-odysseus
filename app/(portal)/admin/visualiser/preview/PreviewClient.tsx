@@ -13,15 +13,15 @@ import {
     ChevronDown,
     ImageUp,
     Lightbulb,
-    Moon,
     Ruler,
     Send,
-    Sun,
 } from 'lucide-react';
 import { useVisualiser } from '../store';
 import { ControlsPanel } from '../ControlsPanel';
 import { SvgDropzone } from '../SvgDropzone';
 import { usePanelDerivation } from '../usePanelDerivation';
+import { StudioStage } from '@/components/studio/StudioStage';
+import { DayNightSwitch } from '@/components/studio/StudioChrome';
 
 /**
  * ──────────────────────────────────────────────────────────────────────────
@@ -78,55 +78,7 @@ function StageLoader() {
     );
 }
 
-/**
- * The marquee interaction: a tactile day / night switch. Sliding the knob to
- * the moon darkens the stage and lights any configured illumination — the
- * "wow" beat for an illuminated-signage product.
- */
-function DayNightSwitch({
-    night,
-    onChange,
-}: {
-    night: boolean;
-    onChange: (v: boolean) => void;
-}) {
-    return (
-        <button
-            type="button"
-            role="switch"
-            aria-checked={night}
-            aria-label="Toggle day / night preview"
-            onClick={() => onChange(!night)}
-            title="Day / night preview"
-            className="relative flex h-10 w-[5.5rem] items-center rounded-full border border-white/15 bg-white/10 px-1 backdrop-blur-md transition-colors hover:border-white/30"
-        >
-            <Sun
-                size={15}
-                aria-hidden
-                className={`absolute left-2.5 transition-opacity ${
-                    night ? 'text-white/40 opacity-40' : 'text-amber-300 opacity-100'
-                }`}
-            />
-            <Moon
-                size={14}
-                aria-hidden
-                className={`absolute right-2.5 transition-opacity ${
-                    night ? 'text-sky-200 opacity-100' : 'text-white/40 opacity-40'
-                }`}
-            />
-            <span
-                className="z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-md transition-transform duration-300 ease-out"
-                style={{ transform: night ? 'translateX(46px)' : 'translateX(0)' }}
-            >
-                {night ? (
-                    <Moon size={14} aria-hidden className="text-[#1a1f23]" />
-                ) : (
-                    <Sun size={15} aria-hidden className="text-amber-500" />
-                )}
-            </span>
-        </button>
-    );
-}
+// DayNightSwitch is provided by the shared Studio kit (imported above).
 
 /** Minimal dark-glass segmented control for the two cinematic 3D views. */
 function ViewSwitch({
@@ -495,27 +447,9 @@ export function PreviewClient() {
             {/* fadeIn keyframes for the step bodies (scoped, tiny). */}
             <style>{`@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}`}</style>
 
-            {/* The cinematic stage — full-bleed dark, the sign as the hero. */}
-            <div
-                className="relative flex-1 min-h-0 overflow-hidden rounded-3xl border border-white/10 shadow-2xl"
-                style={{
-                    background: night
-                        ? 'radial-gradient(120% 90% at 50% 0%, #0a1014 0%, #04070a 60%, #020405 100%)'
-                        : 'radial-gradient(120% 90% at 50% 0%, #1a242a 0%, #0d1418 55%, #080c0f 100%)',
-                    transition: 'background 0.7s ease',
-                }}
-            >
-                {/* Soft accent halo for depth (muted at night). */}
-                <div
-                    aria-hidden
-                    className="pointer-events-none absolute -top-1/3 left-1/2 h-[60%] w-[80%] -translate-x-1/2 rounded-full blur-3xl"
-                    style={{
-                        background: ACCENT_GLOW,
-                        opacity: night ? 0.04 : 0.1,
-                        transition: 'opacity 0.7s ease',
-                    }}
-                />
-
+            {/* The cinematic stage — full-bleed dark, the sign as the hero.
+                The dark canvas + accent halo are the shared StudioStage. */}
+            <StudioStage night={night} className="flex-1 min-h-0">
                 {/* The real 3D engine. */}
                 {development && split ? (
                     <div className="absolute inset-0">
@@ -681,7 +615,7 @@ export function PreviewClient() {
                         {params.materialLabel}
                     </span>
                 </div>
-            </div>
+            </StudioStage>
         </div>
     );
 }
