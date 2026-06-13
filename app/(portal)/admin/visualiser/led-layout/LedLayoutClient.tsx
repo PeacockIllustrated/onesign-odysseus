@@ -106,6 +106,7 @@ export function LedLayoutClient({
     const [dragOver, setDragOver] = useState(false);
     const [busy, setBusy] = useState(false);
     const [view, setView] = useState<View>('measure');
+    const [night, setNight] = useState(true);
     const [jobsOpen, setJobsOpen] = useState(false);
 
     const [calWidth, setCalWidth] = useState('');
@@ -236,7 +237,7 @@ export function LedLayoutClient({
             if (url) snapshotRef.current = url;
         }, 650);
         return () => clearTimeout(t);
-    }, [view, analysis]);
+    }, [view, analysis, night]);
 
     const doSave = async (): Promise<string | null> => {
         if (!loaded) return null;
@@ -615,7 +616,35 @@ export function LedLayoutClient({
                                     </svg>
                                 </div>
                             ) : (
-                                <LedLayoutScene analysis={analysis!} />
+                                <>
+                                    <LedLayoutScene analysis={analysis!} night={night} />
+                                    <div className="absolute left-3 top-3 z-10 flex rounded-md border border-white/15 bg-black/40 p-0.5 backdrop-blur">
+                                        {(
+                                            [
+                                                ['night', 'Night'],
+                                                ['day', 'Day'],
+                                            ] as const
+                                        ).map(([v, label]) => {
+                                            const active = (v === 'night') === night;
+                                            return (
+                                                <button
+                                                    key={v}
+                                                    type="button"
+                                                    onClick={() => setNight(v === 'night')}
+                                                    className={`rounded px-2.5 py-1 text-[11px] font-medium ${
+                                                        active ? 'text-white' : 'text-white/60 hover:text-white'
+                                                    }`}
+                                                    style={active ? { background: ACCENT } : undefined}
+                                                >
+                                                    {label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="pointer-events-none absolute bottom-2 left-2 rounded-md bg-black/55 px-2 py-1 text-[10px] font-medium text-white">
+                                        Drag to orbit · this view prints on the wiring sheet
+                                    </div>
+                                </>
                             )}
                         </div>
 
