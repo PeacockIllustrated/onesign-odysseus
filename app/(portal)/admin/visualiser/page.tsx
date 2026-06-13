@@ -1,6 +1,6 @@
 // app/(portal)/admin/visualiser/page.tsx
 import Link from 'next/link';
-import { Ruler, LayoutGrid, Hammer, ImageUp } from 'lucide-react';
+import { Ruler, LayoutGrid, Hammer, ImageUp, Lightbulb } from 'lucide-react';
 import { requireAdmin } from '@/lib/auth';
 import { listDesigns, prefillFromQuoteItem } from '@/lib/visualiser/actions';
 import { VisualiserClient } from './VisualiserClient';
@@ -70,6 +70,13 @@ export default async function VisualiserPage({
                     >
                         <ImageUp size={14} />
                         Image → SVG
+                    </Link>
+                    <Link
+                        href="/admin/visualiser/led-layout"
+                        className="flex items-center gap-1.5 rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:border-[#4e7e8c] hover:bg-[#e8f0f3] hover:text-[#3a5f6a]"
+                    >
+                        <Lightbulb size={14} />
+                        LED layout
                     </Link>
                     {/* The Studio hub — a portfolio of every in-house design &
                         fabrication tool (incl. the public customer studio). */}

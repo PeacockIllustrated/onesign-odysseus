@@ -7,6 +7,7 @@ import {
     Globe,
     Hammer,
     ImageUp,
+    Lightbulb,
     Palette,
     PenTool,
     Puzzle,
@@ -63,6 +64,14 @@ const TOOLS: Tool[] = [
         icon: ImageUp,
         tag: 'Convert',
         meta: ['Colour', 'Silhouette', 'SVG'],
+    },
+    {
+        name: 'LED layout & wiring',
+        blurb: 'Lay LED modules into illuminated letters or cabinets, chain them into runs, size the drivers from the rate card, and export a wiring drawing + power schedule.',
+        href: '/admin/visualiser/led-layout',
+        icon: Lightbulb,
+        tag: 'Illumination',
+        meta: ['Modules', 'Drivers', 'Wiring PDF'],
     },
     {
         name: 'Acrylic nesting',
