@@ -38,39 +38,62 @@ export interface Bbox {
 
 export type CableSide = 'left' | 'right' | 'top' | 'bottom';
 export type LedStrategy = 'auto' | 'stroke' | 'area';
+export type LightingMode = 'front' | 'halo' | 'edge';
+
+/** UL Class-2 limit: each driver output may not exceed 5 A. */
+export const CLASS2_AMPS = 5;
 
 export interface LedLayoutConfig {
     /** LED voltage — 12 V for letters, 24 V for cabinets/strips. */
     voltageV: 12 | 24;
     /** How modules are placed. 'auto' decides per letter from its stroke width. */
     strategy: LedStrategy;
-    /** Spacing between modules along a run (mm). */
+    /** Front-lit (face), halo (reverse, on the back) or edge-lit (tray). */
+    lightingMode: LightingMode;
+    /** Halo standoff from the wall (mm) — halo mode only; ~25 mm typical. */
+    standoffMm: number;
+    /** Spacing between modules along a run (mm) — on-centre. */
     modulePitchMm: number;
     /** Row spacing for area-fill (mm). */
     rowPitchMm: number;
     /** Power per module (W) — drives the load + driver sizing. */
     wattsPerModule: number;
-    /** Max modules on one run before it breaks to a fresh run. */
-    maxModulesPerRun: number;
-    /** Max developed run length (mm) — the voltage-drop cap. */
+    /**
+     * Cascade limit — the most modules daisy-chained in one string before
+     * end-of-run voltage drop dims them (published per module; ~2× at 24 V vs
+     * 12 V). The PRIMARY run cap. `maxRunLengthMm` is only a backstop.
+     */
+    cascadeLimit: number;
+    /** Max developed run length (mm) — a secondary voltage-drop backstop. */
     maxRunLengthMm: number;
-    /** Use only this fraction of a driver's rated capacity (0..1). */
+    /** Use only this fraction of a driver's rated capacity (0..1) — the 80% rule. */
     driverHeadroom: number;
     /** Edge the mains feed enters from. */
     cableSide: CableSide;
+    /** IP rating recorded on the schedule (exterior needs IP65+). */
+    ipRating: string;
 }
 
 export const DEFAULT_LED_CONFIG: LedLayoutConfig = {
     voltageV: 12,
     strategy: 'auto',
+    lightingMode: 'front',
+    standoffMm: 25,
     modulePitchMm: 150,
     rowPitchMm: 120,
     wattsPerModule: 0.72,
-    maxModulesPerRun: 20,
-    maxRunLengthMm: 3000,
+    cascadeLimit: 40,
+    maxRunLengthMm: 5000,
     driverHeadroom: 0.8,
     cableSide: 'left',
+    ipRating: 'IP65',
 };
+
+/** Cascade limit roughly doubles from 12 V to 24 V (the supply tolerates a
+ *  longer string). A sensible default for the chosen voltage. */
+export function defaultCascadeLimit(voltageV: 12 | 24): number {
+    return voltageV === 24 ? 80 : 40;
+}
 
 /** A power supply spec — from the `transformers` rate card, or a default ladder. */
 export interface LedDriverSpec {
@@ -109,6 +132,8 @@ export interface LedRun {
     lengthMm: number;
     /** Index (1-based) of the driver feeding this run. */
     driverIndex: number;
+    /** Index (1-based) of the output ON that driver feeding this run. */
+    outputIndex: number;
 }
 
 export interface LedDriver {
@@ -119,6 +144,8 @@ export interface LedDriver {
     loadW: number;
     /** % of rated capacity used. */
     loadPct: number;
+    /** Class-2 outputs used on this driver (each ≤ 5 A). */
+    outputs: number;
     runIndices: number[];
     moduleCount: number;
     /** Placement (centre of its runs) — keeps whips short. */
@@ -367,15 +394,18 @@ export function layoutLeds(
     const runs: LedRun[] = [];
 
     const ladder = driverSpecs.length ? [...driverSpecs] : DEFAULT_DRIVER_LADDER;
+    // Class-2 per-output watt cap (5 A) — a run must fit one output.
+    const outputCap = CLASS2_AMPS * config.voltageV;
 
     groups.forEach((g, gi) => {
         const sw = strokeWidth(g.outer);
+        // Single-row stroke covers up to on-centre × 1.25; wider → multi-row fill.
         const strat: 'stroke' | 'area' =
             config.strategy === 'stroke'
                 ? 'stroke'
                 : config.strategy === 'area'
                   ? 'area'
-                  : sw < config.rowPitchMm * 2
+                  : sw <= config.modulePitchMm * 1.25
                     ? 'stroke'
                     : 'area';
 
@@ -412,6 +442,7 @@ export function layoutLeds(
                 moduleCount: chain.length,
                 lengthMm: polylineLength(chain),
                 driverIndex: 0,
+                outputIndex: 0,
             });
             chain = [];
             chainLen = 0;
@@ -422,7 +453,13 @@ export function layoutLeds(
                 continue;
             }
             const d = Math.hypot(m[0] - chain[chain.length - 1][0], m[1] - chain[chain.length - 1][1]);
-            if (chain.length >= config.maxModulesPerRun || chainLen + d > config.maxRunLengthMm) {
+            // Break at the cascade limit (primary), the length backstop, or when
+            // one more module would push the run past a single output's 5 A cap.
+            if (
+                chain.length >= config.cascadeLimit ||
+                chainLen + d > config.maxRunLengthMm ||
+                (chain.length + 1) * config.wattsPerModule > outputCap
+            ) {
                 flush();
                 chain = [m];
             } else {
@@ -459,9 +496,11 @@ export function layoutLeds(
 }
 
 /**
- * First-fit-decreasing bin-pack runs onto drivers. Bin size = the biggest
- * driver's usable capacity; each bin then takes the smallest driver type that
- * still covers its load. Mutates each run's `driverIndex`.
+ * Output-aware driver sizing. Runs first bin-pack onto OUTPUTS (each capped at
+ * a Class-2 5 A → `5 × voltage` watts), then outputs bin-pack onto DRIVERS
+ * (limited by both the driver's output count and 80% of its rated watts). Each
+ * bin takes the smallest driver type that covers its outputs + load. Mutates
+ * each run's `driverIndex` + `outputIndex`. (Grimco/HanleyLED Class-2 rule.)
  */
 function packDrivers(
     runs: LedRun[],
@@ -470,46 +509,71 @@ function packDrivers(
 ): LedDriver[] {
     if (runs.length === 0) return [];
     const headroom = Math.max(0.1, Math.min(1, config.driverHeadroom));
+    const outputCap = CLASS2_AMPS * config.voltageV; // watts per Class-2 output
     const byCap = [...ladder].sort((a, b) => a.capacityW - b.capacityW);
+    const outputsOf = (s: LedDriverSpec) => Math.max(1, Math.ceil(s.capacityW / outputCap));
+    const maxOutputs = Math.max(...byCap.map(outputsOf));
     const maxUsable = byCap[byCap.length - 1].capacityW * headroom;
-
     const wattOf = (r: LedRun) => r.moduleCount * config.wattsPerModule;
-    const order = [...runs].sort((a, b) => wattOf(b) - wattOf(a));
 
-    interface Bin {
+    // 1. Runs → outputs (each output ≤ 5 A).
+    interface Out {
         load: number;
         runs: LedRun[];
     }
-    const bins: Bin[] = [];
-    for (const r of order) {
+    const outs: Out[] = [];
+    for (const r of [...runs].sort((a, b) => wattOf(b) - wattOf(a))) {
         const w = wattOf(r);
-        let bin = bins.find((b) => b.load + w <= maxUsable + 1e-9);
-        if (!bin) {
-            bin = { load: 0, runs: [] };
-            bins.push(bin);
+        let o = outs.find((x) => x.load + w <= outputCap + 1e-9);
+        if (!o) {
+            o = { load: 0, runs: [] };
+            outs.push(o);
         }
-        bin.load += w;
-        bin.runs.push(r);
+        o.load += w;
+        o.runs.push(r);
     }
 
+    // 2. Outputs → drivers (≤ output count AND ≤ capacity × headroom).
+    interface Bin {
+        load: number;
+        outs: Out[];
+    }
+    const bins: Bin[] = [];
+    for (const o of [...outs].sort((a, b) => b.load - a.load)) {
+        let bin = bins.find((b) => b.outs.length < maxOutputs && b.load + o.load <= maxUsable + 1e-9);
+        if (!bin) {
+            bin = { load: 0, outs: [] };
+            bins.push(bin);
+        }
+        bin.load += o.load;
+        bin.outs.push(o);
+    }
+
+    // 3. Build drivers: smallest type covering this bin's outputs + load.
     return bins.map((bin, i) => {
         const spec =
-            byCap.find((s) => s.capacityW * headroom >= bin.load - 1e-9) ??
+            byCap.find((s) => outputsOf(s) >= bin.outs.length && s.capacityW * headroom >= bin.load - 1e-9) ??
             byCap[byCap.length - 1];
-        const mods: Pt[] = bin.runs.flatMap((r) => r.modules);
-        const pos: Pt = mods.length ? centroidOf(mods) : [0, 0];
         const driverIndex = i + 1;
-        bin.runs.forEach((r) => {
-            r.driverIndex = driverIndex;
+        const binRuns: LedRun[] = [];
+        bin.outs.forEach((o, oi) => {
+            o.runs.forEach((r) => {
+                r.driverIndex = driverIndex;
+                r.outputIndex = oi + 1;
+                binRuns.push(r);
+            });
         });
+        const mods: Pt[] = binRuns.flatMap((r) => r.modules);
+        const pos: Pt = mods.length ? centroidOf(mods) : [0, 0];
         return {
             index: driverIndex,
             type: spec.type,
             capacityW: spec.capacityW,
             loadW: bin.load,
             loadPct: spec.capacityW > 0 ? (bin.load / spec.capacityW) * 100 : 0,
-            runIndices: bin.runs.map((r) => r.index).sort((a, b) => a - b),
-            moduleCount: bin.runs.reduce((s, r) => s + r.moduleCount, 0),
+            outputs: bin.outs.length,
+            runIndices: binRuns.map((r) => r.index).sort((a, b) => a - b),
+            moduleCount: binRuns.reduce((s, r) => s + r.moduleCount, 0),
             position: pos,
         };
     });

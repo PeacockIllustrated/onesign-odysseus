@@ -19,6 +19,7 @@ import {
     formatW,
     formatMm,
     driverCost,
+    CLASS2_AMPS,
     type LedLayoutAnalysis,
     type LedLayoutConfig,
     type LedDriverSpec,
@@ -196,7 +197,7 @@ export async function generateLedLayoutPdfBlob(opts: LedLayoutPdfOptions): Promi
     header(doc, font, 'LED LAYOUT · POWER SCHEDULE', opts.name, analysis);
 
     const ty = 30;
-    const cols = [margin, margin + 18, margin + 52, margin + 86, margin + 116, margin + 150];
+    const cols = [margin, margin + 18, margin + 46, margin + 72, margin + 94, margin + 116, margin + 144];
     doc.setFont(font, 'bold');
     doc.setFontSize(8);
     doc.setTextColor(INK[0], INK[1], INK[2]);
@@ -204,8 +205,9 @@ export async function generateLedLayoutPdfBlob(opts: LedLayoutPdfOptions): Promi
     doc.text('TYPE', cols[1], ty);
     doc.text('LOAD', cols[2], ty);
     doc.text('% CAP', cols[3], ty);
-    doc.text('RUNS', cols[4], ty);
+    doc.text('OUT', cols[4], ty);
     doc.text('MODULES', cols[5], ty);
+    doc.text('RUNS', cols[6], ty);
     doc.setDrawColor(180);
     doc.line(margin, ty + 2, PAGE_W - margin, ty + 2);
 
@@ -220,8 +222,9 @@ export async function generateLedLayoutPdfBlob(opts: LedLayoutPdfOptions): Promi
         doc.text(d.type, cols[1], ry);
         doc.text(formatW(d.loadW), cols[2], ry);
         doc.text(`${Math.round(d.loadPct)}%`, cols[3], ry);
-        doc.text(d.runIndices.join(', ') || '—', cols[4], ry);
+        doc.text(String(d.outputs), cols[4], ry);
         doc.text(String(d.moduleCount), cols[5], ry);
+        doc.text(d.runIndices.join(', ') || '—', cols[6], ry);
         ry += 6;
         if (ry > PAGE_H - margin - 30) break;
     }
@@ -248,7 +251,7 @@ export async function generateLedLayoutPdfBlob(opts: LedLayoutPdfOptions): Promi
     doc.setTextColor(90);
     doc.text(`Drivers: ${bom || '—'}`, margin, sy + 13);
     doc.text(
-        `${config.voltageV} V  ·  ${config.wattsPerModule} W/module  ·  driver headroom ${Math.round(config.driverHeadroom * 100)}%`,
+        `${config.voltageV} V · ${config.wattsPerModule} W/module · cascade ${config.cascadeLimit}/run · headroom ${Math.round(config.driverHeadroom * 100)}% · ${config.ipRating}`,
         margin,
         sy + 18,
     );
@@ -263,13 +266,20 @@ export async function generateLedLayoutPdfBlob(opts: LedLayoutPdfOptions): Promi
     doc.setFont(font, 'normal');
     doc.setFontSize(9);
     doc.setTextColor(60);
+    const modeNote =
+        config.lightingMode === 'halo'
+            ? `Halo / reverse-lit: modules mount on the back facing the wall, ~${config.standoffMm} mm standoff.`
+            : config.lightingMode === 'edge'
+              ? 'Edge-lit: modules face a reflective tray; light is routed out indirectly.'
+              : 'Front-lit: modules face the translucent acrylic face.';
     const notes: string[] = [
         `Supply: ${config.voltageV} V DC (${config.voltageV === 12 ? 'letters' : 'cabinets / strips'}). Modules wired in PARALLEL — keep voltage uniform across each run.`,
-        `Max run ${formatMm(config.maxRunLengthMm)} / ${config.maxModulesPerRun} modules before a fresh run, to hold voltage drop within tolerance.`,
-        `Mount each driver central to the runs it feeds (boxes D1…), open side up, to keep whip lengths short; keep the driver within ~5 m of the sign.`,
-        `Run the mains feed to a dedicated circuit; ground the supply. Amber line shows the feed path from the entry point to each driver.`,
-        `Module dots are coloured by their driver; the schedule (previous page) lists the load, % of capacity and the runs on each driver.`,
-        `Quantities are a take-off for ordering — confirm exact module spacing against the chosen LED system and allow for spares.`,
+        `Runs split at the cascade limit (${config.cascadeLimit} modules/run) — the published max string before end-of-run voltage drop dims it — with a ${formatMm(config.maxRunLengthMm)} length backstop.`,
+        `Each driver output is limited to 5 A (UL Class 2): at ${config.voltageV} V that's ${CLASS2_AMPS * config.voltageV} W per output. Runs pack onto outputs; drivers load to ≤ ${Math.round(config.driverHeadroom * 100)}% of rating (the 80% rule).`,
+        modeNote,
+        `Mount each driver central to the runs it feeds (boxes D1…), open side up, short whips; keep it within ~5 m of the sign. Amber line shows the feed path.`,
+        `Run the mains feed to a dedicated circuit and ground the supply. ${config.ipRating} components for exterior; the 230 V driver + assembled sign carry the CE/UKCA mark (self-declared: LVD + EMC + RoHS). Record the driver's certification on the order.`,
+        `Always test a sample letter for brightness + uniformity before the full build. Spacing assumes a standard translucent face — go denser behind dark or perforated vinyl. Quantities are a take-off; allow for spares.`,
     ];
     let ny = 32;
     for (const n of notes) {
