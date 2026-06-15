@@ -169,6 +169,9 @@ export function VisualiserClient({
     // first paint; the operator turns layers off for clarity when needed.
     const [showStandoffLetters, setShowStandoffLetters] = useState(true);
     const [showStandoffLocators, setShowStandoffLocators] = useState(true);
+    // Fixing-hole positions marked on the panel face (stood-off lettering) —
+    // an installer aid, off by default.
+    const [showFaceFixings, setShowFaceFixings] = useState(false);
     const [showOutlines, setShowOutlines] = useState(true);
     // Annotation layers — view-only visibility toggles surfaced in the
     // Display panel. Defaults keep every annotation on (the working
@@ -274,15 +277,10 @@ export function VisualiserClient({
         setCableMode,
     ]);
 
-    // Steer path-picking to the flat development view. Material grouping
-    // means clicking individual paths, which is far easier on the 2D
-    // flat layout than on the angled 3D model — so when group-edit mode
-    // begins (from the "New material group" button or a path click on a
-    // 3D tab) hop to the flat tab automatically.
-    useEffect(() => {
-        if (editingGroupId !== null) setTab('flat');
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [editingGroupId]);
+    // Path-picking works on whichever view the operator is on — we no longer
+    // force a hop to the flat tab when group-edit begins (it was disorienting,
+    // and 3D path-picking works fine). Material grouping is still easiest on
+    // the flat layout, but switching there is now the operator's choice.
 
     const valid = PanelParamsSchema.safeParse(params);
 
@@ -1121,6 +1119,7 @@ export function VisualiserClient({
                             showOutlines={showOutlines}
                             showStandoffLetters={showStandoffLetters}
                             showStandoffLocators={showStandoffLocators}
+                            showFaceFixings={showFaceFixings}
                             illuminationView={illuminationView}
                             illumination={params.illumination}
                             showDimensions={showDimensions}
@@ -1229,6 +1228,11 @@ export function VisualiserClient({
                                                     setOn={
                                                         setShowStandoffLocators
                                                     }
+                                                />
+                                                <DisplayRow
+                                                    label="Marks on face"
+                                                    on={showFaceFixings}
+                                                    setOn={setShowFaceFixings}
                                                 />
                                             </div>
                                         </>

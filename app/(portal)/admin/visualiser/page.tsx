@@ -1,6 +1,6 @@
 // app/(portal)/admin/visualiser/page.tsx
 import Link from 'next/link';
-import { Ruler, LayoutGrid, Hammer, ImageUp, Lightbulb } from 'lucide-react';
+import { Ruler, LayoutGrid, Hammer, ImageUp, Sparkles, Lightbulb } from 'lucide-react';
 import { requireAdmin } from '@/lib/auth';
 import { listDesigns, prefillFromQuoteItem } from '@/lib/visualiser/actions';
 import { VisualiserClient } from './VisualiserClient';
@@ -50,6 +50,17 @@ export default async function VisualiserPage({
                     </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2 self-center">
+                    {/* UX/UI "test overhaul" — a cinematic, guided concept
+                        shell driving the same live engine. Additive; the tool
+                        on this page is unchanged. */}
+                    <Link
+                        href="/admin/visualiser/preview"
+                        title="Open the cinematic concept (UX/UI test overhaul)"
+                        className="flex items-center gap-1.5 rounded-md border border-[#4e7e8c] bg-[#e8f0f3] px-3 py-1.5 text-xs font-semibold text-[#3a5f6a] hover:bg-[#d6e6eb]"
+                    >
+                        <Sparkles size={14} />
+                        Concept
+                    </Link>
                     <Link
                         href="/admin/visualiser/neon"
                         className="flex items-center gap-1.5 rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:border-[#4e7e8c] hover:bg-[#e8f0f3] hover:text-[#3a5f6a]"

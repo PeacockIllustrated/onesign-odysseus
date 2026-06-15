@@ -9,6 +9,7 @@ import { BinderButton } from '@/components/admin/BinderPicker';
 import { Section } from './Section';
 import { SwatchPicker, type SwatchItem } from './SwatchPicker';
 import { ACRYLIC_COLOURS } from '@/lib/visualiser/acrylic';
+import { RAL_CLASSIC } from '@/lib/visualiser/ral';
 import {
     GROUP_HIGHLIGHT_PALETTE,
     type AlignH,
@@ -22,6 +23,14 @@ const ACRYLIC_ITEMS: SwatchItem[] = ACRYLIC_COLOURS.map((c) => ({
     hex: c.hex,
     label: c.name,
     sublabel: `${c.brand}${c.code ? ' ' + c.code : ''} · ${c.finish}`,
+}));
+
+// Solid (plotter-cut) vinyl is colour-matched to a RAL reference, so its
+// swatch picks from the RAL library rather than a free hex value.
+const RAL_ITEMS: SwatchItem[] = RAL_CLASSIC.map((r) => ({
+    hex: r.hex,
+    label: r.code,
+    sublabel: r.name,
 }));
 import {
     AlertTriangle,
@@ -300,9 +309,9 @@ function GroupEditControls({
                     >
                         {hasGlow ? 'Glow colour' : 'Colour'}
                     </span>
-                    {(material === 'acrylic' ||
-                        material === 'pushthrough' ||
-                        material === 'standoff') && (
+                    {material === 'acrylic' ||
+                    material === 'pushthrough' ||
+                    material === 'standoff' ? (
                         <div className="mt-0.5">
                             <SwatchPicker
                                 items={ACRYLIC_ITEMS}
@@ -314,30 +323,48 @@ function GroupEditControls({
                                 className="mt-0.5 block text-[10px]"
                                 style={{ color: ACCENT_DARK }}
                             >
-                                From our acrylic library — or fine-tune below.
+                                From our acrylic stock library.
                             </span>
                         </div>
+                    ) : hasVinyl ? (
+                        <div className="mt-0.5">
+                            <SwatchPicker
+                                items={RAL_ITEMS}
+                                value={color}
+                                placeholder="Pick a vinyl colour (RAL)…"
+                                onPick={(i) => setColor(i.hex)}
+                            />
+                            <span
+                                className="mt-0.5 block text-[10px]"
+                                style={{ color: ACCENT_DARK }}
+                            >
+                                Plotter-cut vinyl, matched to a RAL colour.
+                            </span>
+                        </div>
+                    ) : (
+                        // Backlight glow is emissive light, not a stock
+                        // material — any colour is valid.
+                        <div className="mt-0.5 flex items-center gap-1.5">
+                            <input
+                                type="color"
+                                value={color}
+                                onChange={(e) => setColor(e.target.value)}
+                                className="h-11 w-14 cursor-pointer rounded border bg-white p-0.5"
+                                style={{ borderColor: ACCENT_TINT_BORDER }}
+                                aria-label="Glow colour"
+                            />
+                            <input
+                                type="text"
+                                value={color}
+                                onChange={(e) => {
+                                    const v = e.target.value.trim();
+                                    if (/^#[0-9a-fA-F]{6}$/.test(v)) setColor(v);
+                                }}
+                                className="flex-1 rounded border px-2 py-2 font-mono text-[11px] uppercase focus:border-black focus:outline-none"
+                                style={{ borderColor: ACCENT_TINT_BORDER }}
+                            />
+                        </div>
                     )}
-                    <div className="mt-0.5 flex items-center gap-1.5">
-                        <input
-                            type="color"
-                            value={color}
-                            onChange={(e) => setColor(e.target.value)}
-                            className="h-11 w-14 cursor-pointer rounded border bg-white p-0.5"
-                            style={{ borderColor: ACCENT_TINT_BORDER }}
-                            aria-label="Group colour"
-                        />
-                        <input
-                            type="text"
-                            value={color}
-                            onChange={(e) => {
-                                const v = e.target.value.trim();
-                                if (/^#[0-9a-fA-F]{6}$/.test(v)) setColor(v);
-                            }}
-                            className="flex-1 rounded border px-2 py-2 font-mono text-[11px] uppercase focus:border-black focus:outline-none"
-                            style={{ borderColor: ACCENT_TINT_BORDER }}
-                        />
-                    </div>
                 </label>
             )}
 
@@ -1426,8 +1453,9 @@ export function SvgDropzone() {
                                         className="mt-0.5 block text-[10px]"
                                         style={{ color: ACCENT_DARK }}
                                     >
-                                        Used for every shape unless you override
-                                        one below.
+                                        The starting material for every shape on
+                                        the sign. Make any individual shape a
+                                        different material in the list below.
                                     </span>
                                     <div className="mt-1">
                                         <Segmented<
@@ -1507,51 +1535,20 @@ export function SvgDropzone() {
                                                 >
                                                     Letter colour
                                                 </span>
-                                                <div className="mt-0.5 flex items-center gap-2">
-                                                    <input
-                                                        type="color"
+                                                <div className="mt-0.5">
+                                                    <SwatchPicker
+                                                        items={ACRYLIC_ITEMS}
                                                         value={
                                                             params.letterColor ??
                                                             '#1a1f23'
                                                         }
-                                                        onChange={(e) =>
+                                                        placeholder="Pick from acrylic stock…"
+                                                        onPick={(i) =>
                                                             setParam(
                                                                 'letterColor',
-                                                                e.target.value,
+                                                                i.hex,
                                                             )
                                                         }
-                                                        className="h-7 w-10 cursor-pointer rounded border bg-white p-0.5"
-                                                        style={{
-                                                            borderColor:
-                                                                ACCENT_TINT_BORDER,
-                                                        }}
-                                                        aria-label="Default letter colour"
-                                                    />
-                                                    <input
-                                                        type="text"
-                                                        value={
-                                                            params.letterColor ??
-                                                            '#1a1f23'
-                                                        }
-                                                        onChange={(e) => {
-                                                            const v =
-                                                                e.target.value.trim();
-                                                            if (
-                                                                /^#[0-9a-fA-F]{6}$/.test(
-                                                                    v,
-                                                                )
-                                                            )
-                                                                setParam(
-                                                                    'letterColor',
-                                                                    v,
-                                                                );
-                                                        }}
-                                                        className="flex-1 rounded border px-1.5 py-1 font-mono text-[10px] uppercase tracking-wide focus:border-black focus:outline-none"
-                                                        style={{
-                                                            borderColor:
-                                                                ACCENT_TINT_BORDER,
-                                                        }}
-                                                        placeholder="#1a1f23"
                                                     />
                                                 </div>
                                             </label>

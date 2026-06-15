@@ -952,6 +952,68 @@ function StandoffLocators({
 }
 
 /**
+ * Fixing-hole positions marked on the panel FACE — a bright ring + centre dot
+ * at each stud location, sitting just proud of the front so the installer can
+ * see where the fixings land from the face side. Annotation-only (depth test
+ * off so it reads over the sign); toggled from the Display tray, default off.
+ */
+function FaceFixingMarkers({
+    face,
+    fixings,
+    diameterMm,
+    night,
+}: {
+    face: { xMm: number; yMm: number; wMm: number; hMm: number };
+    fixings: FlatPath[];
+    diameterMm: number;
+    night?: boolean;
+}) {
+    if (fixings.length === 0) return null;
+    const color = night ? '#ffd166' : '#e11d48';
+    const r = (diameterMm / 2) * S;
+    const z = 0.8 * S; // just proud of the panel front (z = 0)
+    return (
+        <group>
+            {fixings.map((f, i) => {
+                if (f.points.length < 3) return null;
+                let cx = 0;
+                let cy = 0;
+                for (const q of f.points) {
+                    cx += q[0];
+                    cy += q[1];
+                }
+                cx /= f.points.length;
+                cy /= f.points.length;
+                const lx = (cx - face.xMm - face.wMm / 2) * S;
+                const ly = (face.yMm + face.hMm / 2 - cy) * S;
+                return (
+                    <group key={i} position={[lx, ly, z]}>
+                        <mesh>
+                            <ringGeometry args={[r * 0.78, r, 28]} />
+                            <meshBasicMaterial
+                                color={color}
+                                side={THREE.DoubleSide}
+                                transparent
+                                opacity={0.95}
+                                depthTest={false}
+                            />
+                        </mesh>
+                        <mesh>
+                            <circleGeometry args={[r * 0.22, 16]} />
+                            <meshBasicMaterial
+                                color={color}
+                                side={THREE.DoubleSide}
+                                depthTest={false}
+                            />
+                        </mesh>
+                    </group>
+                );
+            })}
+        </group>
+    );
+}
+
+/**
  * Click-targets for material-group editing in 3D. Always picks up
  * clicks when `onToggle` is supplied — outside group-edit mode the
  * dispatcher in the parent auto-enters the path's group (or starts a
@@ -1906,6 +1968,7 @@ function Panel({
     showOutlines = true,
     showStandoffLetters = true,
     showStandoffLocators = true,
+    showFaceFixings = false,
     illuminationView = false,
     illumination,
     showDimensions = false,
@@ -1945,6 +2008,7 @@ function Panel({
     showOutlines?: boolean;
     showStandoffLetters?: boolean;
     showStandoffLocators?: boolean;
+    showFaceFixings?: boolean;
     illuminationView?: boolean;
     illumination?: PanelParams['illumination'];
     showDimensions?: boolean;
@@ -2383,61 +2447,83 @@ function Panel({
                 even mix standoff with vinyl / acrylic / cut on the same
                 panel. */}
             {face && standoffPieces.length > 0 && (
-                <ExplodeGroup rank={2} spacing={explodeSpacing}>
-                    {showStandoffLocators &&
-                        standoffPieces.map((piece) => {
-                            const pieceFixings = filterFixingsInside(
-                                fixings,
-                                piece.path,
-                            );
-                            return (
-                                <StandoffLocators
-                                    key={`loc-${piece.pathIndex}`}
-                                    face={face}
-                                    fixings={pieceFixings}
-                                    fixingDiameterMm={
-                                        params.fixingDiameterMm ?? 10
-                                    }
-                                    faceThicknessMm={T}
-                                    standoffMm={piece.standoffDistanceMm}
-                                    outlines={showOutlines}
-                                    night={night}
-                                />
-                            );
-                        })}
-                    {showStandoffLetters &&
-                        standoffPieces.map((piece) => {
-                            const pieceAuto = filterFixingsInside(
-                                autoFixings,
-                                piece.path,
-                            );
-                            const pieceManual = filterFixingsInside(
-                                manualFixings,
-                                piece.path,
-                            );
-                            const refPaths = [
-                                piece.path,
-                                ...(piece.holes ?? []),
-                            ];
-                            return (
-                                <StandoffLettering
-                                    key={`letter-${piece.pathIndex}`}
-                                    face={face}
-                                    reference={refPaths}
-                                    autoFixings={pieceAuto}
-                                    manualFixings={pieceManual}
-                                    thicknessMm={piece.thicknessMm}
-                                    standoffMm={piece.standoffDistanceMm}
-                                    faceThicknessMm={T}
-                                    color={displayColor(piece.color, night)}
-                                    outlines={showOutlines}
-                                    showFixings={showStandoffLocators}
-                                    fixingMode={fixingMode}
-                                    onFixingClick={onFixingClick}
-                                />
-                            );
-                        })}
-                </ExplodeGroup>
+                <>
+                    {/* Studs explode to their own intermediate rank (1), the
+                        letters to rank 2 — so the physical fixing separates
+                        from BOTH the panel and the letters and reads as its own
+                        layer in the exploded view. Assembled (explodeT = 0) is
+                        unchanged: each ExplodeGroup is identity at t = 0. */}
+                    <ExplodeGroup rank={1} spacing={explodeSpacing}>
+                        {showStandoffLocators &&
+                            standoffPieces.map((piece) => {
+                                const pieceFixings = filterFixingsInside(
+                                    fixings,
+                                    piece.path,
+                                );
+                                return (
+                                    <StandoffLocators
+                                        key={`loc-${piece.pathIndex}`}
+                                        face={face}
+                                        fixings={pieceFixings}
+                                        fixingDiameterMm={
+                                            params.fixingDiameterMm ?? 10
+                                        }
+                                        faceThicknessMm={T}
+                                        standoffMm={piece.standoffDistanceMm}
+                                        outlines={showOutlines}
+                                        night={night}
+                                    />
+                                );
+                            })}
+                    </ExplodeGroup>
+                    <ExplodeGroup rank={2} spacing={explodeSpacing}>
+                        {showStandoffLetters &&
+                            standoffPieces.map((piece) => {
+                                const pieceAuto = filterFixingsInside(
+                                    autoFixings,
+                                    piece.path,
+                                );
+                                const pieceManual = filterFixingsInside(
+                                    manualFixings,
+                                    piece.path,
+                                );
+                                const refPaths = [
+                                    piece.path,
+                                    ...(piece.holes ?? []),
+                                ];
+                                return (
+                                    <StandoffLettering
+                                        key={`letter-${piece.pathIndex}`}
+                                        face={face}
+                                        reference={refPaths}
+                                        autoFixings={pieceAuto}
+                                        manualFixings={pieceManual}
+                                        thicknessMm={piece.thicknessMm}
+                                        standoffMm={piece.standoffDistanceMm}
+                                        faceThicknessMm={T}
+                                        color={displayColor(piece.color, night)}
+                                        outlines={showOutlines}
+                                        showFixings={showStandoffLocators}
+                                        fixingMode={fixingMode}
+                                        onFixingClick={onFixingClick}
+                                    />
+                                );
+                            })}
+                    </ExplodeGroup>
+                </>
+            )}
+
+            {/* Fixing-hole positions marked on the panel FACE so an installer
+                can see where the studs land from the front. Pinned to the face
+                (deliberately NOT inside an ExplodeGroup), annotation-only,
+                toggled from the Display tray. */}
+            {showFaceFixings && face && (
+                <FaceFixingMarkers
+                    face={face}
+                    fixings={[...autoFixings, ...manualFixings]}
+                    diameterMm={params.fixingDiameterMm ?? 10}
+                    night={night}
+                />
             )}
 
             {/* Returns. Square signs fold four flat flaps; a circle sign has a
@@ -2846,6 +2932,8 @@ export default function Scene3D(props: {
     showOutlines?: boolean;
     showStandoffLetters?: boolean;
     showStandoffLocators?: boolean;
+    /** Mark fixing-hole positions on the panel face (stood-off lettering). */
+    showFaceFixings?: boolean;
     /** Dark illumination preview — darkens the scene + lights configured glow. */
     illuminationView?: boolean;
     illumination?: PanelParams['illumination'];
@@ -3065,6 +3153,7 @@ export default function Scene3D(props: {
                     showOutlines={showOutlines}
                     showStandoffLetters={showStandoffLetters}
                     showStandoffLocators={showStandoffLocators}
+                    showFaceFixings={props.showFaceFixings ?? false}
                 />
             )}
 
