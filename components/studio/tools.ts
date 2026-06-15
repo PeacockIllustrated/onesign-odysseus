@@ -7,10 +7,12 @@
 // of sync with itself.
 
 import {
+    BookMarked,
     Box,
     Globe,
     Hammer,
     ImageUp,
+    Lightbulb,
     Palette,
     PenTool,
     Puzzle,
@@ -112,6 +114,16 @@ export const STUDIO_TOOLS: StudioTool[] = [
         blurb: 'Vectorise a PNG / JPG — a clean cut silhouette or a full-colour layered trace, with live threshold, colour and detail controls.',
         meta: ['Colour', 'Silhouette', 'SVG'],
     },
+    {
+        id: 'binder',
+        name: 'Logo binder',
+        href: '/admin/binder',
+        icon: BookMarked,
+        phase: 'artwork',
+        tag: 'Library',
+        blurb: 'Your shared library of client logos — saved from the converter and selectable at every upload point. Browse, rename, re-assign clients, delete.',
+        meta: ['Logos', 'Per-client', 'Reusable'],
+    },
     // ── Design ───────────────────────────────────────────────────────────
     {
         id: 'visualiser',
@@ -144,6 +156,16 @@ export const STUDIO_TOOLS: StudioTool[] = [
         tag: 'Neon',
         blurb: 'Measure every run of neon flex, size the transformers, and print an annotated run-length sheet with a glowing 3D preview.',
         meta: ['Measure', 'Glow', 'PDF'],
+    },
+    {
+        id: 'led-layout',
+        name: 'LED layout & wiring',
+        href: '/admin/visualiser/led-layout',
+        icon: Lightbulb,
+        phase: 'design',
+        tag: 'Illumination',
+        blurb: 'Lay LED modules into illuminated letters or cabinets, chain them into runs, size the drivers from the rate card, and export a wiring drawing + power schedule.',
+        meta: ['Modules', 'Drivers', 'Wiring PDF'],
     },
     // ── Engineer ─────────────────────────────────────────────────────────
     {
