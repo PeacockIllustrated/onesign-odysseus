@@ -1,15 +1,15 @@
 'use client';
 
 /**
- * Root error boundary — last line of defence. Catches any unhandled error
- * bubbling out of a route segment that doesn't have its own boundary.
- * Next.js requires this to be a client component.
+ * Global error boundary — catches errors thrown in the ROOT layout/template
+ * itself, which the per-segment app/error.tsx cannot reach (it renders inside
+ * the root layout). This one must therefore render its own <html>/<body>.
+ * Next.js requires it to be a client component.
  */
 
 import { useEffect } from 'react';
-import Link from 'next/link';
 
-export default function RootError({
+export default function GlobalError({
     error,
     reset,
 }: {
@@ -19,7 +19,7 @@ export default function RootError({
     useEffect(() => {
         // Surface to server logs (Vercel captures these). Replace with
         // Sentry.captureException(error) once Sentry is wired.
-        console.error('[root-error-boundary]', error);
+        console.error('[global-error-boundary]', error);
     }, [error]);
 
     return (
@@ -49,7 +49,7 @@ export default function RootError({
                         Something went wrong.
                     </h1>
                     <p style={{ margin: '0 0 16px', fontSize: 14, color: '#666' }}>
-                        An unexpected error occurred. Please try again, and contact
+                        A critical error occurred. Please reload the page, and contact
                         support if the problem persists.
                     </p>
                     {error.digest && (
@@ -72,20 +72,20 @@ export default function RootError({
                         >
                             Try again
                         </button>
-                        <Link
-                            href="/"
+                        <button
+                            onClick={() => { window.location.href = '/'; }}
                             style={{
                                 padding: '8px 16px',
                                 background: 'white',
                                 color: '#333',
                                 border: '1px solid #e5e5e5',
                                 borderRadius: 4,
+                                cursor: 'pointer',
                                 fontSize: 14,
-                                textDecoration: 'none',
                             }}
                         >
                             Go home
-                        </Link>
+                        </button>
                     </div>
                 </div>
             </body>

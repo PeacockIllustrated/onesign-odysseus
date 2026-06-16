@@ -38,7 +38,7 @@ export default async function ApprovalsPage() {
     const raw = (approvals ?? []) as any[];
     const approvalIds = raw.map((r) => r.id);
 
-    let decisionsByApproval: Record<string, DecisionRow[]> = {};
+    const decisionsByApproval: Record<string, DecisionRow[]> = {};
     const subItemsById: Record<string, SubItemInfo> = {};
     const componentsById: Record<string, ComponentInfo> = {};
 

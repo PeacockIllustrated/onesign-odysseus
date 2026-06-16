@@ -77,7 +77,7 @@ export async function getItemBoard(): Promise<ItemBoardColumn[]> {
 
     // Get unique work_centre IDs
     const wcIds = [...new Set((items || []).map((i: any) => i.work_centre_id).filter(Boolean))];
-    let wcMap = new Map<string, WorkCentre>();
+    const wcMap = new Map<string, WorkCentre>();
     if (wcIds.length > 0) {
         const { data: wcs } = await supabase.from('work_centres').select('*').in('id', wcIds);
         (wcs || []).forEach((wc: any) => wcMap.set(wc.id, wc as WorkCentre));
@@ -162,7 +162,7 @@ export async function getJobDetail(jobId: string): Promise<JobDetail | null> {
         if (i.stage_id) allStageIds.add(i.stage_id);
     });
 
-    let stagesById: Map<string, ProductionStage> = new Map();
+    const stagesById: Map<string, ProductionStage> = new Map();
     if (allStageIds.size > 0) {
         const { data: stagesData } = await supabase
             .from('production_stages')
@@ -221,7 +221,7 @@ export async function getShopFloorQueue(stageSlug: string): Promise<JobItemWithJ
     const stageMap = new Map(stages.map(s => [s.id, s]));
 
     const wcIds = [...new Set(items.map((i: any) => i.work_centre_id).filter(Boolean))];
-    let wcMap = new Map<string, WorkCentre>();
+    const wcMap = new Map<string, WorkCentre>();
     if (wcIds.length > 0) {
         const { data: wcs } = await supabase.from('work_centres').select('*').in('id', wcIds);
         (wcs || []).forEach((wc: any) => wcMap.set(wc.id, wc as WorkCentre));

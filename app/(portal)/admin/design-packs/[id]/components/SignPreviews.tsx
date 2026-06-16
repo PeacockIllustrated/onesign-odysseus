@@ -172,19 +172,9 @@ export function SignPreviews({ pack }: SignPreviewsProps) {
         return () => clearTimeout(timer);
     }, [content, selectedSize, hasTypography, hasColours, handleSave]);
 
-    if (!hasTypography || !hasColours) {
-        return (
-            <div className="text-center py-12 bg-neutral-50 rounded-[var(--radius-md)] border border-neutral-200">
-                <Info size={32} className="mx-auto mb-3 text-neutral-400" />
-                <p className="text-sm text-neutral-600 mb-2">sign previews will appear here</p>
-                <p className="text-xs text-neutral-500">
-                    complete typography and colour selections to see live previews
-                </p>
-            </div>
-        );
-    }
-
-    // Generate dynamic SVG with custom content (memoized for performance)
+    // Generate dynamic SVG with custom content (memoized for performance).
+    // Must run BEFORE any early return so the hook is called unconditionally
+    // on every render (react-hooks/rules-of-hooks).
     const dynamicSVG = useMemo(() => {
         return generateSignWithContent(
             selectedType,
@@ -197,6 +187,18 @@ export function SignPreviews({ pack }: SignPreviewsProps) {
     }, [selectedType, selectedSize, content, graphicElements, pack.data_json.colours, pack.data_json.typography, pack.project_name]);
 
     const dimensions = getSignDimensions(selectedType, selectedSize);
+
+    if (!hasTypography || !hasColours) {
+        return (
+            <div className="text-center py-12 bg-neutral-50 rounded-[var(--radius-md)] border border-neutral-200">
+                <Info size={32} className="mx-auto mb-3 text-neutral-400" />
+                <p className="text-sm text-neutral-600 mb-2">sign previews will appear here</p>
+                <p className="text-xs text-neutral-500">
+                    complete typography and colour selections to see live previews
+                </p>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-4">
