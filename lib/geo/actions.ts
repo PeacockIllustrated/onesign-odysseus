@@ -2,6 +2,7 @@
 
 import { createAdminClient } from '@/lib/supabase-admin';
 import { revalidatePath } from 'next/cache';
+import { requireSuperAdminOrError } from '@/lib/auth';
 
 /**
  * Geocode a single site by calling postcodes.io with its postcode.
@@ -9,6 +10,8 @@ import { revalidatePath } from 'next/cache';
  * blocks the caller, never throws to the user.
  */
 export async function geocodeSite(siteId: string): Promise<void> {
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return;
     const supabase = createAdminClient();
 
     const { data: site } = await supabase
@@ -55,6 +58,8 @@ export async function geocodeSite(siteId: string): Promise<void> {
  * Polite 100ms delay between calls. Run from an admin console or a button.
  */
 export async function geocodeAllSites(): Promise<{ geocoded: number; skipped: number }> {
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { geocoded: 0, skipped: 0 };
     const supabase = createAdminClient();
 
     const { data: sites } = await supabase

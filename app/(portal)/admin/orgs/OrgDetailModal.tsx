@@ -103,9 +103,9 @@ export function OrgDetailModal({ org, open, onClose }: OrgDetailModalProps) {
         } else {
             // User not found, create them
             try {
-                targetUserId = await createPortalUser(addEmail.trim(), org.name);
-                const defaultPassword = `${org.name}@2026`.replace(/\s+/g, '');
-                alert(`New user created!\n\nEmail: ${addEmail.trim()}\nPassword: ${defaultPassword}\n\nPlease share these credentials with the user.`);
+                const created = await createPortalUser(addEmail.trim(), org.name);
+                targetUserId = created.id;
+                alert(`New user created!\n\nEmail: ${addEmail.trim()}\nPassword: ${created.password}\n\nPlease share these credentials with the user.`);
             } catch (err: any) {
                 console.error(err);
                 setError(err.message || 'Failed to create user');

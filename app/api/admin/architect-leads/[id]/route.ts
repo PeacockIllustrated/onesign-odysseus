@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from '@/lib/supabase-server';
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -11,6 +12,23 @@ export async function PATCH(
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
+        // Auth gate: super-admin only (mirrors generate-deliverables route).
+        // Without this, an anonymous caller could mutate architect_leads via
+        // the service-role client below.
+        const authClient = await createServerClient();
+        const { data: { user }, error: authError } = await authClient.auth.getUser();
+        if (authError || !user) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+        const { data: profile } = await authClient
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+        if (profile?.role !== 'super_admin') {
+            return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+        }
+
         const { id } = await params;
         const body = await request.json();
         const { status } = body;

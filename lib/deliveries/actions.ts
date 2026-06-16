@@ -26,18 +26,24 @@ export async function getDeliveryListAction(filters?: {
     status?: string;
     search?: string;
 }): Promise<Delivery[]> {
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return [];
     return getDeliveries(filters);
 }
 
 export async function getDeliveryWithItemsAction(
     deliveryId: string
 ): Promise<DeliveryWithItems | null> {
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return null;
     return getDeliveryWithItems(deliveryId);
 }
 
 export async function getDeliveryForJobAction(
     jobId: string
 ): Promise<Delivery | null> {
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return null;
     return getDeliveryForJob(jobId);
 }
 
@@ -56,6 +62,8 @@ export async function getJobsAvailableForDelivery(): Promise<
         contact_id: string | null;
     }>
 > {
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return [];
     const supabase = createAdminClient();
 
     // Fetch all active/completed jobs
@@ -622,6 +630,8 @@ export async function assignDriverToDelivery(
 ): Promise<{ ok: true } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'not authenticated' };
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { error: gate.error };
 
     const supabase = createAdminClient();
 
@@ -655,6 +665,8 @@ export async function rescheduleDelivery(
 ): Promise<{ ok: true } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'not authenticated' };
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { error: gate.error };
 
     const supabase = createAdminClient();
     const { error } = await supabase

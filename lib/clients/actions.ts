@@ -39,24 +39,32 @@ export async function getClientListAction(filters?: {
     search?: string;
     tag?: string;
 }): Promise<ClientSummary[]> {
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return [];
     return getClients(filters);
 }
 
 export async function getClientDetailAction(
     orgId: string
 ): Promise<ClientWithDetails | null> {
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return null;
     return getClientWithDetails(orgId);
 }
 
 export async function getContactsForOrgAction(
     orgId: string
 ): Promise<Contact[]> {
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return [];
     return getContactsForOrg(orgId);
 }
 
 export async function getSitesForOrgAction(
     orgId: string
 ): Promise<OrgSite[]> {
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return [];
     return getSitesForOrg(orgId);
 }
 
@@ -467,6 +475,8 @@ export async function deleteSiteAction(
 export async function getOrgContactsAndSitesAction(
     orgId: string
 ): Promise<{ contacts: Contact[]; sites: OrgSite[] }> {
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { contacts: [], sites: [] };
     const [contacts, sites] = await Promise.all([
         getContactsForOrg(orgId),
         getSitesForOrg(orgId),

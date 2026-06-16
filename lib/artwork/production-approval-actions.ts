@@ -13,7 +13,7 @@
 
 import { randomBytes } from 'crypto';
 import { createAdminClient } from '@/lib/supabase-admin';
-import { getUser } from '@/lib/auth';
+import { getUser, requireSuperAdminOrError } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 
 // =============================================================================
@@ -161,6 +161,8 @@ export async function getActiveProductionApprovalForJob(jobId: string): Promise<
       }
     | null
 > {
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return null;
     const supabase = createAdminClient();
     const { data } = await supabase
         .from('artwork_production_approvals')

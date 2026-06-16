@@ -21,6 +21,8 @@ type MaintenanceVisitRow = MaintenanceVisit & {
 export async function getMaintenanceVisits(filters?: {
     status?: string;
 }): Promise<MaintenanceVisit[]> {
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return [];
     const supabase = createAdminClient();
 
     let query = supabase
