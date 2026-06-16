@@ -39,7 +39,7 @@ export function ReportsClient({ orgs, reports }: ReportsClientProps) {
                         onChange={(e) => setFilterOrgId(e.target.value)}
                         className="px-3 py-1.5 text-sm border border-neutral-200 rounded-md bg-white"
                     >
-                        <option value="">All organisations</option>
+                        <option value="">All clients</option>
                         {orgs.map(org => (
                             <option key={org.id} value={org.id}>{org.name}</option>
                         ))}
@@ -59,7 +59,7 @@ export function ReportsClient({ orgs, reports }: ReportsClientProps) {
                         <table className="w-full">
                             <thead>
                                 <tr className="border-b border-neutral-200">
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Organisation</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Client</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Month</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Title</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Uploaded</th>

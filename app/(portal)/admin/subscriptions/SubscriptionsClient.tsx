@@ -67,7 +67,7 @@ export function SubscriptionsClient({ orgs, subscriptions }: SubscriptionsClient
                         <table className="w-full">
                             <thead>
                                 <tr className="border-b border-neutral-200">
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Organisation</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Client</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Package</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Term</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Ad Spend</th>

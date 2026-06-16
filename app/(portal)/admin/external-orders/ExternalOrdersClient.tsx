@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { Card } from '@/app/(portal)/components/ui';
 import { createBrowserClient } from '@/lib/supabase';
 import { formatDate, formatDateTime } from '@/lib/artwork/utils';
@@ -17,6 +18,7 @@ import {
     completeExternalOrder,
     cancelExternalOrder,
     deleteExternalOrder,
+    convertExternalOrderToQuote,
 } from '@/lib/external-orders/actions';
 
 interface Props {
@@ -466,6 +468,13 @@ function OrderActions({ o, onAct, isPending }: { o: ExternalOrder; onAct: ActRun
                     <Play size={12} /> in progress
                 </button>
             )}
+            {o.status !== 'converted' && o.status !== 'completed' && o.status !== 'cancelled' && !o.linked_quote_id && (
+                <button type="button" disabled={isPending}
+                    onClick={() => onAct(() => convertExternalOrderToQuote(o.id))}
+                    className="text-xs font-semibold px-2.5 py-1.5 rounded border border-[#4e7e8c]/40 bg-[#e8f0f3] text-[#3a5f6a] hover:bg-[#dce9ee] inline-flex items-center gap-1">
+                    <FileText size={12} /> convert to quote
+                </button>
+            )}
             {o.status !== 'completed' && o.status !== 'cancelled' && (
                 <button type="button" disabled={isPending}
                     onClick={() => onAct(() => completeExternalOrder(o.id))}
@@ -492,6 +501,12 @@ function OrderActions({ o, onAct, isPending }: { o: ExternalOrder; onAct: ActRun
                     className="text-xs font-semibold px-2.5 py-1.5 rounded border border-red-200 bg-white text-red-600 hover:bg-red-50 inline-flex items-center gap-1">
                     <Trash2 size={12} /> delete
                 </button>
+            )}
+            {o.linked_quote_id && (
+                <Link href={`/admin/quotes/${o.linked_quote_id}`}
+                    className="text-xs font-semibold px-2.5 py-1.5 rounded border border-neutral-200 bg-white text-[#4e7e8c] hover:bg-neutral-50 inline-flex items-center gap-1">
+                    <FileText size={12} /> view quote
+                </Link>
             )}
         </div>
     );

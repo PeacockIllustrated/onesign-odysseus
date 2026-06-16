@@ -552,8 +552,10 @@ export async function getDesignPacks(filters?: {
     }
 
     if (filters?.search) {
+        // Strip PostgREST filter metacharacters to prevent .or() injection.
+        const term = filters.search.replace(/[%,()]/g, '');
         query = query.or(
-            `project_name.ilike.%${filters.search}%,client_name.ilike.%${filters.search}%`
+            `project_name.ilike.%${term}%,client_name.ilike.%${term}%`
         );
     }
 

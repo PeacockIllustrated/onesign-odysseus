@@ -271,3 +271,102 @@ export async function deleteExternalOrder(id: string): Promise<Result<null>> {
     revalidatePath('/admin/external-orders');
     return okVoid();
 }
+
+/**
+ * Convert an external order into a draft quote — the previously-dead
+ * 'converted' status. Creates a quote pre-filled with the order's client
+ * snapshot, the active pricing set, a project name + customer reference drawn
+ * from the source order, and an internal notes summary; then links the order
+ * to that quote and flips its status to 'converted'. Staff add the priced
+ * line items on the quote itself. Idempotent: a re-convert returns the quote
+ * already linked rather than creating a second one.
+ */
+export async function convertExternalOrderToQuote(
+    id: string
+): Promise<Result<{ quoteId: string }>> {
+    if (!id) return err('order id is required');
+
+    const user = await getUser();
+    if (!user) return err('not authenticated');
+
+    const resolved = await resolveToTrackedId(id);
+    if (!resolved.ok) return err(resolved.error);
+    const orderId = resolved.data;
+
+    const supabase = await createServerClient();
+
+    const { data: orderRow, error: orderErr } = await supabase
+        .from('external_orders')
+        .select('*')
+        .eq('id', orderId)
+        .single();
+    if (orderErr || !orderRow) return err('order not found');
+    const order = orderRow as ExternalOrder;
+
+    // Idempotent: if already converted, hand back the existing quote.
+    if (order.linked_quote_id) return ok({ quoteId: order.linked_quote_id });
+    if (order.status === 'completed' || order.status === 'cancelled') {
+        return err(`cannot convert a ${order.status} order`);
+    }
+
+    // Quotes require a pricing set; use the active one.
+    const { data: pset } = await supabase
+        .from('pricing_sets')
+        .select('id')
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (!pset) return err('no active pricing set — activate one before converting orders');
+
+    const sourceLabel =
+        order.source_app === 'persimmon' ? 'Persimmon'
+        : order.source_app === 'mapleleaf' ? 'Mapleleaf'
+        : order.source_app === 'lynx' ? 'Lynx shop'
+        : 'External order';
+    const summary = [
+        order.item_summary || null,
+        order.total_pence != null ? `Order total: £${(order.total_pence / 100).toFixed(2)}` : null,
+    ].filter(Boolean).join('\n');
+    const notesInternal =
+        `Imported from ${sourceLabel}${order.external_ref ? ` order ${order.external_ref}` : ''}.`
+        + (summary ? `\n${summary}` : '');
+
+    const validUntil = new Date();
+    validUntil.setDate(validUntil.getDate() + 30);
+
+    const { data: quote, error: quoteErr } = await supabase
+        .from('quotes')
+        .insert({
+            customer_name: order.client_name,
+            customer_email: order.client_email,
+            customer_phone: order.client_phone,
+            pricing_set_id: pset.id,
+            org_id: order.linked_org_id,
+            status: 'draft',
+            project_name: `${sourceLabel}${order.external_ref ? ` — ${order.external_ref}` : ''}`,
+            customer_reference: order.external_ref,
+            notes_internal: notesInternal,
+            valid_until: validUntil.toISOString().split('T')[0],
+            created_by: user.id,
+        })
+        .select('id')
+        .single();
+    if (quoteErr || !quote) return err(quoteErr?.message ?? 'failed to create quote');
+
+    const { error: linkErr } = await supabase
+        .from('external_orders')
+        .update({ status: 'converted', linked_quote_id: quote.id })
+        .eq('id', orderId);
+    if (linkErr) {
+        // No multi-statement transaction over the JS client — best-effort
+        // rollback so a failed link doesn't strand an orphan draft quote
+        // (and a retry then re-creates cleanly rather than piling up drafts).
+        await supabase.from('quotes').delete().eq('id', quote.id);
+        return err(linkErr.message);
+    }
+
+    revalidatePath('/admin/external-orders');
+    revalidatePath('/admin/quotes');
+    return ok({ quoteId: quote.id as string });
+}

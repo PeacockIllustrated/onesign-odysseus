@@ -246,7 +246,7 @@ function NewInvoiceModal({
     }) {
         const orgId = quote.org_id || orgs[0]?.id;
         if (!orgId) {
-            onError('No organisation found');
+            onError('No client found');
             onClose();
             return;
         }

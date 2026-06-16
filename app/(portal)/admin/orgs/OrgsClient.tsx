@@ -29,13 +29,13 @@ export function OrgsClient({ initialOrgs, memberCounts, subscriptions }: OrgsCli
             <div className="flex justify-end mb-4">
                 <button onClick={() => setCreateOpen(true)} className="btn-primary flex items-center gap-2">
                     <Plus size={16} />
-                    Create Org
+                    Create Client
                 </button>
             </div>
 
             <Card>
                 {initialOrgs.length === 0 ? (
-                    <p className="text-sm text-neutral-500 py-8 text-center">No organisations yet</p>
+                    <p className="text-sm text-neutral-500 py-8 text-center">No clients yet</p>
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full">

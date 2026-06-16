@@ -705,7 +705,7 @@ export async function getJobItemDetailAction(itemId: string): Promise<JobItemDet
         if (i.stage_id) allStageIds.add(i.stage_id);
     });
 
-    let stagesById = new Map<string, ProductionStage>();
+    const stagesById = new Map<string, ProductionStage>();
     if (allStageIds.size > 0) {
         const { data: stagesData } = await supabase
             .from('production_stages')

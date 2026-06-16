@@ -119,7 +119,7 @@ export function GenerateDeliverablesModal({ orgs, subscriptions, open, onClose, 
                 <div>
                     <div className="flex items-center justify-between mb-2">
                         <label className="text-sm font-medium text-neutral-700">
-                            Select Organisations
+                            Select Clients
                         </label>
                         <button
                             type="button"
@@ -132,7 +132,7 @@ export function GenerateDeliverablesModal({ orgs, subscriptions, open, onClose, 
 
                     {orgsWithSubs.length === 0 ? (
                         <p className="text-sm text-neutral-500 py-4 text-center bg-neutral-50 rounded-lg">
-                            No organisations with active subscriptions
+                            No clients with active subscriptions
                         </p>
                     ) : (
                         <div className="space-y-2 max-h-64 overflow-y-auto border border-neutral-100 rounded-lg p-3">
@@ -185,7 +185,7 @@ export function GenerateDeliverablesModal({ orgs, subscriptions, open, onClose, 
                                 Generating... ({generated}/{selectedOrgs.length})
                             </>
                         ) : (
-                            <>Generate for {selectedOrgs.length} org(s)</>
+                            <>Generate for {selectedOrgs.length} client{selectedOrgs.length === 1 ? '' : 's'}</>
                         )}
                     </button>
                 </div>

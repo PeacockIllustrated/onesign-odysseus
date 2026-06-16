@@ -2,6 +2,7 @@
 'use client';
 
 import { useState, useEffect, useTransition } from 'react';
+import Link from 'next/link';
 import { X, Clock, AlertCircle, Plus, Truck } from 'lucide-react';
 import type { ProductionStage } from '@/lib/production/types';
 import {
@@ -392,12 +393,12 @@ export function JobDetailPanel({ itemId, onClose, stages }: JobDetailPanelProps)
                             ) : (
                                 <div className="bg-neutral-50 rounded p-3 text-center">
                                     <p className="text-sm text-neutral-500 mb-2">No delivery scheduled</p>
-                                    <a
+                                    <Link
                                         href="/admin/deliveries"
                                         className="text-xs text-[#4e7e8c] hover:underline"
                                     >
                                         Schedule Delivery &rarr;
-                                    </a>
+                                    </Link>
                                 </div>
                             )}
                         </div>

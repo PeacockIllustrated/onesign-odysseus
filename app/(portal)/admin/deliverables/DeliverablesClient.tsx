@@ -84,7 +84,7 @@ export function DeliverablesClient({ orgs, deliverables: initialDeliverables, su
                         onChange={(e) => setFilterOrgId(e.target.value)}
                         className="px-3 py-1.5 text-sm border border-neutral-200 rounded-md bg-white"
                     >
-                        <option value="">All organisations</option>
+                        <option value="">All clients</option>
                         {orgs.map(org => (
                             <option key={org.id} value={org.id}>{org.name}</option>
                         ))}

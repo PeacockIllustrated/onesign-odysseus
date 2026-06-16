@@ -215,7 +215,7 @@ export async function getProductionPacks(filters?: {
         query = query.eq('status', filters.status);
     }
     if (filters?.search) {
-        const term = filters.search.replace(/[%,]/g, ' ');
+        const term = filters.search.replace(/[%,()]/g, '');
         query = query.or(
             `title.ilike.%${term}%,client_name.ilike.%${term}%,project_name.ilike.%${term}%`,
         );

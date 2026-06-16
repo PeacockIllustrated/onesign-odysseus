@@ -14,6 +14,8 @@ import {
 } from './types';
 
 export async function getActiveDrivers(): Promise<Driver[]> {
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return [];
     const supabase = createAdminClient();
     const { data } = await supabase
         .from('drivers')
@@ -24,6 +26,8 @@ export async function getActiveDrivers(): Promise<Driver[]> {
 }
 
 export async function getAllDrivers(): Promise<Driver[]> {
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return [];
     const supabase = createAdminClient();
     const { data } = await supabase
         .from('drivers')

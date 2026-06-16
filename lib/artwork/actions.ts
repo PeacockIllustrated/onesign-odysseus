@@ -1478,7 +1478,7 @@ export async function getArtworkJobs(
     }
 
     if (filters?.search) {
-        const s = filters.search.replace(/[%,]/g, '');
+        const s = filters.search.replace(/[%,()]/g, '');
         query = query.or(
             `job_name.ilike.%${s}%,job_reference.ilike.%${s}%,client_name_snapshot.ilike.%${s}%`
         );

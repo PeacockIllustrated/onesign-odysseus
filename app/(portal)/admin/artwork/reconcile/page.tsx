@@ -22,13 +22,13 @@ export default async function ReconcilePage() {
             <div className="p-6 max-w-3xl mx-auto">
                 <PageHeader
                     title="artwork reconciliation"
-                    description="link historic artwork jobs to organisations"
+                    description="link historic artwork jobs to clients"
                 />
                 <Card>
                     <div className="text-center py-12">
                         <p className="text-neutral-700 font-medium mb-2">nothing to reconcile.</p>
                         <p className="text-sm text-neutral-500">
-                            every artwork job is linked to an organisation or marked as an orphan.
+                            every artwork job is linked to a client or marked as an orphan.
                         </p>
                         <Link href="/admin/artwork" className="btn-primary mt-6 inline-block">
                             back to dashboard

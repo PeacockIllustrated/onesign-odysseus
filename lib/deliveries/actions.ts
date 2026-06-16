@@ -26,18 +26,24 @@ export async function getDeliveryListAction(filters?: {
     status?: string;
     search?: string;
 }): Promise<Delivery[]> {
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return [];
     return getDeliveries(filters);
 }
 
 export async function getDeliveryWithItemsAction(
     deliveryId: string
 ): Promise<DeliveryWithItems | null> {
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return null;
     return getDeliveryWithItems(deliveryId);
 }
 
 export async function getDeliveryForJobAction(
     jobId: string
 ): Promise<Delivery | null> {
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return null;
     return getDeliveryForJob(jobId);
 }
 
@@ -56,6 +62,8 @@ export async function getJobsAvailableForDelivery(): Promise<
         contact_id: string | null;
     }>
 > {
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return [];
     const supabase = createAdminClient();
 
     // Fetch all active/completed jobs
@@ -421,10 +429,12 @@ export async function generatePodLink(
 
     // Generate secure token (same pattern as artwork approval)
     const token = randomBytes(32).toString('hex');
+    // Expire the link after 30 days (a delivery may be scheduled days out).
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
     const { error } = await supabase
         .from('deliveries')
-        .update({ pod_token: token, pod_status: 'pending' })
+        .update({ pod_token: token, pod_status: 'pending', pod_token_expires_at: expiresAt })
         .eq('id', deliveryId);
 
     if (error) {
@@ -464,6 +474,10 @@ export async function getPodByToken(
 
     if (error || !delivery) {
         return { error: 'Invalid link', status: 'invalid' };
+    }
+
+    if (delivery.pod_token_expires_at && new Date(delivery.pod_token_expires_at) < new Date()) {
+        return { error: 'This link has expired', status: 'invalid' };
     }
 
     if (delivery.pod_status === 'signed') {
@@ -539,12 +553,16 @@ export async function submitPod(
     // Fetch delivery by pod_token
     const { data: delivery, error: fetchError } = await supabase
         .from('deliveries')
-        .select('id, pod_status')
+        .select('id, pod_status, pod_token_expires_at')
         .eq('pod_token', token)
         .single();
 
     if (fetchError || !delivery) {
         return { error: 'Invalid link' };
+    }
+
+    if (delivery.pod_token_expires_at && new Date(delivery.pod_token_expires_at) < new Date()) {
+        return { error: 'This link has expired' };
     }
 
     if (delivery.pod_status !== 'pending') {
@@ -582,12 +600,16 @@ export async function refusePod(
     // Fetch delivery by pod_token
     const { data: delivery, error: fetchError } = await supabase
         .from('deliveries')
-        .select('id, pod_status')
+        .select('id, pod_status, pod_token_expires_at')
         .eq('pod_token', token)
         .single();
 
     if (fetchError || !delivery) {
         return { error: 'Invalid link' };
+    }
+
+    if (delivery.pod_token_expires_at && new Date(delivery.pod_token_expires_at) < new Date()) {
+        return { error: 'This link has expired' };
     }
 
     if (delivery.pod_status !== 'pending') {
@@ -622,6 +644,8 @@ export async function assignDriverToDelivery(
 ): Promise<{ ok: true } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'not authenticated' };
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { error: gate.error };
 
     const supabase = createAdminClient();
 
@@ -655,6 +679,8 @@ export async function rescheduleDelivery(
 ): Promise<{ ok: true } | { error: string }> {
     const user = await getUser();
     if (!user) return { error: 'not authenticated' };
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return { error: gate.error };
 
     const supabase = createAdminClient();
     const { error } = await supabase
