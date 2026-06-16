@@ -29,22 +29,26 @@ pill hides; the dispatch route returns 503).
 Apply migration `069_push_subscriptions.sql` (creates the per-user subscription
 table with RLS).
 
-## 3. Supabase Database Webhook → dispatcher
+## 3. Notifications → dispatcher (wired in SQL — migration 070)
 
-Dashboard → **Database → Webhooks → Create**:
+Already implemented as `070_push_notification_trigger.sql`: a `pg_net`
+`AFTER INSERT` trigger on `public.notifications` POSTs each new row to
+`https://onesign-odysseus.vercel.app/api/push/dispatch` with
+`Authorization: Bearer <push_dispatch_secret>`. `/api/push/dispatch` verifies
+the secret and fans the row out to every subscribed device, pruning any that
+return 404/410. The trigger is exception-guarded, so a pg_net/Vault hiccup can
+never roll back a notification insert.
 
-- **Table:** `public.notifications`
-- **Events:** `Insert`
-- **Type:** HTTP Request — `POST`
-- **URL:** `https://<your-app-domain>/api/push/dispatch`
-- **HTTP Header:** `Authorization: Bearer <PUSH_DISPATCH_SECRET>` (same value as the env var)
+**Only manual step:** store the Bearer token in **Supabase Vault** under the
+name `push_dispatch_secret` (must equal `PUSH_DISPATCH_SECRET` in the app env).
+Until it's set, the trigger reads NULL and safely no-ops.
 
-On each new notification the webhook POSTs the row; `/api/push/dispatch`
-verifies the secret and fans it out to all subscribed devices, pruning any that
-return 404/410.
+- **Vault UI:** Project → Vault → New secret → name `push_dispatch_secret`,
+  value = your `PUSH_DISPATCH_SECRET`.
+- **or SQL editor:** `select vault.create_secret('<PUSH_DISPATCH_SECRET>', 'push_dispatch_secret');`
 
-> Alternative to the dashboard webhook: a `pg_net` trigger on `notifications`.
-> The webhook is preferred — no extension, no secret committed to SQL.
+> If the production domain changes, update the URL inside `notify_push_dispatch()`
+> (migration 070).
 
 ## 4. Install + enable (per device)
 
