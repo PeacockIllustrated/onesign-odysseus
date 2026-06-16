@@ -92,12 +92,11 @@ onesign-odysseus/
 │   │   ├── deliverables/      # Client deliverables view
 │   │   ├── reports/           # Client reports view
 │   │   ├── settings/          # Org settings
+│   │   ├── shop-floor/        # Shop-floor department queue (tablets; own minimal layout)
+│   │   ├── components/        # Portal components (Sidebar, Topbar, ui/)
 │   │   └── layout.tsx         # Portal layout (sidebar + topbar)
-│   ├── (marketing)/           # ← Marketing pages (was /growth + /architects)
-│   │   ├── growth/            # Marketing landing + packages + enquiry wizard
-│   │   └── architects/        # Architect lead capture wizard
-│   │   ├── shop-floor/        # Shop-floor department queue (tablets)
-│   │   └── layout.tsx         # Portal layout (sidebar + topbar)
+│   │   # NOTE: the old (marketing) group (/growth + /architects wizards) has been
+│   │   # removed; only the legacy architect-leads / leads API endpoints remain.
 │   ├── (print)/               # Print-specific layouts
 │   ├── approve/               # External tokenised artwork approval
 │   │   └── artwork/[token]/
@@ -144,7 +143,7 @@ onesign-odysseus/
 │   ├── supabase-admin.ts      # Admin/service-role Supabase
 │   └── __mocks__/             # Vitest mocks (Supabase, etc.)
 ├── supabase/
-│   └── migrations/            # 50 migrations — see "Database schema" section
+│   └── migrations/            # 66 migrations — see "Database schema" section
 ├── public/
 │   └── fonts/
 ├── CLAUDE.md                  # This file
@@ -153,7 +152,7 @@ onesign-odysseus/
 └── next.config.ts
 ```
 
-## Database schema (50 migrations as of 2026-04)
+## Database schema (66 migrations as of 2026-06; numbered to 067)
 
 Migration 031 is intentionally absent (numbering gap from an early draft that was folded into 030/032).
 
@@ -174,7 +173,7 @@ Migration 031 is intentionally absent (numbering gap from an early draft that wa
 | 026 | quote enhancements | contact_id/site_id, project_name, customer_reference |
 | 041 | generic quote items | Quote items no longer restricted to `panel_letters_v1`; artwork inherits site + snapshot on approval |
 
-### Artwork compliance (015–020, 029, 030, 032, 036–040, 043–046)
+### Artwork compliance (015–020, 029, 030, 032, 036–040, 043–046, 051, 053–054)
 | 015–018 | `artwork_jobs`, `artwork_components`, `artwork_component_items`, `artwork_component_versions`, `artwork_production_checks`, `artwork_approvals` | Compliance workflow + external token-based client approval |
 | 019 | cover image | `artwork_jobs.cover_image_url` for dashboards |
 | 020 | panel size + paint colour | Extra spec fields for signage components |
@@ -188,6 +187,8 @@ Migration 031 is intentionally absent (numbering gap from an early draft that wa
 | 045 | approval comments | Free-text client feedback alongside signature |
 | 046 | changes_requested status | Lets client request revisions without approving |
 | 051 | per-component decisions | `artwork_component_decisions` table — client approves each component individually or requests changes with a per-line comment; overall approval status derived |
+| 053 | per-sub-item decisions | `artwork_component_decisions` gains `sub_item_id` — each sub-item is a design variant the client approves (or tweaks) individually; two partial unique indexes let per-sub-item and whole-component decisions coexist |
+| 054 | approved-with-feedback | Approve + a comment is not a clean sign-off: the 052 notifications trigger reads `client_comments` and upgrades the event to `severity='urgent'` ("read the feedback") |
 
 ### Production pipeline (024–025, 028, 042)
 | 024 | `production_stages`, `production_jobs`, `job_items`, `job_stage_log`, `department_instructions`, `work_centres` | Kanban + shop-floor infrastructure |
@@ -205,14 +206,27 @@ Migration 031 is intentionally absent (numbering gap from an early draft that wa
 | 049 | `drivers` | Driver roster |
 | 050 | deliveries.driver_id | Links deliveries to drivers (ON DELETE SET NULL) |
 
+### Notifications, external orders, production sign-off (052, 055–057)
+| 052 | `notifications` + Realtime triggers | Persisted dashboard "Needs Attention" feed. Triggers on `artwork_approvals` (→ approved / changes_requested) and `shop_floor_flags` (→ open) insert a row; dismiss state survives sessions; Realtime-published |
+| 055 | `external_orders` | Unified inbox for orders placed via external Onesign apps (Persimmon, Mapleleaf, onesign-lynx shop). Raw payload preserved; staff acknowledge then convert / complete / cancel — never auto-converted |
+| 056 | Persimmon live | Adds `psp_orders` to the Realtime publication + a SECURITY DEFINER trigger that drops a `notifications` row on each new Persimmon order; surfaced at `/admin/external-orders` |
+| 057 | production sign-off | `artwork_production_approvals` (64-hex token) backs the unauth `/production-sign-off/[token]` surface — Chris / John tick each sub-item before release, separate from the designer UI (same token-as-gate invariant as §3) |
+
 ### Visualiser + backshop screen + public studio (058–060)
 | 058 | `visualiser_designs` | Saved folded-aluminium panel visualiser designs (params_json + flattened aperture SVG) |
 | 059 | `backshop_items` + `backshop` storage bucket | Workshop TV production board — snapshot of a pushed design (name / specs / 3D thumbnail / reference PDF) plus contextual production check gates. Base gates Designed / Cut / Painted / Assembled, plus Push-through / Vinyl / Illumination / Stood-off when the design's construction has them (the keys present in `checks` ARE the item's stages). Realtime-published; PDF in the private `backshop` bucket |
 | 060 | `design_requests` (+ `design_request_number_seq`) | Inbound leads from the PUBLIC `/design` studio — a customer's PanelParams + flattened SVG + face-on PNG thumbnail plus their contact details. `DSR-YYYY-NNNNNN` reference via trigger (same pattern as invoices). Status enum `new/reviewing/quoted/won/closed` (`quoted` is the future Stripe-package hook). Super-admin-only RLS; public submissions are written by a service-role server action (no anon policy), mirroring the tokenised approval/delivery pattern. Nullable `design_id` links to a promoted `visualiser_designs` row. Realtime-published for a live admin inbox |
 
-### Nesting persistence + built-up returns (064–065)
+### Site surveys + production packs (061–063)
+| 061 | `site_surveys`, `survey_items`, `survey_photos` | Digitised on-site measure-up (ref `SVY-YYYY-NNNNNN`). Sits UPSTREAM of a quote, so `org_id`/`site_id`/`contact_id` are nullable (free-text `client_name`/`site_address` fallbacks) plus an optional `maintenance_visit_id` link; photos live in a private `site-surveys` bucket via the service role |
+| 062 | survey photo size | Photo-first survey UX: per-photo real-world `sign_width_mm`/`sign_height_mm` (mm) alongside image pixel dims used to align the annotation overlay; no structured per-item measurement form |
+| 063 | `production_packs` | Block-based JSONB works-pack builder (à la `design_packs`) for detailed, on-brand internal build documents. Standalone in v1; soft `linked_quote_id`/`linked_artwork_job_id` seams (no FK) for a later wire-up |
+
+### Studio persistence: nesting, returns, binder, LED (064–067)
 | 064 | `nesting_designs` | Saved acrylic nests — uploaded artwork SVG + run config; super-admin write, any-authed read |
 | 065 | `letter_return_jobs` (+ `nesting_designs.source_kind` / `source_job_id`) | Built-up letter return jobs: read outlined letters, break the side-wall return strips at sharp corners + the stock length (outer edges AND counters), and push faces + returns to the nester as ONE linked nest (same brass). `source_job_id` FK links the nest back to its job both ways (nester banner ↔ job's "nested here" list); ON DELETE SET NULL |
+| 066 | `binder_assets` | Reusable SVG logo library ("Save to binder" in the vectoriser + a binder picker at every SVG-upload point — visualiser / neon / returns / nesting). Super-admin write, any-authed read/create; optional `org_id` (ON DELETE SET NULL) |
+| 067 | `led_layout_designs` | Persists the LED layout & wiring tool (module layout → runs → drivers → wiring PDF). Optional `source_design_id` back-link to `visualiser_designs` (ON DELETE SET NULL) |
 
 ## Key architectural decisions
 
