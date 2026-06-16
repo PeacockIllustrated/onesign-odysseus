@@ -516,7 +516,22 @@ export async function submitApproval(
     // that have no sub-items still need a single component-level decision.
     const decisions = validation.data.component_decisions ?? [];
     let overallStatus: 'approved' | 'changes_requested' = 'approved';
-    {
+
+    // Variant-based visual approvals (the VariantPicker path) carry the
+    // client's choice in `variant_selections`, NOT in `component_decisions`.
+    // Those jobs have no artwork_component_items, so the per-sub-item
+    // validation below treats every component as a "no sub-items" component
+    // and demands a component-level decision the variant path never sends —
+    // which wrongly rejected the sign-off with "every component must be
+    // approved or have changes requested", left the approval row `pending`,
+    // and so the job stayed stuck in_progress with the client unable to
+    // accept anything. The variant selections were already validated above,
+    // so skip this block for that path.
+    const isVariantPath =
+        job?.job_type === 'visual_approval' &&
+        (validation.data.variant_selections?.length ?? 0) > 0;
+
+    if (!isVariantPath) {
         const { data: jobComponents } = await supabase
             .from('artwork_components')
             .select('id, sub_items:artwork_component_items(id)')
