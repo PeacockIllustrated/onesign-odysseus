@@ -17,6 +17,7 @@ import {
     AlignLeft,
     ArrowLeft,
     BadgeCheck,
+    Check,
     ChevronDown,
     ChevronLeft,
     ChevronRight,
@@ -308,6 +309,32 @@ async function pdfPageToFile(
             file: new File([blob], `page-${pageNumber}.png`, { type: 'image/png' }),
             aspect: base.height > 0 ? base.width / base.height : 0,
         };
+    } finally {
+        await task.destroy();
+    }
+}
+
+/** Render a PDF page to a preview data URL — client-side only, NO upload. The
+ *  page picker uses this so the user can see each page and commit only the one
+ *  they want, instead of blind-uploading page 1. */
+async function pdfPageToDataUrl(file: File, pageNumber: number, maxW = 760): Promise<string | null> {
+    const pdfjs = await getPdfjs();
+    const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
+    const doc = await task.promise;
+    try {
+        const page = await doc.getPage(Math.min(Math.max(1, pageNumber), doc.numPages));
+        const base = page.getViewport({ scale: 1 });
+        const scale = Math.min(2, maxW / base.width);
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(viewport.width);
+        canvas.height = Math.round(viewport.height);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return null;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvas, canvasContext: ctx, viewport }).promise;
+        return canvas.toDataURL('image/png');
     } finally {
         await task.destroy();
     }
@@ -1264,14 +1291,89 @@ function BlockBody({
     }
 }
 
-function PdfPager({ page, numPages, busy, onChange }: { page: number; numPages: number; busy: boolean; onChange: (p: number) => void }) {
-    if (numPages <= 1) return null;
+/** PDF page picker: preview each page client-side and commit only the chosen
+ *  one. `onUse(page)` fires when the user confirms; the parent then rasterises
+ *  that page at full resolution and uploads it. */
+function PdfPagePicker({
+    file,
+    busy,
+    onUse,
+    onCancel,
+}: {
+    file: File;
+    busy: boolean;
+    onUse: (page: number) => void;
+    onCancel: () => void;
+}) {
+    const [numPages, setNumPages] = useState(0);
+    const [page, setPage] = useState(1);
+    const [preview, setPreview] = useState<string | null>(null);
+    const [rendering, setRendering] = useState(true);
+
+    // Count pages once per file.
+    useEffect(() => {
+        let alive = true;
+        setPage(1);
+        pdfPageCount(file)
+            .then((n) => { if (alive) setNumPages(n); })
+            .catch(() => { if (alive) setNumPages(1); });
+        return () => { alive = false; };
+    }, [file]);
+
+    // Re-render the preview whenever the page changes.
+    useEffect(() => {
+        let alive = true;
+        setRendering(true);
+        pdfPageToDataUrl(file, page)
+            .then((url) => { if (alive) { setPreview(url); setRendering(false); } })
+            .catch(() => { if (alive) { setPreview(null); setRendering(false); } });
+        return () => { alive = false; };
+    }, [file, page]);
+
+    const go = (p: number) => { if (p >= 1 && (numPages === 0 || p <= numPages)) setPage(p); };
+
     return (
-        <div className="flex items-center gap-1.5">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">PDF page</span>
-            <button type="button" disabled={busy || page <= 1} onClick={() => onChange(page - 1)} className="p-1 rounded-[var(--radius-sm)] hover:bg-neutral-100 disabled:opacity-30"><ChevronLeft size={14} /></button>
-            <span className="text-xs tabular-nums w-12 text-center">{page} / {numPages}</span>
-            <button type="button" disabled={busy || page >= numPages} onClick={() => onChange(page + 1)} className="p-1 rounded-[var(--radius-sm)] hover:bg-neutral-100 disabled:opacity-30"><ChevronRight size={14} /></button>
+        <div className="border border-[#4e7e8c]/40 rounded-[var(--radius-sm)] bg-[#f7fafb] p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-[#4e7e8c]">Choose a page to upload</span>
+                <span className="text-xs text-neutral-500 truncate max-w-[48%]" title={file.name}>{file.name}</span>
+            </div>
+            <div className="flex items-center justify-center bg-white border border-neutral-200 rounded-[var(--radius-sm)] overflow-hidden" style={{ minHeight: 220 }}>
+                {rendering ? (
+                    <Loader2 size={20} className="animate-spin text-neutral-300" />
+                ) : preview ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={preview} alt={`Page ${page}`} className="max-w-full max-h-[340px] object-contain" />
+                ) : (
+                    <span className="text-xs text-neutral-400 px-3 text-center">Couldn&rsquo;t render this page</span>
+                )}
+            </div>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                    <button type="button" disabled={page <= 1} onClick={() => go(page - 1)} className="p-1 rounded-[var(--radius-sm)] hover:bg-neutral-100 disabled:opacity-30"><ChevronLeft size={15} /></button>
+                    <span className="text-xs tabular-nums inline-flex items-center">Page
+                        <input
+                            type="number" min={1} max={numPages || 1} value={page}
+                            onChange={(e) => go(Number(e.target.value))}
+                            className="w-12 mx-1 px-1 py-0.5 text-center border border-neutral-200 rounded-[var(--radius-sm)]"
+                        />
+                        / {numPages || '…'}
+                    </span>
+                    <button type="button" disabled={numPages > 0 && page >= numPages} onClick={() => go(page + 1)} className="p-1 rounded-[var(--radius-sm)] hover:bg-neutral-100 disabled:opacity-30"><ChevronRight size={15} /></button>
+                </div>
+                <div className="flex items-center gap-3">
+                    <button type="button" onClick={onCancel} disabled={busy} className="text-xs text-neutral-500 hover:text-neutral-800">Cancel</button>
+                    <button
+                        type="button"
+                        onClick={() => onUse(page)}
+                        disabled={busy || rendering || !preview}
+                        className="text-xs inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-sm)] bg-[#4e7e8c] text-white font-semibold hover:bg-[#3a5f6a] disabled:opacity-50"
+                    >
+                        {busy ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                        Use page {page}
+                    </button>
+                </div>
+            </div>
         </div>
     );
 }
@@ -1295,40 +1397,35 @@ function MediaBody({
     uploadImage: (file: File) => Promise<string | null>;
 }) {
     const [uploading, setUploading] = useState(false);
-    const [pdfFile, setPdfFile] = useState<File | null>(null);
-    const [numPages, setNumPages] = useState(1);
-    const [page, setPage] = useState(1);
+    const [picking, setPicking] = useState<File | null>(null);
     const fileRef = useRef<HTMLInputElement>(null);
-
-    async function applyPdfPage(file: File, p: number) {
-        const res = await pdfPageToFile(file, p);
-        if (!res) return;
-        const url = await uploadImage(res.file);
-        if (url) onChange({ ...block, url });
-    }
 
     async function pick(file: File | undefined) {
         if (!file) return;
+        // PDFs open the page picker; everything else uploads straight away.
+        if (isPdf(file)) { setPicking(file); return; }
         setUploading(true);
         try {
-            if (isPdf(file)) {
-                const n = await pdfPageCount(file);
-                setPdfFile(file); setNumPages(n); setPage(1);
-                await applyPdfPage(file, 1);
-            } else {
-                setPdfFile(null); setNumPages(1); setPage(1);
-                const url = await uploadImage(file);
-                if (url) onChange({ ...block, url });
-            }
+            const url = await uploadImage(file);
+            if (url) onChange({ ...block, url });
         } finally {
             setUploading(false);
         }
     }
 
-    async function changePage(p: number) {
-        if (!pdfFile) return;
-        setUploading(true); setPage(p);
-        try { await applyPdfPage(pdfFile, p); } finally { setUploading(false); }
+    async function usePdfPage(p: number) {
+        if (!picking) return;
+        setUploading(true);
+        try {
+            const res = await pdfPageToFile(picking, p);
+            if (res) {
+                const url = await uploadImage(res.file);
+                if (url) onChange({ ...block, url });
+            }
+        } finally {
+            setUploading(false);
+            setPicking(null);
+        }
     }
 
     return (
@@ -1348,10 +1445,10 @@ function MediaBody({
                         {uploading ? <Loader2 size={15} className="animate-spin" /> : <ImagePlus size={15} />}
                         {uploading ? 'uploading…' : block.url ? 'Replace render / photo' : 'Upload render / photo / PDF'}
                     </button>
-                    <PdfPager page={page} numPages={numPages} busy={uploading} onChange={changePage} />
                     <input className={inputCls} value={block.caption} onChange={(e) => onChange({ ...block, caption: e.target.value })} placeholder="Caption (optional)" />
                 </div>
             </div>
+            {picking && <PdfPagePicker file={picking} busy={uploading} onUse={usePdfPage} onCancel={() => setPicking(null)} />}
             <div className="flex items-center gap-4">
                 <label className="text-xs text-neutral-500 inline-flex items-center gap-1.5">
                     Fit
@@ -1381,48 +1478,43 @@ function TechnicalBody({
     uploadImage: (file: File) => Promise<string | null>;
 }) {
     const [uploading, setUploading] = useState(false);
-    const [pdfFile, setPdfFile] = useState<File | null>(null);
-    const [numPages, setNumPages] = useState(1);
-    const [page, setPage] = useState(1);
+    const [picking, setPicking] = useState<File | null>(null);
     const fileRef = useRef<HTMLInputElement>(null);
-
-    async function applyPdfPage(file: File, p: number) {
-        const res = await pdfPageToFile(file, p);
-        if (!res) return;
-        const url = await uploadImage(res.file);
-        if (url) onChange({ ...block, url, isSvg: false, aspect: res.aspect || block.aspect });
-    }
 
     async function pick(file: File | undefined) {
         if (!file) return;
+        // PDFs open the page picker; SVG/raster files are read + uploaded now.
+        if (isPdf(file)) { setPicking(file); return; }
         setUploading(true);
         try {
-            if (isPdf(file)) {
-                const n = await pdfPageCount(file);
-                setPdfFile(file); setNumPages(n); setPage(1);
-                await applyPdfPage(file, 1);
-            } else {
-                setPdfFile(null); setNumPages(1); setPage(1);
-                const [url, info] = await Promise.all([uploadImage(file), analyzeDrawing(file)]);
-                if (!url) return;
-                onChange({
-                    ...block,
-                    url,
-                    isSvg: info.isSvg,
-                    aspect: info.aspect || block.aspect,
-                    widthMm: info.widthMm ?? block.widthMm,
-                    heightMm: info.heightMm ?? block.heightMm,
-                });
-            }
+            const [url, info] = await Promise.all([uploadImage(file), analyzeDrawing(file)]);
+            if (!url) return;
+            onChange({
+                ...block,
+                url,
+                isSvg: info.isSvg,
+                aspect: info.aspect || block.aspect,
+                widthMm: info.widthMm ?? block.widthMm,
+                heightMm: info.heightMm ?? block.heightMm,
+            });
         } finally {
             setUploading(false);
         }
     }
 
-    async function changePage(p: number) {
-        if (!pdfFile) return;
-        setUploading(true); setPage(p);
-        try { await applyPdfPage(pdfFile, p); } finally { setUploading(false); }
+    async function usePdfPage(p: number) {
+        if (!picking) return;
+        setUploading(true);
+        try {
+            const res = await pdfPageToFile(picking, p);
+            if (res) {
+                const url = await uploadImage(res.file);
+                if (url) onChange({ ...block, url, isSvg: false, aspect: res.aspect || block.aspect });
+            }
+        } finally {
+            setUploading(false);
+            setPicking(null);
+        }
     }
 
     function setWidth(mm: number | null) {
@@ -1459,11 +1551,12 @@ function TechnicalBody({
                         </button>
                         {block.isSvg && <span className="text-[10px] font-bold uppercase tracking-wide text-[#4e7e8c] bg-[#e8f0f3] px-1.5 py-0.5 rounded">SVG · vector</span>}
                     </div>
-                    <PdfPager page={page} numPages={numPages} busy={uploading} onChange={changePage} />
                     <p className="text-xs text-neutral-500 leading-snug">{scaleNote}</p>
                     <input className={inputCls} value={block.caption} onChange={(e) => onChange({ ...block, caption: e.target.value })} placeholder="Caption (optional, e.g. Section detail)" />
                 </div>
             </div>
+
+            {picking && <PdfPagePicker file={picking} busy={uploading} onUse={usePdfPage} onCancel={() => setPicking(null)} />}
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
                 <div>
