@@ -70,7 +70,7 @@ function LoginForm() {
             {/* Error messages */}
             {(error || errorParam) && (
                 <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-[var(--radius-sm)] text-sm text-red-700">
-                    {error || (errorParam === 'no_org' ? 'Your account is not associated with any organisation.' : errorParam)}
+                    {error || (errorParam === 'no_org' ? 'Your account is not associated with any client.' : errorParam)}
                 </div>
             )}
 

@@ -98,7 +98,7 @@ export function UploadReportModal({ orgs, open, onClose, onSuccess }: UploadRepo
 
                 <div>
                     <label className="block text-sm font-medium text-neutral-700 mb-1">
-                        Organisation *
+                        Client *
                     </label>
                     <select
                         value={orgId}
@@ -106,7 +106,7 @@ export function UploadReportModal({ orgs, open, onClose, onSuccess }: UploadRepo
                         className="w-full px-3 py-2 border border-neutral-200 rounded-md"
                         required
                     >
-                        <option value="">Select an organisation...</option>
+                        <option value="">Select a client...</option>
                         {orgs.map(org => (
                             <option key={org.id} value={org.id}>{org.name}</option>
                         ))}

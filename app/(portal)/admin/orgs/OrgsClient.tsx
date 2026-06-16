@@ -35,7 +35,7 @@ export function OrgsClient({ initialOrgs, memberCounts, subscriptions }: OrgsCli
 
             <Card>
                 {initialOrgs.length === 0 ? (
-                    <p className="text-sm text-neutral-500 py-8 text-center">No organisations yet</p>
+                    <p className="text-sm text-neutral-500 py-8 text-center">No clients yet</p>
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full">

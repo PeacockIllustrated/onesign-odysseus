@@ -214,14 +214,14 @@ export function ConvertLeadWizard({ lead, open, onClose, onSuccess }: ConvertLea
                 {/* Step: Create Org */}
                 {step === 'org' && (
                     <div className="space-y-4">
-                        <h3 className="font-semibold text-neutral-900">Create Organisation</h3>
+                        <h3 className="font-semibold text-neutral-900">Create Client</h3>
                         <p className="text-sm text-neutral-500">
-                            Create a new org for <strong>{lead.company_name}</strong>
+                            Create a new client for <strong>{lead.company_name}</strong>
                         </p>
 
                         <div>
                             <label className="block text-sm font-medium text-neutral-700 mb-1">
-                                Organisation Name
+                                Client Name
                             </label>
                             <input
                                 type="text"
@@ -392,7 +392,7 @@ export function ConvertLeadWizard({ lead, open, onClose, onSuccess }: ConvertLea
 
                         <div className="bg-neutral-50 rounded-lg p-4 space-y-3">
                             <div className="flex justify-between text-sm">
-                                <span className="text-neutral-500">Organisation:</span>
+                                <span className="text-neutral-500">Client:</span>
                                 <span className="font-medium">{orgName}</span>
                             </div>
                             <div className="flex justify-between text-sm">

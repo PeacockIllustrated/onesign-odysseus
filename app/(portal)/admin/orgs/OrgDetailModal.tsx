@@ -153,7 +153,7 @@ export function OrgDetailModal({ org, open, onClose }: OrgDetailModalProps) {
     }
 
     async function handleRemoveMember(memberId: string) {
-        if (!confirm('Remove this member from the organisation?')) return;
+        if (!confirm('Remove this member from the client?')) return;
 
         const supabase = createBrowserClient();
         await supabase
