@@ -429,10 +429,12 @@ export async function generatePodLink(
 
     // Generate secure token (same pattern as artwork approval)
     const token = randomBytes(32).toString('hex');
+    // Expire the link after 30 days (a delivery may be scheduled days out).
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
     const { error } = await supabase
         .from('deliveries')
-        .update({ pod_token: token, pod_status: 'pending' })
+        .update({ pod_token: token, pod_status: 'pending', pod_token_expires_at: expiresAt })
         .eq('id', deliveryId);
 
     if (error) {
@@ -472,6 +474,10 @@ export async function getPodByToken(
 
     if (error || !delivery) {
         return { error: 'Invalid link', status: 'invalid' };
+    }
+
+    if (delivery.pod_token_expires_at && new Date(delivery.pod_token_expires_at) < new Date()) {
+        return { error: 'This link has expired', status: 'invalid' };
     }
 
     if (delivery.pod_status === 'signed') {

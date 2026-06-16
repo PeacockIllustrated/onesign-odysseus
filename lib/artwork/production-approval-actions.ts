@@ -108,6 +108,8 @@ export async function generateProductionApprovalLink(
         .is('revoked_at', null);
 
     const token = randomBytes(32).toString('hex');
+    // Expire the link after 30 days (internal reviewers may sit on it).
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
     const { error: insertError } = await supabase
         .from('artwork_production_approvals')
@@ -115,6 +117,7 @@ export async function generateProductionApprovalLink(
             artwork_job_id: jobId,
             token,
             created_by: user.id,
+            expires_at: expiresAt,
         });
 
     if (insertError) {
@@ -198,7 +201,7 @@ export async function getProductionApprovalByToken(
 
     const { data: approval, error: approvalError } = await supabase
         .from('artwork_production_approvals')
-        .select('id, token, artwork_job_id, created_at, completed_at, revoked_at')
+        .select('id, token, artwork_job_id, created_at, completed_at, revoked_at, expires_at')
         .eq('token', token)
         .single();
 
@@ -207,6 +210,9 @@ export async function getProductionApprovalByToken(
     }
     if (approval.revoked_at) {
         return { error: 'this link has been revoked', status: 'revoked' };
+    }
+    if (approval.expires_at && new Date(approval.expires_at) < new Date()) {
+        return { error: 'this link has expired', status: 'invalid' };
     }
 
     const { data: job, error: jobError } = await supabase
