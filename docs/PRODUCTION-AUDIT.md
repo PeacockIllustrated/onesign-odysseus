@@ -6,7 +6,7 @@
 
 ## TL;DR
 
-Odysseus is **feature-complete and structurally sound** where it counts: the quote → artwork → production → delivery pipeline works end-to-end, RLS is enabled on **all 67 tables**, `tsc --noEmit` is clean, the 426-test engine suite is green, and the service-role key never reaches the client bundle. This is a real product, close to robust.
+Odysseus is **feature-complete and structurally sound** where it counts: the quote → artwork → production → delivery pipeline works end-to-end, RLS is enabled on **all 67 tables**, `tsc --noEmit` is clean, the 431-test engine suite is green, and the service-role key never reaches the client bundle. This is a real product, close to robust.
 
 The holes are in the **production-hardening seams** that a fast feature-sprint outran — and they cluster into five themes:
 

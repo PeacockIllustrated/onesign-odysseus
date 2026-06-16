@@ -171,7 +171,7 @@ export function ConvertLeadWizard({ lead, open, onClose, onSuccess }: ConvertLea
     if (!lead) return null;
 
     const steps: { key: WizardStep; label: string; icon: typeof Building2 }[] = [
-        { key: 'org', label: 'Create Org', icon: Building2 },
+        { key: 'org', label: 'Create Client', icon: Building2 },
         { key: 'member', label: 'Add Member', icon: User },
         { key: 'package', label: 'Assign Package', icon: Package },
         { key: 'confirm', label: 'Confirm', icon: Check },

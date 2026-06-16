@@ -55,7 +55,7 @@ See **ARCHITECTURE.md** for the full route tree, schema-by-domain, and auth mode
 
 ## The pipeline
 
-```
+```text
 QUOTE → ARTWORK → PRODUCTION → DELIVERY
                                ↘ INVOICE (branches from quote acceptance)
 ```

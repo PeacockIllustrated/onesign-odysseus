@@ -314,13 +314,14 @@ export async function signOffSubItemProduction(
 
     const { data: approval, error: approvalError } = await supabase
         .from('artwork_production_approvals')
-        .select('id, artwork_job_id, completed_at, revoked_at')
+        .select('id, artwork_job_id, completed_at, revoked_at, expires_at')
         .eq('token', token)
         .single();
 
     if (approvalError || !approval) return { error: 'invalid link' };
     if (approval.revoked_at) return { error: 'this link has been revoked' };
     if (approval.completed_at) return { error: 'this sign-off is already complete' };
+    if (approval.expires_at && new Date(approval.expires_at) < new Date()) return { error: 'this link has expired' };
 
     const { data: subItem, error: subError } = await supabase
         .from('artwork_component_items')
@@ -383,13 +384,14 @@ export async function requestSubItemProductionChanges(
 
     const { data: approval, error: approvalError } = await supabase
         .from('artwork_production_approvals')
-        .select('id, artwork_job_id, completed_at, revoked_at')
+        .select('id, artwork_job_id, completed_at, revoked_at, expires_at')
         .eq('token', token)
         .single();
 
     if (approvalError || !approval) return { error: 'invalid link' };
     if (approval.revoked_at) return { error: 'this link has been revoked' };
     if (approval.completed_at) return { error: 'this sign-off is already complete' };
+    if (approval.expires_at && new Date(approval.expires_at) < new Date()) return { error: 'this link has expired' };
 
     const { data: subItem, error: subError } = await supabase
         .from('artwork_component_items')

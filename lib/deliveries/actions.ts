@@ -553,12 +553,16 @@ export async function submitPod(
     // Fetch delivery by pod_token
     const { data: delivery, error: fetchError } = await supabase
         .from('deliveries')
-        .select('id, pod_status')
+        .select('id, pod_status, pod_token_expires_at')
         .eq('pod_token', token)
         .single();
 
     if (fetchError || !delivery) {
         return { error: 'Invalid link' };
+    }
+
+    if (delivery.pod_token_expires_at && new Date(delivery.pod_token_expires_at) < new Date()) {
+        return { error: 'This link has expired' };
     }
 
     if (delivery.pod_status !== 'pending') {
@@ -596,12 +600,16 @@ export async function refusePod(
     // Fetch delivery by pod_token
     const { data: delivery, error: fetchError } = await supabase
         .from('deliveries')
-        .select('id, pod_status')
+        .select('id, pod_status, pod_token_expires_at')
         .eq('pod_token', token)
         .single();
 
     if (fetchError || !delivery) {
         return { error: 'Invalid link' };
+    }
+
+    if (delivery.pod_token_expires_at && new Date(delivery.pod_token_expires_at) < new Date()) {
+        return { error: 'This link has expired' };
     }
 
     if (delivery.pod_status !== 'pending') {

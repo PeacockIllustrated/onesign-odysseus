@@ -185,7 +185,7 @@ export function GenerateDeliverablesModal({ orgs, subscriptions, open, onClose, 
                                 Generating... ({generated}/{selectedOrgs.length})
                             </>
                         ) : (
-                            <>Generate for {selectedOrgs.length} org(s)</>
+                            <>Generate for {selectedOrgs.length} client{selectedOrgs.length === 1 ? '' : 's'}</>
                         )}
                     </button>
                 </div>

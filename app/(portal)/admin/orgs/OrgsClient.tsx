@@ -29,7 +29,7 @@ export function OrgsClient({ initialOrgs, memberCounts, subscriptions }: OrgsCli
             <div className="flex justify-end mb-4">
                 <button onClick={() => setCreateOpen(true)} className="btn-primary flex items-center gap-2">
                     <Plus size={16} />
-                    Create Org
+                    Create Client
                 </button>
             </div>
 

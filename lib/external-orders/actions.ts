@@ -284,6 +284,8 @@ export async function deleteExternalOrder(id: string): Promise<Result<null>> {
 export async function convertExternalOrderToQuote(
     id: string
 ): Promise<Result<{ quoteId: string }>> {
+    if (!id) return err('order id is required');
+
     const user = await getUser();
     if (!user) return err('not authenticated');
 
@@ -356,7 +358,13 @@ export async function convertExternalOrderToQuote(
         .from('external_orders')
         .update({ status: 'converted', linked_quote_id: quote.id })
         .eq('id', orderId);
-    if (linkErr) return err(linkErr.message);
+    if (linkErr) {
+        // No multi-statement transaction over the JS client — best-effort
+        // rollback so a failed link doesn't strand an orphan draft quote
+        // (and a retry then re-creates cleanly rather than piling up drafts).
+        await supabase.from('quotes').delete().eq('id', quote.id);
+        return err(linkErr.message);
+    }
 
     revalidatePath('/admin/external-orders');
     revalidatePath('/admin/quotes');
