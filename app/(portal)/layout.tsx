@@ -2,6 +2,7 @@ import { getUserOrg, isSuperAdmin } from '@/lib/auth';
 import { Sidebar } from './components/Sidebar';
 import { Topbar } from './components/Topbar';
 import { SidebarProvider } from './components/SidebarContext';
+import PushManager from '@/app/components/PushManager';
 import { redirect } from 'next/navigation';
 
 export default async function PortalLayout({
@@ -37,6 +38,8 @@ export default async function PortalLayout({
                     </main>
                 </div>
             </div>
+            {/* PWA: registers the service worker + offers the enable-notifications pill */}
+            <PushManager />
         </SidebarProvider>
     );
 }

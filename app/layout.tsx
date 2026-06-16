@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import SplashScreen from "./components/SplashScreen";
@@ -16,6 +16,12 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Onesign Odysseus",
   description: "Onesign & Digital — Production management platform",
+  applicationName: "Onesign Odysseus",
+  appleWebApp: { capable: true, title: "Odysseus", statusBarStyle: "default" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#4e7e8c",
 };
 
 export default function RootLayout({

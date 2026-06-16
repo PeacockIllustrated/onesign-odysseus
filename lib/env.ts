@@ -25,11 +25,17 @@ const PublicEnvSchema = z.object({
     NEXT_PUBLIC_SUPABASE_ANON_KEY: z
         .string({ error: 'NEXT_PUBLIC_SUPABASE_ANON_KEY is required' })
         .min(40, 'NEXT_PUBLIC_SUPABASE_ANON_KEY looks too short to be valid'),
+    // Web Push (PWA) public key — optional; if absent the push UI hides itself.
+    NEXT_PUBLIC_VAPID_PUBLIC_KEY: z.string().optional(),
 });
 
 const ServerEnvSchema = PublicEnvSchema.extend({
     // Optional at import time; admin-client calls throw if missing.
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(40).optional(),
+    // Web Push (PWA) — all optional; the feature no-ops if any are unset.
+    VAPID_PRIVATE_KEY: z.string().optional(),
+    VAPID_SUBJECT: z.string().optional(),
+    PUSH_DISPATCH_SECRET: z.string().optional(),
 });
 
 function parseEnv(): z.infer<typeof ServerEnvSchema> {
