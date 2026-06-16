@@ -19,10 +19,20 @@ export default async function ArtworkVisualPackPrintPage({
         notFound();
     }
 
-    // A component is printable when it has at least one sub-item with a
-    // signed-off design (post sub-items refactor) — or a legacy
-    // component-level sign-off for jobs that pre-date the refactor.
+    // Visual approval jobs are the "design options" flavour: each component
+    // carries one or more variants (mockups) and the customer picks one —
+    // there is no per-sub-item designer sign-off step. So a visual component
+    // is printable as soon as it has at least one variant. Production jobs
+    // stay gated on a signed-off design (per sub-item, or the legacy
+    // component-level field for pre-refactor jobs). This mirrors the gating
+    // on the artwork detail page's "print all sheets" button and the client
+    // approval surface — previously this page only checked the sign-off
+    // fields, so a perfectly ready visual pack rendered as "nothing to print"
+    // and the button warned the design needed signing off when it didn't.
+    const isVisual = job.job_type === 'visual_approval';
+
     const printableComponents = job.components.filter((c: any) => {
+        if (isVisual) return ((c.variants as any[]) ?? []).length > 0;
         if (c.design_signed_off_at) return true;
         return (c.sub_items || []).some((si: any) => si.design_signed_off_at);
     });
@@ -31,10 +41,14 @@ export default async function ArtworkVisualPackPrintPage({
         return (
             <div style={{ padding: '40px', textAlign: 'center', fontFamily: 'system-ui, sans-serif' }}>
                 <p style={{ fontSize: '16px', color: '#666' }}>
-                    no components with signed-off designs to print
+                    {isVisual
+                        ? 'no design options to print'
+                        : 'no components with signed-off designs to print'}
                 </p>
                 <p style={{ fontSize: '12px', color: '#aaa', marginTop: '8px' }}>
-                    Sign off at least one sub-item&rsquo;s design to enable the compliance sheet.
+                    {isVisual
+                        ? 'Add at least one design option to each component to build the visual pack.'
+                        : 'Sign off at least one sub-item’s design to enable the compliance sheet.'}
                 </p>
             </div>
         );
@@ -45,6 +59,9 @@ export default async function ArtworkVisualPackPrintPage({
     const subItemThumbnailUrls: Record<string, string | null> = {};
     // Full sub-item payload (including new Phase 2 fields) keyed by component id.
     const itemsByComponent: Record<string, Array<any>> = {};
+    // Visual packs only: design options (variants) with signed mockup URLs,
+    // keyed by component id.
+    const variantsByComponent: Record<string, Array<any>> = {};
 
     // Cover image signed URL
     let coverImageUrl: string | null = null;
@@ -70,6 +87,22 @@ export default async function ArtworkVisualPackPrintPage({
     await Promise.all(
         printableComponents.map(async (component: any) => {
             thumbnailUrls[component.id] = await toSignedUrl(component.artwork_thumbnail_url);
+
+            if (isVisual) {
+                // Visual pack: sign each design option's mockup so it renders
+                // (the artwork-assets bucket is private). Variants already
+                // arrive on the component via getArtworkJob().
+                const variants = ((component.variants as any[]) ?? [])
+                    .slice()
+                    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+                variantsByComponent[component.id] = await Promise.all(
+                    variants.map(async (v) => ({
+                        ...v,
+                        signedThumbnailUrl: await toSignedUrl(v.thumbnail_url ?? null),
+                    }))
+                );
+                return;
+            }
 
             const { data: items } = await supabase
                 .from('artwork_component_items')
@@ -384,6 +417,120 @@ export default async function ArtworkVisualPackPrintPage({
                     white-space: pre-line;
                 }
 
+                /* === VISUAL OPTIONS PAGE (design options / visual pack) === */
+
+                .options-page {
+                    width: 190mm;
+                    height: 277mm;
+                    margin: 0 auto;
+                    display: flex;
+                    flex-direction: column;
+                    overflow: hidden;
+                    border: 1px solid #e5e5e5;
+                }
+
+                .options-body {
+                    flex: 1;
+                    display: flex;
+                    flex-direction: column;
+                    padding: 5mm 6mm;
+                    min-height: 0;
+                }
+
+                .options-title {
+                    font-size: 18px;
+                    font-weight: 700;
+                    color: #111;
+                    letter-spacing: -0.01em;
+                }
+
+                .options-sub {
+                    font-size: 9px;
+                    color: #888;
+                    text-transform: uppercase;
+                    letter-spacing: 0.1em;
+                    font-weight: 600;
+                    margin-bottom: 4mm;
+                }
+
+                .option-grid {
+                    flex: 1;
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 4mm;
+                    min-height: 0;
+                }
+
+                /* A single option reads better full-width than as a lonely
+                   half-width card. */
+                .option-grid.single { grid-template-columns: 1fr; }
+
+                .option-card {
+                    border: 1px solid #e5e5e5;
+                    border-radius: 2mm;
+                    overflow: hidden;
+                    display: flex;
+                    flex-direction: column;
+                    min-height: 0;
+                }
+
+                .option-img {
+                    flex: 1;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    background: #fafafa;
+                    padding: 3mm;
+                    min-height: 0;
+                }
+
+                .option-img img {
+                    max-width: 100%;
+                    max-height: 95mm;
+                    object-fit: contain;
+                }
+
+                .option-img .no-img {
+                    color: #bbb;
+                    font-size: 10px;
+                    font-style: italic;
+                }
+
+                .option-meta {
+                    padding: 3mm 3.5mm;
+                    border-top: 1px solid #eee;
+                    flex-shrink: 0;
+                }
+
+                .option-meta-head {
+                    display: flex;
+                    align-items: baseline;
+                    gap: 2mm;
+                    margin-bottom: 1.5mm;
+                }
+
+                .option-badge {
+                    font-family: ui-monospace, monospace;
+                    font-weight: 700;
+                    font-size: 9px;
+                    background: #111;
+                    color: #fff;
+                    padding: 0.5mm 2mm;
+                    border-radius: 1mm;
+                }
+
+                .option-name {
+                    font-size: 12px;
+                    font-weight: 700;
+                    color: #111;
+                }
+
+                .option-desc {
+                    font-size: 9px;
+                    color: #555;
+                    line-height: 1.45;
+                }
+
                 /* === COVER PAGE === */
 
                 .cover-page {
@@ -580,7 +727,7 @@ export default async function ArtworkVisualPackPrintPage({
 
             <div className="no-print" style={{ padding: '20px', textAlign: 'center', background: '#f5f5f5' }}>
                 <p style={{ fontSize: '14px', color: '#666' }}>
-                    artwork approval pack — {printableComponents.length} sheet{printableComponents.length !== 1 ? 's' : ''} for {job.job_reference}
+                    {isVisual ? 'design options pack' : 'artwork approval pack'} — {printableComponents.length} sheet{printableComponents.length !== 1 ? 's' : ''} for {job.job_reference}
                 </p>
             </div>
 
@@ -592,7 +739,7 @@ export default async function ArtworkVisualPackPrintPage({
                             <img src="/Odysseus-Logo-Black.svg" alt="OneSign" />
                         </div>
                         <div className="vp-header-right">
-                            artwork approval pack
+                            {isVisual ? 'design options pack' : 'artwork approval pack'}
                         </div>
                     </div>
 
@@ -615,7 +762,7 @@ export default async function ArtworkVisualPackPrintPage({
                             </div>
                             <div>
                                 <div className="cover-meta-label">status</div>
-                                <div className="cover-meta-value">awaiting approval</div>
+                                <div className="cover-meta-value">{isVisual ? 'awaiting selection' : 'awaiting approval'}</div>
                             </div>
                             {job.panel_size && (
                                 <div>
@@ -660,7 +807,7 @@ export default async function ArtworkVisualPackPrintPage({
                                                 <th>sheet</th>
                                                 <th>component</th>
                                                 <th>type</th>
-                                                <th style={{ textAlign: 'right' }}>dimensions</th>
+                                                <th style={{ textAlign: 'right' }}>{isVisual ? 'options' : 'dimensions'}</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -670,7 +817,9 @@ export default async function ArtworkVisualPackPrintPage({
                                                     <td className="comp-name">{component.name}</td>
                                                     <td className="comp-type">{getComponentTypeLabel(component.component_type)}</td>
                                                     <td className="comp-dims">
-                                                        {component.width_mm && component.height_mm
+                                                        {isVisual
+                                                            ? `${(((component as any).variants as any[]) ?? []).length} option${(((component as any).variants as any[]) ?? []).length !== 1 ? 's' : ''}`
+                                                            : component.width_mm && component.height_mm
                                                             ? formatDimensionWithReturns(
                                                                 Number(component.width_mm),
                                                                 Number(component.height_mm),
@@ -707,10 +856,72 @@ export default async function ArtworkVisualPackPrintPage({
 
             {/* COMPONENT PAGES */}
             {printableComponents.map((component, index) => {
+                const sheetNumber = index + 1;
+
+                // Visual pack: one sheet per component showing every design
+                // option (variant) the customer can choose from.
+                if (isVisual) {
+                    const options = variantsByComponent[component.id] || [];
+                    return (
+                        <div key={component.id} className="page-sheet">
+                            <div className="options-page">
+                                <div className="vp-header">
+                                    <div className="vp-logo">
+                                        <img src="/Odysseus-Logo-Black.svg" alt="OneSign" />
+                                    </div>
+                                    <div className="vp-header-right">
+                                        sheet {sheetNumber} of {printableComponents.length}
+                                    </div>
+                                </div>
+
+                                <div className="options-body">
+                                    <div className="options-title">{component.name}</div>
+                                    <div className="options-sub">
+                                        {getComponentTypeLabel(component.component_type)} · {options.length} option{options.length !== 1 ? 's' : ''}
+                                    </div>
+
+                                    <div className={`option-grid${options.length === 1 ? ' single' : ''}`}>
+                                        {options.map((opt: any) => (
+                                            <div key={opt.id} className="option-card">
+                                                <div className="option-img">
+                                                    {opt.signedThumbnailUrl ? (
+                                                        // eslint-disable-next-line @next/next/no-img-element
+                                                        <img
+                                                            src={opt.signedThumbnailUrl}
+                                                            alt={opt.name || `Option ${opt.label}`}
+                                                        />
+                                                    ) : (
+                                                        <span className="no-img">no image</span>
+                                                    )}
+                                                </div>
+                                                <div className="option-meta">
+                                                    <div className="option-meta-head">
+                                                        <span className="option-badge">{opt.label}</span>
+                                                        <span className="option-name">
+                                                            {opt.name || `Option ${opt.label}`}
+                                                        </span>
+                                                    </div>
+                                                    {opt.description && (
+                                                        <div className="option-desc">{opt.description}</div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="vp-footer">
+                                    <span>{job.job_reference} — {component.name}</span>
+                                    <span>{formatDate(new Date().toISOString())}</span>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                }
+
                 const thumbnailUrl = thumbnailUrls[component.id];
                 const componentItems = itemsByComponent[component.id] || [];
                 const hasItems = componentItems.length > 0;
-                const sheetNumber = index + 1;
 
                 return (
                     <div key={component.id} className="page-sheet">
