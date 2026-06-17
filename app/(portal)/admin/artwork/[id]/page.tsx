@@ -24,6 +24,7 @@ import { ApprovalLinkSection } from './components/ApprovalLinkSection';
 import { ProductionApprovalLinkSection } from './components/ProductionApprovalLinkSection';
 import { ClientDeliveryCard } from './components/ClientDeliveryCard';
 import { JobFieldsForm } from './components/JobFieldsForm';
+import { ApprovalResetControls } from './components/ApprovalResetControls';
 import { ReleaseToProductionButton } from './components/ReleaseToProductionButton';
 import { DeleteArtworkJobButton } from './components/DeleteArtworkJobButton';
 import { ReorderControls } from './components/ReorderControls';
@@ -524,6 +525,9 @@ export default async function ArtworkJobDetailPage({
                         paintColour={job.paint_colour}
                         splineUrl={(job as any).spline_url ?? null}
                     />
+
+                    {/* Reset (un-approve) in place, or clone as a fresh draft */}
+                    <ApprovalResetControls jobId={id} />
 
                     {/* Cover image intentionally removed — sub-item thumbnails
                         carry the visual on the sign-off page, so the job-level
