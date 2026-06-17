@@ -39,6 +39,16 @@ export interface ReturnsConfig {
     breakAngleDeg: number;
     /** Max usable length of one brass strip (mm). Longer runs get butt-welds. */
     stockLengthMm: number;
+    /**
+     * Shortest return strip worth cutting as its own blank (mm). Fine detail
+     * (serifs, flourishes) breaks a contour into slivers no one would cut and
+     * weld individually; for the NEST these are coalesced into their neighbour
+     * so every cut blank is at least this long. The fabricator forms the
+     * in-between corner by hand (the cut-sheet PDF still marks every weld). Set
+     * 0 to nest every strip verbatim. Analysis/weld totals are unaffected — this
+     * only shapes the cut blanks handed to the nester.
+     */
+    minNestStripMm: number;
 }
 
 export const DEFAULT_RETURNS_CONFIG: ReturnsConfig = {
@@ -46,6 +56,7 @@ export const DEFAULT_RETURNS_CONFIG: ReturnsConfig = {
     materialThicknessMm: 1.5,
     breakAngleDeg: 30,
     stockLengthMm: 2500,
+    minNestStripMm: 30,
 };
 
 /** Why a strip ends where it does — drives the weld callouts. */

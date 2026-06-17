@@ -7,7 +7,7 @@ import {
     type ReturnsConfig,
     type Pt,
 } from './returns';
-import { buildReturnsNestSvg } from './returns-export';
+import { buildReturnsNestSvg, coalesceStripLengths } from './returns-export';
 import type { FlatPath } from './types';
 
 const cfg: ReturnsConfig = { ...DEFAULT_RETURNS_CONFIG };
@@ -258,5 +258,65 @@ describe('buildReturnsNestSvg', () => {
         );
         expect(ys.length).toBeGreaterThan(0);
         expect(ys.every((y) => y >= 100)).toBe(true);
+    });
+
+    it('coalesces sub-minimum return strips into fewer cut blanks', () => {
+        // A 20mm square → four 20mm strips. At a 30mm minimum no one cuts a
+        // 20mm sliver, so they coalesce: fewer rects than strips, same brass.
+        const analysis = analyzeReturns([closedPath(square(20))], cfg);
+        expect(analysis.stripCount).toBe(4);
+
+        const svg = buildReturnsNestSvg({
+            analysis,
+            returnDepthMm: 50,
+            minStripMm: 30,
+            title: 'Slivers',
+        });
+        const rects = svg.match(/<rect /g) ?? [];
+        expect(rects.length).toBeGreaterThan(0);
+        expect(rects.length).toBeLessThan(analysis.stripCount);
+
+        // minStripMm:0 nests every strip verbatim again (opt-out).
+        const verbatim = buildReturnsNestSvg({
+            analysis,
+            returnDepthMm: 50,
+            minStripMm: 0,
+            title: 'Verbatim',
+        });
+        expect((verbatim.match(/<rect /g) ?? []).length).toBe(
+            analysis.stripCount,
+        );
+    });
+});
+
+describe('coalesceStripLengths', () => {
+    const total = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+
+    it('merges sub-minimum slivers and preserves total length exactly', () => {
+        const out = coalesceStripLengths([4, 4, 4, 200, 4, 4], 30, 2500);
+        expect(total(out)).toBeCloseTo(220, 6);
+        // The trailing remainder folds back, so nothing ends up below the min.
+        expect(out.every((b) => b >= 30)).toBe(true);
+    });
+
+    it('passes strips already over the minimum straight through', () => {
+        expect(coalesceStripLengths([100, 100, 100], 30)).toEqual([
+            100, 100, 100,
+        ]);
+    });
+
+    it('never lets a coalesced blank exceed the stock length', () => {
+        const out = coalesceStripLengths([40, 40, 40, 40], 100, 100);
+        expect(out.every((b) => b <= 100)).toBe(true);
+        expect(total(out)).toBeCloseTo(160, 6);
+    });
+
+    it('keeps a lone sub-minimum contour as a single real blank', () => {
+        // A whole tiny counter shorter than the min is still a genuine piece.
+        expect(coalesceStripLengths([12], 30)).toEqual([12]);
+    });
+
+    it('nests every strip verbatim when the minimum is 0', () => {
+        expect(coalesceStripLengths([4, 4, 4], 0)).toEqual([4, 4, 4]);
     });
 });
