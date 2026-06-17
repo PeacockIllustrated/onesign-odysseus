@@ -541,7 +541,10 @@ const BASE_CSS = `
 .pp-hint button { background: #fff; color: #000; border: none; padding: 8px 16px; margin-left: 12px; border-radius: 4px; cursor: pointer; font-weight: 600; }
 
 /* page frame */
-.pp-cover, .pp-page { margin: 0 auto; display: flex; flex-direction: column; padding: 0; box-sizing: border-box; }
+.pp-cover, .pp-page { margin: 0 auto; display: flex; flex-direction: column; padding: 0; box-sizing: border-box; overflow: hidden; }
+/* Keep every drawing/stage inside the printable column — no bleed off-page. */
+.pp-studio-sheet, .pp-studio-rows, .pp-studio-row, .pp-studio-row-stage, .pp-studio-row-info { min-width: 0; max-width: 100%; overflow: hidden; }
+.pp-studio-row-stage img, .pp-studio-row-stage .pp-tech-frame, .pp-studio-row-stage .pp-fig img { max-width: 100%; }
 .pp-page { background: #fff; }
 .pp-cover { background: var(--pp-cover-bg); }
 .pp-root[data-orient="portrait"] .pp-cover, .pp-root[data-orient="portrait"] .pp-page { width: 186mm; min-height: 273mm; }

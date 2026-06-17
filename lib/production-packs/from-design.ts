@@ -120,12 +120,13 @@ function drawingBlock(d: PackDrawing, fallbackHeight: number): Block {
 }
 
 /**
- * Build a section as TWO keep-with groups: the drawings (full-width on the
- * studio stage) and the info underneath (full-width). The studio sheet
- * collapses a single-kind group to the full page width, so the drawings get
- * maximum scale and the details read beneath them.
+ * Overview hero: TWO keep-with groups — the drawings (full-width on the studio
+ * stage) and the info underneath (full-width). The studio sheet collapses a
+ * single-kind group to the full page width, so the in-situ render + whole-sign
+ * face get maximum scale with the details beneath them. Only the overview uses
+ * this; piece pages keep the standard side-by-side studio layout.
  */
-function sectionFrom(
+function heroSection(
     title: string,
     signRef: string,
     drawings: Block[],
@@ -133,10 +134,24 @@ function sectionFrom(
 ): SignSection {
     const blocks = [...drawings, ...info];
     const keepWith: string[] = [];
-    // Link each group internally; the boundary (last drawing) is left unlinked
-    // so drawings and info fall into separate full-width rows.
     drawings.slice(0, -1).forEach((b) => keepWith.push(b.id));
     info.slice(0, -1).forEach((b) => keepWith.push(b.id));
+    return { id: genId('sec'), title, signRef, keepWith, blocks };
+}
+
+/**
+ * A piece page in the ORIGINAL studio layout: the spec/route info in the left
+ * rail beside its drawings on the stage — one keep-with group so the whole
+ * piece stays together on its page.
+ */
+function pieceSection(
+    title: string,
+    signRef: string,
+    drawings: Block[],
+    info: Block[],
+): SignSection {
+    const blocks = [...info, ...drawings];
+    const keepWith = blocks.slice(0, -1).map((b) => b.id);
     return { id: genId('sec'), title, signRef, keepWith, blocks };
 }
 
@@ -170,7 +185,7 @@ export function buildPackFromDesignPieces(
     overviewInfo.push(newQcBlock());
 
     sections.push(
-        sectionFrom(input.name, 'Overview', overviewDrawings, overviewInfo),
+        heroSection(input.name, 'Overview', overviewDrawings, overviewInfo),
     );
 
     // ---- One section per piece --------------------------------------------
@@ -199,7 +214,7 @@ export function buildPackFromDesignPieces(
         );
         info.push(newQcBlock());
 
-        sections.push(sectionFrom(g.title, `Piece ${i + 1}`, drawings, info));
+        sections.push(pieceSection(g.title, `Piece ${i + 1}`, drawings, info));
     });
 
     return {

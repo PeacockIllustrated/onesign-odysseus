@@ -95,16 +95,15 @@ describe('buildPackFromDesignPieces', () => {
         expect(stages.stages[stages.stages.length - 1].name).toMatch(/goods out/i);
     });
 
-    it('splits each section into a drawings group + an info group (keep-with)', () => {
-        const push = build().sections[2];
-        // The last block (qc, info) is never kept-with — it terminates the info
-        // group; the drawing is its own group.
-        const ids = push.blocks.map((b) => b.id);
-        expect(push.keepWith).not.toContain(ids[ids.length - 1]);
-        // The single drawing is alone in its group, so it isn't kept-with either
-        // (nothing after it in its own group) — the info heading starts fresh.
-        const tech = push.blocks.find((b) => b.type === 'technical')!;
-        expect(push.keepWith).not.toContain(tech.id);
+    it('lays the overview full-width (two groups) but pieces side-by-side (one group)', () => {
+        const content = build();
+        const overview = content.sections[0];
+        const push = content.sections[2];
+        // Overview: drawings + info are separate groups → not fully linked.
+        expect(overview.keepWith.length).toBeLessThan(overview.blocks.length - 1);
+        // Piece page: the original studio layout — one fully-linked group so the
+        // info rail sits beside the drawing.
+        expect(push.keepWith.length).toBe(push.blocks.length - 1);
     });
 
     it("seeds each piece's build stages from its real department route", () => {

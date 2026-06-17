@@ -578,27 +578,43 @@ export function ExportBar({
             };
         };
 
-        // A nested cut file (run on the spot) → one dimensioned drawing per
-        // packed sheet. Falls back to an empty list if nothing nests.
+        // A nested cut LAYOUT (run on the spot) — filled in the material colour,
+        // cropped to the smallest panel — one dimensioned drawing per panel.
         const nestedDrawings = (
             pieces: { path: FlatPath; holes?: FlatPath[] }[],
             label: string,
+            fill: string,
         ): PackDrawing[] => {
             const nest = buildNestedSheets(pieces, {
                 label,
                 title: `${params.name} — ${label}`,
+                fill,
             });
-            return nest.sheets.slice(0, 3).map((svg, i) => ({
-                dataUri: svgUri(svg),
+            return nest.sheets.slice(0, 3).map((sheet, i) => ({
+                dataUri: svgUri(sheet.svg),
                 isSvg: true,
                 kind: 'technical' as const,
                 caption:
                     nest.sheetCount > 1
-                        ? `Nested cut file — sheet ${i + 1} of ${nest.sheetCount}`
-                        : 'Nested cut file',
-                widthMm: 2440,
-                heightMm: 1220,
+                        ? `Nested cut layout — panel ${i + 1} of ${nest.sheetCount}`
+                        : 'Nested cut layout',
+                widthMm: sheet.widthMm,
+                heightMm: sheet.heightMm,
             }));
+        };
+
+        // The nested cut layout where possible (filled), else the un-nested
+        // filled display — so a piece always has a drawing.
+        const nestedOrFilled = (
+            pieces: { path: FlatPath; holes?: FlatPath[]; color: string }[],
+            label: string,
+            fill: string,
+            fallbackCaption: string,
+        ): PackDrawing[] => {
+            const nested = nestedDrawings(pieces, label, fill);
+            return nested.length > 0
+                ? nested
+                : [filledDrawing([{ pieces, fill }], fallbackCaption)];
         };
 
         const groups: DesignPieceGroup[] = [];
@@ -678,10 +694,12 @@ export function ExportBar({
                         ? 'Opal backing behind for the keyline halo'
                         : 'Bonded to a backing board',
                 ],
-                drawings: [
-                    filledDrawing([{ pieces, fill: color }], `Push-through — ${acrylicName(color)}`),
-                    ...nestedDrawings(pieces, 'push-through'),
-                ],
+                drawings: nestedOrFilled(
+                    pieces,
+                    'push-through',
+                    color,
+                    `Push-through — ${acrylicName(color)}`,
+                ),
             });
         }
 
@@ -742,10 +760,12 @@ export function ExportBar({
                     ...(t ? [{ label: 'Thickness', value: `${t}mm` }] : []),
                 ],
                 callouts: ['Face-stuck to the tray', 'Weeded & applied'],
-                drawings: [
-                    filledDrawing([{ pieces, fill: color }], `Acrylic — ${acrylicName(color)}`),
-                    ...nestedDrawings(pieces, 'acrylic'),
-                ],
+                drawings: nestedOrFilled(
+                    pieces,
+                    'acrylic',
+                    color,
+                    `Acrylic — ${acrylicName(color)}`,
+                ),
             });
         }
 
@@ -769,10 +789,7 @@ export function ExportBar({
                     `Stood ${round(dist)}mm off the face on locators`,
                     'Fixing holes drilled in the tray face',
                 ],
-                drawings: [
-                    filledDrawing([{ pieces, fill: color }], 'Stood-off letters'),
-                    ...nestedDrawings(pieces, 'stand-off'),
-                ],
+                drawings: nestedOrFilled(pieces, 'stand-off', color, 'Stood-off letters'),
             });
         }
 
@@ -796,10 +813,12 @@ export function ExportBar({
                     `${label} face laminated over the letter`,
                     'Same outline + counters as the letter beneath',
                 ],
-                drawings: [
-                    filledDrawing([{ pieces, fill: pieces[0].color }], `${label} faces`),
-                    ...nestedDrawings(pieces, `${material}-faces`),
-                ],
+                drawings: nestedOrFilled(
+                    pieces,
+                    `${material}-faces`,
+                    pieces[0].color,
+                    `${label} faces`,
+                ),
             });
         }
 
