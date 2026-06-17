@@ -67,6 +67,89 @@ export async function createVisualApprovalJob(
 }
 
 // ---------------------------------------------------------------------------
+// createVisualApprovalFromDesign — the "Approval pack" button in the visualiser
+// ---------------------------------------------------------------------------
+
+/**
+ * Spin up a visual-approval job straight from a saved visualiser design: the
+ * design is linked (so the client orbits the real sign in 3D on the approval
+ * pack), and the job is seeded with one component + one variant so it's
+ * immediately approvable. Staff then send the sign-off link.
+ */
+export async function createVisualApprovalFromDesign(
+    designId: string,
+): Promise<{ id: string } | { error: string }> {
+    const user = await getUser();
+    if (!user) return { error: 'not authenticated' };
+
+    const supabase = await createServerClient();
+    const { data: design } = await supabase
+        .from('visualiser_designs')
+        .select('id, name, org_id, params_json')
+        .eq('id', designId)
+        .maybeSingle();
+    if (!design) return { error: 'design not found' };
+
+    const params = (design.params_json ?? {}) as {
+        panelWidthMm?: number;
+        panelHeightMm?: number;
+    };
+    const name = (design.name as string) ?? 'Sign approval';
+    const orgId = (design.org_id as string | null) ?? null;
+
+    const { data: job, error: jobErr } = await supabase
+        .from('artwork_jobs')
+        .insert({
+            job_name: name,
+            status: 'draft',
+            job_type: 'visual_approval',
+            org_id: orgId,
+            is_orphan: orgId === null,
+            visualiser_design_id: designId,
+            client_name: null,
+            created_by: user.id,
+        })
+        .select('id')
+        .single();
+    if (jobErr || !job) {
+        console.error('createVisualApprovalFromDesign job error:', jobErr);
+        return { error: jobErr?.message ?? 'failed to create approval job' };
+    }
+
+    // Seed one component + one variant so the pack is approvable out of the box.
+    const { data: comp } = await supabase
+        .from('artwork_components')
+        .insert({
+            job_id: job.id,
+            name,
+            component_type: 'other',
+            sort_order: 0,
+            status: 'pending_design',
+            scale_confirmed: false,
+            bleed_included: false,
+            material_confirmed: false,
+            rip_no_scaling_confirmed: false,
+        })
+        .select('id')
+        .single();
+    if (comp) {
+        await supabase.from('artwork_variants').insert({
+            component_id: comp.id,
+            label: 'A',
+            sort_order: 0,
+            name,
+            width_mm: params.panelWidthMm ? Math.round(params.panelWidthMm) : null,
+            height_mm: params.panelHeightMm
+                ? Math.round(params.panelHeightMm)
+                : null,
+        });
+    }
+
+    revalidatePath('/admin/artwork');
+    return { id: job.id };
+}
+
+// ---------------------------------------------------------------------------
 // attachQuoteToVisualJob / detachQuoteFromVisualJob
 // ---------------------------------------------------------------------------
 

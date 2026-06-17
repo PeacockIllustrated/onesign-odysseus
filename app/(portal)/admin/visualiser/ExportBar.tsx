@@ -11,6 +11,8 @@ import {
     Scissors,
     Tv,
     Layers,
+    FileBox,
+    BadgeCheck,
 } from 'lucide-react';
 import { useVisualiser, splitPanels } from './store';
 import { sceneCapture } from './Scene3D';
@@ -22,6 +24,8 @@ import {
 } from '@/lib/visualiser/pdf';
 import { saveDesign } from '@/lib/visualiser/actions';
 import { addToBackshop, isDesignOnBackshop } from '@/lib/backshop/actions';
+import { createProductionPackFromDesign } from '@/lib/production-packs/actions';
+import { createVisualApprovalFromDesign } from '@/lib/artwork/visual-approval-actions';
 import { projectingSpecLine } from '@/lib/visualiser/projecting';
 import { composeLayersSvg } from '@/lib/visualiser/compose';
 import { trimImageDataUrl } from '@/lib/visualiser/image';
@@ -276,6 +280,9 @@ export function ExportBar({
     const [backshopPending, setBackshopPending] = useState(false);
     const [onBackshop, setOnBackshop] = useState(false);
     const [nesterPending, setNesterPending] = useState(false);
+    const [packPending, setPackPending] = useState<'prod' | 'approval' | null>(
+        null,
+    );
     const [msg, setMsg] = useState<string | null>(null);
     const [exported, setExported] = useState<string | null>(null);
 
@@ -461,6 +468,65 @@ export function ExportBar({
             }
         } finally {
             setNesterPending(false);
+        }
+    };
+
+    // Ensure the design is persisted (the packs link to a real design id);
+    // returns the id, or null on a save error (message already surfaced).
+    const ensureSaved = async (): Promise<string | null> => {
+        if (designId && !dirty) return designId;
+        const assembled = assembleMain();
+        const saved = await saveDesign({
+            id: designId ?? undefined,
+            params: assembled.params,
+            svgSource: assembled.svgSource,
+            quoteId,
+            quoteItemId,
+        });
+        if (!saved.ok) {
+            setMsg(saved.error);
+            return null;
+        }
+        markSaved(saved.data.id);
+        return saved.data.id;
+    };
+
+    // Scaffold a production (works) pack from this design and open it.
+    const onCreateProductionPack = async () => {
+        if (packPending) return;
+        setPackPending('prod');
+        setMsg(null);
+        try {
+            const id = await ensureSaved();
+            if (!id) return;
+            const res = await createProductionPackFromDesign(id);
+            if (!res.ok) {
+                setMsg(res.error);
+                return;
+            }
+            window.location.assign(`/admin/production-packs/${res.data.id}`);
+        } finally {
+            setPackPending(null);
+        }
+    };
+
+    // Spin up a visual-approval pack from this design (the design drives the
+    // interactive 3D the client orbits while they approve) and open the job.
+    const onCreateApprovalPack = async () => {
+        if (packPending) return;
+        setPackPending('approval');
+        setMsg(null);
+        try {
+            const id = await ensureSaved();
+            if (!id) return;
+            const res = await createVisualApprovalFromDesign(id);
+            if ('error' in res) {
+                setMsg(res.error);
+                return;
+            }
+            window.location.assign(`/admin/artwork/${res.id}`);
+        } finally {
+            setPackPending(null);
         }
     };
 
@@ -814,6 +880,36 @@ export function ExportBar({
                         {nesterPending ? 'Sending…' : 'Send to nester'}
                     </button>
                 )}
+                <button
+                    type="button"
+                    onClick={onCreateProductionPack}
+                    disabled={packPending !== null}
+                    aria-busy={packPending === 'prod'}
+                    title="Create a production (works) pack scaffolded from this design — saves it, then opens the pack."
+                    className="flex min-h-[36px] items-center gap-1.5 rounded-md border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                    {packPending === 'prod' ? (
+                        <Loader2 size={14} className="animate-spin" aria-hidden />
+                    ) : (
+                        <FileBox size={14} aria-hidden />
+                    )}
+                    {packPending === 'prod' ? 'Creating…' : 'Production pack'}
+                </button>
+                <button
+                    type="button"
+                    onClick={onCreateApprovalPack}
+                    disabled={packPending !== null}
+                    aria-busy={packPending === 'approval'}
+                    title="Create a client approval pack — the design drives an interactive 3D the client orbits while they sign off. Saves it, then opens the job."
+                    className="flex min-h-[36px] items-center gap-1.5 rounded-md border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                    {packPending === 'approval' ? (
+                        <Loader2 size={14} className="animate-spin" aria-hidden />
+                    ) : (
+                        <BadgeCheck size={14} aria-hidden />
+                    )}
+                    {packPending === 'approval' ? 'Creating…' : 'Approval pack'}
+                </button>
                 <div className="ml-auto flex items-center gap-2 text-xs text-neutral-500">
                     {exported && (
                         <span

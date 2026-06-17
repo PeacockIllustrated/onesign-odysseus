@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { buildPackFromJob } from './from-job';
+import { buildPackFromJob, buildPackFromDesign } from './from-job';
 import { ProductionPackContentSchema } from './types';
+import type { PanelParams } from '@/lib/visualiser/types';
 
 const job = {
     job_name: 'Black Rabbit — The Warren',
@@ -74,5 +75,43 @@ describe('buildPackFromJob', () => {
         expect(rows[0].value).toContain('Opal acrylic');
         expect(rows[0].value).toContain('Push-through');
         expect(rows[0].value).toContain('1800×420mm');
+    });
+});
+
+describe('buildPackFromDesign', () => {
+    const params = {
+        panelWidthMm: 2400,
+        panelHeightMm: 600,
+        materialLabel: 'Folded aluminium',
+        panelRal: 'RAL 9005',
+        illumination: { keyline: { enabled: true, color: '#ffffff' } },
+        materialGroups: [
+            { id: 'g', material: 'pushthrough', color: '#ffffff', pathIndices: [0] },
+        ],
+    } as unknown as PanelParams;
+
+    it('scaffolds a valid one-section pack from a design', () => {
+        const content = buildPackFromDesign('Warren fascia', params, '<svg/>');
+        expect(ProductionPackContentSchema.safeParse(content).success).toBe(true);
+        expect(content.sections).toHaveLength(1);
+        expect(content.cover.projectName).toBe('Warren fascia');
+    });
+
+    it('derives the spec + material callouts from the panel params', () => {
+        const content = buildPackFromDesign('Warren fascia', params, '<svg/>');
+        const blocks = content.sections[0].blocks;
+        const spec = blocks.find((b) => b.type === 'specTable') as {
+            rows: Array<{ label: string; value: string }>;
+        };
+        expect(spec.rows.find((r) => r.label === 'Overall size')?.value).toContain(
+            '2400',
+        );
+        expect(spec.rows.find((r) => r.label === 'Illumination')?.value).toBe(
+            'Keyline illuminated',
+        );
+        const callouts = blocks.find((b) => b.type === 'callouts') as {
+            items: string[];
+        };
+        expect(callouts.items).toContain('Push-through acrylic letters');
     });
 });
