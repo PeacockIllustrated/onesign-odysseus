@@ -1,7 +1,7 @@
 import { requireAdmin } from '@/lib/auth';
 import { getArtworkDashboardData } from '@/lib/artwork/actions';
 import { createAdminClient } from '@/lib/supabase-admin';
-import { PageHeader, Card, Chip } from '@/app/(portal)/components/ui';
+import { Card, Chip } from '@/app/(portal)/components/ui';
 import Link from 'next/link';
 import { formatDate, getJobStatusLabel, getJobStatusVariant } from '@/lib/artwork/utils';
 import { ArtworkJobStatus, ArtworkDashboardFilterEnum } from '@/lib/artwork/types';
@@ -61,11 +61,16 @@ export default async function ArtworkJobsPage({
 
     return (
         <div className="p-6 max-w-7xl mx-auto">
-            <PageHeader
-                title="artwork compliance"
-                description="design-to-production verification for signage jobs"
-                action={
-                    <div className="flex items-center gap-2">
+            {/* Studio-light header band — steel-teal accent to match the Studio suite */}
+            <div className="relative overflow-hidden rounded-2xl border border-[#cfe0e6] bg-gradient-to-br from-[#e8f0f3] via-white to-white mb-6 shadow-sm">
+                <span aria-hidden className="absolute inset-y-0 left-0 w-1.5 bg-gradient-to-b from-[#9ed0dc] to-[#4e7e8c]" />
+                <div className="flex flex-col gap-3 p-5 pl-7 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                        <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[#4e7e8c]">Studio · Artwork</p>
+                        <h1 className="text-2xl font-bold tracking-tight text-[#10242b]">artwork compliance</h1>
+                        <p className="mt-0.5 text-sm text-[#5b7a83]">design-to-production verification for signage jobs</p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
                         <Link href="/admin/artwork/reconcile" className="btn-secondary text-xs">
                             reconcile
                         </Link>
@@ -77,8 +82,8 @@ export default async function ArtworkJobsPage({
                             new artwork job
                         </Link>
                     </div>
-                }
-            />
+                </div>
+            </div>
 
             {/* Filter chips */}
             <div className="flex flex-wrap gap-2 mb-3">
@@ -92,7 +97,7 @@ export default async function ArtworkJobsPage({
                         <Link
                             key={key}
                             href={href}
-                            className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${active ? 'bg-black text-white border-black' : 'bg-white text-neutral-700 border-neutral-200 hover:border-neutral-400'}`}
+                            className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${active ? 'bg-[#4e7e8c] text-white border-[#4e7e8c] shadow-sm' : 'bg-white text-neutral-700 border-neutral-200 hover:border-[#9ed0dc] hover:text-[#3a5f6a]'}`}
                         >
                             {FILTER_LABELS[key]} <span className="ml-1 opacity-70">{count}</span>
                         </Link>
@@ -112,7 +117,7 @@ export default async function ArtworkJobsPage({
                         <Link
                             key={t}
                             href={href}
-                            className={`text-xs font-semibold px-3 py-1 rounded border transition-colors ${active ? 'bg-black text-white border-black' : 'bg-white text-neutral-700 border-neutral-200 hover:border-neutral-400'}`}
+                            className={`text-xs font-semibold px-3 py-1 rounded border transition-colors ${active ? 'bg-[#4e7e8c] text-white border-[#4e7e8c] shadow-sm' : 'bg-white text-neutral-700 border-neutral-200 hover:border-[#9ed0dc] hover:text-[#3a5f6a]'}`}
                         >
                             {label}
                         </Link>
@@ -130,7 +135,7 @@ export default async function ArtworkJobsPage({
                         name="search"
                         placeholder="search by job name, reference or legacy client…"
                         defaultValue={params.search || ''}
-                        className="flex-1 px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                        className="flex-1 px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                     />
                     <button type="submit" className="btn-secondary">search</button>
                 </form>
@@ -187,7 +192,7 @@ export default async function ArtworkJobsPage({
                 <Card className="overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full">
-                            <thead className="border-b border-neutral-200 bg-neutral-50">
+                            <thead className="border-b border-[#cfe0e6] bg-[#eef4f6]">
                                 <tr>
                                     <th className="text-left px-4 py-3 text-xs font-medium text-neutral-500 uppercase tracking-wider">reference</th>
                                     <th className="text-left px-4 py-3 text-xs font-medium text-neutral-500 uppercase tracking-wider">job name</th>
@@ -199,14 +204,14 @@ export default async function ArtworkJobsPage({
                             </thead>
                             <tbody className="divide-y divide-neutral-100">
                                 {jobs.map((job) => (
-                                    <tr key={job.id} className="hover:bg-neutral-50 transition-colors">
+                                    <tr key={job.id} className="hover:bg-[#f3f8f9] transition-colors">
                                         <td className="px-4 py-3">
-                                            <Link href={`/admin/artwork/${job.id}`} className="font-mono text-sm text-neutral-600 hover:text-black">
+                                            <Link href={`/admin/artwork/${job.id}`} className="font-mono text-sm text-[#4e7e8c] hover:text-[#3a5f6a]">
                                                 {job.job_reference}
                                             </Link>
                                         </td>
                                         <td className="px-4 py-3">
-                                            <Link href={`/admin/artwork/${job.id}`} className="font-medium text-black hover:underline">
+                                            <Link href={`/admin/artwork/${job.id}`} className="font-medium text-[#10242b] hover:text-[#4e7e8c] hover:underline">
                                                 {job.job_name}
                                             </Link>
                                             <span className={`ml-2 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
