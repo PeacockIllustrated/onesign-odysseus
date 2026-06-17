@@ -5,6 +5,7 @@ import { User, LogOut, ChevronDown, Settings, Menu } from 'lucide-react';
 import Link from 'next/link';
 import type { Org } from '@/lib/supabase';
 import { useSidebar } from './SidebarContext';
+import { ThemeToggle } from './ThemeToggle';
 
 interface TopbarProps {
     org: Org;
@@ -24,28 +25,30 @@ export function Topbar({ org, isAdmin }: TopbarProps) {
     }
 
     return (
-        <header className="h-16 bg-white border-b border-neutral-200 flex items-center justify-between px-4 md:px-6">
+        <header className="h-16 bg-white border-b border-neutral-200 flex items-center justify-between px-4 md:px-6 dark:bg-[#0f191e] dark:border-[#223037]">
             {/* Left: hamburger (mobile) + org name */}
             <div className="flex items-center gap-2">
                 <button
                     onClick={openMobile}
-                    className="md:hidden p-1.5 -ml-1 text-neutral-500 hover:text-neutral-700 transition-colors"
+                    className="md:hidden p-1.5 -ml-1 text-neutral-500 hover:text-neutral-700 transition-colors dark:text-[var(--bg-fg-muted)] dark:hover:text-white"
                     aria-label="Open menu"
                 >
                     <Menu size={20} />
                 </button>
-                <span className="text-sm font-medium text-neutral-900 truncate max-w-[160px] sm:max-w-none">{org.name}</span>
-                <span className="badge text-xs hidden sm:inline-flex">{isAdmin ? 'admin' : 'client portal'}</span>
+                <span className="text-sm font-medium text-neutral-900 truncate max-w-[160px] sm:max-w-none dark:text-[var(--bg-fg)]">{org.name}</span>
+                <span className="badge text-xs hidden sm:inline-flex dark:bg-white/5 dark:text-[var(--bg-fg-muted)] dark:border-white/10">{isAdmin ? 'admin' : 'client portal'}</span>
             </div>
 
-            {/* User menu */}
+            {/* Right: theme toggle + user menu */}
+            <div className="flex items-center gap-1">
+            <ThemeToggle />
             <div className="relative">
                 <button
                     onClick={() => setMenuOpen(!menuOpen)}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-sm)] text-sm text-neutral-600 hover:bg-neutral-100 transition-colors"
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-sm)] text-sm text-neutral-600 hover:bg-neutral-100 transition-colors dark:text-[var(--bg-fg-muted)] dark:hover:bg-white/10"
                 >
-                    <div className="w-7 h-7 rounded-full bg-neutral-200 flex items-center justify-center">
-                        <User size={14} className="text-neutral-500" />
+                    <div className="w-7 h-7 rounded-full bg-neutral-200 flex items-center justify-center dark:bg-white/10">
+                        <User size={14} className="text-neutral-500 dark:text-[var(--bg-fg-muted)]" />
                     </div>
                     <ChevronDown size={14} className={`transition-transform ${menuOpen ? 'rotate-180' : ''}`} />
                 </button>
@@ -59,10 +62,10 @@ export function Topbar({ org, isAdmin }: TopbarProps) {
                         />
 
                         {/* Dropdown */}
-                        <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-neutral-200 rounded-[var(--radius-md)] shadow-lg z-20 py-1">
+                        <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-neutral-200 rounded-[var(--radius-md)] shadow-lg z-20 py-1 dark:bg-[#131e23] dark:border-[#243137]">
                             <Link
                                 href="/settings"
-                                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-neutral-600 hover:bg-neutral-50 transition-colors"
+                                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-neutral-600 hover:bg-neutral-50 transition-colors dark:text-[var(--bg-fg-muted)] dark:hover:bg-white/5"
                                 onClick={() => setMenuOpen(false)}
                             >
                                 <Settings size={14} />
@@ -70,7 +73,7 @@ export function Topbar({ org, isAdmin }: TopbarProps) {
                             </Link>
                             <button
                                 onClick={handleLogout}
-                                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-neutral-600 hover:bg-neutral-50 transition-colors"
+                                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-neutral-600 hover:bg-neutral-50 transition-colors dark:text-[var(--bg-fg-muted)] dark:hover:bg-white/5"
                             >
                                 <LogOut size={14} />
                                 <span>Sign out</span>
@@ -78,6 +81,7 @@ export function Topbar({ org, isAdmin }: TopbarProps) {
                         </div>
                     </>
                 )}
+            </div>
             </div>
         </header>
     );

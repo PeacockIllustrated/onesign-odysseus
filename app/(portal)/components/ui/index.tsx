@@ -319,8 +319,8 @@ export function PageHeader({ title, description, action }: PageHeaderProps) {
     return (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-6">
             <div className="min-w-0">
-                <h1 className="text-xl font-bold text-neutral-900 tracking-tight">{title}</h1>
-                {description && <p className="text-sm text-neutral-500 mt-1">{description}</p>}
+                <h1 className="text-xl font-bold text-[var(--bg-fg)] tracking-tight">{title}</h1>
+                {description && <p className="text-sm text-[var(--bg-fg-muted)] mt-1">{description}</p>}
             </div>
             {action && <div className="shrink-0">{action}</div>}
         </div>
