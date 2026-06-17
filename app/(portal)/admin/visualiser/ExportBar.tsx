@@ -639,10 +639,14 @@ export function ExportBar({
 
         // 1. The aluminium tray — always present; the carcass everything mounts
         // to. Its drawing is the UNFOLDED flat blank (the developed cruciform
-        // with every hole cut through the face + the bend lines) — the real
-        // sheet-metal cut file, not the assembled face art.
+        // with every ring cut through the face + the bend lines) — the real
+        // sheet-metal cut file, not the assembled face art. The counters of
+        // aperture letters (apertureHoles) are cut too — they leave an island of
+        // panel that the machine cuts first so it stays put; even-odd nesting
+        // renders each counter as a solid island inside its letter hole.
         const holesBySection = sectionExport.sections.map((_s, i) => [
             ...(apertureBySection[i] ?? []),
+            ...(apertureHolesBySection[i] ?? []),
             ...(pushThroughKeylineBySection[i] ?? []),
             ...(fixingsBySection[i] ?? []),
             ...(cableHolesBySection[i] ?? []),

@@ -48,9 +48,12 @@ function ringD(points: Array<[number, number]>, dx = 0): string {
 }
 
 /**
- * Build the unfolded tray blank. `holesBySection[i]` is every hole cut through
- * section i's face (apertures + push-through keyline + fixings + cable holes),
- * in global layout coords — exactly the set the production cut draws.
+ * Build the unfolded tray blank. `holesBySection[i]` is every ring cut through
+ * section i's face (apertures + their counters/islands + push-through keyline +
+ * fixings + cable holes), in global layout coords. They go into one compound
+ * path with the blank perimeter and are filled even-odd, so a counter nested
+ * inside its letter reads as a SOLID island (panel that the machine cuts first
+ * and leaves in place), while top-level rings read as holes.
  */
 export function buildPanelDevelopmentSvg(input: {
     sectionExport: SectionedExport;

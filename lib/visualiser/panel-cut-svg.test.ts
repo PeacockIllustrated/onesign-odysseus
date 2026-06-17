@@ -76,6 +76,29 @@ describe('buildPanelDevelopmentSvg', () => {
         expect((d.match(/Z/g) ?? []).length).toBeGreaterThanOrEqual(3);
     });
 
+    it('includes a counter island nested inside its letter (cut too)', () => {
+        // A letter outer + its counter ring → both land in the compound path,
+        // so even-odd leaves the counter as a solid island.
+        const counter: FlatPath = {
+            closed: true,
+            points: [
+                [260, 260],
+                [340, 260],
+                [340, 340],
+                [260, 340],
+                [260, 260],
+            ],
+        };
+        const out = buildPanelDevelopmentSvg({
+            sectionExport: sectionExport(),
+            holesBySection: [[aperture, counter]],
+            panelColor: '#cccccc',
+        });
+        const d = out.svg.match(/<path d="([^"]+)"/)?.[1] ?? '';
+        // blank perimeter + letter + counter ⇒ ≥3 closed rings in one path.
+        expect((d.match(/Z/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    });
+
     it('survives a section with no holes', () => {
         const out = buildPanelDevelopmentSvg({
             sectionExport: sectionExport(),
