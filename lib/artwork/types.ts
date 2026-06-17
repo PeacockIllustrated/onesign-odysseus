@@ -120,6 +120,8 @@ export const ArtworkComponentSchema = z.object({
     bleed_included: z.boolean(),
     file_path: z.string().nullable(),
     artwork_thumbnail_url: z.string().nullable(),
+    // Optional per-component Spline 3D scene (migration 070).
+    spline_url: z.string().nullable().default(null),
     notes: z.string().nullable(),
 
     // Design sign-off

@@ -17,6 +17,7 @@ import { ComponentActions } from './components/ComponentActions';
 import { SubItemList } from './components/SubItemList';
 import { StatusOverride } from './components/StatusOverride';
 import { VariantsPanel } from './components/VariantsPanel';
+import { ComponentSplineForm } from './components/ComponentSplineForm';
 import { createAdminClient } from '@/lib/supabase-admin';
 
 export default async function ComponentDetailPage({
@@ -119,6 +120,13 @@ export default async function ComponentDetailPage({
                 cover image back, ComponentThumbnail is still in the
                 codebase and artwork_components.artwork_thumbnail_url
                 column is untouched. */}
+
+            {/* Optional per-component 3D scene (Spline) */}
+            <ComponentSplineForm
+                jobId={id}
+                componentId={component.id}
+                splineUrl={(component as any).spline_url ?? null}
+            />
 
             {/* Sub-items — the spec-bearing cards (production jobs) or variants (visual approval jobs) */}
             {job.job_type === 'visual_approval' ? (

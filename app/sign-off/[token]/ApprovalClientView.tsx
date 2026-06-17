@@ -211,6 +211,9 @@ export default function ApprovalClientView({ data, token }: Props) {
     const [comments, setComments] = useState<Record<string, string>>({});
     const [selections, setSelections] = useState<Record<string, string>>({}); // variant-picker path only
     const [variantComments, setVariantComments] = useState<Record<string, string>>({}); // "none of these" feedback, per component
+    // Only one Spline scene is loaded at a time (they're heavy); opening one
+    // unloads any other. Keyed by 'job' for the hero, or the component id.
+    const [activeSpline, setActiveSpline] = useState<string | null>(null);
 
     // Collapsed-by-default: forces the client to open each component before
     // they can review it, which makes it obvious that the images inside one
@@ -449,7 +452,13 @@ export default function ApprovalClientView({ data, token }: Props) {
                         </span>
                         <span style={{ fontSize: '11px', color: 'var(--muted)' }}>drag to orbit · scroll to zoom</span>
                     </div>
-                    <SplineEmbed url={job.spline_url!} height={460} />
+                    <SplineEmbed
+                        url={job.spline_url!}
+                        height={460}
+                        active={activeSpline === 'job'}
+                        onActivate={() => setActiveSpline('job')}
+                        label="3D concept"
+                    />
                 </div>
             )}
 
@@ -616,6 +625,23 @@ export default function ApprovalClientView({ data, token }: Props) {
                                                 Everything below — image{hasSubs && totalCount !== 1 ? 's' : ''}, specification{hasSubs && totalCount !== 1 ? 's' : ''}, decision buttons —
                                                 belongs to <strong style={{ color: 'var(--heading)' }}>{component.name}</strong>.
                                             </div>
+
+                                            {/* Per-component 3D scene — click to load (only one loads at a time) */}
+                                            {isValidSplineUrl(component.spline_url) && (
+                                                <div style={{ ...glassPanel, borderRadius: '12px', overflow: 'hidden', marginBottom: '14px' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '10px 14px', borderBottom: '1px solid var(--hairlineSoft)' }}>
+                                                        <span style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--accent)' }}>3D preview</span>
+                                                        <span style={{ fontSize: '10px', color: 'var(--muted)' }}>drag to orbit</span>
+                                                    </div>
+                                                    <SplineEmbed
+                                                        url={component.spline_url!}
+                                                        height={360}
+                                                        active={activeSpline === component.id}
+                                                        onActivate={() => setActiveSpline(component.id)}
+                                                        label="3D preview"
+                                                    />
+                                                </div>
+                                            )}
 
                                             {/* Variant-picker path: single-choice visual approval */}
                                             {hasVariants ? (

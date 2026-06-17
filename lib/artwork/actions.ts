@@ -34,7 +34,7 @@ import {
     ArtworkDashboardFilter,
     ArtworkGhostRow,
 } from './types';
-import { checkDimensionTolerance, computeReleaseGaps } from './utils';
+import { checkDimensionTolerance, computeReleaseGaps, isValidSplineUrl } from './utils';
 import { advanceItemToNextRoutedStage } from '@/lib/production/actions';
 
 // =============================================================================
@@ -183,6 +183,41 @@ export async function updateArtworkJob(
 
     revalidatePath('/admin/artwork');
     revalidatePath(`/admin/artwork/${id}`);
+    return { success: true };
+}
+
+/**
+ * Set (or clear) a component's optional Spline 3D scene URL. Shown
+ * click-to-load inside that component's card on the client approval pack.
+ */
+export async function updateComponentSpline(
+    componentId: string,
+    jobId: string,
+    splineUrl: string | null
+): Promise<{ success: true } | { error: string }> {
+    const user = await getUser();
+    if (!user) {
+        return { error: 'not authenticated' };
+    }
+
+    const url = splineUrl?.trim() || null;
+    if (url && !isValidSplineUrl(url)) {
+        return { error: 'must be an https link on spline.design' };
+    }
+
+    const supabase = await createServerClient();
+    const { error } = await supabase
+        .from('artwork_components')
+        .update({ spline_url: url })
+        .eq('id', componentId);
+
+    if (error) {
+        console.error('error updating component spline url:', error);
+        return { error: error.message };
+    }
+
+    revalidatePath(`/admin/artwork/${jobId}/${componentId}`);
+    revalidatePath(`/admin/artwork/${jobId}`);
     return { success: true };
 }
 
