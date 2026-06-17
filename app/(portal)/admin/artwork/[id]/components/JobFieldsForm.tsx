@@ -10,12 +10,22 @@ interface Props {
     panelSize: string | null;
     paintColour: string | null;
     splineUrl: string | null;
+    visualiserDesignId: string | null;
+    designs: Array<{ id: string; name: string }>;
 }
 
-export function JobFieldsForm({ jobId, panelSize, paintColour, splineUrl }: Props) {
+export function JobFieldsForm({
+    jobId,
+    panelSize,
+    paintColour,
+    splineUrl,
+    visualiserDesignId,
+    designs,
+}: Props) {
     const [panel, setPanel] = useState(panelSize || '');
     const [colour, setColour] = useState(paintColour || '');
     const [spline, setSpline] = useState(splineUrl || '');
+    const [designId, setDesignId] = useState(visualiserDesignId || '');
     const [isPending, startTransition] = useTransition();
     const [saved, setSaved] = useState(false);
 
@@ -24,7 +34,8 @@ export function JobFieldsForm({ jobId, panelSize, paintColour, splineUrl }: Prop
     const hasChanges =
         panel !== (panelSize || '') ||
         colour !== (paintColour || '') ||
-        splineTrimmed !== (splineUrl || '');
+        splineTrimmed !== (splineUrl || '') ||
+        designId !== (visualiserDesignId || '');
 
     const handleSave = () => {
         if (splineInvalid) return;
@@ -33,6 +44,7 @@ export function JobFieldsForm({ jobId, panelSize, paintColour, splineUrl }: Prop
                 panel_size: panel.trim() || null,
                 paint_colour: colour.trim() || null,
                 spline_url: splineTrimmed || null,
+                visualiser_design_id: designId || null,
             });
             setSaved(true);
             setTimeout(() => setSaved(false), 2000);
@@ -87,6 +99,31 @@ export function JobFieldsForm({ jobId, panelSize, paintColour, splineUrl }: Prop
                             embeds an interactive 3D preview on the client approval page
                         </p>
                     )}
+                </div>
+                <div>
+                    <label className="block text-xs text-neutral-500 mb-1">
+                        3D sign{' '}
+                        <span className="text-neutral-400">
+                            — from a visualiser design (optional)
+                        </span>
+                    </label>
+                    <select
+                        value={designId}
+                        onChange={(e) => setDesignId(e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-sm border border-neutral-200 rounded-[var(--radius-sm)] bg-white focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
+                    >
+                        <option value="">— none —</option>
+                        {designs.map((d) => (
+                            <option key={d.id} value={d.id}>
+                                {d.name}
+                            </option>
+                        ))}
+                    </select>
+                    <p className="mt-1 text-[11px] text-neutral-400">
+                        shows the real sign in interactive 3D on the client
+                        approval page — the thing they approve is the thing
+                        they’ll get
+                    </p>
                 </div>
                 {hasChanges && (
                     <button

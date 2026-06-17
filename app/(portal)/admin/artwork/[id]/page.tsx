@@ -55,6 +55,18 @@ export default async function ArtworkJobDetailPage({
 
     const supabaseClient = createAdminClient();
 
+    // Saved visualiser designs, for the "3D sign" picker on the job — its real
+    // sign drives the interactive 3D on the client approval pack.
+    const { data: designRows } = await supabaseClient
+        .from('visualiser_designs')
+        .select('id, name')
+        .order('updated_at', { ascending: false })
+        .limit(200);
+    const designOptions = (designRows ?? []).map((d) => ({
+        id: d.id as string,
+        name: d.name as string,
+    }));
+
     // Visual-approval extra data
     let spawnedProduction: { id: string } | null = null;
     let linkableQuotes: { id: string; quote_number: string; customer_name: string | null }[] = [];
@@ -521,6 +533,8 @@ export default async function ArtworkJobDetailPage({
                         panelSize={job.panel_size}
                         paintColour={job.paint_colour}
                         splineUrl={(job as any).spline_url ?? null}
+                        visualiserDesignId={(job as any).visualiser_design_id ?? null}
+                        designs={designOptions}
                     />
 
                     {/* Reset (un-approve) in place, or clone as a fresh draft */}

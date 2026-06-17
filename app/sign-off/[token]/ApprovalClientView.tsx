@@ -5,6 +5,7 @@ import { submitApproval, requestApprovalChanges } from '@/lib/artwork/approval-a
 import type { ApprovalPackData } from '@/lib/artwork/approval-actions';
 import { VariantPicker, NONE_VARIANT } from './components/VariantPicker';
 import { SplineEmbed } from './components/SplineEmbed';
+import { VisualiserSignEmbed } from './components/VisualiserSignEmbed';
 import { ResilientImage } from './components/ResilientImage';
 import MarketingModal from '@/app/components/MarketingModal';
 import { formatDateTime, isValidSplineUrl } from '@/lib/artwork/utils';
@@ -442,6 +443,29 @@ export default function ApprovalClientView({ data, token }: Props) {
                     {isVisual ? 'artwork visual approval' : 'artwork sign-off'}
                 </div>
             </div>
+
+            {/* The actual sign from the visualiser, in interactive 3D — the
+                primary "wow" hero. Same load-on-click workflow as Spline, and it
+                shares the single-active key so only one 3D scene is ever live. */}
+            {data.visualiserDesign && (
+                <div style={{ ...glassPanel, borderRadius: '18px', overflow: 'hidden', marginBottom: '24px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '12px 18px', borderBottom: '1px solid var(--hairlineSoft)' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--accent)' }}>
+                            Your sign in 3D
+                        </span>
+                        <span style={{ fontSize: '11px', color: 'var(--muted)' }}>drag to orbit · scroll to zoom</span>
+                    </div>
+                    <VisualiserSignEmbed
+                        params={data.visualiserDesign.params}
+                        svgSource={data.visualiserDesign.svgSource}
+                        height={480}
+                        active={activeSpline === 'visualiser'}
+                        onActivate={() => setActiveSpline('visualiser')}
+                        night={!light}
+                        label="your sign in 3D"
+                    />
+                </div>
+            )}
 
             {/* Interactive 3D scene (Spline) — the "wow" hero, shown only when set */}
             {isValidSplineUrl(job.spline_url) && (
