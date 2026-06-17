@@ -389,6 +389,9 @@ export function NestingClient({
             widthCalMm: widthCal,
             fileName,
             keptGroupIds: [...keptEffective],
+            // Persist the packed layout so linked surfaces (the visualiser
+            // PDFs) render the exact sheets the operator saved.
+            solution: solution ?? null,
         });
         setBusy(false);
         if (!res.ok) {

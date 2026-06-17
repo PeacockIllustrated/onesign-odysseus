@@ -19,7 +19,7 @@ import { z } from 'zod';
 import { createAdminClient } from '@/lib/supabase-admin';
 import { getUser, requireSuperAdminOrError } from '@/lib/auth';
 import { ok, err, type Result } from '@/lib/result';
-import { DEFAULT_NEST_CONFIG } from '@/lib/nesting/types';
+import { DEFAULT_NEST_CONFIG, type NestingDesignRow } from '@/lib/nesting/types';
 import { FaceMaterialEnum } from './types';
 import { FACE_MATERIALS } from './extra-face';
 
@@ -147,4 +147,29 @@ export async function listNestsForDesign(
 
     if (error) return err(error.message);
     return ok((data ?? []) as LinkedNest[]);
+}
+
+/**
+ * Full nest rows for a design (svg_source + config_json + source_kind) — what
+ * the visualiser PDFs need to reproduce the packed sheets. Heavier than
+ * listNestsForDesign; only the PDF flow uses it.
+ */
+export async function getNestsForDesign(
+    designId: string,
+): Promise<Result<NestingDesignRow[]>> {
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return err(gate.error);
+
+    const supabase = createAdminClient();
+    const { data, error } = await supabase
+        .from(NESTS)
+        .select(
+            'id, name, created_at, updated_at, svg_source, config_json, source_kind, source_job_id, source_design_id',
+        )
+        .eq('source_design_id', designId)
+        .order('updated_at', { ascending: false })
+        .limit(50);
+
+    if (error) return err(error.message);
+    return ok((data ?? []) as NestingDesignRow[]);
 }

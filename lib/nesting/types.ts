@@ -188,6 +188,13 @@ export interface NestingDesignConfig {
      * Authoritative link is the `source_design_id` column.
      */
     sourceDesignName?: string;
+    /**
+     * The packed layout at save time. Persisted so a linked surface (e.g. the
+     * visualiser's reference / production PDF) can render the EXACT sheets the
+     * operator packed, rather than re-running the engine and getting a
+     * different arrangement. Absent on a freshly-created (not-yet-opened) nest.
+     */
+    solution?: NestSolution;
 }
 
 /** Lightweight list item (no SVG / config payload) for the saved-nests rail. */

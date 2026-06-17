@@ -35,6 +35,32 @@ const NestConfigSchema = z.object({
     maxSheets: z.number().int().positive(),
 });
 
+// The engine's own structured-clone output. Persisted so linked surfaces (the
+// visualiser PDFs) can render the EXACT packed sheets the operator saved.
+const NestSolutionSchema = z.object({
+    placements: z.array(
+        z.object({
+            pieceId: z.string(),
+            sheetIndex: z.number().int(),
+            xMm: z.number(),
+            yMm: z.number(),
+            rotationDeg: z.number(),
+        }),
+    ),
+    sheets: z.array(
+        z.object({
+            index: z.number().int(),
+            pieceCount: z.number().int(),
+            utilisation: z.number(),
+            usedWidthMm: z.number(),
+            usedHeightMm: z.number(),
+        }),
+    ),
+    unplacedPieceIds: z.array(z.string()),
+    iteration: z.number(),
+    score: z.number(),
+});
+
 const SaveSchema = z.object({
     id: z.string().uuid().optional(),
     name: z.string().trim().min(1, 'name is required').max(120),
@@ -43,6 +69,7 @@ const SaveSchema = z.object({
     widthCalMm: z.number().positive().nullable().optional(),
     fileName: z.string().max(260).nullable().optional(),
     keptGroupIds: z.array(z.string().max(64)).max(2000).optional(),
+    solution: NestSolutionSchema.nullable().optional(),
 });
 export type SaveNestingDesignInput = z.infer<typeof SaveSchema>;
 
@@ -94,8 +121,16 @@ export async function saveNestingDesign(
     if (!parsed.success) {
         return err(parsed.error.issues[0]?.message ?? 'invalid input');
     }
-    const { id, name, svgSource, config, widthCalMm, fileName, keptGroupIds } =
-        parsed.data;
+    const {
+        id,
+        name,
+        svgSource,
+        config,
+        widthCalMm,
+        fileName,
+        keptGroupIds,
+        solution,
+    } = parsed.data;
 
     const supabase = createAdminClient();
     const row = {
@@ -106,6 +141,8 @@ export async function saveNestingDesign(
             widthCalMm: widthCalMm ?? null,
             fileName: fileName ?? null,
             keptGroupIds: keptGroupIds ?? [],
+            // Omitted (not null) when absent, so it stays out of the JSON.
+            ...(solution ? { solution } : {}),
         },
         updated_at: new Date().toISOString(),
     };
