@@ -94,13 +94,14 @@ export function routeForPiece(kind: PieceKind, opts: RouteOptions = {}): string[
 }
 
 /** Plain-English assembly step for each piece kind, in build order. */
-const ASSEMBLY_STEP: Record<PieceKind, { order: number; step: string }> = {
+const ASSEMBLY_STEP: Partial<Record<PieceKind, { order: number; step: string }>> = {
     panel: { order: 1, step: 'Fabricate & paint the aluminium tray' },
     opalBacking: { order: 2, step: 'Fit the opal backing & lighting' },
     backlit: { order: 2, step: 'Fit the opal backing & lighting' },
     pushthrough: { order: 3, step: 'Press & bond the push-through letters' },
     acrylic: { order: 4, step: 'Apply the face-stuck acrylic' },
-    extraFace: { order: 5, step: 'Laminate the metal faces' },
+    // Metal faces are laminated as part of the letter build, not a standalone
+    // assembly step — deliberately omitted from the order.
     returns: { order: 6, step: 'Weld & fit the built-up returns' },
     standoff: { order: 7, step: 'Mount the stood-off letters on studs' },
     vinylCut: { order: 8, step: 'Apply the vinyl graphics' },

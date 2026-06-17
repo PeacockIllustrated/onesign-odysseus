@@ -4,14 +4,15 @@
  * Splits ONE finished 3D sign into its individual buildable pieces (the
  * aluminium tray, push-through letters, opal backing, face-stuck acrylic, metal
  * faces, stood-off letters, cut/printed vinyl …) and lays each out as its own
- * works-pack section: spec table, the piece's own cut file as a technical
- * drawing, construction callouts, and that piece's REAL department route as the
- * build-stage checklist. An overview section carries the in-situ render, the
- * whole-sign drawing, the overall spec and the assembly order.
+ * works-pack section: the piece's drawings (filled material-colour artwork +
+ * its nested cut file) full-width with the spec, construction callouts and that
+ * piece's REAL department route underneath. An overview section carries the
+ * clean in-situ render, the whole-sign face, the overall spec and the assembly
+ * order. Renders on the landscape "studio" drawing-sheet template.
  *
  * Pure + framework-neutral (no 'use server'/'use client', no DB, no derivation)
- * — the client assembles the pieces + cut-file data URIs (where the geometry
- * and nest builders already live) and hands them here. Unit-testable.
+ * — the client assembles the pieces + drawing data URIs (where the geometry,
+ * nest + display builders live) and hands them here. Unit-testable.
  */
 
 import {
@@ -30,41 +31,49 @@ import {
 } from './types';
 import { routeForPiece, assemblySteps, type PieceKind } from './routing';
 
+/** One drawing on a piece/overview — a filled face, a nested cut file or the
+ *  in-situ 3D render. Dimensions drive the print view's dimension lines. */
+export interface PackDrawing {
+    dataUri: string;
+    isSvg: boolean;
+    kind?: 'visual' | 'technical';
+    caption?: string;
+    widthMm?: number | null;
+    heightMm?: number | null;
+    /** Print render height in px — hero drawings get more scale. */
+    heightPx?: number;
+}
+
 export interface DesignPieceGroup {
     kind: PieceKind;
-    /** Section heading, e.g. "Push-through letters — opal". */
     title: string;
-    /** How many physical pieces (letters / panels) — shown on the spec. */
     count: number;
-    /** Cut/build thickness, so routing can send thick work to the CNC. */
     thicknessMm?: number;
-    /** Painted stood-off / tray work picks up the Painters stage. */
     painted?: boolean;
     specRows: { label: string; value: string }[];
     callouts: string[];
-    /** The piece's cut file (SVG/PNG) as a data URI, embedded as a drawing. */
-    cutFileDataUri?: string | null;
-    /** Whether the cut file is an SVG (vector-sharp + dimensioned). */
-    cutFileIsSvg?: boolean;
-    cutFileCaption?: string;
+    drawings: PackDrawing[];
 }
 
 export interface DesignPackInput {
     name: string;
     clientName?: string | null;
     reference?: string | null;
-    /** Whole-sign overall spec (size, material, colour, illumination, fixing). */
     overallSpecRows: { label: string; value: string }[];
-    /** In-situ 3D render (PNG data URI) for the hero visual. */
-    insituDataUri?: string | null;
-    /** Whole-sign artwork drawing (SVG data URI). */
-    artworkDataUri?: string | null;
+    /** Client logo (data URI) for the cover header, from the binder library. */
+    logoDataUri?: string | null;
+    /** In-situ render + whole-sign face for the overview hero. */
+    overviewDrawings: PackDrawing[];
     groups: DesignPieceGroup[];
     /** Link to the LED layout tool, shown when the sign is illuminated. */
     ledToolNote?: string | null;
 }
 
-/** A build-stage checklist seeded from a department route (all unchecked). */
+// Sized so a full-width drawing + its details fit a landscape A4 sheet. Signs
+// are wide, so a contain-fit at this height still reads large across the page.
+const HERO_HEIGHT_PX = 300;
+const PIECE_HEIGHT_PX = 320;
+
 function stagesFromRoute(title: string, route: string[]): StagesBlock {
     return {
         id: genId('sg'),
@@ -74,30 +83,61 @@ function stagesFromRoute(title: string, route: string[]): StagesBlock {
     };
 }
 
-function specTable(title: string, rows: { label: string; value: string }[]) {
+function specTable(title: string, rows: { label: string; value: string }[]): Block {
     const block = newSpecTableBlock();
     block.title = title;
     block.rows = rows.length > 0 ? rows : [{ label: '', value: '' }];
     return block;
 }
 
-function calloutsBlock(title: string, items: string[]) {
+function calloutsBlock(title: string, items: string[]): Block {
     const block = newCalloutsBlock();
     block.title = title;
     block.items = items.length > 0 ? items : [''];
     return block;
 }
 
-function technicalFromDataUri(
-    dataUri: string,
-    isSvg: boolean,
-    caption: string,
-) {
+/** A drawing → a visual (in-situ photo) or technical (dimensioned) block. */
+function drawingBlock(d: PackDrawing, fallbackHeight: number): Block {
+    if (d.kind === 'visual') {
+        const v = newVisualBlock();
+        v.url = d.dataUri;
+        v.caption = d.caption ?? '';
+        // Contained so the real-life render never crops / overflows its frame.
+        v.fit = 'contain';
+        v.height = d.heightPx ?? fallbackHeight;
+        return v;
+    }
     const tech = newTechnicalBlock();
-    tech.url = dataUri;
-    tech.isSvg = isSvg;
-    tech.caption = caption;
+    tech.url = d.dataUri;
+    tech.isSvg = d.isSvg;
+    tech.caption = d.caption ?? '';
+    tech.widthMm = d.widthMm ?? null;
+    tech.heightMm = d.heightMm ?? null;
+    tech.showDimensions = d.widthMm != null;
+    tech.height = d.heightPx ?? fallbackHeight;
     return tech;
+}
+
+/**
+ * Build a section as TWO keep-with groups: the drawings (full-width on the
+ * studio stage) and the info underneath (full-width). The studio sheet
+ * collapses a single-kind group to the full page width, so the drawings get
+ * maximum scale and the details read beneath them.
+ */
+function sectionFrom(
+    title: string,
+    signRef: string,
+    drawings: Block[],
+    info: Block[],
+): SignSection {
+    const blocks = [...drawings, ...info];
+    const keepWith: string[] = [];
+    // Link each group internally; the boundary (last drawing) is left unlinked
+    // so drawings and info fall into separate full-width rows.
+    drawings.slice(0, -1).forEach((b) => keepWith.push(b.id));
+    info.slice(0, -1).forEach((b) => keepWith.push(b.id));
+    return { id: genId('sec'), title, signRef, keepWith, blocks };
 }
 
 export function buildPackFromDesignPieces(
@@ -106,68 +146,49 @@ export function buildPackFromDesignPieces(
     const sections: SignSection[] = [];
 
     // ---- Overview: the whole sign + assembly order -------------------------
-    const overview: Block[] = [newVisualBlock()];
-    const visual = overview[0];
-    if (visual.type === 'visual' && input.insituDataUri) {
-        visual.url = input.insituDataUri;
-        visual.caption = 'In-situ render';
-    }
-    if (input.artworkDataUri) {
-        overview.push(
-            technicalFromDataUri(input.artworkDataUri, true, 'Whole sign — artwork'),
-        );
-    }
-    overview.push(specTable('Sign specification', input.overallSpecRows));
-    // A glance-list of every piece this sign breaks into.
-    overview.push(
+    const overviewDrawings: Block[] =
+        input.overviewDrawings.length > 0
+            ? input.overviewDrawings.map((d) => drawingBlock(d, HERO_HEIGHT_PX))
+            : [newVisualBlock()];
+
+    const overviewInfo: Block[] = [
+        specTable('Sign specification', input.overallSpecRows),
         calloutsBlock(
             'Pieces in this sign',
             input.groups.map((g) =>
                 g.count > 1 ? `${g.title} (×${g.count})` : g.title,
             ),
         ),
-    );
-    // Assembly order — the sequence the pieces come together.
-    overview.push(
         stagesFromRoute(
             'Assembly order',
             assemblySteps(input.groups.map((g) => g.kind)),
         ),
-    );
+    ];
     if (input.ledToolNote) {
-        overview.push(
-            calloutsBlock('Lighting', [input.ledToolNote]),
-        );
+        overviewInfo.push(calloutsBlock('Lighting', [input.ledToolNote]));
     }
-    overview.push(newQcBlock());
+    overviewInfo.push(newQcBlock());
 
-    sections.push({
-        id: genId('sec'),
-        title: input.name,
-        signRef: 'Overview',
-        keepWith: [],
-        blocks: overview,
-    });
+    sections.push(
+        sectionFrom(input.name, 'Overview', overviewDrawings, overviewInfo),
+    );
 
     // ---- One section per piece --------------------------------------------
     input.groups.forEach((g, i) => {
-        const blocks: Block[] = [newHeadingBlock(g.title)];
+        const drawings: Block[] = g.drawings.map((d) =>
+            drawingBlock(d, PIECE_HEIGHT_PX),
+        );
+
         const rows = [...g.specRows];
         if (g.count > 1) rows.push({ label: 'Quantity', value: `${g.count} off` });
-        blocks.push(specTable(`${g.title} — specification`, rows));
-        if (g.cutFileDataUri) {
-            blocks.push(
-                technicalFromDataUri(
-                    g.cutFileDataUri,
-                    g.cutFileIsSvg ?? true,
-                    g.cutFileCaption ?? `${g.title} — cut file`,
-                ),
-            );
-        }
+        const info: Block[] = [
+            newHeadingBlock(g.title),
+            specTable(`${g.title} — specification`, rows),
+        ];
         if (g.callouts.length > 0) {
-            blocks.push(calloutsBlock('Construction', g.callouts));
+            info.push(calloutsBlock('Construction', g.callouts));
         }
-        blocks.push(
+        info.push(
             stagesFromRoute(
                 'Production route',
                 routeForPiece(g.kind, {
@@ -176,15 +197,9 @@ export function buildPackFromDesignPieces(
                 }),
             ),
         );
-        blocks.push(newQcBlock());
+        info.push(newQcBlock());
 
-        sections.push({
-            id: genId('sec'),
-            title: g.title,
-            signRef: `Piece ${i + 1}`,
-            keepWith: [],
-            blocks,
-        });
+        sections.push(sectionFrom(g.title, `Piece ${i + 1}`, drawings, info));
     });
 
     return {
@@ -193,8 +208,9 @@ export function buildPackFromDesignPieces(
             clientName: input.clientName ?? '',
             reference: input.reference ?? '',
             subtitle: 'Signage works pack',
+            logoUrl: input.logoDataUri ?? '',
         }),
         sections,
-        style: 'steel',
+        style: 'studio',
     };
 }

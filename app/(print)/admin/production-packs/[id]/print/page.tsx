@@ -454,18 +454,31 @@ function StudioSheet({
                 {groups.map((group, gi) => {
                     const info = group.filter((b) => !isStageBlock(b) && b.type !== 'pageBreak');
                     const stage = group.filter(isStageBlock);
+                    // A single-kind group spans the full page width (the drawing
+                    // gets maximum scale; its details read full-width beneath) —
+                    // the 82mm info rail only appears when a row mixes both.
+                    const rowCls =
+                        stage.length === 0
+                            ? 'pp-studio-row pp-studio-row--info'
+                            : info.length === 0
+                              ? 'pp-studio-row pp-studio-row--stage'
+                              : 'pp-studio-row';
                     return (
-                        <div className="pp-studio-row" key={gi}>
-                            <div className="pp-studio-row-info">
-                                {info.map((b) => (
-                                    <BlockView key={b.id} block={b} />
-                                ))}
-                            </div>
-                            <div className="pp-studio-row-stage">
-                                {stage.map((b) => (
-                                    <BlockView key={b.id} block={b} />
-                                ))}
-                            </div>
+                        <div className={rowCls} key={gi}>
+                            {info.length > 0 && (
+                                <div className="pp-studio-row-info">
+                                    {info.map((b) => (
+                                        <BlockView key={b.id} block={b} />
+                                    ))}
+                                </div>
+                            )}
+                            {stage.length > 0 && (
+                                <div className="pp-studio-row-stage">
+                                    {stage.map((b) => (
+                                        <BlockView key={b.id} block={b} />
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     );
                 })}
@@ -650,7 +663,10 @@ const STUDIO_CSS = `
 /* Rows = keep-with groups: info (left) aligned beside its artwork (right). A
    continuous hairline divider runs down between the two columns. */
 .pp-studio-rows { flex: 1; display: flex; flex-direction: column; gap: 9mm; }
-.pp-studio-row { display: grid; grid-template-columns: 82mm 1fr; gap: 11mm; align-items: start; }
+.pp-studio-row { display: grid; grid-template-columns: 82mm 1fr; gap: 11mm; align-items: start; break-inside: avoid; }
+/* A drawings-only or info-only row spans the full page width. */
+.pp-studio-row--stage, .pp-studio-row--info { grid-template-columns: 1fr; gap: 4mm; }
+.pp-studio-row--info .pp-studio-row-info { border-right: none; padding-right: 0; }
 .pp-studio-row-info { border-right: 1px solid #e5e7eb; padding-right: 10mm; display: flex; flex-direction: column; gap: 6mm; min-width: 0; }
 .pp-studio-row-stage { display: flex; flex-direction: column; gap: 6mm; min-width: 0; }
 .pp-studio-empty { color: #9ca3af; font-size: 12px; padding: 8mm 0; }

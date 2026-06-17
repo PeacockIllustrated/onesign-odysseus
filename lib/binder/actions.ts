@@ -66,6 +66,38 @@ export async function listBinderAssets(
     return ok((data ?? []) as BinderAssetSummary[]);
 }
 
+/**
+ * The binder logo for a design's client, if one exists — used as the cover
+ * header on a production pack built from that design. Org-scoped only (returns
+ * null when the design has no org or the org has no binder logo), so we never
+ * stamp the wrong client's logo on a pack.
+ */
+export async function getDesignBinderLogo(
+    designId: string,
+): Promise<Result<{ svg: string } | null>> {
+    const user = await getUser();
+    if (!user) return err('not authenticated');
+
+    const supabase = createAdminClient();
+    const { data: design } = await supabase
+        .from('visualiser_designs')
+        .select('org_id')
+        .eq('id', designId)
+        .maybeSingle();
+    const orgId = (design?.org_id as string | null) ?? null;
+    if (!orgId) return ok(null);
+
+    const { data, error } = await supabase
+        .from(TABLE)
+        .select('svg_source')
+        .eq('org_id', orgId)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (error) return err(error.message);
+    return ok(data?.svg_source ? { svg: data.svg_source as string } : null);
+}
+
 /** Create (no id) or update (with id) a binder asset. Returns its id. */
 export async function saveBinderAsset(
     input: SaveBinderAssetInput,
