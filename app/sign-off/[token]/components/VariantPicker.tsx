@@ -20,7 +20,7 @@ interface Props {
 }
 
 /**
- * Per-component variant picker for the client approval page.
+ * Per-component variant picker for the client approval page (Studio dark skin).
  *
  * - Images are click-to-zoom (opens lightbox via onZoom).
  * - Selection is via a radio button beneath the description, so only
@@ -29,7 +29,7 @@ interface Props {
 export function VariantPicker({ componentName, variants, chosenVariantId, onChoose, onZoom }: Props) {
     if (variants.length === 0) {
         return (
-            <p className="text-sm italic text-neutral-500">
+            <p className="text-sm italic text-white/50">
                 No variants provided for {componentName}.
             </p>
         );
@@ -44,10 +44,10 @@ export function VariantPicker({ componentName, variants, chosenVariantId, onChoo
                 return (
                     <div
                         key={v.id}
-                        className={`rounded-lg border-2 overflow-hidden transition-colors ${
+                        className={`rounded-2xl border overflow-hidden transition-all ${
                             chosen
-                                ? 'border-green-700 bg-green-50 ring-2 ring-green-700'
-                                : 'border-neutral-200'
+                                ? 'border-[#9ed0dc] bg-[#9ed0dc]/10 ring-1 ring-[#9ed0dc]/60 shadow-[0_0_30px_-8px_rgba(158,208,220,0.5)]'
+                                : 'border-white/10 bg-white/[0.03] hover:border-white/25'
                         }`}
                     >
                         {/* Image — click to zoom, NOT to select */}
@@ -63,35 +63,35 @@ export function VariantPicker({ componentName, variants, chosenVariantId, onChoo
                                     alt={alt}
                                     className="w-full h-48 sm:h-56 object-cover"
                                 />
-                                <span className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                                    <span className="opacity-0 group-hover:opacity-100 bg-black/70 text-white text-xs font-semibold px-3 py-1.5 rounded-full transition-opacity">
+                                <span className="absolute inset-0 bg-black/0 group-hover:bg-black/25 transition-colors flex items-center justify-center">
+                                    <span className="opacity-0 group-hover:opacity-100 bg-black/70 text-white text-xs font-semibold px-3 py-1.5 rounded-full transition-opacity backdrop-blur-sm">
                                         click to zoom
                                     </span>
                                 </span>
                             </button>
                         ) : (
-                            <div className="w-full h-48 sm:h-56 bg-neutral-100 flex items-center justify-center text-neutral-400 text-sm italic">
+                            <div className="w-full h-48 sm:h-56 bg-white/[0.04] flex items-center justify-center text-white/40 text-sm italic">
                                 no image
                             </div>
                         )}
 
                         {/* Info + radio selection */}
-                        <div className="p-3">
-                            <p className="text-sm font-bold text-neutral-900">
+                        <div className="p-3.5">
+                            <p className="text-sm font-bold text-white">
                                 {v.label}{v.name ? ` — ${v.name}` : ''}
                             </p>
                             {v.description && (
-                                <p className="text-xs text-neutral-600 mt-1 leading-relaxed">
+                                <p className="text-xs text-white/60 mt-1 leading-relaxed">
                                     {v.description}
                                 </p>
                             )}
 
                             {/* Radio button — the ONLY way to select */}
                             <label
-                                className={`mt-3 flex items-center gap-2 cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${
+                                className={`mt-3 flex items-center gap-2 cursor-pointer rounded-xl border px-3 py-2.5 transition-colors ${
                                     chosen
-                                        ? 'border-green-700 bg-green-100 text-green-900'
-                                        : 'border-neutral-300 hover:border-neutral-400 text-neutral-700'
+                                        ? 'border-[#9ed0dc]/70 bg-[#9ed0dc]/15 text-[#cdeaf1]'
+                                        : 'border-white/15 hover:border-white/35 text-white/70'
                                 }`}
                             >
                                 <input
@@ -99,7 +99,7 @@ export function VariantPicker({ componentName, variants, chosenVariantId, onChoo
                                     name={`variant-${componentName}`}
                                     checked={chosen}
                                     onChange={() => onChoose(v.id)}
-                                    className="accent-green-700 w-4 h-4 shrink-0"
+                                    className="accent-[#4e7e8c] w-4 h-4 shrink-0"
                                 />
                                 <span className="text-xs font-semibold">
                                     {chosen ? '✓ This is my choice' : 'Choose this design'}
