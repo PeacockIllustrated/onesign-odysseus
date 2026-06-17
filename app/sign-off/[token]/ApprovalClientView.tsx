@@ -4,6 +4,7 @@ import { useState, useRef, useTransition, useCallback, useEffect } from 'react';
 import { submitApproval, requestApprovalChanges } from '@/lib/artwork/approval-actions';
 import type { ApprovalPackData } from '@/lib/artwork/approval-actions';
 import { VariantPicker, NONE_VARIANT } from './components/VariantPicker';
+import { SplineEmbed } from './components/SplineEmbed';
 import { ResilientImage } from './components/ResilientImage';
 import MarketingModal from '@/app/components/MarketingModal';
 import { formatDateTime, isValidSplineUrl } from '@/lib/artwork/utils';
@@ -448,13 +449,7 @@ export default function ApprovalClientView({ data, token }: Props) {
                         </span>
                         <span style={{ fontSize: '11px', color: 'var(--muted)' }}>drag to orbit · scroll to zoom</span>
                     </div>
-                    <iframe
-                        src={job.spline_url!}
-                        title={`${job.job_name} — 3D preview`}
-                        loading="lazy"
-                        allow="fullscreen; autoplay"
-                        style={{ width: '100%', height: '460px', border: 'none', display: 'block', background: 'var(--imgBg)' }}
-                    />
+                    <SplineEmbed url={job.spline_url!} height={460} />
                 </div>
             )}
 
