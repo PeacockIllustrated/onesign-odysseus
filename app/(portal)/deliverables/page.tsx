@@ -199,7 +199,7 @@ export default function DeliverablesPage() {
                     <select
                         value={monthFilter}
                         onChange={(e) => setMonthFilter(e.target.value)}
-                        className="appearance-none bg-white border border-neutral-200 rounded-[var(--radius-sm)] px-4 py-2 pr-10 text-sm font-medium text-neutral-900 focus:outline-none focus:ring-2 focus:ring-black cursor-pointer"
+                        className="appearance-none bg-white border border-neutral-200 rounded-[var(--radius-sm)] px-4 py-2 pr-10 text-sm font-medium text-neutral-900 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] cursor-pointer"
                     >
                         {monthOptions.map((m) => (
                             <option key={m.value} value={m.value}>{m.label}</option>
@@ -228,7 +228,7 @@ export default function DeliverablesPage() {
                         key={s.value}
                         onClick={() => setStatusFilter(s.value)}
                         className={`px-3 py-1.5 text-xs font-medium rounded-[var(--radius-sm)] whitespace-nowrap transition-colors ${statusFilter === s.value
-                            ? 'bg-black text-white'
+                            ? 'bg-[var(--accent)] text-white'
                             : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
                             }`}
                     >
@@ -434,7 +434,7 @@ export default function DeliverablesPage() {
                                     value={newComment}
                                     onChange={(e) => setNewComment(e.target.value)}
                                     placeholder="Add a comment..."
-                                    className="flex-1 px-3 py-2 border border-neutral-200 rounded-[var(--radius-sm)] text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                                    className="flex-1 px-3 py-2 border border-neutral-200 rounded-[var(--radius-sm)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                                     onKeyDown={(e) => e.key === 'Enter' && handleAddComment()}
                                 />
                                 <button

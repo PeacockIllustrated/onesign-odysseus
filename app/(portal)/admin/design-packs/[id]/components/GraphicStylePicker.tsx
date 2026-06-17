@@ -184,7 +184,7 @@ export function GraphicStylePicker({ packId, data }: GraphicStylePickerProps) {
                                     text-left p-4 rounded-[var(--radius-md)] border-2 transition-all
                                     ${
                                         isSelected
-                                            ? 'border-black bg-neutral-50'
+                                            ? 'border-[var(--accent)] bg-neutral-50'
                                             : 'border-neutral-200 hover:border-neutral-300'
                                     }
                                     ${isLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
@@ -198,7 +198,7 @@ export function GraphicStylePicker({ packId, data }: GraphicStylePickerProps) {
                                         </p>
                                     </div>
                                     {isSelected && (
-                                        <div className="w-4 h-4 rounded-full bg-black flex items-center justify-center">
+                                        <div className="w-4 h-4 rounded-full bg-[var(--accent)] flex items-center justify-center">
                                             <div className="w-1.5 h-1.5 rounded-full bg-white" />
                                         </div>
                                     )}
@@ -228,7 +228,7 @@ export function GraphicStylePicker({ packId, data }: GraphicStylePickerProps) {
                                     text-left p-4 rounded-[var(--radius-md)] border-2 transition-all
                                     ${
                                         isSelected
-                                            ? 'border-black bg-neutral-50'
+                                            ? 'border-[var(--accent)] bg-neutral-50'
                                             : 'border-neutral-200 hover:border-neutral-300'
                                     }
                                     ${isLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
@@ -242,7 +242,7 @@ export function GraphicStylePicker({ packId, data }: GraphicStylePickerProps) {
                                         </p>
                                     </div>
                                     {isSelected && (
-                                        <div className="w-4 h-4 rounded-full bg-black flex items-center justify-center">
+                                        <div className="w-4 h-4 rounded-full bg-[var(--accent)] flex items-center justify-center">
                                             <div className="w-1.5 h-1.5 rounded-full bg-white" />
                                         </div>
                                     )}

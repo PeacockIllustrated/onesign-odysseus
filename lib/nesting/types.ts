@@ -182,6 +182,19 @@ export interface NestingDesignConfig {
      * The authoritative link is the `source_job_id` column.
      */
     sourceJobName?: string;
+    /**
+     * Display name of the source panel-visualiser design, when this nest was
+     * created by "Send metal faces to nester" (extra-face flow, migration 068).
+     * Authoritative link is the `source_design_id` column.
+     */
+    sourceDesignName?: string;
+    /**
+     * The packed layout at save time. Persisted so a linked surface (e.g. the
+     * visualiser's reference / production PDF) can render the EXACT sheets the
+     * operator packed, rather than re-running the engine and getting a
+     * different arrangement. Absent on a freshly-created (not-yet-opened) nest.
+     */
+    solution?: NestSolution;
 }
 
 /** Lightweight list item (no SVG / config payload) for the saved-nests rail. */
@@ -197,8 +210,12 @@ export interface NestingDesignRow extends NestingDesignSummary {
     svg_source: string;
     config_json: NestingDesignConfig;
     created_by: string | null;
-    /** Origin tag, e.g. 'letter_returns' — only set for tool-generated nests. */
+    /** Origin tag, e.g. 'letter_returns' | 'panel_extra_face' — only set for
+     *  tool-generated nests. */
     source_kind?: string | null;
     /** FK to the built-up-letter job that produced this nest (migration 065). */
     source_job_id?: string | null;
+    /** FK to the panel-visualiser design that produced this nest, for the
+     *  extra-face flow (migration 068). */
+    source_design_id?: string | null;
 }

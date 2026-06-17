@@ -156,7 +156,7 @@ export default async function QuoteDetailPage({ params }: PageProps) {
                         <Link
                             href={`/admin/quotes/${id}/client`}
                             target="_blank"
-                            className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-black hover:bg-neutral-800 rounded-[var(--radius-sm)] transition-colors"
+                            className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-[var(--accent)] hover:bg-[var(--accent-hover)] rounded-[var(--radius-sm)] transition-colors"
                         >
                             <Send size={14} />
                             Client PDF

@@ -74,7 +74,7 @@ export function CreateClientModal({ onClose, onCreated, onError }: CreateClientM
                                 setForm(f => ({ ...f, name: e.target.value }))
                             }
                             placeholder="e.g. Acme Signage Ltd"
-                            className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-black"
+                            className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                         />
                     </div>
 
@@ -96,7 +96,7 @@ export function CreateClientModal({ onClose, onCreated, onError }: CreateClientM
                                         }))
                                     }
                                     placeholder="John"
-                                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-black"
+                                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                                 />
                             </div>
                             <div>
@@ -112,7 +112,7 @@ export function CreateClientModal({ onClose, onCreated, onError }: CreateClientM
                                         }))
                                     }
                                     placeholder="Smith"
-                                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-black"
+                                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                                 />
                             </div>
                         </div>
@@ -130,7 +130,7 @@ export function CreateClientModal({ onClose, onCreated, onError }: CreateClientM
                                     }))
                                 }
                                 placeholder="john@example.com"
-                                className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-black"
+                                className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                             />
                         </div>
                         <div className="mt-3">
@@ -147,7 +147,7 @@ export function CreateClientModal({ onClose, onCreated, onError }: CreateClientM
                                     }))
                                 }
                                 placeholder="0191 123 4567"
-                                className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-black"
+                                className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                             />
                         </div>
                     </div>
@@ -163,7 +163,7 @@ export function CreateClientModal({ onClose, onCreated, onError }: CreateClientM
                         <button
                             type="submit"
                             disabled={isSaving}
-                            className="flex items-center gap-2 px-4 py-1.5 text-xs font-medium bg-black text-white rounded hover:bg-neutral-800 disabled:opacity-50"
+                            className="flex items-center gap-2 px-4 py-1.5 text-xs font-medium bg-[var(--accent)] text-white rounded hover:bg-[var(--accent-hover)] disabled:opacity-50"
                         >
                             {isSaving ? (
                                 <Loader2 size={12} className="animate-spin" />

@@ -308,6 +308,7 @@ export function VisualiserClient({
         pushThroughPieces,
         standoffPieces,
         backlightPieces,
+        extraFacePieces,
         reference,
         autoFixings,
         placementXf,
@@ -1105,6 +1106,7 @@ export function VisualiserClient({
                             standoffPieces={standoffPieces}
                             pushThroughPieces={pushThroughPieces}
                             backlightPieces={backlightPieces}
+                            extraFacePieces={extraFacePieces}
                             vinylPrintDataUrl={vinylPrintDataUrl}
                             placedPathsByIndex={placedClipByIndex}
                             pathGroupColors={dispGroupColors}
@@ -1332,7 +1334,7 @@ export function VisualiserClient({
                                 <button
                                     type="button"
                                     onClick={() => setUnfoldKey((k) => k + 1)}
-                                    className="ml-1 rounded-full bg-black px-3 py-1 text-[11px] font-medium text-white hover:bg-neutral-800"
+                                    className="ml-1 rounded-full bg-[var(--accent)] px-3 py-1 text-[11px] font-medium text-white hover:bg-[var(--accent-hover)]"
                                 >
                                     Replay
                                 </button>
@@ -1368,6 +1370,7 @@ export function VisualiserClient({
                             standoffPieces={standoffPieces}
                             pushThroughPieces={pushThroughPieces}
                             backlightPieces={backlightPieces}
+                            extraFacePieces={extraFacePieces}
                             vinylPrintDataUrl={vinylPrintDataUrl}
                             faceRectMm={faceRectMm}
                             warnings={advisories}

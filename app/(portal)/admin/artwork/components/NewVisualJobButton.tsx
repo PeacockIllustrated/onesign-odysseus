@@ -82,7 +82,7 @@ export function NewVisualJobButton({ orgs, defaultOrgId, defaultQuoteId, buttonL
                                 value={jobName}
                                 onChange={(e) => setJobName(e.target.value)}
                                 placeholder='e.g. "Test-O&apos;s fascia concepts"'
-                                className="w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black"
+                                className="w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                             />
                         </label>
 
@@ -106,7 +106,7 @@ export function NewVisualJobButton({ orgs, defaultOrgId, defaultQuoteId, buttonL
                                 value={description}
                                 onChange={(e) => setDescription(e.target.value)}
                                 rows={3}
-                                className="w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black"
+                                className="w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                             />
                         </label>
 

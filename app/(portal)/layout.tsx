@@ -22,7 +22,7 @@ export default async function PortalLayout({
 
     return (
         <SidebarProvider>
-            <div className="min-h-screen bg-[hsl(var(--surface-50))] flex">
+            <div className="min-h-screen bg-[var(--bg)] flex">
                 {/* Sidebar */}
                 <Sidebar isAdmin={isAdmin} />
 

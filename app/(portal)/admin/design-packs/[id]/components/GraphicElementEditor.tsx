@@ -75,7 +75,7 @@ export function GraphicElementEditor({
                             key={element.id}
                             className={`
                                 border-2 rounded-[var(--radius-sm)] transition-all
-                                ${isSelected ? 'border-black bg-neutral-50' : 'border-neutral-200 bg-white'}
+                                ${isSelected ? 'border-[var(--accent)] bg-neutral-50' : 'border-neutral-200 bg-white'}
                             `}
                         >
                             {/* Header */}
@@ -133,7 +133,7 @@ export function GraphicElementEditor({
                                                     type="number"
                                                     value={Math.round(element.x)}
                                                     onChange={(e) => handleUpdateElement(element.id, { x: Number(e.target.value) })}
-                                                    className="w-full px-2 py-1.5 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                                                    className="w-full px-2 py-1.5 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                                                     min="0"
                                                     max={signWidth}
                                                 />
@@ -144,7 +144,7 @@ export function GraphicElementEditor({
                                                     type="number"
                                                     value={Math.round(element.y)}
                                                     onChange={(e) => handleUpdateElement(element.id, { y: Number(e.target.value) })}
-                                                    className="w-full px-2 py-1.5 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                                                    className="w-full px-2 py-1.5 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                                                     min="0"
                                                     max={signHeight}
                                                 />
@@ -199,7 +199,7 @@ export function GraphicElementEditor({
                                                     onClick={() => handleUpdateElement(element.id, { color })}
                                                     className={`
                                                         w-8 h-8 rounded-[var(--radius-sm)] border-2 transition-all
-                                                        ${element.color === color ? 'border-black scale-110' : 'border-neutral-300 hover:border-neutral-400'}
+                                                        ${element.color === color ? 'border-[var(--accent)] scale-110' : 'border-neutral-300 hover:border-neutral-400'}
                                                     `}
                                                     style={{ backgroundColor: color }}
                                                     title={color}

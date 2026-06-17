@@ -209,7 +209,7 @@ export function NewQuoteForm({
                 <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="px-4 py-2 text-sm font-medium bg-black text-white rounded-[var(--radius-sm)] hover:bg-neutral-800 disabled:opacity-50 flex items-center gap-2"
+                    className="px-4 py-2 text-sm font-medium bg-[var(--accent)] text-white rounded-[var(--radius-sm)] hover:bg-[var(--accent-hover)] disabled:opacity-50 flex items-center gap-2"
                 >
                     {isSubmitting && <Loader2 size={14} className="animate-spin" />}
                     Create Quote

@@ -286,7 +286,7 @@ function ColourSwatch({ colour, locked, readOnly, onUpdate }: ColourSwatchProps)
                         type="text"
                         value={colour.name}
                         onChange={(e) => onUpdate?.('name', e.target.value)}
-                        className="w-full px-2 py-1 text-sm font-medium border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                        className="w-full px-2 py-1 text-sm font-medium border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                     />
                 )}
 

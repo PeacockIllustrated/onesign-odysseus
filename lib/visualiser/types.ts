@@ -96,6 +96,22 @@ export const DEFAULT_PLACEMENT: AperturePlacement = {
 export type ApertureMode = 'aperture' | 'standoff' | 'vinyl';
 
 /**
+ * Extra-face materials — a decorative face laminated over a letter (push-
+ * through, aperture-cut or backlit). For now a small metal-finish set; this
+ * enum is the single extension point for new face stock. The rich spec
+ * (preview colour, PBR hints, default thickness) lives in
+ * `lib/visualiser/extra-face.ts` so this types module stays dependency-light.
+ */
+export const FaceMaterialEnum = z.enum([
+    'brass',
+    'stainless',
+    'aluminium',
+    'copper',
+    'mirror',
+]);
+export type FaceMaterial = z.infer<typeof FaceMaterialEnum>;
+
+/**
  * PanelCoreSchema is every field that describes a single folded-aluminium
  * panel — dimensions, returns, artwork, materials, illumination, fixings.
  *
@@ -393,6 +409,25 @@ const PanelCoreSchema = z.object({
                  * 3D scene; cutter doesn't care. Default 5 mm.
                  */
                 protrusionMm: z.number().min(0).max(100).optional(),
+                /**
+                 * Optional EXTRA FACE laminated over this group's letters — a
+                 * second cut layer in a metal finish (brass / stainless / …).
+                 * Only meaningful for groups whose material is a "letter" that
+                 * a face can sit on: 'pushthrough', 'cut' or 'backlight'.
+                 * Production: the face is cut from sheet metal to the same
+                 * outline + counters as the letter and bonded on the front;
+                 * it nests exactly like an acrylic face (drives
+                 * `extraFacePieces` + the linked metal-faces nest on export).
+                 * Absent / null → no extra face.
+                 */
+                extraFace: z
+                    .object({
+                        material: FaceMaterialEnum,
+                        /** Sheet thickness (mm) of the metal face. */
+                        thicknessMm: z.number().positive().max(20),
+                    })
+                    .nullable()
+                    .optional(),
                 pathIndices: z.array(z.number().int().min(0)),
             }),
         )
@@ -632,6 +667,12 @@ export interface PanelRenderBundle {
      */
     backlightPieces: MaterialPiece[];
     /**
+     * Extra metal faces (brass / stainless / …) laminated over letters — flat
+     * cut pieces, same outline + counters as the underlying letter. They nest
+     * exactly like acrylic faces and export as a linked metal-faces nest.
+     */
+    extraFacePieces: ExtraFacePiece[];
+    /**
      * Full-colour vinyl print — a transparent face-sized PNG of the real
      * artwork (colours + gradients), masked to the printed-vinyl shapes. Null
      * when there's no printed vinyl. Paired with `faceRectMm` so it can be
@@ -667,6 +708,9 @@ export interface PanelPdfData {
     /** Backlit apertures (see PanelRenderBundle) — for the opal-backing +
      *  LED pages in the production PDF and the reference backlight page. */
     backlightPieces: MaterialPiece[];
+    /** Extra metal faces (see PanelRenderBundle) — for the metal-faces cut
+     *  page in the production PDF. */
+    extraFacePieces: ExtraFacePiece[];
     /** Full-colour vinyl print (see PanelRenderBundle) — for the print-&-cut
      *  page. Null when there's no printed vinyl. */
     vinylPrintDataUrl?: string | null;
@@ -793,6 +837,29 @@ export interface PushThroughPiece {
     thicknessMm: number;
     keylineOffsetMm: number;
     protrusionMm: number;
+}
+
+/**
+ * Extra-face piece — a decorative metal face (brass / stainless / …) laminated
+ * over a letter. Same outline + counters (`holes`) as the underlying cut /
+ * push-through / backlit letter, cut from sheet metal. Flat cut geometry, so
+ * it nests exactly like an acrylic face piece (one material per nest).
+ *
+ * `frontZMm` is where the face's FRONT surface sits in the 3D scene: a push-
+ * through letter stands proud of the panel, so its brass face sits at the
+ * letter's protrusion; a flat aperture/backlit cut sits just on the panel
+ * face. The cutter ignores it — it's a render-only hint.
+ */
+export interface ExtraFacePiece {
+    pathIndex: number;
+    path: FlatPath;
+    holes?: FlatPath[];
+    material: FaceMaterial;
+    /** sRGB preview hex for the 3D face + cut-sheet swatch. */
+    color: string;
+    thicknessMm: number;
+    /** Z (mm) of the face's front surface, for the 3D scene only. */
+    frontZMm: number;
 }
 
 /**

@@ -192,7 +192,7 @@ export function ConvertLeadWizard({ lead, open, onClose, onSuccess }: ConvertLea
                                 <div key={s.key} className="flex items-center">
                                     <div className={`
                                         w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium
-                                        ${isActive ? 'bg-black text-white' : isPast ? 'bg-green-500 text-white' : 'bg-neutral-100 text-neutral-400'}
+                                        ${isActive ? 'bg-[var(--accent)] text-white' : isPast ? 'bg-green-500 text-white' : 'bg-neutral-100 text-neutral-400'}
                                     `}>
                                         {isPast ? <Check size={14} /> : <Icon size={14} />}
                                     </div>
@@ -306,7 +306,7 @@ export function ConvertLeadWizard({ lead, open, onClose, onSuccess }: ConvertLea
                                     className={`
                                         block p-4 border rounded-lg cursor-pointer transition-all
                                         ${selectedPackageId === pkg.id
-                                            ? 'border-black bg-neutral-50'
+                                            ? 'border-[var(--accent)] bg-neutral-50'
                                             : 'border-neutral-200 hover:border-neutral-300'}
                                     `}
                                 >

@@ -69,7 +69,7 @@ export function PricingListClient() {
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
                                 placeholder="e.g. Rate Card v2.1"
-                                className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                                className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                                 autoFocus
                             />
                         </div>
@@ -97,7 +97,7 @@ export function PricingListClient() {
                                 type="button"
                                 onClick={handleCreate}
                                 disabled={isCreating}
-                                className="px-4 py-2 text-sm font-medium bg-black text-white rounded-[var(--radius-sm)] hover:bg-neutral-800 disabled:opacity-50 flex items-center gap-2"
+                                className="px-4 py-2 text-sm font-medium bg-[var(--accent)] text-white rounded-[var(--radius-sm)] hover:bg-[var(--accent-hover)] disabled:opacity-50 flex items-center gap-2"
                             >
                                 {isCreating && <Loader2 size={14} className="animate-spin" />}
                                 Create Draft

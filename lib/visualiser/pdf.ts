@@ -36,6 +36,7 @@ import {
     type PushThroughPiece,
 } from './types';
 import { outlinePerimeter } from './geometry';
+import type { EmbeddedNest, EmbeddedNestSheet } from './nest-embed';
 import { registerVisualiserFonts } from './pdf-fonts';
 import { acrylicByHex } from './acrylic';
 import { ralByCode } from './ral';
@@ -210,6 +211,13 @@ export interface PdfOptions {
     itemLabel?: string;
     /** Reference-overview callout describing the companion item + its mount. */
     companionNote?: string;
+    /**
+     * The design's saved nests (acrylic + metal faces), reproduced to packed
+     * sheets by the caller (lib/visualiser/nest-embed). Rendered as extra pages:
+     * reference fits each sheet to the page; production draws it 1:1. Empty /
+     * absent → no nest pages.
+     */
+    embeddedNests?: EmbeddedNest[];
 }
 
 /**
@@ -239,6 +247,79 @@ function drawClosedPolyline(
         ]);
     }
     doc.lines(deltas, ring[0][0], ring[0][1], [1, 1], style, true);
+}
+
+/**
+ * Draw one packed nest sheet — the sheet outline plus every placed piece's
+ * rings — at top-left (dX, dY), mm → page units by `scale`. Shared by the
+ * reference (fit-scaled) and production (1:1) nest pages.
+ */
+function drawNestSheet(
+    doc: jsPDF,
+    sheet: EmbeddedNestSheet,
+    dX: number,
+    dY: number,
+    scale: number,
+): void {
+    doc.setDrawColor(150);
+    doc.setLineWidth(0.2);
+    doc.rect(dX, dY, sheet.widthMm * scale, sheet.heightMm * scale, 'S');
+
+    doc.setDrawColor(0);
+    doc.setLineWidth(scale >= 1 ? 0.1 : 0.2);
+    for (const piece of sheet.pieces) {
+        for (const ring of piece.rings) {
+            if (ring.length < 2) continue;
+            const pts = ring.map(
+                ([x, y]) =>
+                    [dX + x * scale, dY + y * scale] as [number, number],
+            );
+            drawClosedPolyline(doc, pts, 'S');
+        }
+    }
+}
+
+/** Reference-PDF nest page — one saved sheet fitted to the page. */
+function drawNestSheetPageRef(
+    ctx: PageContext,
+    nest: EmbeddedNest,
+    sheet: EmbeddedNestSheet,
+    sheetNo: number,
+    sheetTotal: number,
+): void {
+    const { doc, pageW, pageH, margin, font } = ctx;
+
+    doc.setFont(font, 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(0);
+    doc.text(txt(`Nest — ${nest.name}`), margin, margin + 4);
+    doc.setFont(font, 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(110);
+    doc.text(
+        txt(
+            `Sheet ${sheetNo}/${sheetTotal}  ·  ${Math.round(sheet.widthMm)} × ${Math.round(sheet.heightMm)} mm  ·  ${sheet.pieceCount} piece${sheet.pieceCount === 1 ? '' : 's'}  ·  ${Math.round(sheet.utilisation * 100)}% used  ·  scaled to fit`,
+        ),
+        margin,
+        margin + 9,
+    );
+    doc.setTextColor(0);
+
+    const topY = margin + 14;
+    const availW = pageW - margin * 2;
+    const availH = pageH - topY - margin;
+    const scale = Math.min(availW / sheet.widthMm, availH / sheet.heightMm);
+    const dX = margin + (availW - sheet.widthMm * scale) / 2;
+    const dY = topY + (availH - sheet.heightMm * scale) / 2;
+    drawNestSheet(doc, sheet, dX, dY, scale);
+
+    drawCornerQr(doc, {
+        pageW,
+        pageH,
+        margin,
+        qrDataUrl: ctx.qrDataUrl,
+        font,
+    });
 }
 
 // =============================================================================
@@ -1733,6 +1814,110 @@ function drawFlatLayoutPage(ctx: PageContext): void {
     });
 }
 
+/**
+ * Vinyl page — drawn on ONE continuous face, never split by the panel seams.
+ *
+ * Vinyl is applied as a single appliqué across the assembled sign, so splitting
+ * it into the section blanks (which sit at gap-offset origins) throws off the
+ * scale + centring of the artwork (the design ends up compressed with a gap on
+ * one side). Here we draw the full face continuously and overlay the seam(s)
+ * for reference. The vinyl pieces + faceRect share the development frame, so a
+ * single linear projection places everything correctly; full-colour printed
+ * vinyl now renders for split signs too (it couldn't before, because the
+ * sectioned layout had nowhere coherent to drop the raster).
+ */
+function drawVinylFacePage(
+    ctx: PageContext,
+    spec: MaterialPageSpec,
+    faceRect: { x: number; y: number; w: number; h: number },
+): void {
+    const { doc, pageW, pageH, margin, opts } = ctx;
+    const panelRgb = hexToRgb(opts.params.panelColor ?? '#d6d6d6');
+
+    const specW = 76;
+    const specX = pageW - margin - specW;
+    const drawTop = margin + 18;
+    const drawW = specX - margin - 8;
+    const drawH = pageH - drawTop - margin - 10;
+    const scale = fitScale(drawW - 6, drawH - 8, faceRect.w, faceRect.h);
+    const dX = margin + (drawW - faceRect.w * scale) / 2;
+    const dY = drawTop;
+    const px = (x: number) => dX + (x - faceRect.x) * scale;
+    const py = (y: number) => dY + (y - faceRect.y) * scale;
+
+    // Faded continuous face outline.
+    doc.setDrawColor(150);
+    doc.setLineWidth(0.3);
+    doc.rect(px(faceRect.x), py(faceRect.y), faceRect.w * scale, faceRect.h * scale, 'S');
+
+    // Full-colour print (masked to the vinyl shapes) when available, else flat
+    // fills below.
+    const vinylFC = !!opts.vinylPrintDataUrl;
+    if (vinylFC && opts.vinylPrintDataUrl) {
+        drawVinylPrintImage(doc, opts.vinylPrintDataUrl, faceRect, px, py);
+    }
+    for (const piece of spec.pieces ?? []) {
+        if (vinylFC && (piece as MaterialPiece).fullColor && 'path' in piece) {
+            drawVinylContour(doc, piece as MaterialPiece, px, py, 0.3);
+        } else {
+            drawMaterialPiece(
+                doc,
+                piece,
+                px,
+                py,
+                scale,
+                hexToRgb((piece as MaterialPiece).color),
+                [20, 20, 20],
+                0.4,
+                'FD',
+                panelRgb,
+            );
+        }
+    }
+
+    // Seam line(s) where the panels split — dashed, labelled, for reference
+    // (the vinyl crosses them unbroken).
+    const sections = opts.sectionExport.sections;
+    if (sections.length > 1) {
+        doc.setDrawColor(120);
+        doc.setLineWidth(0.35);
+        doc.setLineDashPattern([2, 1.4], 0);
+        for (let i = 1; i < sections.length; i++) {
+            const seamX = faceRect.x + sections[i].faceSliceXMm;
+            doc.line(px(seamX), py(faceRect.y), px(seamX), py(faceRect.y + faceRect.h));
+        }
+        doc.setLineDashPattern([], 0);
+        doc.setFont(ctx.font, 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(120);
+        doc.text(
+            txt('panel seam'),
+            px(faceRect.x + sections[1].faceSliceXMm) + 1,
+            py(faceRect.y) + 4,
+        );
+        doc.setTextColor(0);
+    }
+
+    doc.setFont(ctx.font, 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(110);
+    doc.text(
+        txt(
+            'Vinyl is one continuous appliqué across the assembled sign — seam shown for reference only.',
+        ),
+        margin,
+        pageH - margin + 4,
+    );
+    doc.setTextColor(0);
+    drawCornerQr(doc, {
+        pageW,
+        pageH,
+        margin,
+        qrDataUrl: ctx.qrDataUrl,
+        font: ctx.font,
+    });
+}
+
 function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
     const { doc, pageW, pageH, margin, opts } = ctx;
     const T = (s: string) => txt(s);
@@ -1772,6 +1957,19 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
         doc.text(lines, valueX, rowY);
         rowY += Math.max(1, lines.length) * 4.4 + 1;
     });
+
+    // Vinyl is one continuous appliqué — never split by the panel seams. For a
+    // SPLIT sign, draw the face whole (with the seams marked) so the artwork
+    // keeps its scale + centring, instead of being chopped across the sectioned
+    // blanks. Single-panel signs already render continuously, so leave them be.
+    if (
+        spec.kind === 'vinyl' &&
+        opts.faceRectMm &&
+        opts.sectionExport.sections.length > 1
+    ) {
+        drawVinylFacePage(ctx, spec, opts.faceRectMm);
+        return;
+    }
 
     // Drawing area — left of the specs strip
     const drawTop = margin + 18;
@@ -2001,10 +2199,13 @@ export async function generateReferencePdfBlob(
         ...(opts.secondary ? [opts.secondary] : []),
     ];
     const itemMaterialPages = items.map((it) => buildMaterialPages(it));
-    const totalPages = items.reduce(
-        (n, _it, i) => n + 2 + itemMaterialPages[i].length,
+    const nestPageCount = (opts.embeddedNests ?? []).reduce(
+        (n, x) => n + x.sheets.length,
         0,
     );
+    const totalPages =
+        items.reduce((n, _it, i) => n + 2 + itemMaterialPages[i].length, 0) +
+        nestPageCount;
 
     let pageNumber = 0;
     let firstPage = true;
@@ -2042,6 +2243,20 @@ export async function generateReferencePdfBlob(
             drawMaterialPage(newCtx(it, itemLabel), page);
         }
     });
+
+    // Nest pages (per design) — after the items, each saved sheet fitted to the
+    // page, so the reference doc carries the actual cut nests too.
+    for (const nest of opts.embeddedNests ?? []) {
+        nest.sheets.forEach((sheet, si) => {
+            drawNestSheetPageRef(
+                newCtx(opts),
+                nest,
+                sheet,
+                si + 1,
+                nest.sheets.length,
+            );
+        });
+    }
 
     return doc.output('blob');
 }
@@ -3006,7 +3221,21 @@ export async function generateProductionPdfBlob(
     });
 
     const designIdShort = docId(opts.designId, params.name);
-    const totalPages = jobs.length;
+    // Nest pages ride on their OWN 1:1 sheet size (a full acrylic sheet is far
+    // bigger than a panel — folding it into the uniform panel-page size would
+    // blow every page up to sheet size). Flattened here for page numbering.
+    const nestSheets: Array<{
+        nest: EmbeddedNest;
+        sheet: EmbeddedNestSheet;
+        no: number;
+        total: number;
+    }> = [];
+    for (const nest of opts.embeddedNests ?? []) {
+        nest.sheets.forEach((sheet, si) =>
+            nestSheets.push({ nest, sheet, no: si + 1, total: nest.sheets.length }),
+        );
+    }
+    const totalPages = jobs.length + nestSheets.length;
 
     // ---- Phase 3: emit pages ---------------------------------------
     jobs.forEach((job, index) => {
@@ -3049,6 +3278,61 @@ export async function generateProductionPdfBlob(
             infoLines: [
                 ...job.footerInfo,
                 `Sheet ${Math.round(sheetW)} × ${Math.round(sheetH)} mm  ·  ${designIdShort}`,
+            ],
+            qrDataUrl,
+            font,
+        });
+    });
+
+    // ---- Phase 4: nest pages, each on its own 1:1 sheet ------------
+    const NEST_SIDE = 14;
+    const NEST_TOP = STRAP_H + 9;
+    const NEST_BOTTOM = 22;
+    nestSheets.forEach((ns, k) => {
+        const { sheet } = ns;
+        // 1:1, unless the sheet + margins would exceed the PDF user-space
+        // limit (a safety net — real acrylic sheets are well under it).
+        let scale = 1;
+        let pageW = sheet.widthMm + 2 * NEST_SIDE;
+        let pageH = sheet.heightMm + NEST_TOP + NEST_BOTTOM;
+        if (pageW > MAX_PAGE_MM || pageH > MAX_PAGE_MM) {
+            scale = Math.min(
+                (MAX_PAGE_MM - 2 * NEST_SIDE) / sheet.widthMm,
+                (MAX_PAGE_MM - NEST_TOP - NEST_BOTTOM) / sheet.heightMm,
+                1,
+            );
+            pageW = sheet.widthMm * scale + 2 * NEST_SIDE;
+            pageH = sheet.heightMm * scale + NEST_TOP + NEST_BOTTOM;
+        }
+        // A panel cut page is always emitted first, so a nest page is never
+        // page 1 — safe to always addPage.
+        doc.addPage([pageW, pageH], pageW >= pageH ? 'landscape' : 'portrait');
+        drawDocStrap(doc, {
+            pageW,
+            margin: NEST_SIDE,
+            kind: 'production',
+            designName: params.name,
+            designIdShort,
+            pageNumber: jobs.length + k + 1,
+            totalPages,
+            font,
+            subtitle: `Nest — ${ns.nest.name} · sheet ${ns.no}/${ns.total}`,
+        });
+        doc.setDrawColor(200);
+        doc.setLineWidth(0.15);
+        doc.rect(2, STRAP_H + 1.5, pageW - 4, pageH - STRAP_H - 3);
+        drawNestSheet(doc, sheet, NEST_SIDE, NEST_TOP, scale);
+        drawDocFooter(doc, {
+            pageW,
+            pageH,
+            margin: NEST_SIDE,
+            kind: 'production',
+            infoLines: [
+                `${sheet.pieceCount} piece${sheet.pieceCount === 1 ? '' : 's'}  ·  ${Math.round(sheet.utilisation * 100)}% used`,
+                scale === 1
+                    ? 'Acrylic / metal-face nest — PRINT AT 100%, DO NOT SCALE'
+                    : `Nest scaled to fit (${Math.round(scale * 100)}%) — over the 1:1 page limit`,
+                `Sheet ${Math.round(sheet.widthMm)} × ${Math.round(sheet.heightMm)} mm  ·  ${designIdShort}`,
             ],
             qrDataUrl,
             font,

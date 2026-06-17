@@ -230,7 +230,7 @@ export function RateCardTableComponent({
                                                     <select
                                                         value={editValues[col.key] || ''}
                                                         onChange={(e) => setEditValues({ ...editValues, [col.key]: e.target.value })}
-                                                        className="w-full px-2 py-1 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-black"
+                                                        className="w-full px-2 py-1 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
                                                     >
                                                         {col.options.map((opt) => (
                                                             <option key={opt} value={opt}>{opt}</option>
@@ -242,7 +242,7 @@ export function RateCardTableComponent({
                                                         step={col.suffix === 'pence' ? '0.01' : undefined}
                                                         value={editValues[col.key] || ''}
                                                         onChange={(e) => setEditValues({ ...editValues, [col.key]: e.target.value })}
-                                                        className="w-full px-2 py-1 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-black"
+                                                        className="w-full px-2 py-1 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
                                                     />
                                                 )}
                                             </td>
@@ -307,7 +307,7 @@ export function RateCardTableComponent({
                                             <select
                                                 value={newValues[col.key] || ''}
                                                 onChange={(e) => setNewValues({ ...newValues, [col.key]: e.target.value })}
-                                                className="w-full px-2 py-1 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-black"
+                                                className="w-full px-2 py-1 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
                                             >
                                                 {col.options.map((opt) => (
                                                     <option key={opt} value={opt}>{opt}</option>
@@ -320,7 +320,7 @@ export function RateCardTableComponent({
                                                 value={newValues[col.key] || ''}
                                                 onChange={(e) => setNewValues({ ...newValues, [col.key]: e.target.value })}
                                                 placeholder={col.label}
-                                                className="w-full px-2 py-1 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-black"
+                                                className="w-full px-2 py-1 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
                                             />
                                         )}
                                     </td>

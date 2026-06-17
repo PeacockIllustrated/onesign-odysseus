@@ -164,7 +164,7 @@ export function RateCardEditor({ pricingSetId, pricingSetStatus, rateCards }: Ra
                             key={tab.key}
                             onClick={() => setActiveTab(tab.key)}
                             className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${activeTab === tab.key
-                                    ? 'border-black text-black'
+                                    ? 'border-[var(--accent)] text-[var(--accent)]'
                                     : 'border-transparent text-neutral-500 hover:text-neutral-700'
                                 }`}
                         >

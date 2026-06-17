@@ -64,7 +64,7 @@ export function StepLook({ subItem, stageInstructions, onNext, onReportProblem }
                 <button
                     type="button"
                     onClick={onNext}
-                    className="w-full py-4 rounded-lg bg-[#1a1f23] hover:bg-black text-white text-base font-bold"
+                    className="w-full py-4 rounded-lg bg-[#1a1f23] hover:bg-[var(--accent)] text-white text-base font-bold"
                 >
                     Next — Measure →
                 </button>

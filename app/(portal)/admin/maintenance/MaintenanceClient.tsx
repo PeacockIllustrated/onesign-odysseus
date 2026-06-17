@@ -84,7 +84,7 @@ export function MaintenanceClient({ initialVisits, orgs, contacts, sites }: Prop
         });
     };
 
-    const inputCls = 'w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black';
+    const inputCls = 'w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]';
 
     return (
         <div className="mt-4 space-y-4">
@@ -95,7 +95,7 @@ export function MaintenanceClient({ initialVisits, orgs, contacts, sites }: Prop
                             key={s}
                             onClick={() => setTab(s)}
                             className={`px-3 py-1.5 text-xs font-semibold rounded ${
-                                tab === s ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-600'
+                                tab === s ? 'bg-[var(--accent)] text-white' : 'bg-neutral-100 text-neutral-600'
                             }`}
                         >
                             {s === 'all' ? 'All' : s.replace('_', ' ')}

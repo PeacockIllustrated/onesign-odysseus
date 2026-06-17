@@ -21,6 +21,7 @@ import {
     ExternalLink,
     FileText,
     Hammer,
+    Layers,
     Link2,
     Minimize2,
     Play,
@@ -112,7 +113,7 @@ function NumField({
                     const n = parseFloat(e.target.value);
                     onChange(Number.isNaN(n) ? 0 : n);
                 }}
-                className="mt-0.5 w-full rounded border border-neutral-300 px-1.5 py-1 text-xs focus:border-black focus:outline-none"
+                className="mt-0.5 w-full rounded border border-neutral-300 px-1.5 py-1 text-xs focus:border-[var(--accent)] focus:outline-none"
             />
         </label>
     );
@@ -216,6 +217,10 @@ export function NestingClient({
     const [sourceJob, setSourceJob] = useState<{ id: string; name: string } | null>(
         null,
     );
+    const [sourceDesign, setSourceDesign] = useState<{
+        id: string;
+        name: string;
+    } | null>(null);
 
     const nest = useNestWorker();
 
@@ -384,6 +389,9 @@ export function NestingClient({
             widthCalMm: widthCal,
             fileName,
             keptGroupIds: [...keptEffective],
+            // Persist the packed layout so linked surfaces (the visualiser
+            // PDFs) render the exact sheets the operator saved.
+            solution: solution ?? null,
         });
         setBusy(false);
         if (!res.ok) {
@@ -434,6 +442,16 @@ export function NestingClient({
                           name:
                               row.config_json.sourceJobName ??
                               'built-up letter job',
+                      }
+                    : null,
+            );
+            setSourceDesign(
+                row.source_design_id
+                    ? {
+                          id: row.source_design_id,
+                          name:
+                              row.config_json.sourceDesignName ??
+                              'visualiser design',
                       }
                     : null,
             );
@@ -657,7 +675,7 @@ export function NestingClient({
                                     value={designName}
                                     onChange={(e) => setDesignName(e.target.value)}
                                     placeholder="Name this nest"
-                                    className="min-w-0 flex-1 rounded border border-neutral-300 px-2 py-1 text-xs focus:border-black focus:outline-none"
+                                    className="min-w-0 flex-1 rounded border border-neutral-300 px-2 py-1 text-xs focus:border-[var(--accent)] focus:outline-none"
                                 />
                                 <button
                                     type="button"
@@ -859,7 +877,7 @@ export function NestingClient({
                                 );
                                 if (p) setSheetSize(p.w, p.h);
                             }}
-                            className="mt-0.5 w-full rounded border border-neutral-300 px-1.5 py-1.5 text-xs focus:border-black focus:outline-none"
+                            className="mt-0.5 w-full rounded border border-neutral-300 px-1.5 py-1.5 text-xs focus:border-[var(--accent)] focus:outline-none"
                         >
                             {SHEET_PRESETS.map((p) => (
                                 <option key={p.label} value={p.label}>
@@ -944,7 +962,7 @@ export function NestingClient({
                                             : ''
                                     } ${
                                         cfg.rotationStepDeg === v
-                                            ? 'bg-black text-white'
+                                            ? 'bg-[var(--accent)] text-white'
                                             : 'bg-white text-neutral-500 hover:bg-neutral-100'
                                     }`}
                                 >
@@ -1316,6 +1334,22 @@ export function NestingClient({
                         </Link>
                     </div>
                 )}
+                {sourceDesign && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#b8d0d8] bg-[#e8f0f3] px-3 py-2 text-xs text-[#3a5f6a]">
+                        <span className="flex items-center gap-1.5">
+                            <Layers size={14} aria-hidden />
+                            Metal faces from{' '}
+                            <b className="font-semibold">{sourceDesign.name}</b> —
+                            cut to the letter shapes.
+                        </span>
+                        <Link
+                            href={`/admin/visualiser?id=${sourceDesign.id}`}
+                            className="flex items-center gap-1 rounded-md border border-[#b8d0d8] bg-white px-2 py-1 font-medium hover:bg-white/70"
+                        >
+                            <ExternalLink size={12} aria-hidden /> Open design
+                        </Link>
+                    </div>
+                )}
                 {!imported ? (
                     <div className="flex min-h-[360px] flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-neutral-200 bg-white p-8 text-center">
                         <Upload size={28} className="text-neutral-300" />
@@ -1359,7 +1393,7 @@ export function NestingClient({
                                     aria-pressed={activeSheet === s.index}
                                     className={`rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors ${
                                         activeSheet === s.index
-                                            ? 'border-black bg-black text-white'
+                                            ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
                                             : 'border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-100'
                                     }`}
                                 >

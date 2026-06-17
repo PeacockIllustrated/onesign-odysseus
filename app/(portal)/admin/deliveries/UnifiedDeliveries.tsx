@@ -47,11 +47,11 @@ export function UnifiedDeliveries({
                 <div className="w-[45%] border-r border-neutral-200 overflow-y-auto">
                     <div className="sticky top-0 z-10 bg-white border-b border-neutral-200 px-4 py-2 flex items-center gap-2">
                         <button onClick={() => setDesktopPanel('list')}
-                            className={`px-3 py-1.5 text-xs font-semibold rounded ${desktopPanel === 'list' ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-600'}`}>
+                            className={`px-3 py-1.5 text-xs font-semibold rounded ${desktopPanel === 'list' ? 'bg-[var(--accent)] text-white' : 'bg-neutral-100 text-neutral-600'}`}>
                             List
                         </button>
                         <button onClick={() => setDesktopPanel('plan')}
-                            className={`px-3 py-1.5 text-xs font-semibold rounded ${desktopPanel === 'plan' ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-600'}`}>
+                            className={`px-3 py-1.5 text-xs font-semibold rounded ${desktopPanel === 'plan' ? 'bg-[var(--accent)] text-white' : 'bg-neutral-100 text-neutral-600'}`}>
                             Plan
                         </button>
                     </div>

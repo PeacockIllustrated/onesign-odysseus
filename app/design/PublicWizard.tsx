@@ -151,6 +151,7 @@ export function PublicWizard({ onShowHelp }: { onShowHelp?: () => void }) {
         standoffPieces,
         pushThroughPieces,
         backlightPieces,
+        extraFacePieces,
         vinylPrintDataUrl,
         placedClipByIndex,
     } = deriv;
@@ -417,6 +418,7 @@ export function PublicWizard({ onShowHelp }: { onShowHelp?: () => void }) {
                             standoffPieces={standoffPieces}
                             pushThroughPieces={pushThroughPieces}
                             backlightPieces={backlightPieces}
+                            extraFacePieces={extraFacePieces}
                             vinylPrintDataUrl={vinylPrintDataUrl}
                             placedPathsByIndex={placedClipByIndex}
                             pathGroupColors={interaction.pathGroupColors}

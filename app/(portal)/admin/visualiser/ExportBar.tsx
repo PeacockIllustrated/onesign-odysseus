@@ -10,6 +10,7 @@ import {
     Save,
     Scissors,
     Tv,
+    Layers,
 } from 'lucide-react';
 import { useVisualiser, splitPanels } from './store';
 import { sceneCapture } from './Scene3D';
@@ -34,7 +35,17 @@ import {
     type MaterialPiece,
     type StandoffPiece,
     type PushThroughPiece,
+    type ExtraFacePiece,
+    type FaceMaterial,
 } from '@/lib/visualiser/types';
+import { FACE_MATERIALS } from '@/lib/visualiser/extra-face';
+import { buildExtraFaceNestSvg } from '@/lib/visualiser/extra-face-export';
+import { buildNestSvg } from '@/lib/visualiser/nest-export';
+import {
+    sendDesignNest,
+    getNestsForDesign,
+} from '@/lib/visualiser/extra-face-actions';
+import { embedNests, type EmbeddedNest } from '@/lib/visualiser/nest-embed';
 
 const ACCENT = '#4e7e8c';
 const ACCENT_DARK = '#3a5f6a';
@@ -140,6 +151,7 @@ export function ExportBar({
     standoffPieces,
     pushThroughPieces,
     backlightPieces,
+    extraFacePieces,
     vinylPrintDataUrl = null,
     faceRectMm = null,
     warnings = [],
@@ -164,6 +176,9 @@ export function ExportBar({
     pushThroughPieces: PushThroughPiece[];
     /** Backlit apertures — for the opal-backing + LED pages in the PDFs. */
     backlightPieces: MaterialPiece[];
+    /** Extra metal faces (brass/…) — for the "send metal faces to nester"
+     *  hand-off. Empty when no group opted into a face. */
+    extraFacePieces: ExtraFacePiece[];
     /** Full-colour vinyl print PNG (face-sized, masked) + the face rect it
      *  maps onto — for the print-&-cut PDF pages. */
     vinylPrintDataUrl?: string | null;
@@ -260,6 +275,7 @@ export function ExportBar({
     const [pdfPending, setPdfPending] = useState<'prod' | 'ref' | null>(null);
     const [backshopPending, setBackshopPending] = useState(false);
     const [onBackshop, setOnBackshop] = useState(false);
+    const [nesterPending, setNesterPending] = useState(false);
     const [msg, setMsg] = useState<string | null>(null);
     const [exported, setExported] = useState<string | null>(null);
 
@@ -289,11 +305,22 @@ export function ExportBar({
         return () => clearTimeout(id);
     }, [exported]);
 
+    // Pull the design's saved nests and reproduce their packed sheets, so the
+    // PDFs can render the actual cut nests. Empty when the design isn't saved
+    // (no link) or has no nests.
+    const loadEmbeddedNests = async (): Promise<EmbeddedNest[]> => {
+        if (!designId) return [];
+        const res = await getNestsForDesign(designId);
+        if (!res.ok) return [];
+        return embedNests(res.data);
+    };
+
     const onReferencePdf = async () => {
         if (pdfPending) return;
         setPdfPending('ref');
         try {
             const thumb = sceneCapture.fn?.() ?? undefined;
+            const embeddedNests = await loadEmbeddedNests();
             const blob = await generateReferencePdfBlob({
                 sectionExport,
                 params,
@@ -314,6 +341,7 @@ export function ExportBar({
                 vinylPrintDataUrl,
                 faceRectMm,
                 thumbnailDataUrl: thumb || undefined,
+                embeddedNests,
                 ...twoItem,
             });
             const fname = pdfFilename(params, 'reference');
@@ -321,6 +349,118 @@ export function ExportBar({
             setExported(`Reference PDF · ${fname}`);
         } finally {
             setPdfPending(null);
+        }
+    };
+
+    // Pieces that nest like acrylic: the extra metal faces and the face-stuck
+    // acrylic. Each distinct material becomes its own nest (separate sheet
+    // stock can't share a sheet).
+    const nestableCount = extraFacePieces.length + acrylicPieces.length;
+
+    // Send all nestable pieces to the acrylic nester as linked nests — one per
+    // material (each metal finish; each acrylic colour+thickness). Saves the
+    // design first (the nests link back to it), then opens the nester on the
+    // first nest created. Mirrors the built-up-returns handoff.
+    const onSendToNester = async () => {
+        if (nesterPending || nestableCount === 0) return;
+        setNesterPending(true);
+        setMsg(null);
+        try {
+            // 1. Ensure the design is saved — the nests link back to its id.
+            let id = designId;
+            if (!id || dirty) {
+                const assembled = assembleMain();
+                const saved = await saveDesign({
+                    id: designId ?? undefined,
+                    params: assembled.params,
+                    svgSource: assembled.svgSource,
+                    quoteId,
+                    quoteItemId,
+                });
+                if (!saved.ok) {
+                    setMsg(saved.error);
+                    return;
+                }
+                id = saved.data.id;
+                markSaved(saved.data.id);
+            }
+
+            // 2. One nest spec per material.
+            const specs: Array<{
+                combinedSvg: string;
+                nestLabel: string;
+                sourceKind: string;
+                fileName: string;
+            }> = [];
+
+            // Metal faces — grouped by finish.
+            const byMetal = new Map<FaceMaterial, ExtraFacePiece[]>();
+            for (const p of extraFacePieces) {
+                const arr = byMetal.get(p.material) ?? [];
+                arr.push(p);
+                byMetal.set(p.material, arr);
+            }
+            for (const [material, pieces] of byMetal) {
+                const label = `${FACE_MATERIALS[material].label} faces`;
+                specs.push({
+                    combinedSvg: buildExtraFaceNestSvg({
+                        pieces,
+                        material,
+                        title: `${params.name} — ${label}`,
+                    }),
+                    nestLabel: label,
+                    sourceKind: 'panel_extra_face',
+                    fileName: `${params.name}-${material}-faces.svg`,
+                });
+            }
+
+            // Acrylic — grouped by colour + thickness (distinct stock).
+            const byAcrylic = new Map<string, MaterialPiece[]>();
+            for (const p of acrylicPieces) {
+                const key = `${p.color}|${p.thicknessMm ?? 0}`;
+                const arr = byAcrylic.get(key) ?? [];
+                arr.push(p);
+                byAcrylic.set(key, arr);
+            }
+            for (const [key, pieces] of byAcrylic) {
+                const [color, thick] = key.split('|');
+                const hasThick = thick && thick !== '0';
+                const label = `Acrylic ${color}${hasThick ? ` ${thick}mm` : ''}`;
+                specs.push({
+                    combinedSvg: buildNestSvg(
+                        pieces,
+                        'ACRYLIC',
+                        `${params.name} — ${label}`,
+                    ),
+                    nestLabel: label,
+                    sourceKind: 'panel_acrylic',
+                    fileName: `${params.name}-acrylic-${color.replace('#', '')}${hasThick ? `-${thick}mm` : ''}.svg`,
+                });
+            }
+
+            // 3. Send each, opening the nester on the first.
+            let firstNestId: string | null = null;
+            for (const spec of specs) {
+                const res = await sendDesignNest({
+                    designId: id,
+                    name: params.name,
+                    combinedSvg: spec.combinedSvg,
+                    nestLabel: spec.nestLabel,
+                    sourceKind: spec.sourceKind,
+                    fileName: spec.fileName,
+                });
+                if (!res.ok) {
+                    setMsg(res.error);
+                    return;
+                }
+                if (!firstNestId) firstNestId = res.data.nestId;
+            }
+
+            if (firstNestId) {
+                window.location.assign(`/admin/nesting?open=${firstNestId}`);
+            }
+        } finally {
+            setNesterPending(false);
         }
     };
 
@@ -440,12 +580,29 @@ export function ExportBar({
         if (pdfPending) return;
         setPdfPending('prod');
         try {
+            const embeddedNests = await loadEmbeddedNests();
+            // Prompt to nest first if there are nestable pieces but nothing's
+            // been nested yet — otherwise the pack would miss the acrylic /
+            // metal-face cuts. If nests already exist, pick them up silently
+            // (no friction).
+            if (nestableCount > 0 && embeddedNests.length === 0) {
+                const go = window.confirm(
+                    'This sign has acrylic / metal-face pieces that haven’t been nested yet.\n\n' +
+                        'Send them to the nester now? Once nested, the production pack includes the packed sheets.\n\n' +
+                        'OK = send to nester  ·  Cancel = make the pack without nest sheets',
+                );
+                if (go) {
+                    await onSendToNester();
+                    return;
+                }
+            }
+
             // Production PDF is a multi-page CAM bundle: panel cut +
             // push-through inserts (when keyline) + a 1:1 cut page per
-            // material (acrylic / vinyl / standoff) + a final 1:1
-            // placement template for the backshop. Pass everything;
-            // each helper inside the generator no-ops when its data
-            // is empty.
+            // material (acrylic / vinyl / standoff) + the saved nest sheets at
+            // 1:1 + a final 1:1 placement template for the backshop. Pass
+            // everything; each helper inside the generator no-ops when its
+            // data is empty.
             const blob = await generateProductionPdfBlob({
                 sectionExport,
                 params,
@@ -466,6 +623,7 @@ export function ExportBar({
                 backlightPieces,
                 vinylPrintDataUrl,
                 faceRectMm,
+                embeddedNests,
                 ...twoItem,
             });
             const fname = pdfFilename(params, 'production');
@@ -635,6 +793,27 @@ export function ExportBar({
                           ? 'Update backshop screen'
                           : 'Add to backshop screen'}
                 </button>
+                {nestableCount > 0 && (
+                    <button
+                        type="button"
+                        onClick={onSendToNester}
+                        disabled={nesterPending}
+                        aria-busy={nesterPending}
+                        title="Nest the acrylic + metal-face pieces — saves the design, then opens the acrylic nester (one nest per material)."
+                        className="flex min-h-[36px] items-center gap-1.5 rounded-md border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        {nesterPending ? (
+                            <Loader2
+                                size={14}
+                                className="animate-spin"
+                                aria-hidden
+                            />
+                        ) : (
+                            <Layers size={14} aria-hidden />
+                        )}
+                        {nesterPending ? 'Sending…' : 'Send to nester'}
+                    </button>
+                )}
                 <div className="ml-auto flex items-center gap-2 text-xs text-neutral-500">
                     {exported && (
                         <span

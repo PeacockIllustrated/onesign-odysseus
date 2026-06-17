@@ -73,7 +73,7 @@ const adminNavGroups: NavGroup[] = [
             { label: 'Studio', href: '/admin/tools', icon: Shapes },
             { label: 'Nesting', href: '/admin/nesting', icon: Puzzle },
             { label: 'Artwork', href: '/admin/artwork', icon: ClipboardCheck },
-            { label: 'Production Packs', href: '/admin/production-packs', icon: Package },
+            { label: 'Packs', href: '/admin/packs', icon: Package },
             { label: 'Job Board', href: '/admin/jobs', icon: LayoutGrid },
             { label: 'Shop Floor', href: '/shop-floor', icon: Zap },
             { label: 'Flags', href: '/admin/flags', icon: AlertTriangle },
@@ -138,7 +138,7 @@ export function Sidebar(_props: SidebarProps) {
                 {adminNavGroups.map((group) => (
                     <div key={group.label} className="mt-4">
                         {!collapsed && (
-                            <div className="px-3 py-1 text-[10px] font-semibold text-neutral-400 uppercase tracking-widest">
+                            <div className="px-3 py-1 text-[10px] font-semibold text-neutral-400 uppercase tracking-widest dark:text-neutral-500">
                                 {group.label}
                             </div>
                         )}
@@ -160,8 +160,8 @@ export function Sidebar(_props: SidebarProps) {
 
             {/* Footer */}
             {!collapsed && (
-                <div className="p-4 border-t border-neutral-100">
-                    <p className="text-xs text-neutral-400">
+                <div className="p-4 border-t border-neutral-100 dark:border-[#223037]">
+                    <p className="text-xs text-neutral-400 dark:text-neutral-500">
                         &copy; {new Date().getFullYear()} OneSign
                     </p>
                 </div>
@@ -176,21 +176,28 @@ export function Sidebar(_props: SidebarProps) {
                 className={`
                     hidden md:flex bg-white border-r border-neutral-200 flex-col
                     transition-all duration-200 ease-in-out
+                    dark:bg-[#0f191e] dark:border-[#223037]
                     ${collapsed ? 'w-16' : 'w-56'}
                 `}
             >
                 {/* Logo + collapse toggle */}
-                <div className="h-16 flex items-center justify-between px-4 border-b border-neutral-100">
+                <div className="h-16 flex items-center justify-between px-4 border-b border-neutral-100 dark:border-[#223037]">
                     <Link href={homeHref} className="flex items-center">
                         {collapsed ? (
-                            <img src="/Odysseus-Icon_Black.svg" alt="Onesign Odysseus" className="h-8 w-auto" />
+                            <>
+                                <img src="/Odysseus-Icon_Black.svg" alt="Onesign Odysseus" className="h-8 w-auto dark:hidden" />
+                                <img src="/Odysseus-Icon.svg" alt="Onesign Odysseus" className="h-8 w-auto hidden dark:block" />
+                            </>
                         ) : (
-                            <img src="/Odysseus-Logo-Black.svg" alt="Onesign Odysseus" className="h-9 w-auto" />
+                            <>
+                                <img src="/Odysseus-Logo-Black.svg" alt="Onesign Odysseus" className="h-9 w-auto dark:hidden" />
+                                <img src="/Odysseus-Logo.svg" alt="Onesign Odysseus" className="h-9 w-auto hidden dark:block" />
+                            </>
                         )}
                     </Link>
                     <button
                         onClick={() => setCollapsed(!collapsed)}
-                        className="p-1 text-neutral-400 hover:text-neutral-600 transition-colors"
+                        className="p-1 text-neutral-400 hover:text-neutral-600 transition-colors dark:text-neutral-500 dark:hover:text-neutral-300"
                         aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                     >
                         {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
@@ -210,15 +217,16 @@ export function Sidebar(_props: SidebarProps) {
                     />
 
                     {/* Drawer */}
-                    <aside className="relative w-72 max-w-[85vw] h-full bg-white shadow-xl flex flex-col animate-slide-in">
+                    <aside className="relative w-72 max-w-[85vw] h-full bg-white shadow-xl flex flex-col animate-slide-in dark:bg-[#0f191e]">
                         {/* Logo + close */}
-                        <div className="h-16 flex items-center justify-between px-4 border-b border-neutral-100">
+                        <div className="h-16 flex items-center justify-between px-4 border-b border-neutral-100 dark:border-[#223037]">
                             <Link href={homeHref} className="flex items-center" onClick={closeMobile}>
-                                <img src="/Odysseus-Logo-Black.svg" alt="Onesign Odysseus" className="h-9 w-auto" />
+                                <img src="/Odysseus-Logo-Black.svg" alt="Onesign Odysseus" className="h-9 w-auto dark:hidden" />
+                                <img src="/Odysseus-Logo.svg" alt="Onesign Odysseus" className="h-9 w-auto hidden dark:block" />
                             </Link>
                             <button
                                 onClick={closeMobile}
-                                className="p-1 text-neutral-400 hover:text-neutral-600 transition-colors"
+                                className="p-1 text-neutral-400 hover:text-neutral-600 transition-colors dark:text-neutral-500 dark:hover:text-neutral-300"
                                 aria-label="Close menu"
                             >
                                 <X size={20} />
@@ -236,7 +244,7 @@ export function Sidebar(_props: SidebarProps) {
 
                             {adminNavGroups.map((group) => (
                                 <div key={group.label} className="mt-4">
-                                    <div className="px-3 py-1 text-[10px] font-semibold text-neutral-400 uppercase tracking-widest">
+                                    <div className="px-3 py-1 text-[10px] font-semibold text-neutral-400 uppercase tracking-widest dark:text-neutral-500">
                                         {group.label}
                                     </div>
                                     <ul className="space-y-0.5">
@@ -282,15 +290,15 @@ function NavLink({
 }) {
     const Icon = item.icon;
 
-    const baseClasses = 'flex items-center gap-3 px-3 py-2 rounded-[var(--radius-sm)] text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black';
+    const baseClasses = 'flex items-center gap-3 px-3 py-2 rounded-[var(--radius-sm)] text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]';
 
     let stateClasses: string;
     if (isActive) {
-        stateClasses = 'bg-black text-white';
+        stateClasses = 'bg-[var(--accent)] text-white shadow-sm';
     } else if (muted) {
-        stateClasses = 'text-neutral-400 hover:bg-neutral-50 hover:text-neutral-600';
+        stateClasses = 'text-neutral-400 hover:bg-neutral-50 hover:text-neutral-600 dark:text-neutral-500 dark:hover:bg-white/5 dark:hover:text-neutral-300';
     } else {
-        stateClasses = 'text-neutral-600 hover:bg-neutral-100 hover:text-black';
+        stateClasses = 'text-neutral-600 hover:bg-neutral-100 hover:text-black dark:text-[var(--bg-fg-muted)] dark:hover:bg-white/5 dark:hover:text-white';
     }
 
     return (

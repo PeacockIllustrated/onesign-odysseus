@@ -83,7 +83,7 @@ export function ComponentActions({ componentId, jobId, initialName }: ComponentA
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             onKeyDown={handleKeyDown}
-                            className="text-xl font-bold text-neutral-900 tracking-tight bg-transparent border-b-2 border-neutral-300 focus:border-black outline-none py-0.5 min-w-[200px]"
+                            className="text-xl font-bold text-neutral-900 tracking-tight bg-transparent border-b-2 border-neutral-300 focus:border-[var(--accent)] outline-none py-0.5 min-w-[200px]"
                             disabled={isPending}
                         />
                         <button

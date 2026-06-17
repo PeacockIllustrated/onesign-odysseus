@@ -22,6 +22,7 @@ import type {
     MaterialPiece,
     StandoffPiece,
     PushThroughPiece,
+    ExtraFacePiece,
     PanelRenderBundle,
 } from '@/lib/visualiser/types';
 import type { ResolvedMount } from '@/lib/visualiser/projecting';
@@ -1404,6 +1405,98 @@ function PushThroughPieces({
 }
 
 /**
+ * Extra metal faces (brass / …) laminated on the FRONT of letters. Same shape
+ * as the underlying letter (outer outline + counters as holes), cut from sheet
+ * metal. It sits at the letter's front (`frontZMm`: push-through letters stand
+ * proud of the panel; flat cut/backlit sit on the face) and extrudes proud by
+ * its sheet thickness. Flat `meshBasicMaterial` like the other pieces — the
+ * scene is unlit (a metal shader would render black), so the metal reads from
+ * its colour.
+ */
+function ExtraFacePieces({
+    face,
+    pieces,
+    outlines = true,
+    night = false,
+}: {
+    face: { xMm: number; yMm: number; wMm: number; hMm: number };
+    pieces: ExtraFacePiece[];
+    outlines?: boolean;
+    night?: boolean;
+}) {
+    const builtShapes = useMemo(() => {
+        const toLocal = (q: [number, number]): [number, number] => [
+            (q[0] - face.xMm - face.wMm / 2) * S,
+            (face.yMm + face.hMm / 2 - q[1]) * S,
+        ];
+        return pieces.map((piece) => {
+            const outerLocal = piece.path.points.map(toLocal);
+            const outer = new THREE.Shape();
+            if (outerLocal.length < 3) {
+                return { outer, hasOuter: false };
+            }
+            outer.moveTo(outerLocal[0][0], outerLocal[0][1]);
+            for (let i = 1; i < outerLocal.length; i++) {
+                outer.lineTo(outerLocal[i][0], outerLocal[i][1]);
+            }
+            outer.closePath();
+            for (const hole of piece.holes ?? []) {
+                const hp = hole.points.map(toLocal);
+                if (hp.length < 3) continue;
+                const path = new THREE.Path();
+                path.moveTo(hp[0][0], hp[0][1]);
+                for (let i = 1; i < hp.length; i++) {
+                    path.lineTo(hp[i][0], hp[i][1]);
+                }
+                path.closePath();
+                outer.holes.push(path);
+            }
+            return { outer, hasOuter: true };
+        });
+    }, [pieces, face.xMm, face.yMm, face.wMm, face.hMm]);
+
+    if (pieces.length === 0) return null;
+
+    return (
+        <group>
+            {pieces.map((piece, pi) => {
+                const built = builtShapes[pi];
+                if (!built.hasOuter) return null;
+                // Back of the face = the letter's front; extrude proud by the
+                // sheet thickness.
+                const backZ = piece.frontZMm * S;
+                const depthScene = Math.max(0.1, piece.thicknessMm) * S;
+                return (
+                    <mesh
+                        key={`face-${piece.pathIndex}-${pi}`}
+                        position={[0, 0, backZ]}>
+                        <extrudeGeometry
+                            args={[
+                                built.outer,
+                                {
+                                    depth: depthScene,
+                                    bevelEnabled: false,
+                                    curveSegments: 48,
+                                },
+                            ]}
+                        />
+                        <meshBasicMaterial
+                            color={displayColor(piece.color, night)}
+                            polygonOffset
+                            polygonOffsetFactor={1}
+                            polygonOffsetUnits={1}
+                        />
+                        {outlines && (
+                            <Edges color={EDGE_COLOR} lineWidth={1.5} />
+                        )}
+                    </mesh>
+                );
+            })}
+        </group>
+    );
+}
+
+/**
  * Backlit apertures — the cut shape is backed by an opal diffuser lit from
  * behind, so the solid cut glows. Each piece is rendered as a flat shape
  * (with its counters as holes) sitting just behind the face: in daylight it's
@@ -1793,7 +1886,7 @@ function DimensionEditLabel({
     return (
         <Html position={position} center zIndexRange={[30, 0]}>
             {editing ? (
-                <div className="flex items-center gap-1 rounded-full bg-white px-1.5 py-0.5 shadow ring-1 ring-black/10">
+                <div className="flex items-center gap-1 rounded-full bg-white px-1.5 py-0.5 shadow ring-1 ring-[var(--accent)]/10">
                     <input
                         autoFocus
                         type="number"
@@ -1815,7 +1908,7 @@ function DimensionEditLabel({
                     type="button"
                     onClick={() => setEditing(true)}
                     title={`Edit ${label} — click to change`}
-                    className="flex items-center gap-1 whitespace-nowrap rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium tabular-nums text-neutral-700 shadow-sm ring-1 ring-black/5 hover:bg-white hover:ring-black/20"
+                    className="flex items-center gap-1 whitespace-nowrap rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium tabular-nums text-neutral-700 shadow-sm ring-1 ring-[var(--accent)]/5 hover:bg-white hover:ring-[var(--accent)]/20"
                 >
                     <span className="text-neutral-400">{label}</span>
                     {Math.round(valueMm)} mm
@@ -1955,6 +2048,7 @@ function Panel({
     standoffPieces,
     pushThroughPieces,
     backlightPieces,
+    extraFacePieces = [],
     vinylPrintDataUrl,
     placedPathsByIndex,
     pathGroupColors,
@@ -1994,6 +2088,8 @@ function Panel({
     pushThroughPieces: PushThroughPiece[];
     /** Backlit apertures — glow through the cut in the illumination view. */
     backlightPieces?: MaterialPiece[];
+    /** Extra metal faces (brass/…) laminated on the front of letters. */
+    extraFacePieces?: ExtraFacePiece[];
     /** Full-colour vinyl print PNG (face-sized, masked to the vinyl shapes). */
     vinylPrintDataUrl?: string | null;
     placedPathsByIndex?: Array<FlatPath | null> | null;
@@ -2411,6 +2507,18 @@ function Panel({
                         </mesh>
                     ))}
                 </ExplodeGroup>
+            )}
+
+            {/* Extra metal faces (brass/…) laminated on the front of letters —
+                sit at each piece's own front-Z, so they ride on the push-through
+                opal or the flat backlit cut they face. */}
+            {face && extraFacePieces.length > 0 && (
+                <ExtraFacePieces
+                    face={face}
+                    pieces={extraFacePieces}
+                    outlines={showOutlines}
+                    night={night}
+                />
             )}
 
             {/* Backlit retained counter islands — the inner counters stay on
@@ -2915,6 +3023,8 @@ export default function Scene3D(props: {
     pushThroughPieces?: PushThroughPiece[];
     /** Backlit apertures — glow through the cut in the illumination view. */
     backlightPieces?: MaterialPiece[];
+    /** Extra metal faces (brass/…) laminated on the front of letters. */
+    extraFacePieces?: ExtraFacePiece[];
     /** Full-colour vinyl print PNG — face-sized, masked to the vinyl shapes. */
     vinylPrintDataUrl?: string | null;
     placedPathsByIndex?: Array<FlatPath | null> | null;
@@ -2978,6 +3088,7 @@ export default function Scene3D(props: {
     const pushThroughKeyline = props.pushThroughKeyline ?? [];
     const pushThroughIslands = props.pushThroughIslands ?? [];
     const pushThroughPieces = props.pushThroughPieces ?? [];
+    const extraFacePieces = props.extraFacePieces ?? [];
     const showOutlines = props.showOutlines ?? true;
     const showStandoffLetters = props.showStandoffLetters ?? true;
     const showStandoffLocators = props.showStandoffLocators ?? true;
@@ -3077,6 +3188,9 @@ export default function Scene3D(props: {
         standoffPieces,
         pushThroughPieces,
         backlightPieces,
+        // Extra-face render lands in the next slice; empty keeps the bundle
+        // type satisfied for the back-face mirror.
+        extraFacePieces: [],
         vinylPrintDataUrl: props.vinylPrintDataUrl,
     };
 
@@ -3141,6 +3255,7 @@ export default function Scene3D(props: {
                     pushThroughKeyline={pushThroughKeyline}
                     pushThroughIslands={pushThroughIslands}
                     pushThroughPieces={pushThroughPieces}
+                    extraFacePieces={extraFacePieces}
                     placedPathsByIndex={props.placedPathsByIndex ?? null}
                     pathGroupColors={props.pathGroupColors ?? null}
                     pendingPaths={props.pendingPaths}
@@ -3192,6 +3307,7 @@ export default function Scene3D(props: {
                             pushThroughKeyline={pushThroughKeyline}
                             pushThroughIslands={pushThroughIslands}
                             pushThroughPieces={pushThroughPieces}
+                            extraFacePieces={extraFacePieces}
                             placedPathsByIndex={props.placedPathsByIndex ?? null}
                             pathGroupColors={props.pathGroupColors ?? null}
                             pendingPaths={props.pendingPaths}

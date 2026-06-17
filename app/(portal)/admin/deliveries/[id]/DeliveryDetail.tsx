@@ -446,7 +446,7 @@ function DeliveryEditForm({
         }
     }
 
-    const inputCls = 'w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-black';
+    const inputCls = 'w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-[var(--accent)]';
 
     return (
         <form onSubmit={handleSubmit} className="space-y-3">
