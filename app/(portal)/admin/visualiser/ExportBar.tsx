@@ -40,7 +40,8 @@ import {
 } from '@/lib/visualiser/types';
 import { FACE_MATERIALS } from '@/lib/visualiser/extra-face';
 import { buildExtraFaceNestSvg } from '@/lib/visualiser/extra-face-export';
-import { sendExtraFaceToNester } from '@/lib/visualiser/extra-face-actions';
+import { buildNestSvg } from '@/lib/visualiser/nest-export';
+import { sendDesignNest } from '@/lib/visualiser/extra-face-actions';
 
 const ACCENT = '#4e7e8c';
 const ACCENT_DARK = '#3a5f6a';
@@ -335,16 +336,21 @@ export function ExportBar({
         }
     };
 
-    // Send the extra metal faces (brass/…) to the acrylic nester as linked
-    // nests — one per distinct face material, since each is its own stock.
-    // Saves the design first (the nest links back to it), then opens the
-    // nester on the first nest created. Mirrors the built-up-returns handoff.
-    const onSendFacesToNester = async () => {
-        if (nesterPending || extraFacePieces.length === 0) return;
+    // Pieces that nest like acrylic: the extra metal faces and the face-stuck
+    // acrylic. Each distinct material becomes its own nest (separate sheet
+    // stock can't share a sheet).
+    const nestableCount = extraFacePieces.length + acrylicPieces.length;
+
+    // Send all nestable pieces to the acrylic nester as linked nests — one per
+    // material (each metal finish; each acrylic colour+thickness). Saves the
+    // design first (the nests link back to it), then opens the nester on the
+    // first nest created. Mirrors the built-up-returns handoff.
+    const onSendToNester = async () => {
+        if (nesterPending || nestableCount === 0) return;
         setNesterPending(true);
         setMsg(null);
         try {
-            // 1. Ensure the design is saved — the nest links back to its id.
+            // 1. Ensure the design is saved — the nests link back to its id.
             let id = designId;
             if (!id || dirty) {
                 const assembled = assembleMain();
@@ -363,27 +369,69 @@ export function ExportBar({
                 markSaved(saved.data.id);
             }
 
-            // 2. One nest per distinct face material.
-            const byMaterial = new Map<FaceMaterial, ExtraFacePiece[]>();
+            // 2. One nest spec per material.
+            const specs: Array<{
+                combinedSvg: string;
+                nestLabel: string;
+                sourceKind: string;
+                fileName: string;
+            }> = [];
+
+            // Metal faces — grouped by finish.
+            const byMetal = new Map<FaceMaterial, ExtraFacePiece[]>();
             for (const p of extraFacePieces) {
-                const arr = byMaterial.get(p.material) ?? [];
+                const arr = byMetal.get(p.material) ?? [];
                 arr.push(p);
-                byMaterial.set(p.material, arr);
+                byMetal.set(p.material, arr);
+            }
+            for (const [material, pieces] of byMetal) {
+                const label = `${FACE_MATERIALS[material].label} faces`;
+                specs.push({
+                    combinedSvg: buildExtraFaceNestSvg({
+                        pieces,
+                        material,
+                        title: `${params.name} — ${label}`,
+                    }),
+                    nestLabel: label,
+                    sourceKind: 'panel_extra_face',
+                    fileName: `${params.name}-${material}-faces.svg`,
+                });
             }
 
-            let firstNestId: string | null = null;
-            for (const [material, pieces] of byMaterial) {
-                const svg = buildExtraFaceNestSvg({
-                    pieces,
-                    material,
-                    title: `${params.name} — ${FACE_MATERIALS[material].label} faces`,
+            // Acrylic — grouped by colour + thickness (distinct stock).
+            const byAcrylic = new Map<string, MaterialPiece[]>();
+            for (const p of acrylicPieces) {
+                const key = `${p.color}|${p.thicknessMm ?? 0}`;
+                const arr = byAcrylic.get(key) ?? [];
+                arr.push(p);
+                byAcrylic.set(key, arr);
+            }
+            for (const [key, pieces] of byAcrylic) {
+                const [color, thick] = key.split('|');
+                const hasThick = thick && thick !== '0';
+                const label = `Acrylic ${color}${hasThick ? ` ${thick}mm` : ''}`;
+                specs.push({
+                    combinedSvg: buildNestSvg(
+                        pieces,
+                        'ACRYLIC',
+                        `${params.name} — ${label}`,
+                    ),
+                    nestLabel: label,
+                    sourceKind: 'panel_acrylic',
+                    fileName: `${params.name}-acrylic-${color.replace('#', '')}${hasThick ? `-${thick}mm` : ''}.svg`,
                 });
-                const res = await sendExtraFaceToNester({
+            }
+
+            // 3. Send each, opening the nester on the first.
+            let firstNestId: string | null = null;
+            for (const spec of specs) {
+                const res = await sendDesignNest({
                     designId: id,
                     name: params.name,
-                    combinedSvg: svg,
-                    material,
-                    fileName: `${params.name}-${material}-faces.svg`,
+                    combinedSvg: spec.combinedSvg,
+                    nestLabel: spec.nestLabel,
+                    sourceKind: spec.sourceKind,
+                    fileName: spec.fileName,
                 });
                 if (!res.ok) {
                     setMsg(res.error);
@@ -392,7 +440,6 @@ export function ExportBar({
                 if (!firstNestId) firstNestId = res.data.nestId;
             }
 
-            // 3. Open the nester on the first nest.
             if (firstNestId) {
                 window.location.assign(`/admin/nesting?open=${firstNestId}`);
             }
@@ -712,13 +759,13 @@ export function ExportBar({
                           ? 'Update backshop screen'
                           : 'Add to backshop screen'}
                 </button>
-                {extraFacePieces.length > 0 && (
+                {nestableCount > 0 && (
                     <button
                         type="button"
-                        onClick={onSendFacesToNester}
+                        onClick={onSendToNester}
                         disabled={nesterPending}
                         aria-busy={nesterPending}
-                        title="Cut the metal faces and nest them — saves the design, then opens the acrylic nester."
+                        title="Nest the acrylic + metal-face pieces — saves the design, then opens the acrylic nester (one nest per material)."
                         className="flex min-h-[36px] items-center gap-1.5 rounded-md border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                         {nesterPending ? (
@@ -730,9 +777,7 @@ export function ExportBar({
                         ) : (
                             <Layers size={14} aria-hidden />
                         )}
-                        {nesterPending
-                            ? 'Sending…'
-                            : 'Send metal faces to nester'}
+                        {nesterPending ? 'Sending…' : 'Send to nester'}
                     </button>
                 )}
                 <div className="ml-auto flex items-center gap-2 text-xs text-neutral-500">

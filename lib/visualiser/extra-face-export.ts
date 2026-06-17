@@ -11,32 +11,9 @@
  * string building, so it's unit-testable alongside the geometry engines.
  */
 
-import type { ExtraFacePiece, FaceMaterial, FlatPath } from './types';
+import type { ExtraFacePiece, FaceMaterial } from './types';
 import { FACE_MATERIALS } from './extra-face';
-
-function f(n: number): string {
-    const s = n.toFixed(3);
-    return s.includes('.') ? s.replace(/\.?0+$/, '') : s;
-}
-
-function esc(s: string): string {
-    return s
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
-
-function pathD(p: FlatPath): string {
-    const pts = p.points;
-    if (pts.length < 2) return '';
-    const [first, ...rest] = pts;
-    return (
-        `M ${f(first[0])} ${f(first[1])} ` +
-        rest.map(([x, y]) => `L ${f(x)} ${f(y)}`).join(' ') +
-        (p.closed ? ' Z' : '')
-    );
-}
+import { buildNestSvg } from './nest-export';
 
 /** Material key → group id, e.g. 'brass' → 'BRASS_FACES'. */
 export function faceGroupId(material: FaceMaterial): string {
@@ -51,9 +28,9 @@ export interface ExtraFaceNestSvgInput {
 }
 
 /**
- * Build the nest SVG for a set of single-material extra-face pieces. Returns
- * an empty-but-valid SVG string when there are no pieces (callers guard before
- * sending, but this keeps it total).
+ * Build the nest SVG for a set of single-material extra-face pieces. Thin
+ * wrapper over the generic `buildNestSvg` (shared with the acrylic hand-off)
+ * that names the group after the metal.
  */
 export function buildExtraFaceNestSvg({
     pieces,
@@ -61,52 +38,5 @@ export function buildExtraFaceNestSvg({
     title,
 }: ExtraFaceNestSvgInput): string {
     const spec = FACE_MATERIALS[material];
-
-    // Every ring (outer outlines + counters) contributes to the bbox.
-    const rings: FlatPath[] = [];
-    for (const piece of pieces) {
-        rings.push(piece.path);
-        for (const h of piece.holes ?? []) rings.push(h);
-    }
-
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (const r of rings) {
-        for (const [x, y] of r.points) {
-            if (x < minX) minX = x;
-            if (y < minY) minY = y;
-            if (x > maxX) maxX = x;
-            if (y > maxY) maxY = y;
-        }
-    }
-    if (!isFinite(minX)) {
-        minX = 0;
-        minY = 0;
-        maxX = 1;
-        maxY = 1;
-    }
-
-    const W = Math.max(1, Math.ceil(maxX - minX));
-    const H = Math.max(1, Math.ceil(maxY - minY));
-
-    const els = rings
-        .map((r) => pathD(r))
-        .filter((d) => d.length > 0)
-        .map(
-            (d) =>
-                `    <path d="${d}" fill="none" stroke="#000000" stroke-width="0.1"/>`,
-        );
-
-    return [
-        '<?xml version="1.0" encoding="UTF-8"?>',
-        `<!-- ${esc(title)} — Onesign Odysseus extra faces (${esc(spec.label)}). 1 unit = 1 mm. Outer outlines + counters; counters re-read as holes. -->`,
-        `<svg xmlns="http://www.w3.org/2000/svg" width="${W}mm" height="${H}mm" viewBox="${f(minX)} ${f(minY)} ${W} ${H}">`,
-        `  <g id="${faceGroupId(material)}">`,
-        ...els,
-        '  </g>',
-        '</svg>',
-        '',
-    ].join('\n');
+    return buildNestSvg(pieces, faceGroupId(material), `${title} (${spec.label})`);
 }
