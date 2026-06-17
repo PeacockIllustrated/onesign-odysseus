@@ -39,6 +39,7 @@ import {
     type DisplayLayer,
 } from '@/lib/visualiser/piece-display';
 import { buildNestedSheets } from '@/lib/visualiser/pack-nest';
+import { buildPanelDevelopmentSvg } from '@/lib/visualiser/panel-cut-svg';
 import { getDesignBinderLogo } from '@/lib/binder/actions';
 import { projectingSpecLine } from '@/lib/visualiser/projecting';
 import { composeLayersSvg } from '@/lib/visualiser/compose';
@@ -636,7 +637,22 @@ export function ExportBar({
                 ? filledDrawing(faceLayers, 'Whole sign — face', panelColor)
                 : null;
 
-        // 1. The aluminium tray — always present; the carcass everything mounts to.
+        // 1. The aluminium tray — always present; the carcass everything mounts
+        // to. Its drawing is the UNFOLDED flat blank (the developed cruciform
+        // with every hole cut through the face + the bend lines) — the real
+        // sheet-metal cut file, not the assembled face art.
+        const holesBySection = sectionExport.sections.map((_s, i) => [
+            ...(apertureBySection[i] ?? []),
+            ...(pushThroughKeylineBySection[i] ?? []),
+            ...(fixingsBySection[i] ?? []),
+            ...(cableHolesBySection[i] ?? []),
+        ]);
+        const trayCut = buildPanelDevelopmentSvg({
+            sectionExport,
+            holesBySection,
+            panelColor,
+            title: `${params.name} — tray`,
+        });
         const apertureNote =
             backlightPieces.length > 0
                 ? `${backlightPieces.length} backlit aperture${backlightPieces.length === 1 ? '' : 's'} cut in the face`
@@ -649,17 +665,26 @@ export function ExportBar({
             painted: !!(params.panelRal || params.panelColor),
             specRows: [
                 { label: 'Face size', value: `${round(w)} × ${round(h)}mm` },
+                { label: 'Flat blank', value: `${trayCut.widthMm} × ${trayCut.heightMm}mm` },
                 { label: 'Material', value: params.materialLabel ?? 'Folded aluminium' },
                 { label: 'Colour', value: params.panelRal ?? params.panelColor ?? '' },
                 { label: 'Return depth', value: `${round(params.returnDepthMm)}mm` },
                 { label: 'Gauge', value: `${params.materialThicknessMm}mm` },
             ],
             callouts: [
-                'Folded aluminium tray',
+                'Folded aluminium tray — cut flat, fold on the dashed lines',
                 ...(apertureNote ? [apertureNote] : []),
             ],
-            // The tray's artwork = the face, shown filled in the panel colour.
-            drawings: faceDrawing ? [faceDrawing] : [],
+            drawings: [
+                {
+                    dataUri: svgUri(trayCut.svg),
+                    isSvg: true,
+                    kind: 'technical',
+                    caption: 'Unfolded tray — cut & fold',
+                    widthMm: trayCut.widthMm,
+                    heightMm: trayCut.heightMm,
+                },
+            ],
         });
 
         const byStock = <T extends { color: string; thicknessMm?: number }>(
