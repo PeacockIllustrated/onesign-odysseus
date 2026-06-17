@@ -192,6 +192,50 @@ export async function createProductionPackFromDesign(
     return ok({ id: data.id as string });
 }
 
+/**
+ * Insert a works pack whose content was assembled CLIENT-SIDE — the rich
+ * "Production pack" button in the visualiser splits the live 3D design into its
+ * individual pieces (each with its own cut file) where the geometry + nest
+ * builders already live, then hands the finished document here to persist. The
+ * action just validates + inserts, keeping the heavy per-piece derivation off
+ * the server.
+ */
+export async function createProductionPackFromContent(input: {
+    name: string;
+    content: unknown;
+}): Promise<Result<{ id: string }>> {
+    const user = await getUser();
+    if (!user) return err('not authenticated');
+
+    const name = (input?.name ?? '').trim() || 'Sign';
+    const parsed = ProductionPackContentSchema.safeParse(input?.content);
+    if (!parsed.success) {
+        return err(parsed.error.issues[0]?.message ?? 'invalid pack content');
+    }
+
+    const supabase = await createServerClient();
+    const { data, error } = await supabase
+        .from(TABLE)
+        .insert({
+            title: `${name} — works pack`,
+            status: 'draft',
+            project_name: parsed.data.cover.projectName || name,
+            client_name: parsed.data.cover.clientName || null,
+            content: parsed.data,
+            created_by: user.id,
+        })
+        .select('id')
+        .single();
+
+    if (error) {
+        console.error('error creating production pack from content:', error);
+        return err(error.message);
+    }
+
+    revalidatePath(LIST_PATH);
+    return ok({ id: data.id as string });
+}
+
 /** Update the promoted/meta columns (title, status, client, project). */
 export async function updateProductionPackMeta(
     id: string,
