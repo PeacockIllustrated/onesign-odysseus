@@ -10,6 +10,7 @@ import {
     Save,
     Scissors,
     Tv,
+    Layers,
 } from 'lucide-react';
 import { useVisualiser, splitPanels } from './store';
 import { sceneCapture } from './Scene3D';
@@ -34,7 +35,12 @@ import {
     type MaterialPiece,
     type StandoffPiece,
     type PushThroughPiece,
+    type ExtraFacePiece,
+    type FaceMaterial,
 } from '@/lib/visualiser/types';
+import { FACE_MATERIALS } from '@/lib/visualiser/extra-face';
+import { buildExtraFaceNestSvg } from '@/lib/visualiser/extra-face-export';
+import { sendExtraFaceToNester } from '@/lib/visualiser/extra-face-actions';
 
 const ACCENT = '#4e7e8c';
 const ACCENT_DARK = '#3a5f6a';
@@ -140,6 +146,7 @@ export function ExportBar({
     standoffPieces,
     pushThroughPieces,
     backlightPieces,
+    extraFacePieces,
     vinylPrintDataUrl = null,
     faceRectMm = null,
     warnings = [],
@@ -164,6 +171,9 @@ export function ExportBar({
     pushThroughPieces: PushThroughPiece[];
     /** Backlit apertures — for the opal-backing + LED pages in the PDFs. */
     backlightPieces: MaterialPiece[];
+    /** Extra metal faces (brass/…) — for the "send metal faces to nester"
+     *  hand-off. Empty when no group opted into a face. */
+    extraFacePieces: ExtraFacePiece[];
     /** Full-colour vinyl print PNG (face-sized, masked) + the face rect it
      *  maps onto — for the print-&-cut PDF pages. */
     vinylPrintDataUrl?: string | null;
@@ -260,6 +270,7 @@ export function ExportBar({
     const [pdfPending, setPdfPending] = useState<'prod' | 'ref' | null>(null);
     const [backshopPending, setBackshopPending] = useState(false);
     const [onBackshop, setOnBackshop] = useState(false);
+    const [nesterPending, setNesterPending] = useState(false);
     const [msg, setMsg] = useState<string | null>(null);
     const [exported, setExported] = useState<string | null>(null);
 
@@ -321,6 +332,72 @@ export function ExportBar({
             setExported(`Reference PDF · ${fname}`);
         } finally {
             setPdfPending(null);
+        }
+    };
+
+    // Send the extra metal faces (brass/…) to the acrylic nester as linked
+    // nests — one per distinct face material, since each is its own stock.
+    // Saves the design first (the nest links back to it), then opens the
+    // nester on the first nest created. Mirrors the built-up-returns handoff.
+    const onSendFacesToNester = async () => {
+        if (nesterPending || extraFacePieces.length === 0) return;
+        setNesterPending(true);
+        setMsg(null);
+        try {
+            // 1. Ensure the design is saved — the nest links back to its id.
+            let id = designId;
+            if (!id || dirty) {
+                const assembled = assembleMain();
+                const saved = await saveDesign({
+                    id: designId ?? undefined,
+                    params: assembled.params,
+                    svgSource: assembled.svgSource,
+                    quoteId,
+                    quoteItemId,
+                });
+                if (!saved.ok) {
+                    setMsg(saved.error);
+                    return;
+                }
+                id = saved.data.id;
+                markSaved(saved.data.id);
+            }
+
+            // 2. One nest per distinct face material.
+            const byMaterial = new Map<FaceMaterial, ExtraFacePiece[]>();
+            for (const p of extraFacePieces) {
+                const arr = byMaterial.get(p.material) ?? [];
+                arr.push(p);
+                byMaterial.set(p.material, arr);
+            }
+
+            let firstNestId: string | null = null;
+            for (const [material, pieces] of byMaterial) {
+                const svg = buildExtraFaceNestSvg({
+                    pieces,
+                    material,
+                    title: `${params.name} — ${FACE_MATERIALS[material].label} faces`,
+                });
+                const res = await sendExtraFaceToNester({
+                    designId: id,
+                    name: params.name,
+                    combinedSvg: svg,
+                    material,
+                    fileName: `${params.name}-${material}-faces.svg`,
+                });
+                if (!res.ok) {
+                    setMsg(res.error);
+                    return;
+                }
+                if (!firstNestId) firstNestId = res.data.nestId;
+            }
+
+            // 3. Open the nester on the first nest.
+            if (firstNestId) {
+                window.location.assign(`/admin/nesting?open=${firstNestId}`);
+            }
+        } finally {
+            setNesterPending(false);
         }
     };
 
@@ -635,6 +712,29 @@ export function ExportBar({
                           ? 'Update backshop screen'
                           : 'Add to backshop screen'}
                 </button>
+                {extraFacePieces.length > 0 && (
+                    <button
+                        type="button"
+                        onClick={onSendFacesToNester}
+                        disabled={nesterPending}
+                        aria-busy={nesterPending}
+                        title="Cut the metal faces and nest them — saves the design, then opens the acrylic nester."
+                        className="flex min-h-[36px] items-center gap-1.5 rounded-md border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        {nesterPending ? (
+                            <Loader2
+                                size={14}
+                                className="animate-spin"
+                                aria-hidden
+                            />
+                        ) : (
+                            <Layers size={14} aria-hidden />
+                        )}
+                        {nesterPending
+                            ? 'Sending…'
+                            : 'Send metal faces to nester'}
+                    </button>
+                )}
                 <div className="ml-auto flex items-center gap-2 text-xs text-neutral-500">
                     {exported && (
                         <span

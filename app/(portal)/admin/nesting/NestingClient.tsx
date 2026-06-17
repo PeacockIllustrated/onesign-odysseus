@@ -21,6 +21,7 @@ import {
     ExternalLink,
     FileText,
     Hammer,
+    Layers,
     Link2,
     Minimize2,
     Play,
@@ -216,6 +217,10 @@ export function NestingClient({
     const [sourceJob, setSourceJob] = useState<{ id: string; name: string } | null>(
         null,
     );
+    const [sourceDesign, setSourceDesign] = useState<{
+        id: string;
+        name: string;
+    } | null>(null);
 
     const nest = useNestWorker();
 
@@ -434,6 +439,16 @@ export function NestingClient({
                           name:
                               row.config_json.sourceJobName ??
                               'built-up letter job',
+                      }
+                    : null,
+            );
+            setSourceDesign(
+                row.source_design_id
+                    ? {
+                          id: row.source_design_id,
+                          name:
+                              row.config_json.sourceDesignName ??
+                              'visualiser design',
                       }
                     : null,
             );
@@ -1313,6 +1328,22 @@ export function NestingClient({
                             className="flex items-center gap-1 rounded-md border border-[#b8d0d8] bg-white px-2 py-1 font-medium hover:bg-white/70"
                         >
                             <ExternalLink size={12} aria-hidden /> Open job
+                        </Link>
+                    </div>
+                )}
+                {sourceDesign && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#b8d0d8] bg-[#e8f0f3] px-3 py-2 text-xs text-[#3a5f6a]">
+                        <span className="flex items-center gap-1.5">
+                            <Layers size={14} aria-hidden />
+                            Metal faces from{' '}
+                            <b className="font-semibold">{sourceDesign.name}</b> —
+                            cut to the letter shapes.
+                        </span>
+                        <Link
+                            href={`/admin/visualiser?id=${sourceDesign.id}`}
+                            className="flex items-center gap-1 rounded-md border border-[#b8d0d8] bg-white px-2 py-1 font-medium hover:bg-white/70"
+                        >
+                            <ExternalLink size={12} aria-hidden /> Open design
                         </Link>
                     </div>
                 )}

@@ -308,6 +308,7 @@ export function VisualiserClient({
         pushThroughPieces,
         standoffPieces,
         backlightPieces,
+        extraFacePieces,
         reference,
         autoFixings,
         placementXf,
@@ -1368,6 +1369,7 @@ export function VisualiserClient({
                             standoffPieces={standoffPieces}
                             pushThroughPieces={pushThroughPieces}
                             backlightPieces={backlightPieces}
+                            extraFacePieces={extraFacePieces}
                             vinylPrintDataUrl={vinylPrintDataUrl}
                             faceRectMm={faceRectMm}
                             warnings={advisories}
