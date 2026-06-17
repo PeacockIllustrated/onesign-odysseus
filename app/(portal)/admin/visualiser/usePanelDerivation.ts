@@ -820,6 +820,9 @@ export function usePanelDerivation(
             standoffPieces,
             pushThroughPieces,
             backlightPieces,
+            // Real extra-face derivation lands in the next slice (geometry +
+            // 3D + UI). Foundation keeps the field present + empty.
+            extraFacePieces: [],
             vinylPrintDataUrl,
             faceRectMm,
         };
@@ -861,6 +864,9 @@ export function usePanelDerivation(
             standoffPieces,
             pushThroughPieces,
             backlightPieces,
+            // Real extra-face derivation lands in the next slice (geometry +
+            // 3D + UI). Foundation keeps the field present + empty.
+            extraFacePieces: [],
             vinylPrintDataUrl,
             faceRectMm,
         };

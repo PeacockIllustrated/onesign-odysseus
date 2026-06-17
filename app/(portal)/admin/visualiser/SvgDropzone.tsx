@@ -1141,7 +1141,7 @@ export function SvgDropzone() {
                                     </div>
                                     {sel && (
                                         <>
-                                            <div className="mt-2 grid grid-cols-3 gap-1.5">
+                                            <div className="mt-2 grid grid-cols-2 gap-1.5">
                                                 <NumField
                                                     label="X (mm)"
                                                     step={5}
@@ -1164,23 +1164,67 @@ export function SvgDropzone() {
                                                         )
                                                     }
                                                 />
+                                                {/* Real-world size in mm (aspect-locked). Setting W or
+                                                    H derives the uniform scale from the layer's native
+                                                    bbox — mm-precise sizing instead of a blind %. The
+                                                    other dimension follows automatically. Rescale about
+                                                    the layer centre so it grows/shrinks in place. */}
                                                 <NumField
-                                                    label="Scale %"
+                                                    label="W (mm)"
                                                     step={5}
                                                     value={Math.round(
-                                                        l.scale * 100,
+                                                        l.wMm * l.scale,
                                                     )}
                                                     onChange={(n) => {
                                                         const newScale =
                                                             n > 0
-                                                                ? n / 100
+                                                                ? n /
+                                                                  Math.max(
+                                                                      1,
+                                                                      l.wMm,
+                                                                  )
                                                                 : 0.01;
-                                                        // Scale about the
-                                                        // layer's centre so it
-                                                        // grows / shrinks in
-                                                        // place instead of
-                                                        // drifting from the
-                                                        // top-left origin.
+                                                        const cx =
+                                                            l.xMm +
+                                                            (l.wMm * l.scale) /
+                                                                2;
+                                                        const cy =
+                                                            l.yMm +
+                                                            (l.hMm * l.scale) /
+                                                                2;
+                                                        updateArtworkLayer(
+                                                            l.id,
+                                                            {
+                                                                scale: newScale,
+                                                                xMm:
+                                                                    cx -
+                                                                    (l.wMm *
+                                                                        newScale) /
+                                                                        2,
+                                                                yMm:
+                                                                    cy -
+                                                                    (l.hMm *
+                                                                        newScale) /
+                                                                        2,
+                                                            },
+                                                        );
+                                                    }}
+                                                />
+                                                <NumField
+                                                    label="H (mm)"
+                                                    step={5}
+                                                    value={Math.round(
+                                                        l.hMm * l.scale,
+                                                    )}
+                                                    onChange={(n) => {
+                                                        const newScale =
+                                                            n > 0
+                                                                ? n /
+                                                                  Math.max(
+                                                                      1,
+                                                                      l.hMm,
+                                                                  )
+                                                                : 0.01;
                                                         const cx =
                                                             l.xMm +
                                                             (l.wMm * l.scale) /

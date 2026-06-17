@@ -3077,6 +3077,9 @@ export default function Scene3D(props: {
         standoffPieces,
         pushThroughPieces,
         backlightPieces,
+        // Extra-face render lands in the next slice; empty keeps the bundle
+        // type satisfied for the back-face mirror.
+        extraFacePieces: [],
         vinylPrintDataUrl: props.vinylPrintDataUrl,
     };
 
