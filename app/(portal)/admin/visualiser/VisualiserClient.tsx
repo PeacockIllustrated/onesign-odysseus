@@ -1106,6 +1106,7 @@ export function VisualiserClient({
                             standoffPieces={standoffPieces}
                             pushThroughPieces={pushThroughPieces}
                             backlightPieces={backlightPieces}
+                            extraFacePieces={extraFacePieces}
                             vinylPrintDataUrl={vinylPrintDataUrl}
                             placedPathsByIndex={placedClipByIndex}
                             pathGroupColors={dispGroupColors}
