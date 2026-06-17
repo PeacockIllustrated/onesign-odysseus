@@ -756,17 +756,21 @@ export function buildKeyline(paths: FlatPath[], offsetMm: number): FlatPath[] {
     const probe = offsetRing(outer, offsetMm, 1);
     const sign = Math.abs(signedArea(probe)) >= outerArea ? 1 : -1;
 
-    return rings.map((src) => {
+    return rings.flatMap((src) => {
         const raw = offsetRing(src, offsetMm, sign);
-        // A naive offset self-intersects at concave corners and across
-        // narrow letter gaps (V notch, E slots, U base) → spikes. A valid
-        // outward point sits ~offset from the source; anything that folded
-        // back to within half the offset is an artifact. Drop those and let
-        // the survivors bridge — Illustrator's overlap-removal result.
-        const cleaned = stripOffsetSpikes(raw, src, offsetMm);
-        const ring = cleaned.length >= 4 ? cleaned : raw;
-        if (ring.length) ring.push(ring[0]); // re-close
-        return { points: ring, closed: true };
+        const closed = closeRing(raw);
+        // The miter offset self-intersects at concave corners and across narrow
+        // letter gaps (the V notch, E slots, the bowl of a P/R) — fold-back
+        // loops. A self-intersecting ring is an INVALID cut path: the machine
+        // refuses it or, worse, cuts the crossing. When it happens, resolve it
+        // with a polygon UNION — the clipper splits at the crossings and keeps
+        // the simple outer boundary, so sharp corners survive and only the
+        // loops are removed. Clean (convex) offsets pass straight through
+        // untouched, so a plain rectangle keeps its exact mitred corners.
+        const resolved = ringSelfIntersects(closed)
+            ? resolveSelfIntersections(closed)
+            : [closed];
+        return resolved.map((ring) => ({ points: ring, closed: true }));
     });
 }
 
@@ -857,42 +861,100 @@ function dedupeRing(pts: number[][], eps = 1e-3): number[][] {
     return out;
 }
 
-/**
- * Remove offset points that folded back toward the source (concave-corner
- * spikes and narrow-gap collisions), keeping only points at least half the
- * offset clear of the source.
- */
-function stripOffsetSpikes(
-    offsetPts: Array<[number, number]>,
-    source: number[][],
-    offsetMm: number,
+/** Close a ring (duplicate the first point at the end if needed). */
+function closeRing(
+    pts: Array<[number, number]>,
 ): Array<[number, number]> {
-    if (offsetPts.length < 4) return offsetPts;
-    // Cap the distance test for dense glyphs — offset-scale precision is
-    // plenty for spotting fold-backs.
-    const stride = Math.max(1, Math.ceil(source.length / 1200));
-    const ref: number[][] = [];
-    for (let i = 0; i < source.length; i += stride) ref.push(source[i]);
-    const threshold = offsetMm * 0.5;
-    return offsetPts.filter((p) => minDistToRing(p, ref) >= threshold);
+    const out = pts.map((p) => [p[0], p[1]] as [number, number]);
+    if (out.length === 0) return out;
+    const a = out[0];
+    const b = out[out.length - 1];
+    if (a[0] !== b[0] || a[1] !== b[1]) out.push([a[0], a[1]]);
+    return out;
 }
 
-function minDistToRing(p: [number, number], ring: number[][]): number {
-    let m = Infinity;
-    for (let i = 0; i < ring.length; i++) {
-        const a = ring[i];
-        const b = ring[(i + 1) % ring.length];
-        const dx = b[0] - a[0];
-        const dy = b[1] - a[1];
-        const l2 = dx * dx + dy * dy;
-        let t = l2 > 0 ? ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2 : 0;
-        t = Math.max(0, Math.min(1, t));
-        const cx = a[0] + t * dx;
-        const cy = a[1] + t * dy;
-        const d = Math.hypot(p[0] - cx, p[1] - cy);
-        if (d < m) m = d;
+/** Signed area of triangle (a, b, c) ×2 — orientation sign. */
+function orient(
+    a: [number, number],
+    b: [number, number],
+    c: [number, number],
+): number {
+    return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+}
+
+/** True only for a PROPER crossing (strict sign opposition) — shared
+ *  endpoints and collinear touches between adjacent edges don't count. */
+function segmentsCross(
+    p1: [number, number],
+    p2: [number, number],
+    p3: [number, number],
+    p4: [number, number],
+): boolean {
+    const d1 = orient(p3, p4, p1);
+    const d2 = orient(p3, p4, p2);
+    const d3 = orient(p1, p2, p3);
+    const d4 = orient(p1, p2, p4);
+    return (
+        ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+        ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))
+    );
+}
+
+/**
+ * Does a closed ring cross itself? O(n²) edge-pair test (adjacent edges, which
+ * share a vertex, are skipped). Keyline rings are small, and this only runs to
+ * decide whether the expensive union cleanup is needed.
+ */
+function ringSelfIntersects(closed: Array<[number, number]>): boolean {
+    const n = closed.length;
+    // Drop the closing duplicate so edge i -> i+1 (mod m) is the true ring.
+    const m =
+        n > 1 &&
+        closed[0][0] === closed[n - 1][0] &&
+        closed[0][1] === closed[n - 1][1]
+            ? n - 1
+            : n;
+    if (m < 4) return false;
+    for (let i = 0; i < m; i++) {
+        const a1 = closed[i];
+        const a2 = closed[(i + 1) % m];
+        for (let j = i + 1; j < m; j++) {
+            // Skip the two edges adjacent to edge i (they legitimately share a
+            // vertex), including the wrap-around pair.
+            if (j === (i + 1) % m || (j + 1) % m === i) continue;
+            if (segmentsCross(a1, a2, closed[j], closed[(j + 1) % m])) {
+                return true;
+            }
+        }
     }
-    return m;
+    return false;
+}
+
+/**
+ * Resolve a self-intersecting ring into clean, simple, non-self-intersecting
+ * closed rings via a polygon UNION. The clipper splits the ring at its
+ * crossings and keeps the nonzero-area boundary, dropping the fold-back loops —
+ * the sharp original vertices survive. Falls back to the input on any clipper
+ * error so a cut is never silently lost.
+ */
+function resolveSelfIntersections(
+    closed: Array<[number, number]>,
+): Array<[number, number]>[] {
+    if (closed.length < 4) return [closed];
+    try {
+        const u = polygonClipping.union([[closed as Ring]]);
+        const out: Array<[number, number]>[] = [];
+        for (const poly of u) {
+            for (const ring of poly) {
+                if (ring.length >= 4) {
+                    out.push(ring.map(([x, y]) => [x, y] as [number, number]));
+                }
+            }
+        }
+        return out.length > 0 ? out : [closed];
+    } catch {
+        return [closed];
+    }
 }
 
 /** Offset one closed ring by `d` along edge perpendiculars (miter join). */

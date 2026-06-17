@@ -100,9 +100,11 @@ describe('buildKeyline — Illustrator-style Offset Path', () => {
         expect(buildKeyline([open], 5)).toEqual([]);
     });
 
-    it('strips spikes at concave corners / narrow gaps (no fold-backs)', () => {
-        // A U-channel with a 10mm-wide slot. Offsetting 8mm outward makes
-        // the two slot walls collide — the old code spiked here.
+    it('produces a valid, non-self-intersecting cut at concave corners / narrow gaps', () => {
+        // A U-channel with a 10mm-wide slot. Offsetting 8mm outward makes the
+        // two slot walls collide — a naive miter offset folds back and crosses
+        // itself there, which CAM software refuses or mis-cuts. The keyline
+        // must come out as a clean, simple closed cut.
         const u: FlatPath = {
             closed: true,
             points: [
@@ -117,37 +119,64 @@ describe('buildKeyline — Illustrator-style Offset Path', () => {
                 [0, 0],
             ],
         };
-        const src = u.points.slice(0, -1);
-        const distToRing = (p: number[]) => {
-            let m = Infinity;
-            for (let i = 0; i < src.length; i++) {
-                const a = src[i];
-                const b = src[(i + 1) % src.length];
-                const dx = b[0] - a[0];
-                const dy = b[1] - a[1];
-                const l2 = dx * dx + dy * dy;
-                let t =
-                    l2 > 0
-                        ? ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2
-                        : 0;
-                t = Math.max(0, Math.min(1, t));
-                m = Math.min(
-                    m,
-                    Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy)),
-                );
-            }
-            return m;
-        };
 
-        const [out] = buildKeyline([u], 8);
-        expect(out.points.length).toBeGreaterThanOrEqual(4);
-        // Every surviving point is clear of the source — no spike folded
-        // back across the slot.
-        for (const p of out.points) {
-            expect(distToRing(p)).toBeGreaterThanOrEqual(8 * 0.5 - 1e-6);
+        const out = buildKeyline([u], 8);
+        expect(out.length).toBeGreaterThanOrEqual(1);
+        for (const ring of out) {
+            expect(ring.closed).toBe(true);
+            expect(ring.points.length).toBeGreaterThanOrEqual(4);
+            // THE invariant the machine needs: the cut path is simple — no edge
+            // crosses another.
+            expect(selfIntersects(ring.points)).toBe(false);
         }
+        // …and the keyline encloses the source (offset outward).
+        const ob = bbox(out[0]);
+        const sb = bbox(u);
+        expect(ob.minX).toBeLessThanOrEqual(sb.minX + 1e-6);
+        expect(ob.maxX).toBeGreaterThanOrEqual(sb.maxX - 1e-6);
+        expect(ob.minY).toBeLessThanOrEqual(sb.minY + 1e-6);
+        expect(ob.maxY).toBeGreaterThanOrEqual(sb.maxY - 1e-6);
     });
 });
+
+/** Proper self-intersection test — true if any two non-adjacent edges cross. */
+function selfIntersects(pts: Array<[number, number]>): boolean {
+    const n = pts.length;
+    const m =
+        n > 1 && pts[0][0] === pts[n - 1][0] && pts[0][1] === pts[n - 1][1]
+            ? n - 1
+            : n;
+    if (m < 4) return false;
+    const o = (
+        a: [number, number],
+        b: [number, number],
+        c: [number, number],
+    ) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    const cross = (
+        p1: [number, number],
+        p2: [number, number],
+        p3: [number, number],
+        p4: [number, number],
+    ) => {
+        const d1 = o(p3, p4, p1);
+        const d2 = o(p3, p4, p2);
+        const d3 = o(p1, p2, p3);
+        const d4 = o(p1, p2, p4);
+        return (
+            ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+            ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))
+        );
+    };
+    for (let i = 0; i < m; i++) {
+        for (let j = i + 1; j < m; j++) {
+            if (j === (i + 1) % m || (j + 1) % m === i) continue;
+            if (cross(pts[i], pts[(i + 1) % m], pts[j], pts[(j + 1) % m])) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
 
 describe('mergeKeyline — weld overlapping keyline cuts', () => {
     it('merges two overlapping rings into one clean contour', () => {
