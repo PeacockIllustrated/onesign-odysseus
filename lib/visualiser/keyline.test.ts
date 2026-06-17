@@ -137,6 +137,48 @@ describe('buildKeyline — Illustrator-style Offset Path', () => {
         expect(ob.minY).toBeLessThanOrEqual(sb.minY + 1e-6);
         expect(ob.maxY).toBeGreaterThanOrEqual(sb.maxY - 1e-6);
     });
+    it('despikes a near-zero-width needle in the source before offsetting', () => {
+        // A box with a tall, near-zero-width whisker stabbing off the top edge —
+        // the classic stray-anchor artifact. The offset would thicken it into a
+        // real spur; it must be cleaned away first.
+        const box: FlatPath = {
+            closed: true,
+            points: [
+                [0, 0],
+                [100, 0],
+                [100, 60],
+                [55, 60],
+                [55, 90], // whisker tip, 30mm out
+                [55.001, 60], // …and straight back (≈0 width)
+                [0, 60],
+                [0, 0],
+            ],
+        };
+        const out = buildKeyline([box], 5);
+        expect(out.length).toBeGreaterThanOrEqual(1);
+        for (const ring of out) expect(selfIntersects(ring.points)).toBe(false);
+        // The whisker is gone — the keyline tops out near the box edge
+        // (60 + 5 offset ≈ 65), not at the whisker tip (~90 + 5).
+        const topY = Math.max(...out.flatMap((r) => r.points.map((p) => p[1])));
+        expect(topY).toBeLessThan(75);
+    });
+
+    it('keeps a genuine sharp corner (only degenerate slivers are removed)', () => {
+        // A 30° arrow point is a real feature, not a sliver — it must survive.
+        const arrow: FlatPath = {
+            closed: true,
+            points: [
+                [0, 0],
+                [120, 30], // sharp tip (~30° interior angle)
+                [0, 60],
+                [0, 0],
+            ],
+        };
+        const [out] = buildKeyline([arrow], 4);
+        const b = bbox(out);
+        // The tip is preserved → the keyline still reaches well past x=120.
+        expect(b.maxX).toBeGreaterThan(120);
+    });
 });
 
 /** Proper self-intersection test — true if any two non-adjacent edges cross. */

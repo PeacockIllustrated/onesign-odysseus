@@ -735,10 +735,13 @@ export function buildKeyline(paths: FlatPath[], offsetMm: number): FlatPath[] {
     const closed = paths.filter((p) => p.closed && p.points.length > 3);
     if (closed.length === 0) return [];
 
-    // Deduplicate near-coincident points first — flattening can emit
-    // micro-segments whose normals are noisy and spawn tiny spikes.
+    // Deduplicate near-coincident points, then DESPIKE: drop collinear nodes
+    // and near-zero-width needles (stray-anchor whiskers / cusps in the source
+    // art). The offset would otherwise thicken a 0-width whisker into a real
+    // 2×offset spur the machine has to cut. Cleaning the SOURCE first is the
+    // robust place to do it.
     const rings = closed
-        .map((p) => dedupeRing(p.points.slice(0, -1)))
+        .map((p) => despikeRing(dedupeRing(p.points.slice(0, -1))))
         .filter((r) => r.length >= 3);
     if (rings.length === 0) return [];
 
@@ -756,9 +759,14 @@ export function buildKeyline(paths: FlatPath[], offsetMm: number): FlatPath[] {
     const probe = offsetRing(outer, offsetMm, 1);
     const sign = Math.abs(signedArea(probe)) >= outerArea ? 1 : -1;
 
+    // Anything below this area is an uncuttable sliver (a feature smaller than
+    // ~⅕ of the offset can't survive the cut) — drop it rather than ship a
+    // speck the machine fusses over.
+    const minArea = Math.max(0.5, offsetMm * offsetMm * 0.04);
+
     return rings.flatMap((src) => {
         const raw = offsetRing(src, offsetMm, sign);
-        const closed = closeRing(raw);
+        const closedRaw = closeRing(raw);
         // The miter offset self-intersects at concave corners and across narrow
         // letter gaps (the V notch, E slots, the bowl of a P/R) — fold-back
         // loops. A self-intersecting ring is an INVALID cut path: the machine
@@ -767,10 +775,12 @@ export function buildKeyline(paths: FlatPath[], offsetMm: number): FlatPath[] {
         // the simple outer boundary, so sharp corners survive and only the
         // loops are removed. Clean (convex) offsets pass straight through
         // untouched, so a plain rectangle keeps its exact mitred corners.
-        const resolved = ringSelfIntersects(closed)
-            ? resolveSelfIntersections(closed)
-            : [closed];
-        return resolved.map((ring) => ({ points: ring, closed: true }));
+        const resolved = ringSelfIntersects(closedRaw)
+            ? resolveSelfIntersections(closedRaw)
+            : [closedRaw];
+        return resolved
+            .filter((ring) => Math.abs(signedArea(ring)) >= minArea)
+            .map((ring) => ({ points: ring, closed: true }));
     });
 }
 
@@ -859,6 +869,71 @@ function dedupeRing(pts: number[][], eps = 1e-3): number[][] {
         out.pop();
     }
     return out;
+}
+
+/**
+ * Despike a source ring before it's offset: drop redundant collinear nodes and
+ * the near-zero-width needles (stray-anchor whiskers, degenerate cusps) that
+ * the offset would otherwise thicken into a real spur. Iterates, because
+ * removing a needle tip can expose collinear leftovers underneath.
+ *
+ * A needle is identified by its THINNESS, not its length: the path doubles back
+ * on itself (incoming ≈ −outgoing). The threshold (~169°) only catches sub-11°
+ * slivers, so genuine sharp letter corners/serifs (much wider) are untouched.
+ */
+const SPIKE_REVERSAL_DOT = -0.98; // cos of ~169° — a near-zero-width fold-back
+const COLLINEAR_TOL_MM = 0.03; // 30µm — well below cut precision
+
+function despikeRing(pts: number[][]): Array<[number, number]> {
+    let ring = pts.map((p) => [p[0], p[1]] as [number, number]);
+    for (let pass = 0; pass < 24 && ring.length > 3; pass++) {
+        const n = ring.length;
+        const keep = new Array<boolean>(n).fill(true);
+        let removed = false;
+        for (let i = 0; i < n; i++) {
+            const a = ring[(i - 1 + n) % n];
+            const v = ring[i];
+            const b = ring[(i + 1) % n];
+            const e1x = v[0] - a[0];
+            const e1y = v[1] - a[1];
+            const e2x = b[0] - v[0];
+            const e2y = b[1] - v[1];
+            const l1 = Math.hypot(e1x, e1y);
+            const l2 = Math.hypot(e2x, e2y);
+            if (l1 < 1e-9) {
+                keep[i] = false;
+                removed = true;
+                continue;
+            }
+            // Collinear: v sits on the a→b line (redundant node).
+            const baseLen = Math.hypot(b[0] - a[0], b[1] - a[1]);
+            if (baseLen > 1e-9) {
+                const perp =
+                    Math.abs(
+                        (b[0] - a[0]) * (v[1] - a[1]) -
+                            (b[1] - a[1]) * (v[0] - a[0]),
+                    ) / baseLen;
+                if (perp < COLLINEAR_TOL_MM) {
+                    keep[i] = false;
+                    removed = true;
+                    continue;
+                }
+            }
+            // Near-zero-width needle: the path folds straight back on itself.
+            if (l2 > 1e-9) {
+                const dot = (e1x * e2x + e1y * e2y) / (l1 * l2);
+                if (dot < SPIKE_REVERSAL_DOT) {
+                    keep[i] = false;
+                    removed = true;
+                }
+            }
+        }
+        if (!removed) break;
+        const next = ring.filter((_, i) => keep[i]);
+        if (next.length < 3) break;
+        ring = next;
+    }
+    return ring;
 }
 
 /** Close a ring (duplicate the first point at the end if needed). */
