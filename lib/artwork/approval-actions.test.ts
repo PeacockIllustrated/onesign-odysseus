@@ -107,10 +107,44 @@ describe('submitApproval — variant-based visual approval', () => {
         });
 
         expect(result).toHaveProperty('error');
-        expect((result as { error: string }).error).toContain('no chosen variant');
+        expect((result as { error: string }).error).toContain('none of these');
         // Job must NOT be completed when the selection is incomplete.
         expect(mockBag.current.calls.update).not.toContainEqual(
             expect.objectContaining({ status: 'completed' })
+        );
+    });
+
+    it('records "none of these" as changes_requested and does not complete the job', async () => {
+        mockBag.current = createMockSupabase(
+            configFor([
+                { id: COMP1, variants: [{ id: VAR1 }] },
+                { id: COMP2, variants: [{ id: VAR2 }] },
+            ])
+        );
+
+        const result = await submitApproval(APPROVAL, {
+            ...baseInput,
+            // COMP1 chosen; COMP2 rejected via "none of these" with feedback.
+            variant_selections: [{ componentId: COMP1, variantId: VAR1 }],
+            component_decisions: [
+                { componentId: COMP2, subItemId: null, decision: 'changes_requested', comment: 'make the icon bigger' },
+            ],
+        });
+
+        expect(result).toEqual({ success: true });
+        // Approval recorded as changes_requested; job NOT flipped to completed.
+        expect(mockBag.current.calls.update).toContainEqual(
+            expect.objectContaining({ status: 'changes_requested' })
+        );
+        expect(mockBag.current.calls.update).not.toContainEqual(
+            expect.objectContaining({ status: 'completed' })
+        );
+        // The chosen variant is still marked, and the rejection is recorded.
+        expect(mockBag.current.calls.update).toContainEqual(
+            expect.objectContaining({ is_chosen: true })
+        );
+        expect(mockBag.current.calls.insert.flat()).toContainEqual(
+            expect.objectContaining({ component_id: COMP2, decision: 'changes_requested' })
         );
     });
 });

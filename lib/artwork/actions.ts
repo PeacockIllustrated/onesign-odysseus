@@ -168,6 +168,7 @@ export async function updateArtworkJob(
     if (updates.description !== undefined) updateData.description = updates.description;
     if (updates.panel_size !== undefined) updateData.panel_size = updates.panel_size;
     if (updates.paint_colour !== undefined) updateData.paint_colour = updates.paint_colour;
+    if (updates.spline_url !== undefined) updateData.spline_url = updates.spline_url;
     if (updates.status !== undefined) updateData.status = updates.status;
 
     const { error } = await supabase

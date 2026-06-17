@@ -36,6 +36,7 @@ export interface ApprovalPackData {
         cover_image_path: string | null;
         panel_size: string | null;
         paint_colour: string | null;
+        spline_url: string | null;
         status: string;
     };
     coverImageUrl: string | null;
@@ -329,7 +330,7 @@ export async function getApprovalByToken(
     // Fetch job
     const { data: job, error: jobError } = await supabase
         .from('artwork_jobs')
-        .select('id, job_name, job_reference, job_type, client_name, description, cover_image_path, panel_size, paint_colour, status')
+        .select('id, job_name, job_reference, job_type, client_name, description, cover_image_path, panel_size, paint_colour, spline_url, status')
         .eq('id', approval.job_id)
         .single();
 
@@ -487,50 +488,56 @@ export async function submitApproval(
         .eq('id', approval.job_id)
         .maybeSingle();
 
-    // Visual approval with the artwork_variants table (legacy VariantPicker
-    // path). Only enforce variant selection when the payload actually
-    // carries variant_selections — if the client used the sub-item path
-    // below (component_decisions), we validate that instead.
-    if (job?.job_type === 'visual_approval' && (validation.data.variant_selections?.length ?? 0) > 0) {
-        const selections = validation.data.variant_selections ?? [];
+    const variantSelections = validation.data.variant_selections ?? [];
+    const decisions = validation.data.component_decisions ?? [];
+    let overallStatus: 'approved' | 'changes_requested' = 'approved';
+
+    // Variant (VariantPicker) path: a visual_approval job whose components
+    // carry artwork_variants. For each such component the client either picks
+    // a variant, OR chooses "none of these" — recorded as a component-level
+    // changes_requested decision carrying their feedback. Validate up front so
+    // a bad payload can't leave the approval stuck, and only treat the job as
+    // a clean approval when every component was actually chosen.
+    //
+    // (This also subsumes the old per-sub-item validation's blind spot: a
+    // variant job has no artwork_component_items, so that block would wrongly
+    // demand a component-level decision the variant path doesn't always send.)
+    let isVariantPath = false;
+    if (job?.job_type === 'visual_approval') {
         const { data: components } = await supabase
             .from('artwork_components')
             .select('id, variants:artwork_variants(id)')
             .eq('job_id', approval.job_id);
-        // Only require a selection for components that actually have variants.
-        const componentsWithVariants = (components ?? []).filter(
+        const withVariants = (components ?? []).filter(
             (c: any) => (c.variants ?? []).length > 0
         );
-        const selectedComponents = new Set(selections.map((s) => s.componentId));
-        for (const c of componentsWithVariants) {
-            if (!selectedComponents.has(c.id)) {
-                return { error: `component ${c.id} has no chosen variant` };
+        if (withVariants.length > 0) {
+            isVariantPath = true;
+            const chosen = new Set(variantSelections.map((s) => s.componentId));
+            const rejected = new Set(
+                decisions
+                    .filter((d) => d.decision === 'changes_requested' && !d.subItemId)
+                    .map((d) => d.componentId)
+            );
+            for (const c of withVariants as any[]) {
+                const isChosen = chosen.has(c.id);
+                const isRejected = rejected.has(c.id);
+                if (isChosen && isRejected) {
+                    return { error: `component ${c.id} can't be both chosen and rejected` };
+                }
+                if (!isChosen && !isRejected) {
+                    return { error: 'please choose an option, or "none of these", for every design' };
+                }
             }
+            if (rejected.size > 0) overallStatus = 'changes_requested';
         }
     }
 
-    // Per-sub-item decisions. Sub-items are treated as variants — only one
-    // per component can be approved. A component is valid with exactly ONE
-    // approved sub-item OR at least one changes_requested decision
-    // (lets the client reject every option and leave notes). Components
-    // that have no sub-items still need a single component-level decision.
-    const decisions = validation.data.component_decisions ?? [];
-    let overallStatus: 'approved' | 'changes_requested' = 'approved';
-
-    // Variant-based visual approvals (the VariantPicker path) carry the
-    // client's choice in `variant_selections`, NOT in `component_decisions`.
-    // Those jobs have no artwork_component_items, so the per-sub-item
-    // validation below treats every component as a "no sub-items" component
-    // and demands a component-level decision the variant path never sends —
-    // which wrongly rejected the sign-off with "every component must be
-    // approved or have changes requested", left the approval row `pending`,
-    // and so the job stayed stuck in_progress with the client unable to
-    // accept anything. The variant selections were already validated above,
-    // so skip this block for that path.
-    const isVariantPath =
-        job?.job_type === 'visual_approval' &&
-        (validation.data.variant_selections?.length ?? 0) > 0;
-
+    // Per-sub-item decisions (non-variant path). Sub-items are treated as
+    // variants — only one per component can be approved. A component is valid
+    // with exactly ONE approved sub-item OR at least one changes_requested
+    // decision (lets the client reject every option and leave notes).
+    // Components with no sub-items still need a single component-level decision.
     if (!isVariantPath) {
         const { data: jobComponents } = await supabase
             .from('artwork_components')

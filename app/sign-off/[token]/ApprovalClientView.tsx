@@ -3,10 +3,10 @@
 import { useState, useRef, useTransition, useCallback, useEffect } from 'react';
 import { submitApproval, requestApprovalChanges } from '@/lib/artwork/approval-actions';
 import type { ApprovalPackData } from '@/lib/artwork/approval-actions';
-import { VariantPicker } from './components/VariantPicker';
+import { VariantPicker, NONE_VARIANT } from './components/VariantPicker';
 import { ResilientImage } from './components/ResilientImage';
 import MarketingModal from '@/app/components/MarketingModal';
-import { formatDateTime } from '@/lib/artwork/utils';
+import { formatDateTime, isValidSplineUrl } from '@/lib/artwork/utils';
 import SignatureCanvas, { type SignatureCanvasRef } from '@/components/SignatureCanvas';
 import { DayNightSwitch } from '@/components/studio/StudioChrome';
 
@@ -209,6 +209,7 @@ export default function ApprovalClientView({ data, token }: Props) {
     const [decisions, setDecisions] = useState<Record<string, LineDecision>>({});
     const [comments, setComments] = useState<Record<string, string>>({});
     const [selections, setSelections] = useState<Record<string, string>>({}); // variant-picker path only
+    const [variantComments, setVariantComments] = useState<Record<string, string>>({}); // "none of these" feedback, per component
 
     // Collapsed-by-default: forces the client to open each component before
     // they can review it, which makes it obvious that the images inside one
@@ -295,7 +296,17 @@ export default function ApprovalClientView({ data, token }: Props) {
         ? components.every((c) => selections[c.id])
         : components.every(componentComplete);
 
-    const anyChangesRequested = !hasVariants && decisionRows.some((r) => decisions[r.key] === 'changes_requested');
+    // Variant path: components the client rejected via "none of these".
+    const variantNoneComponents = hasVariants
+        ? components.filter((c) => selections[c.id] === NONE_VARIANT)
+        : [];
+    const missingVariantNoneComments = variantNoneComponents.some(
+        (c) => !(variantComments[c.id] ?? '').trim()
+    );
+
+    const anyChangesRequested = hasVariants
+        ? variantNoneComponents.length > 0
+        : decisionRows.some((r) => decisions[r.key] === 'changes_requested');
     const missingChangeComments = !hasVariants && decisionRows.some(
         (r) => decisions[r.key] === 'changes_requested' && !(comments[r.key] ?? '').trim()
     );
@@ -317,18 +328,30 @@ export default function ApprovalClientView({ data, token }: Props) {
                 : 'please approve one option per component, or request changes'
         );
         if (missingChangeComments) return setError('please describe the changes you need for every item marked "changes requested"');
+        if (hasVariants && missingVariantNoneComments) return setError('please tell us what to change for each "none of these" choice');
         if (signatureRef.current?.isEmpty()) return setError('please draw your signature');
 
         const signatureData = signatureRef.current?.toDataURL() || '';
 
         startTransition(async () => {
-            const variant_selections = Object.entries(selections).map(([componentId, variantId]) => ({ componentId, variantId }));
-            const component_decisions = hasVariants ? [] : decisionRows.map((r) => ({
-                componentId: r.component.id,
-                subItemId: r.subItem?.id ?? null,
-                decision: decisions[r.key] as LineDecision,
-                comment: (comments[r.key] ?? '').trim() || null,
-            }));
+            // Variant path: only real picks become variant selections; the
+            // "none of these" components become changes_requested decisions.
+            const variant_selections = Object.entries(selections)
+                .filter(([, v]) => v !== NONE_VARIANT)
+                .map(([componentId, variantId]) => ({ componentId, variantId }));
+            const component_decisions = hasVariants
+                ? variantNoneComponents.map((c) => ({
+                      componentId: c.id,
+                      subItemId: null,
+                      decision: 'changes_requested' as LineDecision,
+                      comment: (variantComments[c.id] ?? '').trim() || null,
+                  }))
+                : decisionRows.map((r) => ({
+                      componentId: r.component.id,
+                      subItemId: r.subItem?.id ?? null,
+                      decision: decisions[r.key] as LineDecision,
+                      comment: (comments[r.key] ?? '').trim() || null,
+                  }));
 
             const result = await submitApproval(token, {
                 client_name: clientName.trim(),
@@ -415,6 +438,25 @@ export default function ApprovalClientView({ data, token }: Props) {
                     {isVisual ? 'artwork visual approval' : 'artwork sign-off'}
                 </div>
             </div>
+
+            {/* Interactive 3D scene (Spline) — the "wow" hero, shown only when set */}
+            {isValidSplineUrl(job.spline_url) && (
+                <div style={{ ...glassPanel, borderRadius: '18px', overflow: 'hidden', marginBottom: '24px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '12px 18px', borderBottom: '1px solid var(--hairlineSoft)' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--accent)' }}>
+                            Interactive 3D preview
+                        </span>
+                        <span style={{ fontSize: '11px', color: 'var(--muted)' }}>drag to orbit · scroll to zoom</span>
+                    </div>
+                    <iframe
+                        src={job.spline_url!}
+                        title={`${job.job_name} — 3D preview`}
+                        loading="lazy"
+                        allow="fullscreen; autoplay"
+                        style={{ width: '100%', height: '460px', border: 'none', display: 'block', background: 'var(--imgBg)' }}
+                    />
+                </div>
+            )}
 
             {/* Cover Card — production only (visual approval relies on per-sub-item thumbnails) */}
             {!hideCover && (
@@ -588,6 +630,8 @@ export default function ApprovalClientView({ data, token }: Props) {
                                             chosenVariantId={selections[component.id] ?? null}
                                             onChoose={(variantId) => setSelections((p) => ({ ...p, [component.id]: variantId }))}
                                             onZoom={openLightbox}
+                                            noneComment={variantComments[component.id] ?? ''}
+                                            onNoneComment={(v) => setVariantComments((p) => ({ ...p, [component.id]: v }))}
                                         />
                                     ) : hasSubs ? (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>

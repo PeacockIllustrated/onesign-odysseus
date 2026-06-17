@@ -88,6 +88,9 @@ export const ArtworkJobSchema = z.object({
     cover_image_path: z.string().nullable(),
     panel_size: z.string().nullable(),
     paint_colour: z.string().nullable(),
+    // Optional Spline 3D scene URL (migration 069) — embedded in the client
+    // approval pack as an interactive hero when present.
+    spline_url: z.string().nullable().default(null),
     status: ArtworkJobStatusEnum,
     job_item_id: z.string().uuid().nullable(),
     created_at: z.string(),
@@ -231,6 +234,7 @@ export const UpdateArtworkJobInputSchema = z.object({
     description: z.string().nullable().optional(),
     panel_size: z.string().nullable().optional(),
     paint_colour: z.string().nullable().optional(),
+    spline_url: z.string().nullable().optional(),
     status: ArtworkJobStatusEnum.optional(),
 });
 export type UpdateArtworkJobInput = z.infer<typeof UpdateArtworkJobInputSchema>;

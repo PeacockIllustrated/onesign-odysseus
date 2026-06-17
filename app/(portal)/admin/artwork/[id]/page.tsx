@@ -522,6 +522,7 @@ export default async function ArtworkJobDetailPage({
                         jobId={id}
                         panelSize={job.panel_size}
                         paintColour={job.paint_colour}
+                        splineUrl={(job as any).spline_url ?? null}
                     />
 
                     {/* Cover image intentionally removed — sub-item thumbnails
