@@ -27,6 +27,7 @@ import {
     type ProductionPack,
     type ProductionPackContent,
 } from './types';
+import { buildPackFromJob } from './from-job';
 
 const TABLE = 'production_packs';
 
@@ -67,6 +68,76 @@ export async function createProductionPack(
 
     if (error) {
         console.error('error creating production pack:', error);
+        return err(error.message);
+    }
+
+    revalidatePath(LIST_PATH);
+    return ok({ id: data.id as string });
+}
+
+/**
+ * Scaffold a works pack from an artwork job — pulls every component + sub-item
+ * (and the job's linked visualiser design) into a starting pack, then links it
+ * back to the job. The designer refines from there.
+ */
+export async function createProductionPackFromJob(
+    jobId: string,
+): Promise<Result<{ id: string }>> {
+    const user = await getUser();
+    if (!user) return err('not authenticated');
+
+    const supabase = await createServerClient();
+
+    const { data: job } = await supabase
+        .from('artwork_jobs')
+        .select('job_name, job_reference, client_name, panel_size, paint_colour, visualiser_design_id')
+        .eq('id', jobId)
+        .maybeSingle();
+    if (!job) return err('artwork job not found');
+
+    const { data: components } = await supabase
+        .from('artwork_components')
+        .select('*, sub_items:artwork_component_items(*)')
+        .eq('job_id', jobId)
+        .order('sort_order', { ascending: true });
+
+    let design: { name: string | null; svgSource: string | null } | null = null;
+    if (job.visualiser_design_id) {
+        const { data: d } = await supabase
+            .from('visualiser_designs')
+            .select('name, svg_source')
+            .eq('id', job.visualiser_design_id)
+            .maybeSingle();
+        if (d) {
+            design = {
+                name: (d.name as string) ?? null,
+                svgSource: (d.svg_source as string | null) ?? null,
+            };
+        }
+    }
+
+    const content = buildPackFromJob(
+        job as Parameters<typeof buildPackFromJob>[0],
+        (components ?? []) as Parameters<typeof buildPackFromJob>[1],
+        design,
+    );
+
+    const { data, error } = await supabase
+        .from(TABLE)
+        .insert({
+            title: `${job.job_name ?? 'Job'} — works pack`,
+            status: 'draft',
+            client_name: job.client_name ?? null,
+            project_name: job.job_name ?? null,
+            content,
+            linked_artwork_job_id: jobId,
+            created_by: user.id,
+        })
+        .select('id')
+        .single();
+
+    if (error) {
+        console.error('error creating production pack from job:', error);
         return err(error.message);
     }
 
