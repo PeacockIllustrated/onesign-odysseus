@@ -29,9 +29,11 @@ import {
     type MaterialPiece,
     type StandoffPiece,
     type PushThroughPiece,
+    type ExtraFacePiece,
     type PanelRenderBundle,
     type PanelPdfData,
 } from '@/lib/visualiser/types';
+import { FACE_MATERIALS } from '@/lib/visualiser/extra-face';
 
 type Effective =
     | { kind: 'cut' }
@@ -470,6 +472,46 @@ export function usePanelDerivation(
         return out;
     }, [placedClipByIndex, effectiveMaterials, holesByIndex]);
 
+    // Extra metal faces (brass / …): a group can opt to laminate a metal face
+    // over its letters. The face is coincident with the underlying letter
+    // (same outline + counters), so it's cut from the same geometry — only the
+    // material/colour/thickness and its front-Z (push-through letters sit proud
+    // of the panel; flat cut/backlit sit on the face) differ. Same outline ⇒
+    // it nests exactly like an acrylic face on export.
+    const extraFacePieces = useMemo<ExtraFacePiece[]>(() => {
+        const out: ExtraFacePiece[] = [];
+        for (let i = 0; i < placedClipByIndex.length; i++) {
+            const path = placedClipByIndex[i];
+            if (!path) continue;
+            const face = groupByPath.get(i)?.extraFace;
+            if (!face) continue;
+            const eff = effectiveMaterials[i];
+            const kind = eff?.kind;
+            // A face only makes sense on a letter that sits on the panel: a
+            // cut/backlit hole or a push-through letter. (Counters resolve to
+            // 'inherited' and are skipped — they ride along as `holes`.)
+            if (kind !== 'cut' && kind !== 'backlight' && kind !== 'pushthrough') {
+                continue;
+            }
+            const spec = FACE_MATERIALS[face.material];
+            const holes = holesByIndex[i];
+            out.push({
+                pathIndex: i,
+                path,
+                holes: holes && holes.length > 0 ? holes : undefined,
+                material: face.material,
+                color: spec.color,
+                thicknessMm:
+                    face.thicknessMm > 0
+                        ? face.thicknessMm
+                        : spec.defaultThicknessMm,
+                frontZMm:
+                    eff && eff.kind === 'pushthrough' ? eff.protrusionMm : 0,
+            });
+        }
+        return out;
+    }, [placedClipByIndex, effectiveMaterials, holesByIndex, groupByPath]);
+
     const reference = useMemo(() => {
         const out: FlatPath[] = [];
         for (let i = 0; i < placedClipByIndex.length; i++) {
@@ -820,9 +862,7 @@ export function usePanelDerivation(
             standoffPieces,
             pushThroughPieces,
             backlightPieces,
-            // Real extra-face derivation lands in the next slice (geometry +
-            // 3D + UI). Foundation keeps the field present + empty.
-            extraFacePieces: [],
+            extraFacePieces,
             vinylPrintDataUrl,
             faceRectMm,
         };
@@ -841,6 +881,7 @@ export function usePanelDerivation(
         standoffPieces,
         pushThroughPieces,
         backlightPieces,
+        extraFacePieces,
         vinylPrintDataUrl,
         faceRectMm,
     ]);
@@ -864,9 +905,7 @@ export function usePanelDerivation(
             standoffPieces,
             pushThroughPieces,
             backlightPieces,
-            // Real extra-face derivation lands in the next slice (geometry +
-            // 3D + UI). Foundation keeps the field present + empty.
-            extraFacePieces: [],
+            extraFacePieces,
             vinylPrintDataUrl,
             faceRectMm,
         };
@@ -886,6 +925,7 @@ export function usePanelDerivation(
         standoffPieces,
         pushThroughPieces,
         backlightPieces,
+        extraFacePieces,
         vinylPrintDataUrl,
         faceRectMm,
     ]);
@@ -908,6 +948,7 @@ export function usePanelDerivation(
         pushThroughPieces,
         standoffPieces,
         backlightPieces,
+        extraFacePieces,
         reference,
         autoFixings,
         placementXf,

@@ -8,6 +8,7 @@ import {
     type ImportedSvg,
     type ProjectingMount,
     type VisualiserDesignRow,
+    type FaceMaterial,
 } from '@/lib/visualiser/types';
 import { importSvg } from '@/lib/visualiser/svg-import';
 import { seedProjectingFromMain } from '@/lib/visualiser/projecting';
@@ -247,6 +248,8 @@ interface VisualiserState {
             protrusionMm?: number;
             printFullColor?: boolean;
             glowIntensity?: number;
+            /** Extra metal face over the group's letters; null clears it. */
+            extraFace?: { material: FaceMaterial; thicknessMm: number } | null;
         },
     ) => void;
     updateGroupProps: (
@@ -260,6 +263,8 @@ interface VisualiserState {
             printFullColor?: boolean;
             glowIntensity?: number;
             label?: string;
+            /** Extra metal face over this group's letters; null clears it. */
+            extraFace?: { material: FaceMaterial; thicknessMm: number } | null;
         },
     ) => void;
     deleteGroup: (groupId: string) => void;
@@ -854,6 +859,15 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                 options?.glowIntensity ??
                 existing?.glowIntensity ??
                 (material === 'backlight' ? 1 : undefined);
+            // Extra face only applies to letters that sit on the panel
+            // (push-through / backlit). An explicit value (object or null)
+            // wins; null clears; otherwise keep the existing face.
+            const extraFace =
+                material === 'pushthrough' || material === 'backlight'
+                    ? options?.extraFace !== undefined
+                        ? options.extraFace ?? undefined
+                        : existing?.extraFace
+                    : undefined;
 
             const updated: MaterialGroup = {
                 id: existing?.id ?? nextGroupId(),
@@ -866,6 +880,7 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                 protrusionMm,
                 printFullColor,
                 glowIntensity,
+                extraFace,
                 pathIndices: [...pending].sort((a, b) => a - b),
             };
 
@@ -905,6 +920,10 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                           glowIntensity:
                               patch.glowIntensity ?? g.glowIntensity,
                           label: patch.label ?? g.label,
+                          extraFace:
+                              patch.extraFace !== undefined
+                                  ? patch.extraFace
+                                  : g.extraFace,
                       }
                     : g,
             );

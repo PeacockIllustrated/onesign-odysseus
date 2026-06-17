@@ -17,7 +17,9 @@ import {
     type FlatPath,
     type ImportedSvg,
     type PanelParams,
+    type FaceMaterial,
 } from '@/lib/visualiser/types';
+import { FACE_MATERIALS, FACE_MATERIAL_ORDER } from '@/lib/visualiser/extra-face';
 
 const ACRYLIC_ITEMS: SwatchItem[] = ACRYLIC_COLOURS.map((c) => ({
     hex: c.hex,
@@ -95,6 +97,7 @@ function GroupEditControls({
     initialProtrusion,
     initialPrintFullColor,
     initialGlowIntensity,
+    initialExtraFace,
     pendingCount,
     isExistingGroup,
     panelColor,
@@ -109,6 +112,7 @@ function GroupEditControls({
     initialProtrusion: number;
     initialPrintFullColor: boolean;
     initialGlowIntensity: number;
+    initialExtraFace: { material: FaceMaterial; thicknessMm: number } | null;
     pendingCount: number;
     isExistingGroup: boolean;
     panelColor: string;
@@ -122,6 +126,7 @@ function GroupEditControls({
             protrusionMm?: number;
             printFullColor?: boolean;
             glowIntensity?: number;
+            extraFace?: { material: FaceMaterial; thicknessMm: number } | null;
         },
     ) => void;
     onCancel: () => void;
@@ -141,6 +146,10 @@ function GroupEditControls({
     const [glowIntensity, setGlowIntensity] = useState<number>(
         initialGlowIntensity,
     );
+    const [extraFace, setExtraFace] = useState<{
+        material: FaceMaterial;
+        thicknessMm: number;
+    } | null>(initialExtraFace);
 
     // Smart colour default when the operator switches material — only
     // snap if the colour is still the previous material's default; if
@@ -164,6 +173,10 @@ function GroupEditControls({
     const hasStandoff = material === 'standoff';
     const hasPushThrough = material === 'pushthrough';
     const hasGlow = material === 'backlight';
+    // An extra metal face can sit on letters that mount on the panel — the
+    // push-through opal letters and backlit cuts. (Same surfacing in the staff
+    // tool and the public studio: it lives in the shared editor.)
+    const canFace = hasPushThrough || hasGlow;
 
     const materialHelp: Record<Exclude<GroupMaterial, 'cut'>, string> = {
         solid: 'Kept as panel material — not cut. Use for inner counters of letters.',
@@ -419,6 +432,80 @@ function GroupEditControls({
                 </>
             )}
 
+            {canFace && (
+                <div
+                    className="space-y-1.5 rounded-md border p-2"
+                    style={{ borderColor: ACCENT_TINT_BORDER }}
+                >
+                    <label className="flex items-center gap-2 text-[11px] font-medium text-neutral-700">
+                        <input
+                            type="checkbox"
+                            checked={extraFace !== null}
+                            onChange={(e) =>
+                                setExtraFace(
+                                    e.target.checked
+                                        ? {
+                                              material: 'brass',
+                                              thicknessMm:
+                                                  FACE_MATERIALS.brass
+                                                      .defaultThicknessMm,
+                                          }
+                                        : null,
+                                )
+                            }
+                        />
+                        Extra face (cut from metal, laminated on front)
+                    </label>
+                    {extraFace && (
+                        <div className="grid grid-cols-2 gap-1.5">
+                            <label className="block">
+                                <span className="mb-0.5 block text-[10px] text-neutral-500">
+                                    Material
+                                </span>
+                                <select
+                                    value={extraFace.material}
+                                    onChange={(e) => {
+                                        const m = e.target
+                                            .value as FaceMaterial;
+                                        setExtraFace({
+                                            material: m,
+                                            thicknessMm:
+                                                FACE_MATERIALS[m]
+                                                    .defaultThicknessMm,
+                                        });
+                                    }}
+                                    className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-xs focus:border-[var(--accent)] focus:outline-none"
+                                >
+                                    {FACE_MATERIAL_ORDER.map((m) => (
+                                        <option key={m} value={m}>
+                                            {FACE_MATERIALS[m].label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                            <NumField
+                                label="Face thick. (mm)"
+                                step={0.5}
+                                value={extraFace.thicknessMm}
+                                onChange={(n) =>
+                                    setExtraFace({
+                                        ...extraFace,
+                                        thicknessMm: n > 0 ? n : 0.5,
+                                    })
+                                }
+                            />
+                        </div>
+                    )}
+                    {extraFace && (
+                        <p className="text-[10px] text-neutral-500">
+                            {FACE_MATERIALS[extraFace.material].label} faces cut
+                            to the letter shape (counters as holes) — exported as
+                            cut files and sent to the nester like acrylic.
+                        </p>
+                    )}
+                </div>
+            )}
+
             <div className="flex items-center gap-2 pt-1">
                 <button
                     type="button"
@@ -441,6 +528,7 @@ function GroupEditControls({
                             glowIntensity: hasGlow
                                 ? glowIntensity
                                 : undefined,
+                            extraFace: canFace ? extraFace : null,
                         })
                     }
                     disabled={pendingCount === 0}
@@ -727,6 +815,7 @@ function ShapeMaterialsPanel({
                         editingExisting?.printFullColor !== false
                     }
                     initialGlowIntensity={editingExisting?.glowIntensity ?? 1}
+                    initialExtraFace={editingExisting?.extraFace ?? null}
                     pendingCount={pendingPaths.length}
                     isExistingGroup={!!editingExisting}
                     panelColor={panelColor}
