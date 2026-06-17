@@ -36,6 +36,7 @@ import {
     type PushThroughPiece,
 } from './types';
 import { outlinePerimeter } from './geometry';
+import type { EmbeddedNest, EmbeddedNestSheet } from './nest-embed';
 import { registerVisualiserFonts } from './pdf-fonts';
 import { acrylicByHex } from './acrylic';
 import { ralByCode } from './ral';
@@ -210,6 +211,13 @@ export interface PdfOptions {
     itemLabel?: string;
     /** Reference-overview callout describing the companion item + its mount. */
     companionNote?: string;
+    /**
+     * The design's saved nests (acrylic + metal faces), reproduced to packed
+     * sheets by the caller (lib/visualiser/nest-embed). Rendered as extra pages:
+     * reference fits each sheet to the page; production draws it 1:1. Empty /
+     * absent → no nest pages.
+     */
+    embeddedNests?: EmbeddedNest[];
 }
 
 /**
@@ -239,6 +247,79 @@ function drawClosedPolyline(
         ]);
     }
     doc.lines(deltas, ring[0][0], ring[0][1], [1, 1], style, true);
+}
+
+/**
+ * Draw one packed nest sheet — the sheet outline plus every placed piece's
+ * rings — at top-left (dX, dY), mm → page units by `scale`. Shared by the
+ * reference (fit-scaled) and production (1:1) nest pages.
+ */
+function drawNestSheet(
+    doc: jsPDF,
+    sheet: EmbeddedNestSheet,
+    dX: number,
+    dY: number,
+    scale: number,
+): void {
+    doc.setDrawColor(150);
+    doc.setLineWidth(0.2);
+    doc.rect(dX, dY, sheet.widthMm * scale, sheet.heightMm * scale, 'S');
+
+    doc.setDrawColor(0);
+    doc.setLineWidth(scale >= 1 ? 0.1 : 0.2);
+    for (const piece of sheet.pieces) {
+        for (const ring of piece.rings) {
+            if (ring.length < 2) continue;
+            const pts = ring.map(
+                ([x, y]) =>
+                    [dX + x * scale, dY + y * scale] as [number, number],
+            );
+            drawClosedPolyline(doc, pts, 'S');
+        }
+    }
+}
+
+/** Reference-PDF nest page — one saved sheet fitted to the page. */
+function drawNestSheetPageRef(
+    ctx: PageContext,
+    nest: EmbeddedNest,
+    sheet: EmbeddedNestSheet,
+    sheetNo: number,
+    sheetTotal: number,
+): void {
+    const { doc, pageW, pageH, margin, font } = ctx;
+
+    doc.setFont(font, 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(0);
+    doc.text(txt(`Nest — ${nest.name}`), margin, margin + 4);
+    doc.setFont(font, 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(110);
+    doc.text(
+        txt(
+            `Sheet ${sheetNo}/${sheetTotal}  ·  ${Math.round(sheet.widthMm)} × ${Math.round(sheet.heightMm)} mm  ·  ${sheet.pieceCount} piece${sheet.pieceCount === 1 ? '' : 's'}  ·  ${Math.round(sheet.utilisation * 100)}% used  ·  scaled to fit`,
+        ),
+        margin,
+        margin + 9,
+    );
+    doc.setTextColor(0);
+
+    const topY = margin + 14;
+    const availW = pageW - margin * 2;
+    const availH = pageH - topY - margin;
+    const scale = Math.min(availW / sheet.widthMm, availH / sheet.heightMm);
+    const dX = margin + (availW - sheet.widthMm * scale) / 2;
+    const dY = topY + (availH - sheet.heightMm * scale) / 2;
+    drawNestSheet(doc, sheet, dX, dY, scale);
+
+    drawCornerQr(doc, {
+        pageW,
+        pageH,
+        margin,
+        qrDataUrl: ctx.qrDataUrl,
+        font,
+    });
 }
 
 // =============================================================================
@@ -2001,10 +2082,13 @@ export async function generateReferencePdfBlob(
         ...(opts.secondary ? [opts.secondary] : []),
     ];
     const itemMaterialPages = items.map((it) => buildMaterialPages(it));
-    const totalPages = items.reduce(
-        (n, _it, i) => n + 2 + itemMaterialPages[i].length,
+    const nestPageCount = (opts.embeddedNests ?? []).reduce(
+        (n, x) => n + x.sheets.length,
         0,
     );
+    const totalPages =
+        items.reduce((n, _it, i) => n + 2 + itemMaterialPages[i].length, 0) +
+        nestPageCount;
 
     let pageNumber = 0;
     let firstPage = true;
@@ -2042,6 +2126,20 @@ export async function generateReferencePdfBlob(
             drawMaterialPage(newCtx(it, itemLabel), page);
         }
     });
+
+    // Nest pages (per design) — after the items, each saved sheet fitted to the
+    // page, so the reference doc carries the actual cut nests too.
+    for (const nest of opts.embeddedNests ?? []) {
+        nest.sheets.forEach((sheet, si) => {
+            drawNestSheetPageRef(
+                newCtx(opts),
+                nest,
+                sheet,
+                si + 1,
+                nest.sheets.length,
+            );
+        });
+    }
 
     return doc.output('blob');
 }
@@ -3006,7 +3104,21 @@ export async function generateProductionPdfBlob(
     });
 
     const designIdShort = docId(opts.designId, params.name);
-    const totalPages = jobs.length;
+    // Nest pages ride on their OWN 1:1 sheet size (a full acrylic sheet is far
+    // bigger than a panel — folding it into the uniform panel-page size would
+    // blow every page up to sheet size). Flattened here for page numbering.
+    const nestSheets: Array<{
+        nest: EmbeddedNest;
+        sheet: EmbeddedNestSheet;
+        no: number;
+        total: number;
+    }> = [];
+    for (const nest of opts.embeddedNests ?? []) {
+        nest.sheets.forEach((sheet, si) =>
+            nestSheets.push({ nest, sheet, no: si + 1, total: nest.sheets.length }),
+        );
+    }
+    const totalPages = jobs.length + nestSheets.length;
 
     // ---- Phase 3: emit pages ---------------------------------------
     jobs.forEach((job, index) => {
@@ -3049,6 +3161,61 @@ export async function generateProductionPdfBlob(
             infoLines: [
                 ...job.footerInfo,
                 `Sheet ${Math.round(sheetW)} × ${Math.round(sheetH)} mm  ·  ${designIdShort}`,
+            ],
+            qrDataUrl,
+            font,
+        });
+    });
+
+    // ---- Phase 4: nest pages, each on its own 1:1 sheet ------------
+    const NEST_SIDE = 14;
+    const NEST_TOP = STRAP_H + 9;
+    const NEST_BOTTOM = 22;
+    nestSheets.forEach((ns, k) => {
+        const { sheet } = ns;
+        // 1:1, unless the sheet + margins would exceed the PDF user-space
+        // limit (a safety net — real acrylic sheets are well under it).
+        let scale = 1;
+        let pageW = sheet.widthMm + 2 * NEST_SIDE;
+        let pageH = sheet.heightMm + NEST_TOP + NEST_BOTTOM;
+        if (pageW > MAX_PAGE_MM || pageH > MAX_PAGE_MM) {
+            scale = Math.min(
+                (MAX_PAGE_MM - 2 * NEST_SIDE) / sheet.widthMm,
+                (MAX_PAGE_MM - NEST_TOP - NEST_BOTTOM) / sheet.heightMm,
+                1,
+            );
+            pageW = sheet.widthMm * scale + 2 * NEST_SIDE;
+            pageH = sheet.heightMm * scale + NEST_TOP + NEST_BOTTOM;
+        }
+        // A panel cut page is always emitted first, so a nest page is never
+        // page 1 — safe to always addPage.
+        doc.addPage([pageW, pageH], pageW >= pageH ? 'landscape' : 'portrait');
+        drawDocStrap(doc, {
+            pageW,
+            margin: NEST_SIDE,
+            kind: 'production',
+            designName: params.name,
+            designIdShort,
+            pageNumber: jobs.length + k + 1,
+            totalPages,
+            font,
+            subtitle: `Nest — ${ns.nest.name} · sheet ${ns.no}/${ns.total}`,
+        });
+        doc.setDrawColor(200);
+        doc.setLineWidth(0.15);
+        doc.rect(2, STRAP_H + 1.5, pageW - 4, pageH - STRAP_H - 3);
+        drawNestSheet(doc, sheet, NEST_SIDE, NEST_TOP, scale);
+        drawDocFooter(doc, {
+            pageW,
+            pageH,
+            margin: NEST_SIDE,
+            kind: 'production',
+            infoLines: [
+                `${sheet.pieceCount} piece${sheet.pieceCount === 1 ? '' : 's'}  ·  ${Math.round(sheet.utilisation * 100)}% used`,
+                scale === 1
+                    ? 'Acrylic / metal-face nest — PRINT AT 100%, DO NOT SCALE'
+                    : `Nest scaled to fit (${Math.round(scale * 100)}%) — over the 1:1 page limit`,
+                `Sheet ${Math.round(sheet.widthMm)} × ${Math.round(sheet.heightMm)} mm  ·  ${designIdShort}`,
             ],
             qrDataUrl,
             font,

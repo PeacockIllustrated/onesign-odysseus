@@ -41,7 +41,11 @@ import {
 import { FACE_MATERIALS } from '@/lib/visualiser/extra-face';
 import { buildExtraFaceNestSvg } from '@/lib/visualiser/extra-face-export';
 import { buildNestSvg } from '@/lib/visualiser/nest-export';
-import { sendDesignNest } from '@/lib/visualiser/extra-face-actions';
+import {
+    sendDesignNest,
+    getNestsForDesign,
+} from '@/lib/visualiser/extra-face-actions';
+import { embedNests, type EmbeddedNest } from '@/lib/visualiser/nest-embed';
 
 const ACCENT = '#4e7e8c';
 const ACCENT_DARK = '#3a5f6a';
@@ -301,11 +305,22 @@ export function ExportBar({
         return () => clearTimeout(id);
     }, [exported]);
 
+    // Pull the design's saved nests and reproduce their packed sheets, so the
+    // PDFs can render the actual cut nests. Empty when the design isn't saved
+    // (no link) or has no nests.
+    const loadEmbeddedNests = async (): Promise<EmbeddedNest[]> => {
+        if (!designId) return [];
+        const res = await getNestsForDesign(designId);
+        if (!res.ok) return [];
+        return embedNests(res.data);
+    };
+
     const onReferencePdf = async () => {
         if (pdfPending) return;
         setPdfPending('ref');
         try {
             const thumb = sceneCapture.fn?.() ?? undefined;
+            const embeddedNests = await loadEmbeddedNests();
             const blob = await generateReferencePdfBlob({
                 sectionExport,
                 params,
@@ -326,6 +341,7 @@ export function ExportBar({
                 vinylPrintDataUrl,
                 faceRectMm,
                 thumbnailDataUrl: thumb || undefined,
+                embeddedNests,
                 ...twoItem,
             });
             const fname = pdfFilename(params, 'reference');
@@ -564,12 +580,29 @@ export function ExportBar({
         if (pdfPending) return;
         setPdfPending('prod');
         try {
+            const embeddedNests = await loadEmbeddedNests();
+            // Prompt to nest first if there are nestable pieces but nothing's
+            // been nested yet — otherwise the pack would miss the acrylic /
+            // metal-face cuts. If nests already exist, pick them up silently
+            // (no friction).
+            if (nestableCount > 0 && embeddedNests.length === 0) {
+                const go = window.confirm(
+                    'This sign has acrylic / metal-face pieces that haven’t been nested yet.\n\n' +
+                        'Send them to the nester now? Once nested, the production pack includes the packed sheets.\n\n' +
+                        'OK = send to nester  ·  Cancel = make the pack without nest sheets',
+                );
+                if (go) {
+                    await onSendToNester();
+                    return;
+                }
+            }
+
             // Production PDF is a multi-page CAM bundle: panel cut +
             // push-through inserts (when keyline) + a 1:1 cut page per
-            // material (acrylic / vinyl / standoff) + a final 1:1
-            // placement template for the backshop. Pass everything;
-            // each helper inside the generator no-ops when its data
-            // is empty.
+            // material (acrylic / vinyl / standoff) + the saved nest sheets at
+            // 1:1 + a final 1:1 placement template for the backshop. Pass
+            // everything; each helper inside the generator no-ops when its
+            // data is empty.
             const blob = await generateProductionPdfBlob({
                 sectionExport,
                 params,
@@ -590,6 +623,7 @@ export function ExportBar({
                 backlightPieces,
                 vinylPrintDataUrl,
                 faceRectMm,
+                embeddedNests,
                 ...twoItem,
             });
             const fname = pdfFilename(params, 'production');
