@@ -19,6 +19,7 @@ import {
     SubmitApprovalInputSchema,
 } from './approval-types';
 import { ArtworkComponent, ArtworkComponentItem } from './types';
+import type { PanelParams } from '@/lib/visualiser/types';
 
 // =============================================================================
 // TYPES
@@ -40,6 +41,18 @@ export interface ApprovalPackData {
         status: string;
     };
     coverImageUrl: string | null;
+    /**
+     * The linked visualiser design, surfaced as the interactive 3D sign on the
+     * approval pack (the "wow" — the client orbits their actual sign while they
+     * approve). Null when no design is linked. `params` drives a read-only
+     * Scene3D; `svgSource` is the legacy single-upload fallback.
+     */
+    visualiserDesign: {
+        id: string;
+        name: string;
+        params: PanelParams;
+        svgSource: string | null;
+    } | null;
     components: Array<
         ArtworkComponent & {
             thumbnailUrl: string | null;
@@ -330,12 +343,30 @@ export async function getApprovalByToken(
     // Fetch job
     const { data: job, error: jobError } = await supabase
         .from('artwork_jobs')
-        .select('id, job_name, job_reference, job_type, client_name, description, cover_image_path, panel_size, paint_colour, spline_url, status')
+        .select('id, job_name, job_reference, job_type, client_name, description, cover_image_path, panel_size, paint_colour, spline_url, visualiser_design_id, status')
         .eq('id', approval.job_id)
         .single();
 
     if (jobError || !job) {
         return { error: 'job not found', status: 'invalid' };
+    }
+
+    // The linked visualiser design → the interactive 3D sign on the pack.
+    let visualiserDesign: ApprovalPackData['visualiserDesign'] = null;
+    if (job.visualiser_design_id) {
+        const { data: design } = await supabase
+            .from('visualiser_designs')
+            .select('id, name, params_json, svg_source')
+            .eq('id', job.visualiser_design_id)
+            .maybeSingle();
+        if (design) {
+            visualiserDesign = {
+                id: design.id as string,
+                name: design.name as string,
+                params: design.params_json as PanelParams,
+                svgSource: (design.svg_source as string | null) ?? null,
+            };
+        }
     }
 
     // Helper: sign a public artwork-assets URL (bucket is private)
@@ -442,6 +473,7 @@ export async function getApprovalByToken(
         approval: approval as ArtworkApproval,
         job,
         coverImageUrl,
+        visualiserDesign,
         components: enrichedComponents,
     };
 }

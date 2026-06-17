@@ -1,11 +1,13 @@
 import { requireAdmin } from '@/lib/auth';
 import { getProductionPacks } from '@/lib/production-packs/actions';
+import { createAdminClient } from '@/lib/supabase-admin';
 import { Card, Chip } from '@/app/(portal)/components/ui';
 import { StudioPageHeader } from '@/app/(portal)/components/StudioPageHeader';
 import { getRelativeTime, formatDate } from '@/lib/production-packs/utils';
 import type { ProductionPackStatus } from '@/lib/production-packs/types';
 import Link from 'next/link';
 import { NewPackButton } from './NewPackButton';
+import { GenerateFromJobButton } from './GenerateFromJobButton';
 import { RowActions } from './RowActions';
 
 interface SearchParams {
@@ -26,13 +28,31 @@ export default async function ProductionPacksPage({
         search: params.search,
     });
 
+    // Artwork jobs to scaffold a pack from (pulls the job's pieces + design).
+    const admin = createAdminClient();
+    const { data: jobRows } = await admin
+        .from('artwork_jobs')
+        .select('id, job_name, job_reference')
+        .order('updated_at', { ascending: false })
+        .limit(200);
+    const jobs = (jobRows ?? []).map((j) => ({
+        id: j.id as string,
+        name: (j.job_name as string) ?? 'Untitled job',
+        reference: (j.job_reference as string) ?? '',
+    }));
+
     return (
         <div className="p-6 max-w-7xl mx-auto">
             <StudioPageHeader
                 eyebrow="Studio · Packs"
                 title="production packs"
                 description="build detailed, on-brand signage works packs — modular, repeatable, print-ready"
-                action={<NewPackButton />}
+                action={
+                    <>
+                        <GenerateFromJobButton jobs={jobs} />
+                        <NewPackButton />
+                    </>
+                }
             />
 
             {/* Filters */}
