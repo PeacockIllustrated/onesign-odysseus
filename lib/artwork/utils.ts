@@ -294,3 +294,24 @@ export function nextItemLabel(existing: string[]): string {
     }
     return 'Z';
 }
+
+/**
+ * Whether a string is a safe Spline scene URL to embed.
+ *
+ * Spline share/viewer links live under *.spline.design (e.g.
+ * https://my.spline.design/<slug>/). We only ever iframe https URLs on that
+ * host, so a stray or hostile URL can't be embedded into the public client
+ * approval pack.
+ */
+export function isValidSplineUrl(url: string | null | undefined): boolean {
+    if (!url) return false;
+    try {
+        const u = new URL(url.trim());
+        return (
+            u.protocol === 'https:' &&
+            (u.hostname === 'spline.design' || u.hostname.endsWith('.spline.design'))
+        );
+    } catch {
+        return false;
+    }
+}

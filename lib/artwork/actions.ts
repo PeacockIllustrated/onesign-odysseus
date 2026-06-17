@@ -34,7 +34,7 @@ import {
     ArtworkDashboardFilter,
     ArtworkGhostRow,
 } from './types';
-import { checkDimensionTolerance, computeReleaseGaps } from './utils';
+import { checkDimensionTolerance, computeReleaseGaps, isValidSplineUrl } from './utils';
 import { advanceItemToNextRoutedStage } from '@/lib/production/actions';
 
 // =============================================================================
@@ -168,6 +168,7 @@ export async function updateArtworkJob(
     if (updates.description !== undefined) updateData.description = updates.description;
     if (updates.panel_size !== undefined) updateData.panel_size = updates.panel_size;
     if (updates.paint_colour !== undefined) updateData.paint_colour = updates.paint_colour;
+    if (updates.spline_url !== undefined) updateData.spline_url = updates.spline_url;
     if (updates.status !== undefined) updateData.status = updates.status;
 
     const { error } = await supabase
@@ -183,6 +184,213 @@ export async function updateArtworkJob(
     revalidatePath('/admin/artwork');
     revalidatePath(`/admin/artwork/${id}`);
     return { success: true };
+}
+
+/**
+ * Set (or clear) a component's optional Spline 3D scene URL. Shown
+ * click-to-load inside that component's card on the client approval pack.
+ */
+export async function updateComponentSpline(
+    componentId: string,
+    jobId: string,
+    splineUrl: string | null
+): Promise<{ success: true } | { error: string }> {
+    const user = await getUser();
+    if (!user) {
+        return { error: 'not authenticated' };
+    }
+
+    const url = splineUrl?.trim() || null;
+    if (url && !isValidSplineUrl(url)) {
+        return { error: 'must be an https link on spline.design' };
+    }
+
+    const supabase = await createServerClient();
+    const { error } = await supabase
+        .from('artwork_components')
+        .update({ spline_url: url })
+        .eq('id', componentId);
+
+    if (error) {
+        console.error('error updating component spline url:', error);
+        return { error: error.message };
+    }
+
+    revalidatePath(`/admin/artwork/${jobId}/${componentId}`);
+    revalidatePath(`/admin/artwork/${jobId}`);
+    return { success: true };
+}
+
+/**
+ * Reset an artwork job's approval back to "as if never approved" — in place.
+ * Job → in_progress, every chosen variant un-chosen, per-component decisions
+ * cleared, all approvals' submitted data (signature, name, comments, approved
+ * timestamp) scrubbed, and the most recent link re-opened as a fresh pending
+ * sign-off so the same document can be sent again.
+ */
+export async function resetArtworkApproval(
+    jobId: string
+): Promise<{ success: true } | { error: string }> {
+    const user = await getUser();
+    if (!user) {
+        return { error: 'not authenticated' };
+    }
+
+    const supabase = await createServerClient();
+
+    const { error: jobErr } = await supabase
+        .from('artwork_jobs')
+        .update({ status: 'in_progress', updated_at: new Date().toISOString() })
+        .eq('id', jobId);
+    if (jobErr) {
+        return { error: jobErr.message };
+    }
+
+    const { data: comps } = await supabase
+        .from('artwork_components')
+        .select('id')
+        .eq('job_id', jobId);
+    const compIds = (comps ?? []).map((c) => c.id);
+    if (compIds.length > 0) {
+        await supabase
+            .from('artwork_variants')
+            .update({ is_chosen: false, chosen_at: null })
+            .in('component_id', compIds)
+            .eq('is_chosen', true);
+    }
+
+    const { data: approvals } = await supabase
+        .from('artwork_approvals')
+        .select('id')
+        .eq('job_id', jobId)
+        .order('created_at', { ascending: false });
+    const approvalIds = (approvals ?? []).map((a) => a.id);
+    if (approvalIds.length > 0) {
+        await supabase.from('artwork_component_decisions').delete().in('approval_id', approvalIds);
+        await supabase
+            .from('artwork_approvals')
+            .update({
+                approved_at: null,
+                signature_data: null,
+                client_name: null,
+                client_email: null,
+                client_company: null,
+                client_comments: null,
+            })
+            .in('id', approvalIds);
+        // Re-open the most recent link as a fresh pending sign-off (7 days).
+        const expires = new Date();
+        expires.setDate(expires.getDate() + 7);
+        await supabase
+            .from('artwork_approvals')
+            .update({ status: 'pending', expires_at: expires.toISOString(), updated_at: new Date().toISOString() })
+            .eq('id', approvalIds[0]);
+    }
+
+    revalidatePath('/admin/artwork');
+    revalidatePath(`/admin/artwork/${jobId}`);
+    return { success: true };
+}
+
+/**
+ * Clone an artwork job into a fresh draft copy — same components, sub-items,
+ * variants and any 3D scenes, but a new reference, no approval/production
+ * linkage and all sign-off reset. The original is left untouched.
+ */
+export async function cloneArtworkJob(
+    jobId: string
+): Promise<{ id: string } | { error: string }> {
+    const user = await getUser();
+    if (!user) {
+        return { error: 'not authenticated' };
+    }
+
+    const supabase = await createServerClient();
+
+    const { data: job, error: jErr } = await supabase
+        .from('artwork_jobs')
+        .select('*')
+        .eq('id', jobId)
+        .single();
+    if (jErr || !job) {
+        return { error: 'job not found' };
+    }
+
+    const { data: newJob, error: insErr } = await supabase
+        .from('artwork_jobs')
+        .insert({
+            job_name: `${job.job_name} (copy)`,
+            job_type: job.job_type,
+            org_id: job.org_id,
+            contact_id: job.contact_id,
+            site_id: job.site_id,
+            is_orphan: job.is_orphan,
+            client_name: job.client_name,
+            description: job.description,
+            panel_size: job.panel_size,
+            paint_colour: job.paint_colour,
+            spline_url: job.spline_url,
+            status: 'draft',
+            created_by: user.id,
+        })
+        .select('id')
+        .single();
+    if (insErr || !newJob) {
+        return { error: insErr?.message ?? 'could not create the clone' };
+    }
+
+    const { data: comps } = await supabase
+        .from('artwork_components')
+        .select('*')
+        .eq('job_id', jobId)
+        .order('sort_order', { ascending: true });
+
+    for (const c of (comps ?? []) as Record<string, unknown>[]) {
+        const {
+            id: oldCompId,
+            job_id: _jid, created_at: _cc, updated_at: _cu,
+            designed_by: _db, design_signed_off_at: _dsa, design_signed_off_by: _dsb,
+            ...compRest
+        } = c;
+        const { data: newComp, error: cErr } = await supabase
+            .from('artwork_components')
+            .insert({
+                ...compRest,
+                job_id: newJob.id,
+                status: 'pending_design',
+                designed_by: null,
+                design_signed_off_at: null,
+                design_signed_off_by: null,
+            })
+            .select('id')
+            .single();
+        if (cErr || !newComp) continue;
+
+        const { data: subs } = await supabase
+            .from('artwork_component_items')
+            .select('*')
+            .eq('component_id', oldCompId as string);
+        for (const s of (subs ?? []) as Record<string, unknown>[]) {
+            const { id: _sid, component_id: _scid, created_at: _sc, updated_at: _su, design_signed_off_at: _ssa, design_signed_off_by: _ssb, ...subRest } = s;
+            await supabase
+                .from('artwork_component_items')
+                .insert({ ...subRest, component_id: newComp.id, design_signed_off_at: null, design_signed_off_by: null });
+        }
+
+        const { data: vars } = await supabase
+            .from('artwork_variants')
+            .select('*')
+            .eq('component_id', oldCompId as string);
+        for (const v of (vars ?? []) as Record<string, unknown>[]) {
+            const { id: _vid, component_id: _vcid, created_at: _vc, updated_at: _vu, is_chosen: _ic, chosen_at: _cha, ...varRest } = v;
+            await supabase
+                .from('artwork_variants')
+                .insert({ ...varRest, component_id: newComp.id, is_chosen: false, chosen_at: null });
+        }
+    }
+
+    revalidatePath('/admin/artwork');
+    return { id: newJob.id };
 }
 
 /**
