@@ -2063,6 +2063,7 @@ function Panel({
     showStandoffLetters = true,
     showStandoffLocators = true,
     showFaceFixings = false,
+    annotations = true,
     illuminationView = false,
     illumination,
     showDimensions = false,
@@ -2105,6 +2106,14 @@ function Panel({
     showStandoffLetters?: boolean;
     showStandoffLocators?: boolean;
     showFaceFixings?: boolean;
+    /**
+     * Master switch for the non-physical overlay marks — the keyline/reference
+     * register lines, cable-hole rings and seam markers. Off (the approval
+     * pack's "Annotation" toggle) leaves only how the sign actually looks
+     * installed. Edges + fixing markers are gated upstream via showOutlines /
+     * showStandoffLocators, which the caller turns off in step with this.
+     */
+    annotations?: boolean;
     illuminationView?: boolean;
     illumination?: PanelParams['illumination'];
     showDimensions?: boolean;
@@ -2675,7 +2684,8 @@ function Panel({
                   )}
 
             {/* Seam lines on the face */}
-            {split.wasSplit &&
+            {annotations &&
+                split.wasSplit &&
                 split.seamXsMm.map((sx, i) => (
                     <mesh
                         key={`seam-${i}`}
@@ -2690,8 +2700,9 @@ function Panel({
 
             {/* Reference lettering outline (standoff mode, NOT cut) and
                 keyline (register, NOT cut) — drawn as thin overlays.
-                Apertures and fixings are real holes in the face above. */}
-            {overlay && (
+                Apertures and fixings are real holes in the face above.
+                Pure annotation, so hidden when annotations are off. */}
+            {annotations && overlay && (
                 <>
                     {/* Reference outline always shows in standoff mode —
                         the "Letters" toggle only hides the extruded 3D
@@ -2710,8 +2721,9 @@ function Panel({
             )}
 
             {/* Cable-hole rings — distinct purple (red while deleting)
-                so they read as cable routing, not standoff fixings. */}
-            {cableRings && (
+                so they read as cable routing, not standoff fixings.
+                Annotation overlay, hidden when annotations are off. */}
+            {annotations && cableRings && (
                 <lineSegments geometry={cableRings}>
                     <lineBasicMaterial
                         color={cableMode === 'delete' ? '#dc2626' : '#7c3aed'}
@@ -3044,6 +3056,13 @@ export default function Scene3D(props: {
     showStandoffLocators?: boolean;
     /** Mark fixing-hole positions on the panel face (stood-off lettering). */
     showFaceFixings?: boolean;
+    /**
+     * Master switch for non-physical annotation marks (edges, fixing markers,
+     * keyline/reference register lines, cable rings, seams). Default on. The
+     * approval pack's "Annotation" toggle drives this off so the client sees
+     * only how the sign looks installed.
+     */
+    annotations?: boolean;
     /** Dark illumination preview — darkens the scene + lights configured glow. */
     illuminationView?: boolean;
     illumination?: PanelParams['illumination'];
@@ -3089,9 +3108,15 @@ export default function Scene3D(props: {
     const pushThroughIslands = props.pushThroughIslands ?? [];
     const pushThroughPieces = props.pushThroughPieces ?? [];
     const extraFacePieces = props.extraFacePieces ?? [];
-    const showOutlines = props.showOutlines ?? true;
+    // The "Annotation" master switch. Off strips every non-physical mark so the
+    // sign reads exactly as installed: no edge wireframes, fixing markers,
+    // register lines, cable rings or seams. Edges + fixing markers ride on
+    // showOutlines / showStandoffLocators; the overlay lines on `annotations`
+    // itself (threaded into Panel).
+    const annotations = props.annotations ?? true;
+    const showOutlines = (props.showOutlines ?? true) && annotations;
     const showStandoffLetters = props.showStandoffLetters ?? true;
-    const showStandoffLocators = props.showStandoffLocators ?? true;
+    const showStandoffLocators = (props.showStandoffLocators ?? true) && annotations;
     const illuminationView = props.illuminationView ?? false;
     const explodeT = props.explodeT ?? 0;
     const reducedMotion = props.reducedMotion ?? false;
@@ -3268,7 +3293,8 @@ export default function Scene3D(props: {
                     showOutlines={showOutlines}
                     showStandoffLetters={showStandoffLetters}
                     showStandoffLocators={showStandoffLocators}
-                    showFaceFixings={props.showFaceFixings ?? false}
+                    showFaceFixings={(props.showFaceFixings ?? false) && annotations}
+                    annotations={annotations}
                 />
             )}
 

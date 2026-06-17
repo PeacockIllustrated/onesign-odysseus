@@ -491,9 +491,20 @@ export function ExportBar({
         return saved.data.id;
     };
 
+    // The design has to actually carry artwork for a pack/approval to mean
+    // anything — a bare panel scaffolds an empty document and (for approval) a
+    // featureless 3D the client can't review. Guard at the source.
+    const designHasArtwork = (): boolean =>
+        (params.artworkLayers?.length ?? 0) > 0 ||
+        !!(imported && imported.paths.length > 0);
+
     // Scaffold a production (works) pack from this design and open it.
     const onCreateProductionPack = async () => {
         if (packPending) return;
+        if (!designHasArtwork()) {
+            setMsg('Add artwork to the panel before creating a production pack.');
+            return;
+        }
         setPackPending('prod');
         setMsg(null);
         try {
@@ -514,6 +525,10 @@ export function ExportBar({
     // interactive 3D the client orbits while they approve) and open the job.
     const onCreateApprovalPack = async () => {
         if (packPending) return;
+        if (!designHasArtwork()) {
+            setMsg('Add artwork to the panel before creating an approval pack.');
+            return;
+        }
         setPackPending('approval');
         setMsg(null);
         try {
