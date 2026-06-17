@@ -20,7 +20,11 @@ interface Props {
 }
 
 /**
- * Per-component variant picker for the client approval page (Studio dark skin).
+ * Per-component variant picker for the client approval page.
+ *
+ * Themed via the CSS custom properties set on the sign-off page wrapper
+ * (`--accent`, `--panelBg`, `--text`, …), so it follows the page's light/dark
+ * toggle without needing a prop.
  *
  * - Images are click-to-zoom (opens lightbox via onZoom).
  * - Selection is via a radio button beneath the description, so only
@@ -29,7 +33,7 @@ interface Props {
 export function VariantPicker({ componentName, variants, chosenVariantId, onChoose, onZoom }: Props) {
     if (variants.length === 0) {
         return (
-            <p className="text-sm italic text-white/50">
+            <p className="text-sm italic" style={{ color: 'var(--muted)' }}>
                 No variants provided for {componentName}.
             </p>
         );
@@ -44,11 +48,12 @@ export function VariantPicker({ componentName, variants, chosenVariantId, onChoo
                 return (
                     <div
                         key={v.id}
-                        className={`rounded-2xl border overflow-hidden transition-all ${
-                            chosen
-                                ? 'border-[#9ed0dc] bg-[#9ed0dc]/10 ring-1 ring-[#9ed0dc]/60 shadow-[0_0_30px_-8px_rgba(158,208,220,0.5)]'
-                                : 'border-white/10 bg-white/[0.03] hover:border-white/25'
-                        }`}
+                        className="rounded-2xl border overflow-hidden transition-all"
+                        style={{
+                            borderColor: chosen ? 'var(--accent)' : 'var(--panelBorder)',
+                            background: chosen ? 'var(--bannerBg)' : 'var(--panelBg)',
+                            boxShadow: chosen ? '0 0 30px -8px var(--accent)' : 'none',
+                        }}
                     >
                         {/* Image — click to zoom, NOT to select */}
                         {v.thumbnail_url ? (
@@ -70,36 +75,41 @@ export function VariantPicker({ componentName, variants, chosenVariantId, onChoo
                                 </span>
                             </button>
                         ) : (
-                            <div className="w-full h-48 sm:h-56 bg-white/[0.04] flex items-center justify-center text-white/40 text-sm italic">
+                            <div
+                                className="w-full h-48 sm:h-56 flex items-center justify-center text-sm italic"
+                                style={{ background: 'var(--imgBg)', color: 'var(--faint)' }}
+                            >
                                 no image
                             </div>
                         )}
 
                         {/* Info + radio selection */}
                         <div className="p-3.5">
-                            <p className="text-sm font-bold text-white">
+                            <p className="text-sm font-bold" style={{ color: 'var(--heading)' }}>
                                 {v.label}{v.name ? ` — ${v.name}` : ''}
                             </p>
                             {v.description && (
-                                <p className="text-xs text-white/60 mt-1 leading-relaxed">
+                                <p className="text-xs mt-1 leading-relaxed" style={{ color: 'var(--muted)' }}>
                                     {v.description}
                                 </p>
                             )}
 
                             {/* Radio button — the ONLY way to select */}
                             <label
-                                className={`mt-3 flex items-center gap-2 cursor-pointer rounded-xl border px-3 py-2.5 transition-colors ${
-                                    chosen
-                                        ? 'border-[#9ed0dc]/70 bg-[#9ed0dc]/15 text-[#cdeaf1]'
-                                        : 'border-white/15 hover:border-white/35 text-white/70'
-                                }`}
+                                className="mt-3 flex items-center gap-2 cursor-pointer rounded-xl border px-3 py-2.5 transition-colors"
+                                style={{
+                                    borderColor: chosen ? 'var(--accent)' : 'var(--inputBorder)',
+                                    background: chosen ? 'var(--bannerBg)' : 'transparent',
+                                    color: chosen ? 'var(--accent)' : 'var(--muted)',
+                                }}
                             >
                                 <input
                                     type="radio"
                                     name={`variant-${componentName}`}
                                     checked={chosen}
                                     onChange={() => onChoose(v.id)}
-                                    className="accent-[#4e7e8c] w-4 h-4 shrink-0"
+                                    className="w-4 h-4 shrink-0"
+                                    style={{ accentColor: 'var(--accentSolid)' }}
                                 />
                                 <span className="text-xs font-semibold">
                                     {chosen ? '✓ This is my choice' : 'Choose this design'}

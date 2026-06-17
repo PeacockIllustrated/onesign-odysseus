@@ -53,16 +53,7 @@ export default async function ArtworkSignOffPage({
         );
     }
 
-    return (
-        <div style={{
-            minHeight: '100vh',
-            fontFamily: FONT,
-            background: stageBackground(false),
-            backgroundAttachment: 'fixed',
-            paddingTop: '24px',
-            paddingBottom: '48px',
-        }}>
-            <ApprovalClientView data={result} token={token} />
-        </div>
-    );
+    // ApprovalClientView owns its own full-bleed themed stage (so the
+    // light/dark toggle can repaint the whole surface).
+    return <ApprovalClientView data={result} token={token} />;
 }
