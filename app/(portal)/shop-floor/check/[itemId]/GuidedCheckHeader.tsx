@@ -60,7 +60,7 @@ export function GuidedCheckHeader({ ctx, subItem, subIdx, totalSubItems, step, o
                             state === 'done'
                                 ? 'bg-green-700 text-white'
                                 : state === 'active'
-                                    ? 'bg-black text-white ring-2 ring-[#4e7e8c]'
+                                    ? 'bg-[var(--accent)] text-white ring-2 ring-[#4e7e8c]'
                                     : 'bg-neutral-700 text-neutral-400';
                         return (
                             <div

@@ -461,7 +461,7 @@ export default async function ArtworkJobDetailPage({
                                     </div>
                                     <div className="h-2 bg-neutral-100 rounded-full overflow-hidden">
                                         <div
-                                            className="h-full bg-black transition-all duration-300"
+                                            className="h-full bg-[var(--accent)] transition-all duration-300"
                                             style={{ width: `${progress.percentage}%` }}
                                         />
                                     </div>

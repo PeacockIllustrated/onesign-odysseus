@@ -85,7 +85,7 @@ export function CreateDesignPackForm() {
                     id="project_name"
                     type="text"
                     placeholder="e.g. woodland visitor centre"
-                    className={`w-full px-3 py-2 text-sm border rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black ${
+                    className={`w-full px-3 py-2 text-sm border rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] ${
                         errors.project_name ? 'border-red-300 bg-red-50' : 'border-neutral-200'
                     }`}
                     disabled={submitting}
@@ -116,7 +116,7 @@ export function CreateDesignPackForm() {
                     id="client_name"
                     type="text"
                     placeholder="e.g. national trust"
-                    className={`w-full px-3 py-2 text-sm border rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black ${
+                    className={`w-full px-3 py-2 text-sm border rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] ${
                         errors.client_name ? 'border-red-300 bg-red-50' : 'border-neutral-200'
                     }`}
                     disabled={submitting}
@@ -136,7 +136,7 @@ export function CreateDesignPackForm() {
                     id="client_email"
                     type="email"
                     placeholder="e.g. contact@client.com"
-                    className={`w-full px-3 py-2 text-sm border rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black ${
+                    className={`w-full px-3 py-2 text-sm border rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] ${
                         errors.client_email ? 'border-red-300 bg-red-50' : 'border-neutral-200'
                     }`}
                     disabled={submitting}

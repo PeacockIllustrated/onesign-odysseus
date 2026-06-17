@@ -1793,7 +1793,7 @@ function DimensionEditLabel({
     return (
         <Html position={position} center zIndexRange={[30, 0]}>
             {editing ? (
-                <div className="flex items-center gap-1 rounded-full bg-white px-1.5 py-0.5 shadow ring-1 ring-black/10">
+                <div className="flex items-center gap-1 rounded-full bg-white px-1.5 py-0.5 shadow ring-1 ring-[var(--accent)]/10">
                     <input
                         autoFocus
                         type="number"
@@ -1815,7 +1815,7 @@ function DimensionEditLabel({
                     type="button"
                     onClick={() => setEditing(true)}
                     title={`Edit ${label} — click to change`}
-                    className="flex items-center gap-1 whitespace-nowrap rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium tabular-nums text-neutral-700 shadow-sm ring-1 ring-black/5 hover:bg-white hover:ring-black/20"
+                    className="flex items-center gap-1 whitespace-nowrap rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium tabular-nums text-neutral-700 shadow-sm ring-1 ring-[var(--accent)]/5 hover:bg-white hover:ring-[var(--accent)]/20"
                 >
                     <span className="text-neutral-400">{label}</span>
                     {Math.round(valueMm)} mm

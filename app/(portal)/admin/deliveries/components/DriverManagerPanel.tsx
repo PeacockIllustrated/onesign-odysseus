@@ -47,7 +47,7 @@ export function DriverManagerPanel({ drivers, open, onClose }: Props) {
 
     if (!open) return null;
 
-    const inputCls = 'w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black';
+    const inputCls = 'w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]';
 
     return (
         <div className="fixed inset-0 z-40 flex justify-end bg-black/40" onClick={onClose}>

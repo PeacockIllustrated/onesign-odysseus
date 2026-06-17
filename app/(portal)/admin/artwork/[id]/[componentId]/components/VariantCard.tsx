@@ -60,7 +60,7 @@ export function VariantCard({ variant, readOnly = false }: Props) {
         });
     };
 
-    const inputCls = 'w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black';
+    const inputCls = 'w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]';
 
     return (
         <div className="border border-neutral-200 rounded-lg bg-white p-4 space-y-3 relative">

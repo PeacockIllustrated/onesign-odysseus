@@ -62,7 +62,7 @@ export function GraphicLibrary({ isOpen, onClose, onSelectIcon, currentColor }: 
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             placeholder="search icons (e.g., parking, arrow, coffee)..."
-                            className="w-full pl-10 pr-4 py-2.5 text-sm border border-neutral-300 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                            className="w-full pl-10 pr-4 py-2.5 text-sm border border-neutral-300 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                         />
                     </div>
                 </div>
@@ -76,7 +76,7 @@ export function GraphicLibrary({ isOpen, onClose, onSelectIcon, currentColor }: 
                                 className={`
                                     px-3 py-1.5 text-xs font-medium rounded-full border-2 transition-all
                                     ${selectedCategory === 'all'
-                                        ? 'border-black bg-black text-white'
+                                        ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
                                         : 'border-neutral-300 bg-white text-neutral-700 hover:border-neutral-400'}
                                 `}
                             >
@@ -89,7 +89,7 @@ export function GraphicLibrary({ isOpen, onClose, onSelectIcon, currentColor }: 
                                     className={`
                                         px-3 py-1.5 text-xs font-medium rounded-full border-2 transition-all
                                         ${selectedCategory === category.id
-                                            ? 'border-black bg-black text-white'
+                                            ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
                                             : 'border-neutral-300 bg-white text-neutral-700 hover:border-neutral-400'}
                                     `}
                                 >
@@ -115,7 +115,7 @@ export function GraphicLibrary({ isOpen, onClose, onSelectIcon, currentColor }: 
                                     <button
                                         key={icon.id}
                                         onClick={() => handleSelectIcon(icon.id)}
-                                        className="group flex flex-col items-center gap-2 p-4 border-2 border-neutral-200 rounded-[var(--radius-sm)] hover:border-black hover:bg-neutral-50 transition-all"
+                                        className="group flex flex-col items-center gap-2 p-4 border-2 border-neutral-200 rounded-[var(--radius-sm)] hover:border-[var(--accent)] hover:bg-neutral-50 transition-all"
                                         title={icon.name}
                                     >
                                         <div className="p-3 rounded-[var(--radius-sm)] bg-neutral-100 group-hover:bg-white transition-colors">

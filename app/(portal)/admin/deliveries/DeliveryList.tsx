@@ -64,7 +64,7 @@ export function DeliveryList({ initialDeliveries }: DeliveryListProps) {
                 </div>
                 <button
                     onClick={() => setShowNewModal(true)}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-black text-white rounded-[var(--radius-sm)] hover:bg-neutral-800"
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-[var(--accent)] text-white rounded-[var(--radius-sm)] hover:bg-[var(--accent-hover)]"
                 >
                     <Plus size={16} />
                     Schedule Delivery
@@ -89,7 +89,7 @@ export function DeliveryList({ initialDeliveries }: DeliveryListProps) {
                             onClick={() => handleStatusTab(tab)}
                             className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
                                 activeStatus === tab
-                                    ? 'bg-black text-white'
+                                    ? 'bg-[var(--accent)] text-white'
                                     : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
                             }`}
                         >
@@ -108,7 +108,7 @@ export function DeliveryList({ initialDeliveries }: DeliveryListProps) {
                         value={search}
                         onChange={(e) => handleSearch(e.target.value)}
                         placeholder="Search deliveries..."
-                        className="pl-8 pr-3 py-1.5 text-sm border border-neutral-200 rounded-[var(--radius-sm)] w-64 focus:outline-none focus:ring-2 focus:ring-black"
+                        className="pl-8 pr-3 py-1.5 text-sm border border-neutral-200 rounded-[var(--radius-sm)] w-64 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                     />
                 </div>
             </div>

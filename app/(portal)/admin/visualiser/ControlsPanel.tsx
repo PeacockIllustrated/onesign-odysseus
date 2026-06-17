@@ -63,7 +63,7 @@ function NumberField({
                     className={`w-full rounded-md border px-2 py-1.5 text-sm focus:outline-none ${
                         invalid
                             ? 'border-red-400 ring-1 ring-red-200 focus:border-red-500'
-                            : 'border-neutral-300 focus:border-black'
+                            : 'border-neutral-300 focus:border-[var(--accent)]'
                     }`}
                 />
                 <span className="w-6 text-xs text-neutral-400">{suffix}</span>
@@ -125,7 +125,7 @@ export function ControlsPanel({
                     type="text"
                     value={params.name}
                     onChange={(e) => setParam('name', e.target.value)}
-                    className="mt-1 w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm focus:border-black focus:outline-none"
+                    className="mt-1 w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm focus:border-[var(--accent)] focus:outline-none"
                 />
             </div>
 
@@ -440,7 +440,7 @@ export function ControlsPanel({
                             setParam('materialLabel', e.target.value)
                         }
                         placeholder="e.g. 3mm aluminium, satin white"
-                        className="mt-1 w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm focus:border-black focus:outline-none"
+                        className="mt-1 w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm focus:border-[var(--accent)] focus:outline-none"
                     />
                 </div>
 
@@ -554,7 +554,7 @@ export function ControlsPanel({
                                                             color: v,
                                                         });
                                                 }}
-                                                className="flex-1 rounded-md border border-neutral-300 px-2 py-2 font-mono text-xs uppercase tracking-wide focus:border-black focus:outline-none"
+                                                className="flex-1 rounded-md border border-neutral-300 px-2 py-2 font-mono text-xs uppercase tracking-wide focus:border-[var(--accent)] focus:outline-none"
                                                 placeholder="#ffffff"
                                             />
                                         </div>

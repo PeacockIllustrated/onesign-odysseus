@@ -65,7 +65,7 @@ export function PurchaseOrdersClient({ initialPos }: PurchaseOrdersClientProps) 
                 </div>
                 <button
                     onClick={() => setShowNewModal(true)}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-black text-white rounded-[var(--radius-sm)] hover:bg-neutral-800"
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-[var(--accent)] text-white rounded-[var(--radius-sm)] hover:bg-[var(--accent-hover)]"
                 >
                     <Plus size={16} />
                     New PO
@@ -88,7 +88,7 @@ export function PurchaseOrdersClient({ initialPos }: PurchaseOrdersClientProps) 
                             onClick={() => handleStatusTab(tab)}
                             className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
                                 activeStatus === tab
-                                    ? 'bg-black text-white'
+                                    ? 'bg-[var(--accent)] text-white'
                                     : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
                             }`}
                         >
@@ -102,7 +102,7 @@ export function PurchaseOrdersClient({ initialPos }: PurchaseOrdersClientProps) 
                         value={search}
                         onChange={e => handleSearch(e.target.value)}
                         placeholder="Search POs..."
-                        className="pl-8 pr-3 py-1.5 text-sm border border-neutral-200 rounded-[var(--radius-sm)] w-64 focus:outline-none focus:ring-2 focus:ring-black"
+                        className="pl-8 pr-3 py-1.5 text-sm border border-neutral-200 rounded-[var(--radius-sm)] w-64 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                     />
                 </div>
             </div>
@@ -225,7 +225,7 @@ function NewPoModal({
                             <select
                                 value={form.org_id}
                                 onChange={e => setForm(f => ({ ...f, org_id: e.target.value }))}
-                                className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-black"
+                                className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                             >
                                 {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
                             </select>
@@ -238,7 +238,7 @@ function NewPoModal({
                             value={form.supplier_name}
                             onChange={e => setForm(f => ({ ...f, supplier_name: e.target.value }))}
                             placeholder="e.g. Invacare Print Supplies"
-                            className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-black"
+                            className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                         />
                     </div>
                     <div>
@@ -248,7 +248,7 @@ function NewPoModal({
                             value={form.description}
                             onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                             placeholder="e.g. Vinyl wrap for HQ fascia"
-                            className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-black"
+                            className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                         />
                     </div>
                     <div>
@@ -257,7 +257,7 @@ function NewPoModal({
                             type="date"
                             value={form.required_by_date}
                             onChange={e => setForm(f => ({ ...f, required_by_date: e.target.value }))}
-                            className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-black"
+                            className="w-full px-3 py-2 text-sm border border-neutral-200 rounded focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                         />
                     </div>
                     <div className="flex justify-end gap-3 pt-2">
@@ -265,7 +265,7 @@ function NewPoModal({
                         <button
                             type="submit"
                             disabled={isSaving || orgsLoading}
-                            className="flex items-center gap-2 px-4 py-1.5 text-xs font-medium bg-black text-white rounded hover:bg-neutral-800 disabled:opacity-50"
+                            className="flex items-center gap-2 px-4 py-1.5 text-xs font-medium bg-[var(--accent)] text-white rounded hover:bg-[var(--accent-hover)] disabled:opacity-50"
                         >
                             {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
                             Create PO

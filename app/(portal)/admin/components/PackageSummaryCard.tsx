@@ -18,13 +18,13 @@ export function PackageSummaryCard({ pkg, selected, onClick, showDeliverables = 
                 p-4 border rounded-lg transition-all
                 ${onClick ? 'cursor-pointer' : ''}
                 ${selected
-                    ? 'border-black bg-neutral-50 ring-1 ring-black'
+                    ? 'border-[var(--accent)] bg-neutral-50 ring-1 ring-[var(--accent)]'
                     : 'border-neutral-200 hover:border-neutral-300'}
                 ${pkg.isRecommended ? 'relative' : ''}
             `}
         >
             {pkg.isRecommended && (
-                <span className="absolute -top-2.5 left-4 bg-black text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">
+                <span className="absolute -top-2.5 left-4 bg-[var(--accent)] text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">
                     Recommended
                 </span>
             )}
@@ -33,7 +33,7 @@ export function PackageSummaryCard({ pkg, selected, onClick, showDeliverables = 
                 <div className="flex-1">
                     <div className="flex items-center gap-2">
                         {selected && (
-                            <div className="w-5 h-5 bg-black rounded-full flex items-center justify-center">
+                            <div className="w-5 h-5 bg-[var(--accent)] rounded-full flex items-center justify-center">
                                 <Check size={12} className="text-white" />
                             </div>
                         )}

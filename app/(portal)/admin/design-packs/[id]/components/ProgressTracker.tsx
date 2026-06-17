@@ -64,7 +64,7 @@ export function ProgressTracker({ pack }: ProgressTrackerProps) {
             {/* Progress Bar */}
             <div className="h-2 bg-neutral-100 rounded-full overflow-hidden mb-4">
                 <div
-                    className="h-full bg-black transition-all duration-500 ease-out"
+                    className="h-full bg-[var(--accent)] transition-all duration-500 ease-out"
                     style={{ width: `${percentage}%` }}
                 />
             </div>
@@ -80,7 +80,7 @@ export function ProgressTracker({ pack }: ProgressTrackerProps) {
                             transition-all duration-200
                             ${
                                 section.completed
-                                    ? 'bg-black text-white'
+                                    ? 'bg-[var(--accent)] text-white'
                                     : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
                             }
                         `}

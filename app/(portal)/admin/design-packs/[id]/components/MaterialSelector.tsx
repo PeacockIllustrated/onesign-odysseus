@@ -350,7 +350,7 @@ export function MaterialSelector({ packId, data }: MaterialSelectorProps) {
                                     text-left p-4 rounded-[var(--radius-md)] border-2 transition-all
                                     ${
                                         isSelected
-                                            ? 'border-black bg-neutral-50'
+                                            ? 'border-[var(--accent)] bg-neutral-50'
                                             : 'border-neutral-200 hover:border-neutral-300'
                                     }
                                     ${isLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
@@ -391,7 +391,7 @@ export function MaterialSelector({ packId, data }: MaterialSelectorProps) {
                                         </div>
                                     </div>
                                     {isSelected && (
-                                        <div className="w-5 h-5 rounded-full bg-black flex items-center justify-center ml-3">
+                                        <div className="w-5 h-5 rounded-full bg-[var(--accent)] flex items-center justify-center ml-3">
                                             <div className="w-2 h-2 rounded-full bg-white" />
                                         </div>
                                     )}
@@ -419,7 +419,7 @@ export function MaterialSelector({ packId, data }: MaterialSelectorProps) {
                                         text-left p-3 rounded-[var(--radius-md)] border-2 transition-all
                                         ${
                                             isSelected
-                                                ? 'border-black bg-neutral-50'
+                                                ? 'border-[var(--accent)] bg-neutral-50'
                                                 : 'border-neutral-200 hover:border-neutral-300'
                                         }
                                         ${isLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
@@ -433,7 +433,7 @@ export function MaterialSelector({ packId, data }: MaterialSelectorProps) {
                                             </p>
                                         </div>
                                         {isSelected && (
-                                            <div className="w-4 h-4 rounded-full bg-black flex items-center justify-center ml-2">
+                                            <div className="w-4 h-4 rounded-full bg-[var(--accent)] flex items-center justify-center ml-2">
                                                 <div className="w-1.5 h-1.5 rounded-full bg-white" />
                                             </div>
                                         )}

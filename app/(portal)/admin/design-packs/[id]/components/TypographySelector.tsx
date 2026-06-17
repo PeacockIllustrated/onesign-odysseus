@@ -146,7 +146,7 @@ export function TypographySelector({ packId, data }: TypographySelectorProps) {
                     className={`
                         px-3 py-1.5 text-xs font-medium rounded-full border-2 transition-all
                         ${selectedCategory === 'all'
-                            ? 'border-black bg-black text-white'
+                            ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
                             : 'border-neutral-300 bg-white text-neutral-700 hover:border-neutral-400'}
                         ${isLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
                     `}
@@ -163,7 +163,7 @@ export function TypographySelector({ packId, data }: TypographySelectorProps) {
                             className={`
                                 px-3 py-1.5 text-xs font-medium rounded-full border-2 transition-all
                                 ${selectedCategory === category
-                                    ? 'border-black bg-black text-white'
+                                    ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
                                     : 'border-neutral-300 bg-white text-neutral-700 hover:border-neutral-400'}
                                 ${isLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
                             `}
@@ -188,7 +188,7 @@ export function TypographySelector({ packId, data }: TypographySelectorProps) {
                                 text-left p-4 rounded-[var(--radius-md)] border-2 transition-all
                                 ${
                                     isSelected
-                                        ? 'border-black bg-neutral-50'
+                                        ? 'border-[var(--accent)] bg-neutral-50'
                                         : 'border-neutral-200 hover:border-neutral-300'
                                 }
                                 ${isLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
@@ -202,7 +202,7 @@ export function TypographySelector({ packId, data }: TypographySelectorProps) {
                                     </p>
                                 </div>
                                 {isSelected && (
-                                    <div className="w-5 h-5 rounded-full bg-black flex items-center justify-center">
+                                    <div className="w-5 h-5 rounded-full bg-[var(--accent)] flex items-center justify-center">
                                         <div className="w-2 h-2 rounded-full bg-white" />
                                     </div>
                                 )}

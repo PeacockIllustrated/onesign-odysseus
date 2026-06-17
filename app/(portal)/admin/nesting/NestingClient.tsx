@@ -112,7 +112,7 @@ function NumField({
                     const n = parseFloat(e.target.value);
                     onChange(Number.isNaN(n) ? 0 : n);
                 }}
-                className="mt-0.5 w-full rounded border border-neutral-300 px-1.5 py-1 text-xs focus:border-black focus:outline-none"
+                className="mt-0.5 w-full rounded border border-neutral-300 px-1.5 py-1 text-xs focus:border-[var(--accent)] focus:outline-none"
             />
         </label>
     );
@@ -657,7 +657,7 @@ export function NestingClient({
                                     value={designName}
                                     onChange={(e) => setDesignName(e.target.value)}
                                     placeholder="Name this nest"
-                                    className="min-w-0 flex-1 rounded border border-neutral-300 px-2 py-1 text-xs focus:border-black focus:outline-none"
+                                    className="min-w-0 flex-1 rounded border border-neutral-300 px-2 py-1 text-xs focus:border-[var(--accent)] focus:outline-none"
                                 />
                                 <button
                                     type="button"
@@ -859,7 +859,7 @@ export function NestingClient({
                                 );
                                 if (p) setSheetSize(p.w, p.h);
                             }}
-                            className="mt-0.5 w-full rounded border border-neutral-300 px-1.5 py-1.5 text-xs focus:border-black focus:outline-none"
+                            className="mt-0.5 w-full rounded border border-neutral-300 px-1.5 py-1.5 text-xs focus:border-[var(--accent)] focus:outline-none"
                         >
                             {SHEET_PRESETS.map((p) => (
                                 <option key={p.label} value={p.label}>
@@ -944,7 +944,7 @@ export function NestingClient({
                                             : ''
                                     } ${
                                         cfg.rotationStepDeg === v
-                                            ? 'bg-black text-white'
+                                            ? 'bg-[var(--accent)] text-white'
                                             : 'bg-white text-neutral-500 hover:bg-neutral-100'
                                     }`}
                                 >
@@ -1359,7 +1359,7 @@ export function NestingClient({
                                     aria-pressed={activeSheet === s.index}
                                     className={`rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors ${
                                         activeSheet === s.index
-                                            ? 'border-black bg-black text-white'
+                                            ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
                                             : 'border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-100'
                                     }`}
                                 >

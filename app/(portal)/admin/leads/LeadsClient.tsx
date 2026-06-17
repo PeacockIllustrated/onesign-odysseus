@@ -140,7 +140,7 @@ export function LeadsClient({ initialMarketingLeads, initialArchitectLeads }: Le
                 <button
                     onClick={() => setActiveTab('marketing')}
                     className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors -mb-px ${activeTab === 'marketing'
-                            ? 'border-black text-black'
+                            ? 'border-[var(--accent)] text-[var(--accent)]'
                             : 'border-transparent text-neutral-500 hover:text-neutral-700'
                         }`}
                 >
@@ -152,7 +152,7 @@ export function LeadsClient({ initialMarketingLeads, initialArchitectLeads }: Le
                 <button
                     onClick={() => setActiveTab('architects')}
                     className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors -mb-px ${activeTab === 'architects'
-                            ? 'border-black text-black'
+                            ? 'border-[var(--accent)] text-[var(--accent)]'
                             : 'border-transparent text-neutral-500 hover:text-neutral-700'
                         }`}
                 >
@@ -172,7 +172,7 @@ export function LeadsClient({ initialMarketingLeads, initialArchitectLeads }: Le
                         className={`
                             px-3 py-1.5 rounded-full text-xs font-medium transition-colors
                             ${filter === s
-                                ? 'bg-black text-white'
+                                ? 'bg-[var(--accent)] text-white'
                                 : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'}
                         `}
                     >
@@ -413,7 +413,7 @@ export function LeadsClient({ initialMarketingLeads, initialArchitectLeads }: Le
                                             key={status}
                                             onClick={() => updateArchitectLeadStatus(selectedArchitectLead.id, status)}
                                             className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${selectedArchitectLead.status === status
-                                                    ? 'bg-black text-white'
+                                                    ? 'bg-[var(--accent)] text-white'
                                                     : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
                                                 }`}
                                         >

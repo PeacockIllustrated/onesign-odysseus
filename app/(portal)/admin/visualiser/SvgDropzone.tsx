@@ -360,7 +360,7 @@ function GroupEditControls({
                                     const v = e.target.value.trim();
                                     if (/^#[0-9a-fA-F]{6}$/.test(v)) setColor(v);
                                 }}
-                                className="flex-1 rounded border px-2 py-2 font-mono text-[11px] uppercase focus:border-black focus:outline-none"
+                                className="flex-1 rounded border px-2 py-2 font-mono text-[11px] uppercase focus:border-[var(--accent)] focus:outline-none"
                                 style={{ borderColor: ACCENT_TINT_BORDER }}
                             />
                         </div>
@@ -871,7 +871,7 @@ function Segmented<T extends string>({
                         i > 0 ? 'border-l border-neutral-300' : ''
                     } ${
                         value === val
-                            ? 'bg-black text-white'
+                            ? 'bg-[var(--accent)] text-white'
                             : 'bg-white text-neutral-500 hover:bg-neutral-100'
                     }`}
                 >
@@ -905,7 +905,7 @@ function NumField({
                     const n = parseFloat(e.target.value);
                     onChange(Number.isNaN(n) ? 0 : n);
                 }}
-                className="mt-0.5 w-full rounded border border-neutral-300 px-1.5 py-1 text-xs focus:border-black focus:outline-none"
+                className="mt-0.5 w-full rounded border border-neutral-300 px-1.5 py-1 text-xs focus:border-[var(--accent)] focus:outline-none"
             />
         </label>
     );
@@ -1635,7 +1635,7 @@ export function SvgDropzone() {
                                                         },
                                                     )
                                                 }
-                                                className="mt-0.5 w-full rounded border border-neutral-300 px-1.5 py-1 text-xs focus:border-black focus:outline-none"
+                                                className="mt-0.5 w-full rounded border border-neutral-300 px-1.5 py-1 text-xs focus:border-[var(--accent)] focus:outline-none"
                                             >
                                                 <option value="M5">M5</option>
                                                 <option value="M6">M6</option>
@@ -1691,7 +1691,7 @@ export function SvgDropzone() {
                                                 )
                                             }
                                             placeholder="Stainless A2"
-                                            className="mt-0.5 w-full rounded border border-neutral-300 px-1.5 py-1 text-xs focus:border-black focus:outline-none"
+                                            className="mt-0.5 w-full rounded border border-neutral-300 px-1.5 py-1 text-xs focus:border-[var(--accent)] focus:outline-none"
                                         />
                                     </label>
                                     <label className="block">
@@ -1717,7 +1717,7 @@ export function SvgDropzone() {
                                                 )
                                             }
                                             placeholder="e.g. ASF Components"
-                                            className="mt-0.5 w-full rounded border border-neutral-300 px-1.5 py-1 text-xs focus:border-black focus:outline-none"
+                                            className="mt-0.5 w-full rounded border border-neutral-300 px-1.5 py-1 text-xs focus:border-[var(--accent)] focus:outline-none"
                                         />
                                     </label>
                                 </div>
