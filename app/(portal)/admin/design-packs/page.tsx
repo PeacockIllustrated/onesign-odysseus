@@ -1,6 +1,7 @@
 import { requireAdmin } from '@/lib/auth';
 import { getDesignPacks } from '@/lib/design-packs/actions';
-import { PageHeader, Card, Chip } from '@/app/(portal)/components/ui';
+import { Card, Chip } from '@/app/(portal)/components/ui';
+import { StudioPageHeader } from '@/app/(portal)/components/StudioPageHeader';
 import Link from 'next/link';
 import { formatDate, getRelativeTime } from '@/lib/design-packs/utils';
 import { DesignPackStatus } from '@/lib/design-packs/types';
@@ -25,7 +26,8 @@ export default async function DesignPacksPage({
 
     return (
         <div className="p-6 max-w-7xl mx-auto">
-            <PageHeader
+            <StudioPageHeader
+                eyebrow="Studio · Packs"
                 title="design packs"
                 description="interactive design presentation tool for client sessions"
                 action={
@@ -43,13 +45,13 @@ export default async function DesignPacksPage({
                         name="search"
                         placeholder="search by project or client name..."
                         defaultValue={params.search || ''}
-                        className="flex-1 min-w-0 px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                        className="flex-1 min-w-0 px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                     />
                     <div className="flex items-center gap-3">
                         <select
                             name="status"
                             defaultValue={params.status || 'all'}
-                            className="flex-1 sm:flex-none px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-black"
+                            className="flex-1 sm:flex-none px-3 py-2 text-sm border border-neutral-200 rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]"
                         >
                             <option value="all">all statuses</option>
                             <option value="in_progress">in progress</option>
@@ -86,7 +88,7 @@ export default async function DesignPacksPage({
                 <Card className="overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full">
-                            <thead className="border-b border-neutral-200 bg-neutral-50">
+                            <thead className="border-b border-[#cfe0e6] bg-[#eef4f6]">
                                 <tr>
                                     <th className="text-left px-4 py-3 text-xs font-medium text-neutral-500 uppercase tracking-wider">
                                         project
@@ -124,12 +126,12 @@ export default async function DesignPacksPage({
                                     return (
                                         <tr
                                             key={pack.id}
-                                            className="hover:bg-neutral-50 transition-colors"
+                                            className="hover:bg-[#f3f8f9] transition-colors"
                                         >
                                             <td className="px-4 py-3">
                                                 <Link
                                                     href={`/admin/design-packs/${pack.id}`}
-                                                    className="font-medium text-black hover:underline"
+                                                    className="font-medium text-[#10242b] hover:text-[#4e7e8c] hover:underline"
                                                 >
                                                     {pack.project_name}
                                                 </Link>
@@ -149,7 +151,7 @@ export default async function DesignPacksPage({
                                                 <div className="flex items-center gap-2">
                                                     <div className="flex-1 h-2 bg-neutral-100 rounded-full overflow-hidden max-w-[120px]">
                                                         <div
-                                                            className="h-full bg-black transition-all duration-300"
+                                                            className="h-full bg-[#4e7e8c] transition-all duration-300"
                                                             style={{
                                                                 width: `${progressPercent}%`,
                                                             }}

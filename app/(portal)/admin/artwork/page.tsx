@@ -2,6 +2,7 @@ import { requireAdmin } from '@/lib/auth';
 import { getArtworkDashboardData } from '@/lib/artwork/actions';
 import { createAdminClient } from '@/lib/supabase-admin';
 import { Card, Chip } from '@/app/(portal)/components/ui';
+import { StudioPageHeader } from '@/app/(portal)/components/StudioPageHeader';
 import Link from 'next/link';
 import { formatDate, getJobStatusLabel, getJobStatusVariant } from '@/lib/artwork/utils';
 import { ArtworkJobStatus, ArtworkDashboardFilterEnum } from '@/lib/artwork/types';
@@ -61,16 +62,12 @@ export default async function ArtworkJobsPage({
 
     return (
         <div className="p-6 max-w-7xl mx-auto">
-            {/* Studio-light header band — steel-teal accent to match the Studio suite */}
-            <div className="relative overflow-hidden rounded-2xl border border-[#cfe0e6] bg-gradient-to-br from-[#e8f0f3] via-white to-white mb-6 shadow-sm">
-                <span aria-hidden className="absolute inset-y-0 left-0 w-1.5 bg-gradient-to-b from-[#9ed0dc] to-[#4e7e8c]" />
-                <div className="flex flex-col gap-3 p-5 pl-7 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0">
-                        <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[#4e7e8c]">Studio · Artwork</p>
-                        <h1 className="text-2xl font-bold tracking-tight text-[#10242b]">artwork compliance</h1>
-                        <p className="mt-0.5 text-sm text-[#5b7a83]">design-to-production verification for signage jobs</p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
+            <StudioPageHeader
+                eyebrow="Studio · Artwork"
+                title="artwork compliance"
+                description="design-to-production verification for signage jobs"
+                action={
+                    <>
                         <Link href="/admin/artwork/reconcile" className="btn-secondary text-xs">
                             reconcile
                         </Link>
@@ -81,9 +78,9 @@ export default async function ArtworkJobsPage({
                         <Link href="/admin/artwork/new" className="btn-primary">
                             new artwork job
                         </Link>
-                    </div>
-                </div>
-            </div>
+                    </>
+                }
+            />
 
             {/* Filter chips */}
             <div className="flex flex-wrap gap-2 mb-3">

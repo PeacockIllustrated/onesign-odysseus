@@ -4,6 +4,7 @@ import { getProductionStages } from '@/lib/production/queries';
 import { createAdminClient } from '@/lib/supabase-admin';
 import { notFound } from 'next/navigation';
 import { Card, Chip } from '@/app/(portal)/components/ui';
+import { StudioPageHeader } from '@/app/(portal)/components/StudioPageHeader';
 import Link from 'next/link';
 import { ChevronLeft, Printer } from 'lucide-react';
 import {
@@ -183,16 +184,12 @@ export default async function ArtworkJobDetailPage({
                 </nav>
             )}
 
-            {/* Studio-light header band */}
-            <div className="relative overflow-hidden rounded-2xl border border-[#cfe0e6] bg-gradient-to-br from-[#e8f0f3] via-white to-white mb-6 shadow-sm">
-                <span aria-hidden className="absolute inset-y-0 left-0 w-1.5 bg-gradient-to-b from-[#9ed0dc] to-[#4e7e8c]" />
-                <div className="flex flex-col gap-3 p-5 pl-7 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0">
-                        <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[#4e7e8c]">Studio · Artwork</p>
-                        <h1 className="truncate text-2xl font-bold tracking-tight text-[#10242b]">{job.job_name}</h1>
-                        <p className="mt-0.5 text-sm text-[#5b7a83]">{job.job_reference}{job.client_name ? ` — ${job.client_name}` : ''}</p>
-                    </div>
-                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <StudioPageHeader
+                eyebrow="Studio · Artwork"
+                title={job.job_name}
+                description={`${job.job_reference}${job.client_name ? ` — ${job.client_name}` : ''}`}
+                action={
+                    <>
                         {job.production_item && job.status !== 'completed' && (
                             <ReleaseToProductionButton
                                 artworkJobId={id}
@@ -222,9 +219,9 @@ export default async function ArtworkJobDetailPage({
                             artworkJobId={id}
                             jobReference={job.job_reference}
                         />
-                    </div>
-                </div>
-            </div>
+                    </>
+                }
+            />
 
             {/* Main Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

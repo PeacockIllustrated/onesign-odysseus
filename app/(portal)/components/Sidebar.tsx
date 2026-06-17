@@ -73,7 +73,7 @@ const adminNavGroups: NavGroup[] = [
             { label: 'Studio', href: '/admin/tools', icon: Shapes },
             { label: 'Nesting', href: '/admin/nesting', icon: Puzzle },
             { label: 'Artwork', href: '/admin/artwork', icon: ClipboardCheck },
-            { label: 'Production Packs', href: '/admin/production-packs', icon: Package },
+            { label: 'Packs', href: '/admin/packs', icon: Package },
             { label: 'Job Board', href: '/admin/jobs', icon: LayoutGrid },
             { label: 'Shop Floor', href: '/shop-floor', icon: Zap },
             { label: 'Flags', href: '/admin/flags', icon: AlertTriangle },

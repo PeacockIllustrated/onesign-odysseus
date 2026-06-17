@@ -1,6 +1,7 @@
 import { requireAdmin } from '@/lib/auth';
 import { getProductionPacks } from '@/lib/production-packs/actions';
-import { PageHeader, Card, Chip } from '@/app/(portal)/components/ui';
+import { Card, Chip } from '@/app/(portal)/components/ui';
+import { StudioPageHeader } from '@/app/(portal)/components/StudioPageHeader';
 import { getRelativeTime, formatDate } from '@/lib/production-packs/utils';
 import type { ProductionPackStatus } from '@/lib/production-packs/types';
 import Link from 'next/link';
@@ -27,7 +28,8 @@ export default async function ProductionPacksPage({
 
     return (
         <div className="p-6 max-w-7xl mx-auto">
-            <PageHeader
+            <StudioPageHeader
+                eyebrow="Studio · Packs"
                 title="production packs"
                 description="build detailed, on-brand signage works packs — modular, repeatable, print-ready"
                 action={<NewPackButton />}
@@ -81,7 +83,7 @@ export default async function ProductionPacksPage({
                 <Card className="overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full">
-                            <thead className="border-b border-neutral-200 bg-neutral-50">
+                            <thead className="border-b border-[#cfe0e6] bg-[#eef4f6]">
                                 <tr>
                                     <th className="text-left px-4 py-3 text-xs font-medium text-neutral-500 uppercase tracking-wider">title</th>
                                     <th className="text-left px-4 py-3 text-xs font-medium text-neutral-500 uppercase tracking-wider">client / project</th>
@@ -93,11 +95,11 @@ export default async function ProductionPacksPage({
                             </thead>
                             <tbody className="divide-y divide-neutral-100">
                                 {packs.map((pack) => (
-                                    <tr key={pack.id} className="hover:bg-neutral-50 transition-colors">
+                                    <tr key={pack.id} className="hover:bg-[#f3f8f9] transition-colors">
                                         <td className="px-4 py-3">
                                             <Link
                                                 href={`/admin/production-packs/${pack.id}`}
-                                                className="font-medium text-black hover:underline"
+                                                className="font-medium text-[#10242b] hover:text-[#4e7e8c] hover:underline"
                                             >
                                                 {pack.title}
                                             </Link>
