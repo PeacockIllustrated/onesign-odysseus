@@ -8,6 +8,7 @@ import { ResilientImage } from './components/ResilientImage';
 import MarketingModal from '@/app/components/MarketingModal';
 import { formatDateTime } from '@/lib/artwork/utils';
 import SignatureCanvas, { type SignatureCanvasRef } from '@/components/SignatureCanvas';
+import { DayNightSwitch } from '@/components/studio/StudioChrome';
 
 interface Props {
     data: ApprovalPackData;
@@ -20,6 +21,77 @@ interface Props {
 const SHOW_MARKETING_MODAL_ON_APPROVAL = false;
 
 type LineDecision = 'approved' | 'changes_requested';
+
+const FONT = "'Gilroy', 'Inter', system-ui, -apple-system, sans-serif";
+
+/**
+ * Studio skin, theme-aware. Every colour the page paints with is a CSS custom
+ * property set once on the outer wrapper, so flipping `light` re-themes the
+ * whole subtree (cover, component cards, decision buttons, variant picker,
+ * sign-off form) in one place — and both palettes are tuned for legible text.
+ */
+function themeVars(light: boolean): React.CSSProperties {
+    const v = light
+        ? {
+              stage: 'radial-gradient(120% 90% at 50% 0%, #fbfdfe 0%, #eaf2f5 55%, #dbe9ed 100%)',
+              text: '#243239', heading: '#0c1114', muted: '#5b6b72', muted2: '#8a979d', faint: '#aab5ba',
+              accent: '#3a5f6a', accentSolid: '#4e7e8c',
+              panelBg: '#ffffff', panelBorder: 'rgba(16,40,48,0.1)', panelShadow: '0 18px 40px rgba(16,40,48,0.1)',
+              hairline: 'rgba(16,40,48,0.1)', hairlineSoft: 'rgba(16,40,48,0.07)',
+              imgBg: '#f3f7f8', inputBg: '#ffffff', inputBorder: 'rgba(16,40,48,0.18)',
+              chipBg: '#eef3f5', chipText: '#5b6b72',
+              bannerBg: '#eef4f6', bannerBorder: '#d2e1e6',
+              openBg: '#e8f0f3', openBorder: '#c9d9df', closeBg: '#ffffff', closeBorder: 'rgba(16,40,48,0.14)',
+              goodSolid: '#16a34a', goodOn: '#ffffff', goodGlow: '0 8px 20px -8px rgba(22,163,74,0.5)',
+              goodText: '#15803d', goodBg: '#f0fdf4', goodBorder: '#86efac', goodHeadbg: '#dcfce7', goodChipbg: '#bbf7d0',
+              warnSolid: '#d97706', warnOn: '#ffffff', warnGlow: '0 8px 20px -8px rgba(217,119,6,0.5)',
+              warnText: '#b45309', warnBg: '#fffbeb', warnBorder: '#fcd34d', warnHeadbg: '#fef3c7', warnChipbg: '#fde68a',
+              warnSoftbg: '#fffbeb', warnSoftborder: '#f0d98a', warnSofttext: '#a37800',
+              ctaGrad: 'linear-gradient(180deg,#4e7e8c 0%,#3a5f6a 100%)', ctaOn: '#ffffff',
+              ctaShadow: '0 12px 26px -8px rgba(78,126,140,0.55)', ctaDisBg: '#e3eaed', ctaDisText: '#9aa7ac',
+              logoFilter: 'none',
+              errBg: '#fef2f2', errBorder: '#fecaca', errText: '#dc2626',
+              successBg: '#f0fdf4', successGlow: '0 14px 30px -14px rgba(22,163,74,0.35)',
+          }
+        : {
+              stage: 'radial-gradient(120% 90% at 50% 0%, #1a242a 0%, #0d1418 55%, #080c0f 100%)',
+              text: '#eef4f6', heading: '#ffffff', muted: 'rgba(238,244,246,0.6)', muted2: 'rgba(238,244,246,0.45)', faint: 'rgba(238,244,246,0.35)',
+              accent: '#9ed0dc', accentSolid: '#4e7e8c',
+              panelBg: 'rgba(255,255,255,0.045)', panelBorder: 'rgba(255,255,255,0.12)', panelShadow: '0 20px 50px rgba(0,0,0,0.4)',
+              hairline: 'rgba(255,255,255,0.12)', hairlineSoft: 'rgba(255,255,255,0.08)',
+              imgBg: 'rgba(0,0,0,0.25)', inputBg: 'rgba(255,255,255,0.04)', inputBorder: 'rgba(255,255,255,0.16)',
+              chipBg: 'rgba(255,255,255,0.08)', chipText: 'rgba(238,244,246,0.7)',
+              bannerBg: 'rgba(158,208,220,0.1)', bannerBorder: 'rgba(158,208,220,0.25)',
+              openBg: 'rgba(158,208,220,0.1)', openBorder: 'rgba(158,208,220,0.35)', closeBg: 'rgba(255,255,255,0.04)', closeBorder: 'rgba(255,255,255,0.16)',
+              goodSolid: '#34d399', goodOn: '#04140d', goodGlow: '0 0 24px -6px rgba(52,211,153,0.55)',
+              goodText: '#34d399', goodBg: 'rgba(52,211,153,0.08)', goodBorder: 'rgba(52,211,153,0.6)', goodHeadbg: 'rgba(52,211,153,0.16)', goodChipbg: 'rgba(52,211,153,0.18)',
+              warnSolid: '#fbbf24', warnOn: '#1f1605', warnGlow: '0 0 24px -6px rgba(251,191,36,0.5)',
+              warnText: '#fbbf24', warnBg: 'rgba(251,191,36,0.07)', warnBorder: 'rgba(251,191,36,0.55)', warnHeadbg: 'rgba(251,191,36,0.16)', warnChipbg: 'rgba(251,191,36,0.18)',
+              warnSoftbg: 'rgba(251,191,36,0.1)', warnSoftborder: 'rgba(251,191,36,0.35)', warnSofttext: '#fde68a',
+              ctaGrad: 'linear-gradient(180deg,#9ed0dc 0%,#4e7e8c 100%)', ctaOn: '#04140d',
+              ctaShadow: '0 0 30px -8px rgba(158,208,220,0.6)', ctaDisBg: 'rgba(255,255,255,0.08)', ctaDisText: 'rgba(238,244,246,0.5)',
+              logoFilter: 'brightness(0) invert(1)',
+              errBg: 'rgba(248,113,113,0.12)', errBorder: 'rgba(248,113,113,0.4)', errText: '#fca5a5',
+              successBg: 'rgba(52,211,153,0.1)', successGlow: '0 0 40px -12px rgba(52,211,153,0.4)',
+          };
+    return Object.fromEntries(
+        Object.entries(v).map(([k, val]) => [`--${k}`, val])
+    ) as React.CSSProperties;
+}
+
+const glassPanel: React.CSSProperties = {
+    background: 'var(--panelBg)',
+    border: '1px solid var(--panelBorder)',
+    backdropFilter: 'blur(12px)',
+    WebkitBackdropFilter: 'blur(12px)',
+    boxShadow: 'var(--panelShadow)',
+};
+const inputStyle: React.CSSProperties = {
+    width: '100%', padding: '10px 12px',
+    border: '1px solid var(--inputBorder)',
+    background: 'var(--inputBg)',
+    color: 'var(--text)', borderRadius: '8px', fontSize: '14px', outline: 'none',
+};
 
 /**
  * Identify a decision row by sub-item id when present, else by component id.
@@ -36,6 +108,9 @@ function keyFor(componentId: string, subItemId?: string | null): string {
  * ApprovalClientView, every parent re-render created a new component
  * reference, React remounted the subtree, and the textarea lost focus
  * after every keystroke (so the on-screen keyboard dismissed on mobile).
+ *
+ * Colours come from the themed CSS variables on the page wrapper, so these
+ * buttons read correctly in both light and dark mode without a prop.
  */
 function DecisionButtons({
     k,
@@ -62,19 +137,21 @@ function DecisionButtons({
                     title={decision === 'approved' ? 'click again to unselect' : undefined}
                     style={{
                         flex: 1, padding: '9px 12px', fontSize: '13px', fontWeight: 600,
-                        borderRadius: '6px', cursor: 'pointer',
-                        border: decision === 'approved' ? '2px solid #16a34a' : '1px solid #d4d4d4',
-                        background: decision === 'approved' ? '#16a34a' : '#fff',
-                        color: decision === 'approved' ? '#fff' : '#333',
+                        borderRadius: '8px', cursor: 'pointer',
+                        border: decision === 'approved' ? '1px solid var(--goodSolid)' : '1px solid var(--inputBorder)',
+                        background: decision === 'approved' ? 'var(--goodSolid)' : 'var(--inputBg)',
+                        color: decision === 'approved' ? 'var(--goodOn)' : 'var(--text)',
+                        boxShadow: decision === 'approved' ? 'var(--goodGlow)' : 'none',
                 }}>{decision === 'approved' ? '✓ approved (click to unselect)' : '✓ approve this'}</button>
                 <button type="button" onClick={() => onDecide(k, 'changes_requested', componentId)}
                     title={decision === 'changes_requested' ? 'click again to unselect' : undefined}
                     style={{
                         flex: 1, padding: '9px 12px', fontSize: '13px', fontWeight: 600,
-                        borderRadius: '6px', cursor: 'pointer',
-                        border: decision === 'changes_requested' ? '2px solid #d97706' : '1px solid #d4d4d4',
-                        background: decision === 'changes_requested' ? '#d97706' : '#fff',
-                        color: decision === 'changes_requested' ? '#fff' : '#333',
+                        borderRadius: '8px', cursor: 'pointer',
+                        border: decision === 'changes_requested' ? '1px solid var(--warnSolid)' : '1px solid var(--inputBorder)',
+                        background: decision === 'changes_requested' ? 'var(--warnSolid)' : 'var(--inputBg)',
+                        color: decision === 'changes_requested' ? 'var(--warnOn)' : 'var(--text)',
+                        boxShadow: decision === 'changes_requested' ? 'var(--warnGlow)' : 'none',
                 }}>{decision === 'changes_requested' ? 'changes requested (click to unselect)' : 'request changes'}</button>
             </div>
             {decision === 'changes_requested' && (
@@ -84,7 +161,7 @@ function DecisionButtons({
                     rows={3}
                     maxLength={2000}
                     placeholder="What needs to change here?"
-                    style={{ width: '100%', padding: '10px 12px', border: '1px solid #e0d5a0', background: '#fffdf5', borderRadius: '6px', fontSize: '13px', outline: 'none', fontFamily: 'inherit', resize: 'vertical', minHeight: '64px', marginTop: '8px' }}
+                    style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--warnBorder)', background: 'var(--warnBg)', color: 'var(--text)', borderRadius: '8px', fontSize: '13px', outline: 'none', fontFamily: 'inherit', resize: 'vertical', minHeight: '64px', marginTop: '8px' }}
                 />
             )}
         </div>
@@ -95,6 +172,19 @@ export default function ApprovalClientView({ data, token }: Props) {
     const { approval, job, components, coverImageUrl } = data;
     const isApproved = approval.status === 'approved';
     const isVisual = job.job_type === 'visual_approval';
+
+    // Theme: dark Studio stage by default; client can flip to light. Choice
+    // persists per-browser so a returning reviewer keeps their preference.
+    const [light, setLight] = useState(false);
+    useEffect(() => {
+        try {
+            if (localStorage.getItem('osd-signoff-theme') === 'light') setLight(true);
+        } catch { /* ignore */ }
+    }, []);
+    const setTheme = (l: boolean) => {
+        setLight(l);
+        try { localStorage.setItem('osd-signoff-theme', l ? 'light' : 'dark'); } catch { /* ignore */ }
+    };
 
     // For visual approval jobs we hide spec detail and cover image and let
     // the sub-item thumbnails carry the review. The per-sub-item decision
@@ -282,69 +372,84 @@ export default function ApprovalClientView({ data, token }: Props) {
     };
 
     return (
-        <div style={{ maxWidth: '720px', margin: '0 auto', padding: '20px' }}>
+        <div style={{
+            ...themeVars(light),
+            minHeight: '100vh',
+            background: 'var(--stage)',
+            color: 'var(--text)',
+            fontFamily: FONT,
+            transition: 'background 0.6s ease, color 0.3s ease',
+        }}>
+            {/* Theme toggle — fixed so it stays reachable while scrolling */}
+            <div style={{ position: 'fixed', top: '16px', right: '16px', zIndex: 50 }}>
+                <DayNightSwitch night={!light} onChange={(n) => setTheme(!n)} />
+            </div>
+
+            <div style={{ maxWidth: '720px', margin: '0 auto', padding: '20px' }}>
             {showMarketingModal && (
                 <MarketingModal onClose={() => setShowMarketingModal(false)} />
             )}
 
             {lightboxSrc && (
                 <div onClick={closeLightbox} style={{
-                    position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.85)',
+                    position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.88)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out', padding: '24px',
+                    backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
                 }}>
                     <button onClick={closeLightbox} style={{
                         position: 'absolute', top: '16px', right: '20px', background: 'none', border: 'none',
                         color: '#fff', fontSize: '32px', cursor: 'pointer', lineHeight: 1, opacity: 0.7,
                     }} aria-label="Close">×</button>
                     <ResilientImage src={lightboxSrc} alt={lightboxAlt} onClick={(e) => e.stopPropagation()}
-                        style={{ maxWidth: '95vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: '4px', cursor: 'default' }} />
+                        style={{ maxWidth: '95vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: '8px', cursor: 'default' }} />
                 </div>
             )}
 
             {/* Header */}
             <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-                <div style={{ marginBottom: '10px', display: 'flex', justifyContent: 'center' }}>
-                    <img src="/Onesign-Logo-Black.svg" alt="Onesign & Digital" style={{ height: '56px', width: 'auto', maxWidth: '320px' }} />
+                <div style={{ marginBottom: '12px', display: 'flex', justifyContent: 'center' }}>
+                    <img src="/Onesign-Logo-Black.svg" alt="Onesign & Digital"
+                        style={{ height: '52px', width: 'auto', maxWidth: '300px', filter: 'var(--logoFilter)' }} />
                 </div>
-                <div style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 600 }}>
+                <div style={{ fontSize: '11px', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.22em', fontWeight: 700 }}>
                     {isVisual ? 'artwork visual approval' : 'artwork sign-off'}
                 </div>
             </div>
 
             {/* Cover Card — production only (visual approval relies on per-sub-item thumbnails) */}
             {!hideCover && (
-                <div style={{ border: '1px solid #e5e5e5', borderRadius: '8px', overflow: 'hidden', background: '#fff', marginBottom: '24px' }}>
+                <div style={{ ...glassPanel, borderRadius: '18px', overflow: 'hidden', marginBottom: '24px' }}>
                     {coverImageUrl ? (
                         <div onClick={() => openLightbox(coverImageUrl, `${job.job_name} overview`)}
-                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fafafa', padding: '24px', borderBottom: '1px solid #e5e5e5', cursor: 'zoom-in' }}>
-                            <img src={coverImageUrl} alt={`${job.job_name} overview`} style={{ maxWidth: '100%', maxHeight: '500px', objectFit: 'contain' }} />
+                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--imgBg)', padding: '24px', borderBottom: '1px solid var(--hairlineSoft)', cursor: 'zoom-in' }}>
+                            <img src={coverImageUrl} alt={`${job.job_name} overview`} style={{ maxWidth: '100%', maxHeight: '500px', objectFit: 'contain', borderRadius: '6px' }} />
                         </div>
                     ) : (
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fafafa', padding: '48px 24px', borderBottom: '1px solid #e5e5e5', color: '#bbb', fontSize: '14px', fontStyle: 'italic' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--imgBg)', padding: '48px 24px', borderBottom: '1px solid var(--hairlineSoft)', color: 'var(--faint)', fontSize: '14px', fontStyle: 'italic' }}>
                             no cover image
                         </div>
                     )}
                     <div style={{ padding: '20px 24px' }}>
-                        <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#111', letterSpacing: '-0.02em', lineHeight: 1.2, marginBottom: '2px' }}>
+                        <h1 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--heading)', letterSpacing: '-0.02em', lineHeight: 1.2, marginBottom: '2px' }}>
                             {job.job_name}
                         </h1>
-                        <p style={{ fontSize: '13px', color: '#999', fontWeight: 500 }}>
+                        <p style={{ fontSize: '13px', color: 'var(--muted)', fontWeight: 500 }}>
                             {job.job_reference}{job.client_name ? ` — ${job.client_name}` : ''}
                         </p>
                         {(job.panel_size || job.paint_colour) && (
                             <div style={{ display: 'flex', gap: '24px', marginTop: '12px' }}>
                                 {job.panel_size && (<div>
-                                    <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#999', fontWeight: 600, marginBottom: '2px' }}>panel size</div>
-                                    <div style={{ fontSize: '14px', fontWeight: 600, color: '#111' }}>{job.panel_size}</div>
+                                    <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--accent)', fontWeight: 600, marginBottom: '2px' }}>panel size</div>
+                                    <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--heading)' }}>{job.panel_size}</div>
                                 </div>)}
                                 {job.paint_colour && (<div>
-                                    <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#999', fontWeight: 600, marginBottom: '2px' }}>paint colour</div>
-                                    <div style={{ fontSize: '14px', fontWeight: 600, color: '#111' }}>{job.paint_colour}</div>
+                                    <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--accent)', fontWeight: 600, marginBottom: '2px' }}>paint colour</div>
+                                    <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--heading)' }}>{job.paint_colour}</div>
                                 </div>)}
                             </div>
                         )}
                         {job.description && (
-                            <p style={{ fontSize: '13px', color: '#666', lineHeight: 1.6, marginTop: '12px' }}>{job.description}</p>
+                            <p style={{ fontSize: '13px', color: 'var(--muted)', lineHeight: 1.6, marginTop: '12px' }}>{job.description}</p>
                         )}
                     </div>
                 </div>
@@ -353,10 +458,10 @@ export default function ApprovalClientView({ data, token }: Props) {
             {/* Visual approval — compact job header shown instead of the cover card. */}
             {hideCover && (
                 <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-                    <h1 style={{ fontSize: '20px', fontWeight: 700, color: '#111', letterSpacing: '-0.02em', marginBottom: '2px' }}>
+                    <h1 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--heading)', letterSpacing: '-0.02em', marginBottom: '2px' }}>
                         {job.job_name}
                     </h1>
-                    <p style={{ fontSize: '12px', color: '#999', fontWeight: 500 }}>
+                    <p style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: 500 }}>
                         {job.job_reference}{job.client_name ? ` — ${job.client_name}` : ''}
                     </p>
                 </div>
@@ -364,10 +469,10 @@ export default function ApprovalClientView({ data, token }: Props) {
 
             {/* Site snapshot */}
             {(approval.snapshot_site_name || approval.snapshot_site_address) && (
-                <div style={{ border: '1px solid #e5e5e5', borderRadius: '8px', background: '#fff', marginBottom: '24px', padding: '16px 20px' }}>
-                    <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', marginBottom: '8px' }}>install / delivery address</div>
-                    {approval.snapshot_site_name && <div style={{ fontSize: '14px', fontWeight: 600, color: '#111', marginBottom: '4px' }}>{approval.snapshot_site_name}</div>}
-                    {approval.snapshot_site_address && <div style={{ fontSize: '13px', color: '#444', lineHeight: 1.5, whiteSpace: 'pre-line' }}>{approval.snapshot_site_address}</div>}
+                <div style={{ ...glassPanel, borderRadius: '14px', marginBottom: '24px', padding: '16px 20px' }}>
+                    <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--accent)', marginBottom: '8px' }}>install / delivery address</div>
+                    {approval.snapshot_site_name && <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--heading)', marginBottom: '4px' }}>{approval.snapshot_site_name}</div>}
+                    {approval.snapshot_site_address && <div style={{ fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5, whiteSpace: 'pre-line' }}>{approval.snapshot_site_address}</div>}
                 </div>
             )}
 
@@ -375,16 +480,13 @@ export default function ApprovalClientView({ data, token }: Props) {
             {components.length > 0 && (
                 <div style={{ marginBottom: '24px' }}>
                     {/* Section heading + expand/collapse helpers */}
-                    <div style={{
-                        background: '#fff', border: '1px solid #e5e5e5', borderRadius: '8px',
-                        padding: '14px 18px', marginBottom: '12px',
-                    }}>
+                    <div style={{ ...glassPanel, borderRadius: '14px', padding: '14px 18px', marginBottom: '12px' }}>
                         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
                             <div>
-                                <h2 style={{ fontSize: '14px', fontWeight: 700, color: '#111', margin: 0 }}>
+                                <h2 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--heading)', margin: 0 }}>
                                     {isVisual ? 'design options' : 'components'}
                                 </h2>
-                                <p style={{ fontSize: '12px', color: '#555', marginTop: '4px', lineHeight: 1.5 }}>
+                                <p style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '4px', lineHeight: 1.5 }}>
                                     {hasVariants
                                         ? 'choose one option per component'
                                         : 'tap each card below to open it. Everything inside that card belongs to that one item — approve each image, or request changes with a note.'}
@@ -393,11 +495,11 @@ export default function ApprovalClientView({ data, token }: Props) {
                             {!hasVariants && (
                                 <div style={{ display: 'flex', gap: '6px' }}>
                                     <button type="button" onClick={expandAll}
-                                        style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, color: '#4e7e8c', background: '#fff', border: '1px solid #c9d9df', borderRadius: '6px', cursor: 'pointer' }}>
+                                        style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, color: 'var(--accent)', background: 'var(--openBg)', border: '1px solid var(--openBorder)', borderRadius: '8px', cursor: 'pointer' }}>
                                         open all
                                     </button>
                                     <button type="button" onClick={collapseAll}
-                                        style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, color: '#666', background: '#fff', border: '1px solid #e0e0e0', borderRadius: '6px', cursor: 'pointer' }}>
+                                        style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)', background: 'var(--closeBg)', border: '1px solid var(--closeBorder)', borderRadius: '8px', cursor: 'pointer' }}>
                                         close all
                                     </button>
                                 </div>
@@ -415,13 +517,12 @@ export default function ApprovalClientView({ data, token }: Props) {
                             const isExpanded = expanded[component.id] ?? false;
                             const hasChanges = decideKeys.some((k) => decisions[k] === 'changes_requested');
                             const allApproved = totalCount > 0 && decidedCount === totalCount && !hasChanges;
-                            const headerBg = allApproved ? '#16a34a' : hasChanges ? '#d97706' : '#fff';
-                            const headerColor = (allApproved || hasChanges) ? '#fff' : '#111';
-                            const cardBorder = allApproved ? '#16a34a' : hasChanges ? '#d97706' : '#d4d4d4';
+                            const headerBg = allApproved ? 'var(--goodHeadbg)' : hasChanges ? 'var(--warnHeadbg)' : 'transparent';
+                            const cardBorder = allApproved ? 'var(--goodBorder)' : hasChanges ? 'var(--warnBorder)' : 'var(--panelBorder)';
 
                             return (
                                 <div key={component.id} style={{
-                                    background: '#fff', border: `2px solid ${cardBorder}`, borderRadius: '10px', overflow: 'hidden',
+                                    ...glassPanel, border: `1px solid ${cardBorder}`, borderRadius: '14px', overflow: 'hidden',
                                 }}>
                                     {/* Clickable header — collapsed state */}
                                     <button
@@ -430,7 +531,7 @@ export default function ApprovalClientView({ data, token }: Props) {
                                         aria-expanded={isExpanded}
                                         style={{
                                             width: '100%', display: 'flex', alignItems: 'center', gap: '12px',
-                                            padding: '14px 18px', background: headerBg, color: headerColor,
+                                            padding: '14px 18px', background: headerBg, color: 'var(--heading)',
                                             border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
                                         }}
                                     >
@@ -438,12 +539,12 @@ export default function ApprovalClientView({ data, token }: Props) {
                                             fontSize: '18px', fontWeight: 700, width: '22px', textAlign: 'center',
                                             transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
                                             transition: 'transform 0.15s ease',
-                                            opacity: 0.7,
+                                            opacity: 0.8, color: 'var(--accent)',
                                         }}>›</span>
                                         <div style={{ flex: 1, minWidth: 0 }}>
                                             <div style={{ fontSize: '15px', fontWeight: 700 }}>{component.name}</div>
                                             {hasSubs && (
-                                                <div style={{ fontSize: '11px', opacity: 0.85, marginTop: '2px' }}>
+                                                <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px' }}>
                                                     {totalCount} design{totalCount !== 1 ? 's' : ''} to review
                                                 </div>
                                             )}
@@ -451,8 +552,8 @@ export default function ApprovalClientView({ data, token }: Props) {
                                         <div style={{
                                             fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em',
                                             padding: '4px 9px', borderRadius: '999px',
-                                            background: (allApproved || hasChanges) ? 'rgba(255,255,255,0.25)' : '#f3f4f6',
-                                            color: (allApproved || hasChanges) ? '#fff' : '#4b5563',
+                                            background: allApproved ? 'var(--goodChipbg)' : hasChanges ? 'var(--warnChipbg)' : 'var(--chipBg)',
+                                            color: allApproved ? 'var(--goodText)' : hasChanges ? 'var(--warnText)' : 'var(--chipText)',
                                         }}>
                                             {allApproved ? '✓ all approved'
                                                 : hasChanges ? `${decidedCount} / ${totalCount} · changes`
@@ -460,7 +561,7 @@ export default function ApprovalClientView({ data, token }: Props) {
                                         </div>
                                         {!isExpanded && (
                                             <span style={{
-                                                fontSize: '11px', fontWeight: 600, opacity: 0.7,
+                                                fontSize: '11px', fontWeight: 600, color: 'var(--muted2)',
                                                 textTransform: 'uppercase', letterSpacing: '0.08em',
                                             }}>tap to open</span>
                                         )}
@@ -468,15 +569,15 @@ export default function ApprovalClientView({ data, token }: Props) {
 
                                     {/* Expanded body */}
                                     {isExpanded && (
-                                        <div style={{ padding: '18px 20px', borderTop: `1px solid ${(allApproved || hasChanges) ? 'rgba(255,255,255,0.2)' : '#e5e5e5'}`, background: '#fbfbfb' }}>
+                                        <div style={{ padding: '18px 20px', borderTop: '1px solid var(--hairlineSoft)', background: 'var(--imgBg)' }}>
                                             {/* Scope banner: reinforces "everything below belongs to THIS component" */}
                                             <div style={{
-                                                fontSize: '11px', color: '#555', background: '#eef4f6',
-                                                border: '1px solid #d2e1e6', borderRadius: '6px',
+                                                fontSize: '11px', color: 'var(--muted)', background: 'var(--bannerBg)',
+                                                border: '1px solid var(--bannerBorder)', borderRadius: '8px',
                                                 padding: '8px 12px', marginBottom: '14px', lineHeight: 1.5,
                                             }}>
                                                 Everything below — image{hasSubs && totalCount !== 1 ? 's' : ''}, specification{hasSubs && totalCount !== 1 ? 's' : ''}, decision buttons —
-                                                belongs to <strong>{component.name}</strong>.
+                                                belongs to <strong style={{ color: 'var(--heading)' }}>{component.name}</strong>.
                                             </div>
 
                                             {/* Variant-picker path: single-choice visual approval */}
@@ -493,45 +594,45 @@ export default function ApprovalClientView({ data, token }: Props) {
                                             {subs.map((si) => {
                                                 const k = keyFor(component.id, si.id);
                                                 const dec = decisions[k];
-                                                const borderColor = dec === 'approved' ? '#16a34a' : dec === 'changes_requested' ? '#d97706' : '#e5e5e5';
-                                                const bg = dec === 'approved' ? '#f0fdf4' : dec === 'changes_requested' ? '#fffbeb' : '#fff';
+                                                const borderColor = dec === 'approved' ? 'var(--goodBorder)' : dec === 'changes_requested' ? 'var(--warnBorder)' : 'var(--panelBorder)';
+                                                const bg = dec === 'approved' ? 'var(--goodBg)' : dec === 'changes_requested' ? 'var(--warnBg)' : 'var(--panelBg)';
                                                 const alt = si.name || `Option ${si.label}`;
                                                 return (
                                                     <div key={si.id} style={{
                                                         border: `1px solid ${borderColor}`, borderLeft: `4px solid ${borderColor}`,
-                                                        borderRadius: '8px', background: bg, overflow: 'hidden',
+                                                        borderRadius: '10px', background: bg, overflow: 'hidden',
                                                     }}>
                                                         {/* Sub-item thumbnail */}
                                                         {si.thumbnail_url ? (
                                                             <div
                                                                 onClick={() => openLightbox(si.thumbnail_url!, alt)}
-                                                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fafafa', padding: '16px', cursor: 'zoom-in', minHeight: '180px' }}
+                                                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--imgBg)', padding: '16px', cursor: 'zoom-in', minHeight: '180px' }}
                                                             >
                                                                 <ResilientImage src={si.thumbnail_url} alt={alt}
-                                                                    style={{ maxWidth: '100%', maxHeight: '260px', objectFit: 'contain' }} />
+                                                                    style={{ maxWidth: '100%', maxHeight: '260px', objectFit: 'contain', borderRadius: '4px' }} />
                                                             </div>
                                                         ) : (
-                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fafafa', padding: '28px', color: '#ccc', fontSize: '12px', fontStyle: 'italic' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--imgBg)', padding: '28px', color: 'var(--faint)', fontSize: '12px', fontStyle: 'italic' }}>
                                                                 no image
                                                             </div>
                                                         )}
 
                                                         <div style={{ padding: '14px' }}>
                                                             <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '6px' }}>
-                                                                <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 700, fontSize: '11px', background: '#111', color: '#fff', padding: '1px 6px', borderRadius: '3px' }}>
+                                                                <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 700, fontSize: '11px', background: 'var(--accentSolid)', color: '#fff', padding: '1px 6px', borderRadius: '3px' }}>
                                                                     {si.label}
                                                                 </span>
-                                                                <span style={{ fontWeight: 600, color: '#111', fontSize: '14px' }}>
-                                                                    {si.name || <span style={{ color: '#999', fontStyle: 'italic' }}>unnamed</span>}
+                                                                <span style={{ fontWeight: 600, color: 'var(--heading)', fontSize: '14px' }}>
+                                                                    {si.name || <span style={{ color: 'var(--faint)', fontStyle: 'italic' }}>unnamed</span>}
                                                                 </span>
                                                                 {si.quantity > 1 && (
-                                                                    <span style={{ fontSize: '11px', color: '#666', marginLeft: 'auto' }}>× {si.quantity}</span>
+                                                                    <span style={{ fontSize: '11px', color: 'var(--muted)', marginLeft: 'auto' }}>× {si.quantity}</span>
                                                                 )}
                                                             </div>
 
                                                             {/* Description only */}
                                                             {si.notes && (
-                                                                <p style={{ fontSize: '13px', color: '#555', lineHeight: 1.5, margin: '4px 0 0 0' }}>
+                                                                <p style={{ fontSize: '13px', color: 'var(--muted)', lineHeight: 1.5, margin: '4px 0 0 0' }}>
                                                                     {si.notes}
                                                                 </p>
                                                             )}
@@ -539,10 +640,10 @@ export default function ApprovalClientView({ data, token }: Props) {
                                                             {/* Spec rows — hidden for visual approval */}
                                                             {!hideSpecDetail && (si.material || si.application_method || si.finish || (si.width_mm && si.height_mm)) && (
                                                                 <dl style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', rowGap: '3px', columnGap: '10px', fontSize: '12px', margin: '10px 0 0 0' }}>
-                                                                    {si.material && (<><dt style={{ color: '#888', fontWeight: 600 }}>Material</dt><dd style={{ margin: 0, color: '#111' }}>{si.material}</dd></>)}
-                                                                    {si.application_method && (<><dt style={{ color: '#888', fontWeight: 600 }}>Method</dt><dd style={{ margin: 0, color: '#111' }}>{si.application_method}</dd></>)}
-                                                                    {si.finish && (<><dt style={{ color: '#888', fontWeight: 600 }}>Finish</dt><dd style={{ margin: 0, color: '#111' }}>{si.finish}</dd></>)}
-                                                                    {si.width_mm && si.height_mm && (<><dt style={{ color: '#888', fontWeight: 600 }}>Size</dt><dd style={{ margin: 0, color: '#111', fontFamily: 'ui-monospace, monospace' }}>{si.width_mm} × {si.height_mm} mm{si.returns_mm ? ` · ${si.returns_mm}mm returns` : ''}</dd></>)}
+                                                                    {si.material && (<><dt style={{ color: 'var(--accent)', fontWeight: 600 }}>Material</dt><dd style={{ margin: 0, color: 'var(--heading)' }}>{si.material}</dd></>)}
+                                                                    {si.application_method && (<><dt style={{ color: 'var(--accent)', fontWeight: 600 }}>Method</dt><dd style={{ margin: 0, color: 'var(--heading)' }}>{si.application_method}</dd></>)}
+                                                                    {si.finish && (<><dt style={{ color: 'var(--accent)', fontWeight: 600 }}>Finish</dt><dd style={{ margin: 0, color: 'var(--heading)' }}>{si.finish}</dd></>)}
+                                                                    {si.width_mm && si.height_mm && (<><dt style={{ color: 'var(--accent)', fontWeight: 600 }}>Size</dt><dd style={{ margin: 0, color: 'var(--heading)', fontFamily: 'ui-monospace, monospace' }}>{si.width_mm} × {si.height_mm} mm{si.returns_mm ? ` · ${si.returns_mm}mm returns` : ''}</dd></>)}
                                                                 </dl>
                                                             )}
 
@@ -563,13 +664,13 @@ export default function ApprovalClientView({ data, token }: Props) {
                                     ) : (
                                         // Component with no sub-items — fall back to a single decision row.
                                         <div style={{
-                                            border: `1px solid ${decisions[component.id] === 'approved' ? '#16a34a' : decisions[component.id] === 'changes_requested' ? '#d97706' : '#e5e5e5'}`,
-                                            borderRadius: '8px', padding: '14px',
-                                            background: decisions[component.id] === 'approved' ? '#f0fdf4' : decisions[component.id] === 'changes_requested' ? '#fffbeb' : '#fff',
+                                            border: `1px solid ${decisions[component.id] === 'approved' ? 'var(--goodBorder)' : decisions[component.id] === 'changes_requested' ? 'var(--warnBorder)' : 'var(--panelBorder)'}`,
+                                            borderRadius: '10px', padding: '14px',
+                                            background: decisions[component.id] === 'approved' ? 'var(--goodBg)' : decisions[component.id] === 'changes_requested' ? 'var(--warnBg)' : 'var(--panelBg)',
                                         }}>
                                             {component.thumbnailUrl && (
                                                 <div onClick={() => openLightbox(component.thumbnailUrl!, component.name)}
-                                                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fafafa', borderRadius: '6px', marginBottom: '10px', cursor: 'zoom-in', minHeight: '180px' }}>
+                                                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--imgBg)', borderRadius: '6px', marginBottom: '10px', cursor: 'zoom-in', minHeight: '180px' }}>
                                                     <ResilientImage src={component.thumbnailUrl} alt={component.name}
                                                         style={{ maxWidth: '100%', maxHeight: '260px', objectFit: 'contain' }} />
                                                 </div>
@@ -591,8 +692,8 @@ export default function ApprovalClientView({ data, token }: Props) {
                         })}
                     </div>
 
-                    <div style={{ marginTop: '12px', padding: '12px 16px', fontSize: '12px', color: '#555', borderRadius: '8px', border: '1px solid #eee', background: '#fafafa', lineHeight: 1.5 }}>
-                        <strong style={{ color: '#111' }}>What you&rsquo;re approving:</strong>{' '}
+                    <div style={{ marginTop: '12px', padding: '12px 16px', fontSize: '12px', color: 'var(--muted)', borderRadius: '10px', border: '1px solid var(--panelBorder)', background: 'var(--panelBg)', lineHeight: 1.5 }}>
+                        <strong style={{ color: 'var(--heading)' }}>What you&rsquo;re approving:</strong>{' '}
                         {isVisual
                             ? 'the design options shown above. Approve the ones you want to move forward with, request changes on the rest.'
                             : 'the artwork and specification shown for each item — material, finish, dimensions, and quantity. Approve each row, or request changes with a note.'}
@@ -602,72 +703,72 @@ export default function ApprovalClientView({ data, token }: Props) {
 
             {/* Sign-off form */}
             {success ? (
-                <div style={{ border: '2px solid #16a34a', borderRadius: '8px', padding: '32px', textAlign: 'center', background: '#f0fdf4', marginBottom: '24px' }}>
-                    <div style={{ fontSize: '24px', marginBottom: '8px', fontWeight: 700, color: '#16a34a' }}>
+                <div style={{ border: '1px solid var(--goodSolid)', borderRadius: '16px', padding: '32px', textAlign: 'center', background: 'var(--successBg)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', marginBottom: '24px', boxShadow: 'var(--successGlow)' }}>
+                    <div style={{ fontSize: '24px', marginBottom: '8px', fontWeight: 700, color: 'var(--goodText)' }}>
                         {approval.status === 'changes_requested' ? 'feedback received' : 'submitted'}
                     </div>
-                    <p style={{ fontSize: '14px', color: '#555', marginBottom: '16px' }}>
+                    <p style={{ fontSize: '14px', color: 'var(--muted)', marginBottom: '16px' }}>
                         {isApproved
                             ? `Approved by ${approval.client_name} on ${formatDateTime(approval.approved_at!)}`
                             : 'thank you — your response has been recorded'}
                     </p>
                     {isApproved && approval.signature_data && (
-                        <div style={{ display: 'inline-block', border: '1px solid #ddd', borderRadius: '4px', padding: '8px', background: '#fff' }}>
+                        <div style={{ display: 'inline-block', border: '1px solid var(--panelBorder)', borderRadius: '6px', padding: '8px', background: '#fff' }}>
                             <img src={approval.signature_data} alt="Signature" style={{ maxWidth: '300px', maxHeight: '100px' }} />
                         </div>
                     )}
                 </div>
             ) : (
-                <div style={{ border: '1px solid #e5e5e5', borderRadius: '8px', padding: '24px', background: '#fff', marginBottom: '24px' }}>
-                    <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#111', marginBottom: '4px' }}>
+                <div style={{ ...glassPanel, borderRadius: '16px', padding: '24px', marginBottom: '24px' }}>
+                    <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--heading)', marginBottom: '4px' }}>
                         {anyChangesRequested ? 'submit feedback' : 'sign off'}
                     </h3>
-                    <p style={{ fontSize: '13px', color: '#888', marginBottom: '20px' }}>
+                    <p style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '20px' }}>
                         {anyChangesRequested
-                            ? 'your signature confirms the feedback above — we\u2019ll revise and send a new link'
-                            : 'by signing below you confirm every item marked \u201capprove\u201d is approved'}
+                            ? 'your signature confirms the feedback above — we’ll revise and send a new link'
+                            : 'by signing below you confirm every item marked “approve” is approved'}
                     </p>
 
                     {error && (
-                        <div style={{ padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', color: '#dc2626', fontSize: '13px', marginBottom: '16px' }}>
+                        <div style={{ padding: '10px 14px', background: 'var(--errBg)', border: '1px solid var(--errBorder)', borderRadius: '8px', color: 'var(--errText)', fontSize: '13px', marginBottom: '16px' }}>
                             {error}
                         </div>
                     )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                         <div>
-                            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#555', marginBottom: '4px' }}>your name *</label>
+                            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--muted)', marginBottom: '4px' }}>your name *</label>
                             <input type="text" value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Full name"
-                                style={{ width: '100%', padding: '10px 12px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px', outline: 'none' }} />
+                                style={inputStyle} />
                         </div>
                         <div>
-                            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#555', marginBottom: '4px' }}>your email *</label>
+                            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--muted)', marginBottom: '4px' }}>your email *</label>
                             <input type="email" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} placeholder="email@company.com"
-                                style={{ width: '100%', padding: '10px 12px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px', outline: 'none' }} />
+                                style={inputStyle} />
                         </div>
                     </div>
 
                     <div style={{ marginBottom: '16px' }}>
-                        <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#555', marginBottom: '4px' }}>company</label>
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--muted)', marginBottom: '4px' }}>company</label>
                         <input type="text" value={clientCompany} onChange={(e) => setClientCompany(e.target.value)} placeholder="Company name (optional)"
-                            style={{ width: '100%', padding: '10px 12px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px', outline: 'none' }} />
+                            style={inputStyle} />
                     </div>
 
                     <div style={{ marginBottom: '16px' }}>
-                        <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#555', marginBottom: '4px' }}>
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--muted)', marginBottom: '4px' }}>
                             overall comments
-                            <span style={{ fontWeight: 400, color: '#999', marginLeft: '6px' }}>(optional)</span>
+                            <span style={{ fontWeight: 400, color: 'var(--faint)', marginLeft: '6px' }}>(optional)</span>
                         </label>
                         <textarea value={clientComments} onChange={(e) => setClientComments(e.target.value)} rows={3} maxLength={2000}
                             placeholder="anything that isn't tied to a specific item"
-                            style={{ width: '100%', padding: '10px 12px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '13px', outline: 'none', fontFamily: 'inherit', resize: 'vertical', minHeight: '72px' }} />
+                            style={{ ...inputStyle, fontSize: '13px', fontFamily: 'inherit', resize: 'vertical', minHeight: '72px' }} />
                     </div>
 
                     <div style={{ marginBottom: '16px' }}>
-                        <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#555', marginBottom: '8px' }}>signature *</label>
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--muted)', marginBottom: '8px' }}>signature *</label>
                         <SignatureCanvas ref={signatureRef} />
                         <button type="button" onClick={() => signatureRef.current?.clear()}
-                            style={{ marginTop: '8px', padding: '6px 12px', fontSize: '12px', color: '#666', background: '#f5f5f5', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer' }}>
+                            style={{ marginTop: '8px', padding: '6px 12px', fontSize: '12px', color: 'var(--muted)', background: 'var(--closeBg)', border: '1px solid var(--closeBorder)', borderRadius: '6px', cursor: 'pointer' }}>
                             clear signature
                         </button>
                     </div>
@@ -676,7 +777,7 @@ export default function ApprovalClientView({ data, token }: Props) {
                         const missing = components.filter((c) => !(c.variants?.length));
                         if (missing.length === 0) return null;
                         return (
-                            <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-900">
+                            <div className="mb-4 p-3 rounded-xl text-sm" style={{ background: 'var(--warnSoftbg)', border: '1px solid var(--warnSoftborder)', color: 'var(--warnSofttext)' }}>
                                 This approval is incomplete — component{missing.length > 1 ? 's' : ''}{' '}
                                 <strong>{missing.map((c: any) => c.name).join(', ')}</strong>{' '}
                                 {missing.length > 1 ? 'have' : 'has'} no design options attached.
@@ -688,9 +789,11 @@ export default function ApprovalClientView({ data, token }: Props) {
                     <button type="button" onClick={handleSubmit}
                         disabled={isPending || !allLinesDecided}
                         style={{
-                            width: '100%', padding: '12px 32px', fontSize: '14px', fontWeight: 600,
-                            color: '#fff', background: (isPending || !allLinesDecided) ? '#888' : (anyChangesRequested ? '#d97706' : '#111'),
-                            border: 'none', borderRadius: '6px',
+                            width: '100%', padding: '13px 32px', fontSize: '14px', fontWeight: 700, letterSpacing: '0.01em',
+                            color: (isPending || !allLinesDecided) ? 'var(--ctaDisText)' : (anyChangesRequested ? 'var(--warnOn)' : 'var(--ctaOn)'),
+                            background: (isPending || !allLinesDecided) ? 'var(--ctaDisBg)' : (anyChangesRequested ? 'var(--warnSolid)' : 'var(--ctaGrad)'),
+                            border: 'none', borderRadius: '10px',
+                            boxShadow: (isPending || !allLinesDecided) ? 'none' : 'var(--ctaShadow)',
                             cursor: (isPending || !allLinesDecided) ? 'not-allowed' : 'pointer',
                         }}>
                         {isPending ? 'submitting...' : (anyChangesRequested ? 'submit feedback' : 'sign off')}
@@ -699,12 +802,12 @@ export default function ApprovalClientView({ data, token }: Props) {
                     {!hasVariants && (
                         <>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '16px 0' }}>
-                                <div style={{ flex: 1, height: 1, background: '#e0e0e0' }} />
-                                <span style={{ fontSize: 11, color: '#999', textTransform: 'uppercase', letterSpacing: '0.1em' }}>or</span>
-                                <div style={{ flex: 1, height: 1, background: '#e0e0e0' }} />
+                                <div style={{ flex: 1, height: 1, background: 'var(--hairline)' }} />
+                                <span style={{ fontSize: 11, color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>or</span>
+                                <div style={{ flex: 1, height: 1, background: 'var(--hairline)' }} />
                             </div>
                             <button type="button" onClick={handleRequestChangesOverall} disabled={isPending}
-                                style={{ width: '100%', padding: '10px 24px', fontSize: '13px', fontWeight: 600, color: '#a37800', background: '#fffbeb', border: '1px solid #f0d98a', borderRadius: '6px', cursor: 'pointer' }}>
+                                style={{ width: '100%', padding: '10px 24px', fontSize: '13px', fontWeight: 600, color: 'var(--warnSofttext)', background: 'var(--warnSoftbg)', border: '1px solid var(--warnSoftborder)', borderRadius: '8px', cursor: 'pointer' }}>
                                 send overall feedback without approving anything
                             </button>
                         </>
@@ -712,8 +815,9 @@ export default function ApprovalClientView({ data, token }: Props) {
                 </div>
             )}
 
-            <div style={{ textAlign: 'center', padding: '16px', fontSize: '12px', color: '#bbb' }}>
+            <div style={{ textAlign: 'center', padding: '16px', fontSize: '12px', color: 'var(--faint)' }}>
                 onesign &amp; digital &middot; team valley, gateshead
+            </div>
             </div>
         </div>
     );
