@@ -13,6 +13,7 @@ import {
     Layers,
     FileBox,
     BadgeCheck,
+    Archive,
 } from 'lucide-react';
 import { useVisualiser, splitPanels } from './store';
 import { sceneCapture } from './Scene3D';
@@ -38,8 +39,9 @@ import {
     buildRectSvg,
     type DisplayLayer,
 } from '@/lib/visualiser/piece-display';
-import { buildNestedSheets } from '@/lib/visualiser/pack-nest';
+import { buildNestedSheets, buildNestedCutSheets } from '@/lib/visualiser/pack-nest';
 import { buildPanelDevelopmentSvg } from '@/lib/visualiser/panel-cut-svg';
+import { createZip, type ZipEntry } from '@/lib/visualiser/zip';
 import { getDesignBinderLogo } from '@/lib/binder/actions';
 import { projectingSpecLine } from '@/lib/visualiser/projecting';
 import { composeLayersSvg } from '@/lib/visualiser/compose';
@@ -296,6 +298,7 @@ export function ExportBar({
     const [backshopPending, setBackshopPending] = useState(false);
     const [onBackshop, setOnBackshop] = useState(false);
     const [nesterPending, setNesterPending] = useState(false);
+    const [zipPending, setZipPending] = useState(false);
     const [packPending, setPackPending] = useState<'prod' | 'approval' | null>(
         null,
     );
@@ -963,6 +966,143 @@ export function ExportBar({
         }
     };
 
+    // Export every production CUT file as a .zip — purely the draw files (true
+    // mm, hairline cut paths), ready to send straight to the machines. No pack
+    // chrome: just the tray blank, the nested material sheets, the opal
+    // rectangle and the vinyl.
+    const onExportProductionZip = async () => {
+        if (zipPending) return;
+        if (!designHasArtwork()) {
+            setMsg('Add artwork to the panel before exporting production files.');
+            return;
+        }
+        setZipPending(true);
+        setMsg('Building cut files…');
+        try {
+            // Let the status paint before the (synchronous) nesting work.
+            await new Promise((r) => setTimeout(r, 20));
+
+            const name = params.name || 'sign';
+            const safe = (s: string) =>
+                s.replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '') || 'file';
+            const folder = safe(name);
+            const panelColor = params.panelColor ?? '#c8ccce';
+            const hex = (c: string) => c.replace('#', '');
+            const entries: ZipEntry[] = [];
+
+            const byStock = <T extends { color: string; thicknessMm?: number }>(
+                arr: T[],
+            ): Map<string, T[]> => {
+                const m = new Map<string, T[]>();
+                for (const p of arr) {
+                    const k = `${p.color}|${p.thicknessMm ?? 0}`;
+                    (m.get(k) ?? m.set(k, []).get(k)!).push(p);
+                }
+                return m;
+            };
+
+            const pushNest = (
+                pieces: { path: FlatPath; holes?: FlatPath[] }[],
+                label: string,
+            ) => {
+                const nest = buildNestedCutSheets(pieces, {
+                    label,
+                    title: `${name} — ${label}`,
+                });
+                nest.sheets.forEach((svg, i) => {
+                    const suffix = nest.sheets.length > 1 ? `-sheet${i + 1}` : '';
+                    entries.push({ name: `${folder}/${safe(label)}${suffix}.svg`, data: svg });
+                });
+            };
+
+            // 1. The aluminium tray — the unfolded flat blank as a CAM cut file.
+            const holesBySection = sectionExport.sections.map((_s, i) => [
+                ...(apertureBySection[i] ?? []),
+                ...(apertureHolesBySection[i] ?? []),
+                ...(pushThroughKeylineBySection[i] ?? []),
+                ...(fixingsBySection[i] ?? []),
+                ...(cableHolesBySection[i] ?? []),
+            ]);
+            const tray = buildPanelDevelopmentSvg({
+                sectionExport,
+                holesBySection,
+                panelColor,
+                mode: 'cut',
+                title: `${name} tray`,
+            });
+            entries.push({ name: `${folder}/tray-cut.svg`, data: tray.svg });
+
+            // 2. Nested rigid-sheet pieces — one cut file per stock / finish.
+            for (const [key, pieces] of byStock(pushThroughPieces)) {
+                pushNest(pieces, `push-through-${hex(key.split('|')[0])}`);
+            }
+            for (const [key, pieces] of byStock(acrylicPieces)) {
+                pushNest(pieces, `acrylic-${hex(key.split('|')[0])}`);
+            }
+            for (const [key, pieces] of byStock(standoffPieces)) {
+                pushNest(pieces, `standoff-${hex(key.split('|')[0])}`);
+            }
+            const byMetal = new Map<FaceMaterial, ExtraFacePiece[]>();
+            for (const p of extraFacePieces) {
+                (byMetal.get(p.material) ?? byMetal.set(p.material, []).get(p.material)!).push(p);
+            }
+            for (const [material, pieces] of byMetal) {
+                pushNest(pieces, `${material}-faces`);
+            }
+
+            // 3. Opal backing — a single cut rectangle.
+            const keyline = !!params.illumination?.keyline?.enabled;
+            const illuminated = keyline || backlightPieces.length > 0;
+            if (illuminated && (pushThroughPieces.length > 0 || backlightPieces.length > 0)) {
+                const lit = [...pushThroughPieces, ...backlightPieces];
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                for (const p of lit) for (const [x, y] of p.path.points) {
+                    if (x < minX) minX = x; if (y < minY) minY = y;
+                    if (x > maxX) maxX = x; if (y > maxY) maxY = y;
+                }
+                const margin = 40;
+                const rw = Math.max(1, Math.round(Number.isFinite(minX) ? maxX - minX + margin * 2 : params.panelWidthMm));
+                const rh = Math.max(1, Math.round(Number.isFinite(minY) ? maxY - minY + margin * 2 : params.panelHeightMm));
+                const rect = `<?xml version="1.0" encoding="UTF-8"?>\n<!-- ${name} opal backing. 1 unit = 1 mm. -->\n<svg xmlns="http://www.w3.org/2000/svg" width="${rw}mm" height="${rh}mm" viewBox="0 0 ${rw} ${rh}"><rect x="0" y="0" width="${rw}" height="${rh}" fill="none" stroke="#000000" stroke-width="0.1"/></svg>\n`;
+                entries.push({ name: `${folder}/opal-backing.svg`, data: rect });
+            }
+
+            // 4. Cut vinyl — plotter outlines (printed vinyl is a raster, below).
+            const cutVinyl = vinylPieces.filter((p) => !p.fullColor);
+            if (cutVinyl.length > 0) {
+                entries.push({
+                    name: `${folder}/cut-vinyl.svg`,
+                    data: buildNestSvg(cutVinyl, 'VINYL', `${name} — cut vinyl`),
+                });
+            }
+
+            // 5. Printed vinyl — the print artwork (PNG) for the large-format RIP.
+            if (vinylPrintDataUrl) {
+                const comma = vinylPrintDataUrl.indexOf(',');
+                if (comma >= 0) {
+                    try {
+                        const bin = atob(vinylPrintDataUrl.slice(comma + 1));
+                        const bytes = new Uint8Array(bin.length);
+                        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                        entries.push({ name: `${folder}/printed-vinyl.png`, data: bytes });
+                    } catch {
+                        /* skip a malformed raster */
+                    }
+                }
+            }
+
+            const zip = createZip(entries);
+            download(
+                new Blob([zip as BlobPart], { type: 'application/zip' }),
+                `${folder}-production-files.zip`,
+            );
+            setMsg(null);
+            setExported(`Production files · ${entries.length} cut file${entries.length === 1 ? '' : 's'}`);
+        } finally {
+            setZipPending(false);
+        }
+    };
+
     // Spin up a visual-approval pack from this design (the design drives the
     // interactive 3D the client orbits while they approve) and open the job.
     const onCreateApprovalPack = async () => {
@@ -1366,6 +1506,21 @@ export function ExportBar({
                         <BadgeCheck size={14} aria-hidden />
                     )}
                     {packPending === 'approval' ? 'Creating…' : 'Approval pack'}
+                </button>
+                <button
+                    type="button"
+                    onClick={onExportProductionZip}
+                    disabled={zipPending}
+                    aria-busy={zipPending}
+                    title="Download every production cut file as a .zip — purely the draw files (true mm), ready to send straight to the machines."
+                    className="flex min-h-[36px] items-center gap-1.5 rounded-md border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                    {zipPending ? (
+                        <Loader2 size={14} className="animate-spin" aria-hidden />
+                    ) : (
+                        <Archive size={14} aria-hidden />
+                    )}
+                    {zipPending ? 'Zipping…' : 'Production files (.zip)'}
                 </button>
                 <div className="ml-auto flex items-center gap-2 text-xs text-neutral-500">
                     {exported && (

@@ -14,6 +14,7 @@
 
 import { nestOnce } from '@/lib/nesting/engine';
 import { placedPieceRings, ringsToPathData } from '@/lib/nesting/geom';
+import { buildSheetSvg } from '@/lib/nesting/svg-export';
 import type { NestConfig, NestPiece, Placement, Ring } from '@/lib/nesting/types';
 import type { FlatPath } from './types';
 
@@ -161,40 +162,79 @@ function renderSheet(
     return { svg, widthMm: Math.round(w), heightMm: Math.round(h) };
 }
 
+interface NestResult {
+    nestPieces: NestPiece[];
+    bySheet: Map<number, Placement[]>;
+    sheetIndices: number[];
+    config: NestConfig;
+    unplaced: number;
+}
+
+/** Shared nesting — used by both the filled pack drawing + the CAM cut file. */
+function nestFor(
+    pieces: NestablePieceInput[],
+    opts: { label: string; config?: Partial<NestConfig> },
+): NestResult | null {
+    if (pieces.length === 0) return null;
+    const config: NestConfig = { ...DEFAULT_PACK_NEST_CONFIG, ...opts.config };
+    const nestPieces = pieces.map((p, i) => toNestPiece(p, i, opts.label));
+    const solution = nestOnce(nestPieces, config);
+    const bySheet = new Map<number, Placement[]>();
+    for (const pl of solution.placements) {
+        (bySheet.get(pl.sheetIndex) ?? bySheet.set(pl.sheetIndex, []).get(pl.sheetIndex)!).push(pl);
+    }
+    return {
+        nestPieces,
+        bySheet,
+        sheetIndices: [...bySheet.keys()].sort((a, b) => a - b),
+        config,
+        unplaced: solution.unplacedPieceIds.length,
+    };
+}
+
 /**
- * Pack the pieces and return one FILLED, smallest-panel drawing per sheet.
- * Returns `sheets: []` when there's nothing to nest so callers can fall back.
+ * Pack the pieces and return one FILLED, smallest-panel drawing per sheet (for
+ * the printed pack). Returns `sheets: []` when there's nothing to nest.
  */
 export function buildNestedSheets(
     pieces: NestablePieceInput[],
     opts: { label: string; title: string; fill: string; config?: Partial<NestConfig> },
 ): NestedSheets {
-    if (pieces.length === 0) return { sheets: [], sheetCount: 0, unplaced: 0 };
-    const config: NestConfig = { ...DEFAULT_PACK_NEST_CONFIG, ...opts.config };
-    const nestPieces = pieces.map((p, i) => toNestPiece(p, i, opts.label));
-
-    const solution = nestOnce(nestPieces, config);
-
-    const bySheet = new Map<number, Placement[]>();
-    for (const pl of solution.placements) {
-        (bySheet.get(pl.sheetIndex) ?? bySheet.set(pl.sheetIndex, []).get(pl.sheetIndex)!).push(pl);
-    }
-    const sheetIndices = [...bySheet.keys()].sort((a, b) => a - b);
-    const total = sheetIndices.length;
+    const n = nestFor(pieces, opts);
+    if (!n) return { sheets: [], sheetCount: 0, unplaced: 0 };
+    const total = n.sheetIndices.length;
     const sheets: NestedSheet[] = [];
-    sheetIndices.forEach((idx) => {
+    n.sheetIndices.forEach((idx) => {
         const sheet = renderSheet(
-            nestPieces,
-            bySheet.get(idx)!,
+            n.nestPieces,
+            n.bySheet.get(idx)!,
             opts.fill,
             total > 1 ? `${opts.title} — panel ${idx + 1} of ${total}` : opts.title,
         );
         if (sheet) sheets.push(sheet);
     });
+    return { sheets, sheetCount: sheets.length, unplaced: n.unplaced };
+}
 
-    return {
-        sheets,
-        sheetCount: sheets.length,
-        unplaced: solution.unplacedPieceIds.length,
-    };
+/**
+ * Pack the pieces and return one CAM cut-file SVG per FULL sheet — hairline
+ * black cut paths + the sheet boundary (via buildSheetSvg), ready to send
+ * straight to the machine. Used by the production-files .zip export.
+ */
+export function buildNestedCutSheets(
+    pieces: NestablePieceInput[],
+    opts: { label: string; title: string; config?: Partial<NestConfig> },
+): { sheets: string[]; unplaced: number } {
+    const n = nestFor(pieces, opts);
+    if (!n) return { sheets: [], unplaced: 0 };
+    const total = n.sheetIndices.length;
+    const sheets = n.sheetIndices.map((idx) =>
+        buildSheetSvg({
+            pieces: n.nestPieces,
+            placements: n.bySheet.get(idx)!,
+            config: n.config,
+            title: total > 1 ? `${opts.title} — sheet ${idx + 1} of ${total}` : opts.title,
+        }),
+    );
+    return { sheets, unplaced: n.unplaced };
 }

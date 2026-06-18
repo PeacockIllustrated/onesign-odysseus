@@ -60,8 +60,15 @@ export function buildPanelDevelopmentSvg(input: {
     holesBySection: FlatPath[][];
     panelColor: string;
     title?: string;
+    /**
+     * 'display' (default) = filled in the panel colour on a contrast background
+     * for the printed pack. 'cut' = hairline black cut paths only, fold lines in
+     * reference blue, no fill/background — a CAM-ready cut file.
+     */
+    mode?: 'display' | 'cut';
 }): PanelCutSvg {
     const { sectionExport, holesBySection, panelColor } = input;
+    const cutMode = input.mode === 'cut';
 
     // Tight bounds over every section blank (segments + ox) and every hole.
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -90,11 +97,13 @@ export function buildPanelDevelopmentSvg(input: {
     const vw = Math.max(1, maxX - minX + pad * 2);
     const vh = Math.max(1, maxY - minY + pad * 2);
 
-    const cut = '#2b2f33';
-    const fold = '#c0392b';
-    const els: string[] = [
-        `  <rect x="${f(vx)}" y="${f(vy)}" width="${f(vw)}" height="${f(vh)}" fill="${esc(contrastingBackground(panelColor))}"/>`,
-    ];
+    const cut = cutMode ? '#000000' : '#2b2f33';
+    const fold = cutMode ? '#0000ff' : '#c0392b';
+    const els: string[] = cutMode
+        ? []
+        : [
+              `  <rect x="${f(vx)}" y="${f(vy)}" width="${f(vw)}" height="${f(vh)}" fill="${esc(contrastingBackground(panelColor))}"/>`,
+          ];
 
     sectionExport.sections.forEach((section, i) => {
         const ox = section.layoutOriginXMm;
@@ -125,15 +134,21 @@ export function buildPanelDevelopmentSvg(input: {
             .map((p) => ringD(p.points))
             .join(' ');
 
-        // Filled blank, apertures punched even-odd, cut line on top.
+        // Blank + apertures even-odd. Display fills the panel colour; cut mode
+        // strokes hairline cut paths only.
         els.push(
-            `  <path d="${outerD}${holeD ? ' ' + holeD : ''}" fill="${esc(panelColor)}" fill-rule="evenodd" stroke="${cut}" stroke-width="0.4"/>`,
+            cutMode
+                ? `  <path d="${outerD}${holeD ? ' ' + holeD : ''}" fill="none" fill-rule="evenodd" stroke="${cut}" stroke-width="0.1"/>`
+                : `  <path d="${outerD}${holeD ? ' ' + holeD : ''}" fill="${esc(panelColor)}" fill-rule="evenodd" stroke="${cut}" stroke-width="0.4"/>`,
         );
 
-        // Bend lines — dashed, the way the shop reads a fold.
+        // Bend lines — reference only (blue, CAM-ignored) for cut files; dashed
+        // red the way the shop reads a fold on the printed drawing.
         for (const fl of section.development.foldLines) {
             els.push(
-                `  <line x1="${f(fl.x1 + ox)}" y1="${f(fl.y1)}" x2="${f(fl.x2 + ox)}" y2="${f(fl.y2)}" stroke="${fold}" stroke-width="0.5" stroke-dasharray="6 4"/>`,
+                cutMode
+                    ? `  <line x1="${f(fl.x1 + ox)}" y1="${f(fl.y1)}" x2="${f(fl.x2 + ox)}" y2="${f(fl.y2)}" stroke="${fold}" stroke-width="0.1"/>`
+                    : `  <line x1="${f(fl.x1 + ox)}" y1="${f(fl.y1)}" x2="${f(fl.x2 + ox)}" y2="${f(fl.y2)}" stroke="${fold}" stroke-width="0.5" stroke-dasharray="6 4"/>`,
             );
         }
     });

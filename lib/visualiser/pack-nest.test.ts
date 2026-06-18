@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildNestedSheets } from './pack-nest';
+import { buildNestedSheets, buildNestedCutSheets } from './pack-nest';
 import type { FlatPath } from './types';
 
 function rect(w: number, h: number): FlatPath {
@@ -61,5 +61,24 @@ describe('buildNestedSheets', () => {
             { label: 'holes', title: 'Holes', fill: '#222' },
         );
         expect(out.sheets[0].svg).toContain('fill-rule="evenodd"');
+    });
+});
+
+describe('buildNestedCutSheets', () => {
+    it('returns CAM outline sheets (no fill) with the sheet boundary', () => {
+        const out = buildNestedCutSheets(
+            [{ path: rect(200, 100) }, { path: rect(200, 100) }],
+            { label: 'acrylic', title: 'CAM' },
+        );
+        expect(out.sheets.length).toBeGreaterThanOrEqual(1);
+        // hairline cut paths, not filled
+        expect(out.sheets[0]).toContain('fill="none"');
+        // sheet boundary drawn in reference blue
+        expect(out.sheets[0]).toContain('#0000ff');
+        expect(out.sheets[0]).toMatch(/width="\d+mm"/);
+    });
+
+    it('returns nothing for an empty input', () => {
+        expect(buildNestedCutSheets([], { label: 'x', title: 'E' }).sheets).toEqual([]);
     });
 });

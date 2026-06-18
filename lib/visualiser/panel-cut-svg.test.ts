@@ -99,6 +99,19 @@ describe('buildPanelDevelopmentSvg', () => {
         expect((d.match(/Z/g) ?? []).length).toBeGreaterThanOrEqual(3);
     });
 
+    it('cut mode emits hairline outline paths — no fill or background', () => {
+        const out = buildPanelDevelopmentSvg({
+            sectionExport: sectionExport(),
+            holesBySection: [[aperture]],
+            panelColor: '#c8ccce',
+            mode: 'cut',
+        });
+        expect(out.svg).toContain('fill="none"');
+        expect(out.svg).not.toContain('fill="#c8ccce"'); // not filled in panel colour
+        expect(out.svg).toContain('stroke="#000000"'); // black cut line
+        expect(out.svg).toContain('#0000ff'); // fold line = reference blue
+    });
+
     it('survives a section with no holes', () => {
         const out = buildPanelDevelopmentSvg({
             sectionExport: sectionExport(),
