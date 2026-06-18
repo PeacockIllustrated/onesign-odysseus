@@ -85,8 +85,17 @@ function download(blob: Blob, filename: string) {
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
+    a.rel = 'noopener';
+    // The anchor must be in the DOM for the click to fire in Firefox/Safari,
+    // and the object URL must outlive the browser reading the blob — revoking
+    // it synchronously cancels larger downloads (e.g. the production zip), so
+    // defer the revoke + cleanup.
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => {
+        URL.revokeObjectURL(url);
+        a.remove();
+    }, 1500);
 }
 
 /** Blob → bare base64 (no data-URL prefix) for sending to a server action. */
@@ -1010,11 +1019,21 @@ export function ExportBar({
                 return m;
             };
 
+            // The PDF goes through jsPDF; if a single page ever throws, skip just
+            // that PDF rather than losing the whole export (SVG + DXF still go in).
+            const pdfEntry = (base: string, geo: CutGeometry) => {
+                try {
+                    entries.push({ name: `${folder}/${base}.pdf`, data: cutToPdf(geo) });
+                } catch (e) {
+                    console.error(`pdf export failed for ${base}:`, e);
+                }
+            };
+
             // Each cut file goes in as .svg + .dxf + .pdf from the SAME geometry.
             const pushCut = (base: string, geo: CutGeometry) => {
                 entries.push({ name: `${folder}/${base}.svg`, data: cutToSvg(geo, base) });
                 entries.push({ name: `${folder}/${base}.dxf`, data: cutToDxf(geo) });
-                entries.push({ name: `${folder}/${base}.pdf`, data: cutToPdf(geo) });
+                pdfEntry(base, geo);
             };
 
             // Nested material — reuse the nester's own SVG/DXF; PDF from the rings.
@@ -1030,10 +1049,7 @@ export function ExportBar({
                     const base = `${safe(label)}${nest.sheets.length > 1 ? `-sheet${i + 1}` : ''}`;
                     entries.push({ name: `${folder}/${base}.svg`, data: buildSheetSvg(sheet.input) });
                     entries.push({ name: `${folder}/${base}.dxf`, data: buildSheetDxf(sheet.input) });
-                    entries.push({
-                        name: `${folder}/${base}.pdf`,
-                        data: cutToPdf({ cut: sheet.cut, ref: [sheet.boundary] }),
-                    });
+                    pdfEntry(base, { cut: sheet.cut, ref: [sheet.boundary] });
                 });
             };
 
@@ -1120,6 +1136,13 @@ export function ExportBar({
             );
             setMsg(null);
             setExported(`Production files · ${entries.length} file${entries.length === 1 ? '' : 's'} (SVG · DXF · PDF)`);
+        } catch (e) {
+            console.error('production zip export failed:', e);
+            setMsg(
+                e instanceof Error
+                    ? `Export failed: ${e.message}`
+                    : 'Export failed — see the console.',
+            );
         } finally {
             setZipPending(false);
         }
