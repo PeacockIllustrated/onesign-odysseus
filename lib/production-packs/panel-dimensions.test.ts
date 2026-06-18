@@ -49,6 +49,24 @@ describe('panelDimensionBreakdown', () => {
         expect(callouts.some((c) => /off the wall|deep box/i.test(c))).toBe(true);
     });
 
+    it('shows the bend deduction (half the gauge) per fold', () => {
+        const { specRows, callouts } = panelDimensionBreakdown({ ...base, gaugeMm: 3 });
+        const bend = specRows.find((r) => /bend deduction/i.test(r.label));
+        expect(bend?.value).toBe('1.5 mm'); // half of 3mm, no trailing zeros
+        expect(callouts.some((c) => /each 90° fold takes 1.5 mm/i.test(c))).toBe(true);
+    });
+
+    it('shows the flat face (after deductions) when provided', () => {
+        const { specRows, callouts } = panelDimensionBreakdown({
+            ...base,
+            faceFlatWmm: 2400,
+            faceFlatHmm: 597,
+        });
+        const flat = specRows.find((r) => /flat face/i.test(r.label));
+        expect(flat?.value).toBe('2400 × 597 mm');
+        expect(callouts.some((c) => /develops to 2400 × 597 mm flat/i.test(c))).toBe(true);
+    });
+
     it('drops the colour row when no finish is given', () => {
         const { specRows } = panelDimensionBreakdown({ ...base, colour: '' });
         expect(specRows.some((r) => r.label === 'Colour')).toBe(false);

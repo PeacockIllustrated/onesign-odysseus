@@ -15,6 +15,12 @@ export interface PanelDimensionInput {
     /** Full unfolded flat blank size (what you cut flat from sheet), mm. */
     blankWmm: number;
     blankHmm: number;
+    /**
+     * The FACE portion of the flat blank after the bend deductions (the nominal
+     * face less the fold allowance). Optional — shown when known.
+     */
+    faceFlatWmm?: number;
+    faceFlatHmm?: number;
     /** Return depth — how far the tray stands off the wall, mm. */
     returnDepthMm: number;
     /** Shadow-gap lip depth, mm (0 = none). */
@@ -38,6 +44,9 @@ export interface PanelDimensions {
 }
 
 const r = (n: number) => Math.round(n);
+/** Keep small fractional deductions readable (1.5, 0.75…), no trailing zeros. */
+const fmt = (n: number) =>
+    Number.isInteger(n) ? `${n}` : n.toFixed(2).replace(/\.?0+$/, '');
 
 function shadowGapEdgeList(edges: PanelDimensionInput['shadowGapEdges']): string {
     const e = edges ?? {};
@@ -58,11 +67,25 @@ export function panelDimensionBreakdown(
     const where = shadowGapEdgeList(input.shadowGapEdges);
     const plural = where.includes('&') ? 'edges' : 'edge';
 
+    // Bend deduction: a 90° fold eats half the gauge off the flat at each fold.
+    const deductPerFold = input.gaugeMm / 2;
+    const hasFaceFlat =
+        input.faceFlatWmm != null && input.faceFlatHmm != null;
+
     const specRows: { label: string; value: string }[] = [
         { label: 'Face size (visible front)', value: `${r(input.faceWmm)} × ${r(input.faceHmm)} mm` },
         { label: 'Unfolded flat blank (cut size)', value: `${r(input.blankWmm)} × ${r(input.blankHmm)} mm` },
-        { label: 'Return depth (off the wall)', value: `${r(input.returnDepthMm)} mm` },
     ];
+    if (hasFaceFlat) {
+        specRows.push({
+            label: 'Flat face (after fold deductions)',
+            value: `${r(input.faceFlatWmm as number)} × ${r(input.faceFlatHmm as number)} mm`,
+        });
+    }
+    specRows.push(
+        { label: 'Bend deduction (per fold)', value: `${fmt(deductPerFold)} mm` },
+        { label: 'Return depth (off the wall)', value: `${r(input.returnDepthMm)} mm` },
+    );
     if (sg > 0) {
         specRows.push({ label: `Shadow-gap lip (${where})`, value: `${r(sg)} mm` });
     }
@@ -75,6 +98,11 @@ export function panelDimensionBreakdown(
     const callouts: string[] = [
         `Face size — the visible front of the finished sign (${r(input.faceWmm)} × ${r(input.faceHmm)} mm).`,
         `Unfolded flat blank — the full developed size cut flat from sheet (${r(input.blankWmm)} × ${r(input.blankHmm)} mm): face + returns + lips, less the bend allowance. Fold on the dashed lines to form the tray.`,
+        `Bend deduction — each 90° fold takes ${fmt(deductPerFold)} mm (half the ${input.gaugeMm} mm gauge) off the flat.${
+            hasFaceFlat
+                ? ` So the face develops to ${r(input.faceFlatWmm as number)} × ${r(input.faceFlatHmm as number)} mm flat — the nominal ${r(input.faceWmm)} × ${r(input.faceHmm)} less the fold allowance.`
+                : ''
+        }`,
         `Return depth — how far the tray stands off the wall: a ${r(input.returnDepthMm)} mm deep box.`,
     ];
     if (sg > 0) {

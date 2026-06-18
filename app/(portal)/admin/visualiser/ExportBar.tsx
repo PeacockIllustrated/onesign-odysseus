@@ -86,13 +86,20 @@ function download(blob: Blob, filename: string) {
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
+    a.style.display = 'none';
+    // A DETACHED anchor's click() silently no-ops in Chrome for a large blob
+    // built outside the click's gesture window (the small zip worked because it
+    // built fast; the full SVG+DXF+PDF zip doesn't). An in-DOM click is the
+    // reliable trigger. Append + click + remove in ONE synchronous tick so
+    // React never observes the node between commits — leaving it parented (the
+    // previous 1.5s window) is what tripped React 19 reconciliation (#418 / the
+    // $RS parentNode crash). The download is already in flight after click(), so
+    // removing the anchor immediately is safe; only the blob URL must outlive
+    // the browser reading it, so revoke that later.
+    document.body.appendChild(a);
     a.click();
-    // Don't touch document.body — React owns it (the root layout's <body>), and
-    // appending/removing a node there trips React 19's hydration/streaming
-    // reconciliation (#418 + a $RS parentNode crash). The detached anchor still
-    // downloads. Only defer the revoke so a large blob (the production zip)
-    // isn't cancelled before the browser finishes reading it.
-    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
 /** Blob → bare base64 (no data-URL prefix) for sending to a server action. */
@@ -680,12 +687,16 @@ export function ExportBar({
             backlightPieces.length > 0
                 ? `${backlightPieces.length} backlit aperture${backlightPieces.length === 1 ? '' : 's'} cut in the face`
                 : null;
-        // Clear face-vs-unfolded-blank-vs-shadow-gap dimension breakdown.
+        // Clear face-vs-unfolded-blank-vs-shadow-gap dimension breakdown, plus
+        // the fold deduction + the developed (flat) face size.
+        const dev0 = sectionExport.sections[0]?.development;
         const trayDims = panelDimensionBreakdown({
             faceWmm: w,
             faceHmm: h,
             blankWmm: trayCut.widthMm,
             blankHmm: trayCut.heightMm,
+            faceFlatWmm: dev0?.faceFlatWMm,
+            faceFlatHmm: dev0?.faceFlatHMm,
             returnDepthMm: params.returnDepthMm,
             shadowGapMm: params.shadowGapMm ?? 0,
             shadowGapEdges: params.shadowGapEdges,
