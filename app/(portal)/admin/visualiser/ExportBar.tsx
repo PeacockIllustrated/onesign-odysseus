@@ -1092,17 +1092,33 @@ export function ExportBar({
                 pdfEntry(base, geo);
             };
 
-            // Nested material — reuse the nester's own SVG/DXF; PDF from the rings.
+            // Nested material — two cut files so the cutter can use EITHER:
+            //   <label>_laid-out  — the pieces in their as-designed sign
+            //                        positions, a reference for how they lay out;
+            //   <label>_nested    — packed onto sheets for efficient cutting.
+            // Both as SVG + DXF + PDF.
             const pushNest = (
                 pieces: { path: FlatPath; holes?: FlatPath[] }[],
                 label: string,
             ) => {
+                // Laid-out reference (face positions, as on the finished sign).
+                const layoutRings: Ring[] = pieces.flatMap((p) => [
+                    p.path.points.map(([x, y]) => [x, y] as [number, number]),
+                    ...(p.holes ?? []).map((h) =>
+                        h.points.map(([x, y]) => [x, y] as [number, number]),
+                    ),
+                ]);
+                if (layoutRings.length > 0) {
+                    pushCut(`${safe(label)}_laid-out`, { cut: layoutRings });
+                }
+
+                // Nested onto sheets.
                 const nest = nestedSheetGeometry(pieces, {
                     label,
                     title: `${name} — ${label}`,
                 });
                 nest.sheets.forEach((sheet, i) => {
-                    const base = `${safe(label)}${nest.sheets.length > 1 ? `-sheet${i + 1}` : ''}`;
+                    const base = `${safe(label)}_nested${nest.sheets.length > 1 ? `-sheet${i + 1}` : ''}`;
                     entries.push({ name: `${folder}/${base}.svg`, data: buildSheetSvg(sheet.input) });
                     entries.push({ name: `${folder}/${base}.dxf`, data: buildSheetDxf(sheet.input) });
                     pdfEntry(base, { cut: sheet.cut, ref: [sheet.boundary] });
