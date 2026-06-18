@@ -12,6 +12,8 @@ import {
     type UpdateVariantInput,
 } from './variant-types';
 import { mapVariantToSubItemInput } from './variant-utils';
+import { summariseSignPieces } from '@/lib/visualiser/piece-summary';
+import type { PanelParams } from '@/lib/visualiser/types';
 
 // ---------------------------------------------------------------------------
 // createVisualApprovalJob
@@ -90,10 +92,7 @@ export async function createVisualApprovalFromDesign(
         .maybeSingle();
     if (!design) return { error: 'design not found' };
 
-    const params = (design.params_json ?? {}) as {
-        panelWidthMm?: number;
-        panelHeightMm?: number;
-    };
+    const params = (design.params_json ?? {}) as PanelParams;
     const name = (design.name as string) ?? 'Sign approval';
     const orgId = (design.org_id as string | null) ?? null;
 
@@ -116,33 +115,46 @@ export async function createVisualApprovalFromDesign(
         return { error: jobErr?.message ?? 'failed to create approval job' };
     }
 
-    // Seed one component + one variant so the pack is approvable out of the box.
-    const { data: comp } = await supabase
+    // Break the sign down into its constituent pieces so the client sees each
+    // one as its own component under the 3D (the tray, push-through letters,
+    // vinyl, metal faces, …) — not just one blanket "sign" component. Each
+    // piece gets one variant so it renders in the visual-approval flow. Falls
+    // back to a single component for a bare design.
+    const pieceLabels = summariseSignPieces(params);
+    const labels = pieceLabels.length > 0 ? pieceLabels : [name];
+
+    const { data: comps } = await supabase
         .from('artwork_components')
-        .insert({
-            job_id: job.id,
-            name,
-            component_type: 'other',
-            sort_order: 0,
-            status: 'pending_design',
-            scale_confirmed: false,
-            bleed_included: false,
-            material_confirmed: false,
-            rip_no_scaling_confirmed: false,
-        })
-        .select('id')
-        .single();
-    if (comp) {
-        await supabase.from('artwork_variants').insert({
-            component_id: comp.id,
-            label: 'A',
-            sort_order: 0,
-            name,
-            width_mm: params.panelWidthMm ? Math.round(params.panelWidthMm) : null,
-            height_mm: params.panelHeightMm
-                ? Math.round(params.panelHeightMm)
-                : null,
-        });
+        .insert(
+            labels.map((label, i) => ({
+                job_id: job.id,
+                name: label,
+                component_type: 'other',
+                sort_order: i,
+                status: 'pending_design',
+                scale_confirmed: false,
+                bleed_included: false,
+                material_confirmed: false,
+                rip_no_scaling_confirmed: false,
+            })),
+        )
+        .select('id, sort_order, name');
+
+    if (comps && comps.length > 0) {
+        const pw = params.panelWidthMm ? Math.round(params.panelWidthMm) : null;
+        const ph = params.panelHeightMm ? Math.round(params.panelHeightMm) : null;
+        await supabase.from('artwork_variants').insert(
+            comps.map((c) => ({
+                component_id: c.id as string,
+                label: 'A',
+                sort_order: 0,
+                name: c.name as string,
+                // The overall panel size sits on the tray (the first piece); the
+                // other pieces carry no standalone size here.
+                width_mm: (c.sort_order as number) === 0 ? pw : null,
+                height_mm: (c.sort_order as number) === 0 ? ph : null,
+            })),
+        );
     }
 
     revalidatePath('/admin/artwork');
