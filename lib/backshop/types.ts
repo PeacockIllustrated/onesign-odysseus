@@ -19,6 +19,7 @@ export type BackshopFeature =
     | 'pushThrough'
     | 'vinyl'
     | 'acrylic'
+    | 'metalFace'
     | 'illumination'
     | 'standoff'
     | 'bracket';
@@ -43,6 +44,8 @@ export const BACKSHOP_STAGE_CATALOG: BackshopStage[] = [
     // applied decoration like vinyl, so it sits alongside it in the sequence.
     { key: 'acrylic', label: 'Acrylic', feature: 'acrylic' },
     { key: 'painted', label: 'Painted' },
+    // Brass / stainless / … face laminated onto the (painted) letters.
+    { key: 'metalfaces', label: 'Metal faces', feature: 'metalFace' },
     { key: 'illumination', label: 'Illumination', feature: 'illumination' },
     { key: 'standoff', label: 'Stood-off', feature: 'standoff' },
     { key: 'assembled', label: 'Assembled' },
@@ -85,6 +88,7 @@ const ELEMENT_LABELS: Record<string, string> = {
     pushthrough: 'Push-through acrylic',
     vinyl: 'Vinyl appliqué',
     acrylic: 'Acrylic (face-stuck)',
+    metalfaces: 'Metal-faced letters',
     illumination: 'Illuminated',
     standoff: 'Stood-off letters',
     bracket: 'Projecting (bracket)',
@@ -171,6 +175,7 @@ export const AddToBackshopInputSchema = z.object({
             pushThrough: z.boolean().optional(),
             vinyl: z.boolean().optional(),
             acrylic: z.boolean().optional(),
+            metalFace: z.boolean().optional(),
             illumination: z.boolean().optional(),
             standoff: z.boolean().optional(),
             bracket: z.boolean().optional(),

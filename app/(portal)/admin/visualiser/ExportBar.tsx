@@ -1298,8 +1298,23 @@ export function ExportBar({
             const projDesc = bladeActive
                 ? projectingSpecLine(params, mount)
                 : null;
+            // Keep the board glance-informative: tray material, paint colour and
+            // the specific metal face finish where present.
+            const colourSpec = params.panelRal || params.panelColor || null;
+            const metalFinishes =
+                extraFacePieces.length > 0
+                    ? Array.from(
+                          new Set(
+                              extraFacePieces.map(
+                                  (p) => FACE_MATERIALS[p.material].label,
+                              ),
+                          ),
+                      )
+                          .map((label) => `${label} faces`)
+                          .join(', ')
+                    : null;
             const description =
-                [projDesc, params.materialLabel || null]
+                [projDesc, params.materialLabel || null, colourSpec, metalFinishes]
                     .filter(Boolean)
                     .join(' — ') || null;
 
@@ -1318,6 +1333,7 @@ export function ExportBar({
                     pushThrough: pushThroughPieces.length > 0,
                     vinyl: vinylPieces.length > 0,
                     acrylic: acrylicPieces.length > 0,
+                    metalFace: extraFacePieces.length > 0,
                     standoff: standoffPieces.length > 0,
                     illumination:
                         !!params.illumination?.keyline?.enabled ||
