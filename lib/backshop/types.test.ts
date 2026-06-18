@@ -90,6 +90,29 @@ describe('contextual stages', () => {
         ).toEqual(['Acrylic (face-stuck)']);
     });
 
+    it('carries metal faces (brass/…) as a gate after Painted + a build element', () => {
+        const keys = stagesForFeatures({ metalFace: true }).map((s) => s.key);
+        expect(keys).toEqual([
+            'designed',
+            'cut',
+            'painted',
+            'metalfaces',
+            'assembled',
+        ]);
+        // Laminated AFTER paint, BEFORE assembly.
+        expect(keys.indexOf('metalfaces')).toBeGreaterThan(keys.indexOf('painted'));
+        expect(keys.indexOf('metalfaces')).toBeLessThan(keys.indexOf('assembled'));
+        expect(
+            elementsForChecks({
+                designed: false,
+                cut: false,
+                painted: false,
+                metalfaces: false,
+                assembled: false,
+            }),
+        ).toEqual(['Metal-faced letters']);
+    });
+
     it('builds all-false checks for the applicable stages', () => {
         const checks = checksForFeatures({ standoff: true, vinyl: true });
         expect(checks).toEqual({
