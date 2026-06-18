@@ -16,12 +16,50 @@
 
 import { outlinePerimeter } from './geometry';
 import { contrastingBackground } from './piece-display';
+import type { CutGeometry, Pt, Ring } from './cut-export';
 import type { FlatPath, SectionedExport } from './types';
 
 export interface PanelCutSvg {
     svg: string;
     widthMm: number;
     heightMm: number;
+}
+
+/**
+ * The unfolded tray as raw cut geometry — the blank perimeter + every face hole
+ * as cut rings, plus the bend lines as fold segments. Drives the .svg/.dxf/.pdf
+ * cut files (so all three agree). Section segments/folds are local + offset by
+ * layoutOriginXMm; holes are already global.
+ */
+export function developmentGeometry(input: {
+    sectionExport: SectionedExport;
+    holesBySection: FlatPath[][];
+}): CutGeometry {
+    const cut: Ring[] = [];
+    const folds: Array<[Pt, Pt]> = [];
+    input.sectionExport.sections.forEach((section, i) => {
+        const ox = section.layoutOriginXMm;
+        const perimeter = outlinePerimeter(section.development);
+        if (perimeter && perimeter.points.length >= 3) {
+            cut.push(perimeter.points.map(([x, y]) => [x + ox, y] as Pt));
+        } else {
+            for (const seg of section.development.segments) {
+                cut.push([
+                    [seg.xMm + ox, seg.yMm],
+                    [seg.xMm + ox + seg.wMm, seg.yMm],
+                    [seg.xMm + ox + seg.wMm, seg.yMm + seg.hMm],
+                    [seg.xMm + ox, seg.yMm + seg.hMm],
+                ]);
+            }
+        }
+        for (const p of input.holesBySection[i] ?? []) {
+            if (p.points.length >= 3) cut.push(p.points.map(([x, y]) => [x, y] as Pt));
+        }
+        for (const fl of section.development.foldLines) {
+            folds.push([[fl.x1 + ox, fl.y1], [fl.x2 + ox, fl.y2]]);
+        }
+    });
+    return { cut, folds };
 }
 
 function f(n: number): string {

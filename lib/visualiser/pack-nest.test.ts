@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildNestedSheets, buildNestedCutSheets } from './pack-nest';
+import { buildNestedSheets, nestedSheetGeometry } from './pack-nest';
 import type { FlatPath } from './types';
 
 function rect(w: number, h: number): FlatPath {
@@ -64,21 +64,24 @@ describe('buildNestedSheets', () => {
     });
 });
 
-describe('buildNestedCutSheets', () => {
-    it('returns CAM outline sheets (no fill) with the sheet boundary', () => {
-        const out = buildNestedCutSheets(
+describe('nestedSheetGeometry', () => {
+    it('returns per-sheet input + placed rings + the sheet boundary', () => {
+        const out = nestedSheetGeometry(
             [{ path: rect(200, 100) }, { path: rect(200, 100) }],
             { label: 'acrylic', title: 'CAM' },
         );
         expect(out.sheets.length).toBeGreaterThanOrEqual(1);
-        // hairline cut paths, not filled
-        expect(out.sheets[0]).toContain('fill="none"');
-        // sheet boundary drawn in reference blue
-        expect(out.sheets[0]).toContain('#0000ff');
-        expect(out.sheets[0]).toMatch(/width="\d+mm"/);
+        const s = out.sheets[0];
+        // input drives buildSheetSvg / buildSheetDxf
+        expect(s.input.placements.length).toBeGreaterThan(0);
+        // placed rings (one per piece on this sheet) for the PDF
+        expect(s.cut.length).toBeGreaterThan(0);
+        // sheet boundary rectangle
+        expect(s.boundary).toHaveLength(4);
+        expect(out.unplaced).toBe(0);
     });
 
     it('returns nothing for an empty input', () => {
-        expect(buildNestedCutSheets([], { label: 'x', title: 'E' }).sheets).toEqual([]);
+        expect(nestedSheetGeometry([], { label: 'x', title: 'E' }).sheets).toEqual([]);
     });
 });

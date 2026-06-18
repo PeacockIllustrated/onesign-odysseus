@@ -14,7 +14,7 @@
 
 import { nestOnce } from '@/lib/nesting/engine';
 import { placedPieceRings, ringsToPathData } from '@/lib/nesting/geom';
-import { buildSheetSvg } from '@/lib/nesting/svg-export';
+import type { SheetExportInput } from '@/lib/nesting/svg-export';
 import type { NestConfig, NestPiece, Placement, Ring } from '@/lib/nesting/types';
 import type { FlatPath } from './types';
 
@@ -216,25 +216,60 @@ export function buildNestedSheets(
     return { sheets, sheetCount: sheets.length, unplaced: n.unplaced };
 }
 
+export interface NestedSheetGeometry {
+    /** Input for buildSheetSvg / buildSheetDxf (the .svg + .dxf cut files). */
+    input: SheetExportInput;
+    /** Placed piece rings (outer + holes) — for the .pdf cut file. */
+    cut: Ring[];
+    /** The sheet boundary rectangle (reference). */
+    boundary: Ring;
+    widthMm: number;
+    heightMm: number;
+}
+
 /**
- * Pack the pieces and return one CAM cut-file SVG per FULL sheet — hairline
- * black cut paths + the sheet boundary (via buildSheetSvg), ready to send
- * straight to the machine. Used by the production-files .zip export.
+ * Pack the pieces and return, per FULL sheet, everything needed to emit the CAM
+ * cut file in every format: the buildSheetSvg/Dxf input plus the placed rings
+ * (for the PDF). Used by the production-files .zip export. Returns no sheets
+ * when there's nothing to nest.
  */
-export function buildNestedCutSheets(
+export function nestedSheetGeometry(
     pieces: NestablePieceInput[],
     opts: { label: string; title: string; config?: Partial<NestConfig> },
-): { sheets: string[]; unplaced: number } {
+): { sheets: NestedSheetGeometry[]; unplaced: number } {
     const n = nestFor(pieces, opts);
     if (!n) return { sheets: [], unplaced: 0 };
+    const W = n.config.sheetWidthMm;
+    const H = n.config.sheetHeightMm;
+    const boundary: Ring = [
+        [0, 0],
+        [W, 0],
+        [W, H],
+        [0, H],
+    ];
+    const byId = new Map(n.nestPieces.map((p) => [p.id, p]));
     const total = n.sheetIndices.length;
-    const sheets = n.sheetIndices.map((idx) =>
-        buildSheetSvg({
-            pieces: n.nestPieces,
-            placements: n.bySheet.get(idx)!,
-            config: n.config,
-            title: total > 1 ? `${opts.title} — sheet ${idx + 1} of ${total}` : opts.title,
-        }),
-    );
+    const sheets = n.sheetIndices.map((idx) => {
+        const placements = n.bySheet.get(idx)!;
+        const cut: Ring[] = [];
+        for (const pl of placements) {
+            const piece = byId.get(pl.pieceId);
+            if (!piece) continue;
+            const r = placedPieceRings(piece, pl);
+            cut.push(r.outer, ...r.holes);
+        }
+        return {
+            input: {
+                pieces: n.nestPieces,
+                placements,
+                config: n.config,
+                title: total > 1 ? `${opts.title} — sheet ${idx + 1} of ${total}` : opts.title,
+            },
+            cut,
+            boundary,
+            widthMm: W,
+            heightMm: H,
+        };
+    });
     return { sheets, unplaced: n.unplaced };
 }

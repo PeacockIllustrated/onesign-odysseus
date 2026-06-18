@@ -39,8 +39,17 @@ import {
     buildRectSvg,
     type DisplayLayer,
 } from '@/lib/visualiser/piece-display';
-import { buildNestedSheets, buildNestedCutSheets } from '@/lib/visualiser/pack-nest';
-import { buildPanelDevelopmentSvg } from '@/lib/visualiser/panel-cut-svg';
+import { buildNestedSheets, nestedSheetGeometry } from '@/lib/visualiser/pack-nest';
+import { buildPanelDevelopmentSvg, developmentGeometry } from '@/lib/visualiser/panel-cut-svg';
+import {
+    cutToSvg,
+    cutToDxf,
+    type CutGeometry,
+    type Ring,
+} from '@/lib/visualiser/cut-export';
+import { cutToPdf } from '@/lib/visualiser/cut-pdf';
+import { buildSheetSvg } from '@/lib/nesting/svg-export';
+import { buildSheetDxf } from '@/lib/nesting/dxf';
 import { createZip, type ZipEntry } from '@/lib/visualiser/zip';
 import { getDesignBinderLogo } from '@/lib/binder/actions';
 import { projectingSpecLine } from '@/lib/visualiser/projecting';
@@ -651,6 +660,7 @@ export function ExportBar({
             ...(apertureBySection[i] ?? []),
             ...(apertureHolesBySection[i] ?? []),
             ...(pushThroughKeylineBySection[i] ?? []),
+            ...(pushThroughIslandsBySection[i] ?? []),
             ...(fixingsBySection[i] ?? []),
             ...(cableHolesBySection[i] ?? []),
         ]);
@@ -967,9 +977,9 @@ export function ExportBar({
     };
 
     // Export every production CUT file as a .zip — purely the draw files (true
-    // mm, hairline cut paths), ready to send straight to the machines. No pack
-    // chrome: just the tray blank, the nested material sheets, the opal
-    // rectangle and the vinyl.
+    // mm, hairline cut paths), each as SVG + DXF + PDF, ready to send straight to
+    // the machines. No pack chrome: just the tray blank, the nested material
+    // sheets, the opal rectangle and the vinyl.
     const onExportProductionZip = async () => {
         if (zipPending) return;
         if (!designHasArtwork()) {
@@ -986,7 +996,6 @@ export function ExportBar({
             const safe = (s: string) =>
                 s.replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '') || 'file';
             const folder = safe(name);
-            const panelColor = params.panelColor ?? '#c8ccce';
             const hex = (c: string) => c.replace('#', '');
             const entries: ZipEntry[] = [];
 
@@ -1001,17 +1010,30 @@ export function ExportBar({
                 return m;
             };
 
+            // Each cut file goes in as .svg + .dxf + .pdf from the SAME geometry.
+            const pushCut = (base: string, geo: CutGeometry) => {
+                entries.push({ name: `${folder}/${base}.svg`, data: cutToSvg(geo, base) });
+                entries.push({ name: `${folder}/${base}.dxf`, data: cutToDxf(geo) });
+                entries.push({ name: `${folder}/${base}.pdf`, data: cutToPdf(geo) });
+            };
+
+            // Nested material — reuse the nester's own SVG/DXF; PDF from the rings.
             const pushNest = (
                 pieces: { path: FlatPath; holes?: FlatPath[] }[],
                 label: string,
             ) => {
-                const nest = buildNestedCutSheets(pieces, {
+                const nest = nestedSheetGeometry(pieces, {
                     label,
                     title: `${name} — ${label}`,
                 });
-                nest.sheets.forEach((svg, i) => {
-                    const suffix = nest.sheets.length > 1 ? `-sheet${i + 1}` : '';
-                    entries.push({ name: `${folder}/${safe(label)}${suffix}.svg`, data: svg });
+                nest.sheets.forEach((sheet, i) => {
+                    const base = `${safe(label)}${nest.sheets.length > 1 ? `-sheet${i + 1}` : ''}`;
+                    entries.push({ name: `${folder}/${base}.svg`, data: buildSheetSvg(sheet.input) });
+                    entries.push({ name: `${folder}/${base}.dxf`, data: buildSheetDxf(sheet.input) });
+                    entries.push({
+                        name: `${folder}/${base}.pdf`,
+                        data: cutToPdf({ cut: sheet.cut, ref: [sheet.boundary] }),
+                    });
                 });
             };
 
@@ -1020,17 +1042,11 @@ export function ExportBar({
                 ...(apertureBySection[i] ?? []),
                 ...(apertureHolesBySection[i] ?? []),
                 ...(pushThroughKeylineBySection[i] ?? []),
+                ...(pushThroughIslandsBySection[i] ?? []),
                 ...(fixingsBySection[i] ?? []),
                 ...(cableHolesBySection[i] ?? []),
             ]);
-            const tray = buildPanelDevelopmentSvg({
-                sectionExport,
-                holesBySection,
-                panelColor,
-                mode: 'cut',
-                title: `${name} tray`,
-            });
-            entries.push({ name: `${folder}/tray-cut.svg`, data: tray.svg });
+            pushCut('tray-cut', developmentGeometry({ sectionExport, holesBySection }));
 
             // 2. Nested rigid-sheet pieces — one cut file per stock / finish.
             for (const [key, pieces] of byStock(pushThroughPieces)) {
@@ -1063,17 +1079,23 @@ export function ExportBar({
                 const margin = 40;
                 const rw = Math.max(1, Math.round(Number.isFinite(minX) ? maxX - minX + margin * 2 : params.panelWidthMm));
                 const rh = Math.max(1, Math.round(Number.isFinite(minY) ? maxY - minY + margin * 2 : params.panelHeightMm));
-                const rect = `<?xml version="1.0" encoding="UTF-8"?>\n<!-- ${name} opal backing. 1 unit = 1 mm. -->\n<svg xmlns="http://www.w3.org/2000/svg" width="${rw}mm" height="${rh}mm" viewBox="0 0 ${rw} ${rh}"><rect x="0" y="0" width="${rw}" height="${rh}" fill="none" stroke="#000000" stroke-width="0.1"/></svg>\n`;
-                entries.push({ name: `${folder}/opal-backing.svg`, data: rect });
+                const rectRing: Ring = [
+                    [0, 0],
+                    [rw, 0],
+                    [rw, rh],
+                    [0, rh],
+                ];
+                pushCut('opal-backing', { cut: [rectRing] });
             }
 
             // 4. Cut vinyl — plotter outlines (printed vinyl is a raster, below).
             const cutVinyl = vinylPieces.filter((p) => !p.fullColor);
             if (cutVinyl.length > 0) {
-                entries.push({
-                    name: `${folder}/cut-vinyl.svg`,
-                    data: buildNestSvg(cutVinyl, 'VINYL', `${name} — cut vinyl`),
-                });
+                const vinylRings: Ring[] = cutVinyl.flatMap((p) => [
+                    p.path.points.map(([x, y]) => [x, y] as [number, number]),
+                    ...(p.holes ?? []).map((h) => h.points.map(([x, y]) => [x, y] as [number, number])),
+                ]);
+                pushCut('cut-vinyl', { cut: vinylRings });
             }
 
             // 5. Printed vinyl — the print artwork (PNG) for the large-format RIP.
@@ -1097,7 +1119,7 @@ export function ExportBar({
                 `${folder}-production-files.zip`,
             );
             setMsg(null);
-            setExported(`Production files · ${entries.length} cut file${entries.length === 1 ? '' : 's'}`);
+            setExported(`Production files · ${entries.length} file${entries.length === 1 ? '' : 's'} (SVG · DXF · PDF)`);
         } finally {
             setZipPending(false);
         }
@@ -1512,7 +1534,7 @@ export function ExportBar({
                     onClick={onExportProductionZip}
                     disabled={zipPending}
                     aria-busy={zipPending}
-                    title="Download every production cut file as a .zip — purely the draw files (true mm), ready to send straight to the machines."
+                    title="Download every production cut file as a .zip — SVG + DXF + PDF, true mm, ready to send straight to the machines."
                     className="flex min-h-[36px] items-center gap-1.5 rounded-md border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                     {zipPending ? (
