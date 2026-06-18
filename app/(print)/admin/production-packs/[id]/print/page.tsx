@@ -454,18 +454,31 @@ function StudioSheet({
                 {groups.map((group, gi) => {
                     const info = group.filter((b) => !isStageBlock(b) && b.type !== 'pageBreak');
                     const stage = group.filter(isStageBlock);
+                    // A single-kind group spans the full page width (the drawing
+                    // gets maximum scale; its details read full-width beneath) —
+                    // the 82mm info rail only appears when a row mixes both.
+                    const rowCls =
+                        stage.length === 0
+                            ? 'pp-studio-row pp-studio-row--info'
+                            : info.length === 0
+                              ? 'pp-studio-row pp-studio-row--stage'
+                              : 'pp-studio-row';
                     return (
-                        <div className="pp-studio-row" key={gi}>
-                            <div className="pp-studio-row-info">
-                                {info.map((b) => (
-                                    <BlockView key={b.id} block={b} />
-                                ))}
-                            </div>
-                            <div className="pp-studio-row-stage">
-                                {stage.map((b) => (
-                                    <BlockView key={b.id} block={b} />
-                                ))}
-                            </div>
+                        <div className={rowCls} key={gi}>
+                            {info.length > 0 && (
+                                <div className="pp-studio-row-info">
+                                    {info.map((b) => (
+                                        <BlockView key={b.id} block={b} />
+                                    ))}
+                                </div>
+                            )}
+                            {stage.length > 0 && (
+                                <div className="pp-studio-row-stage">
+                                    {stage.map((b) => (
+                                        <BlockView key={b.id} block={b} />
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     );
                 })}
@@ -528,7 +541,10 @@ const BASE_CSS = `
 .pp-hint button { background: #fff; color: #000; border: none; padding: 8px 16px; margin-left: 12px; border-radius: 4px; cursor: pointer; font-weight: 600; }
 
 /* page frame */
-.pp-cover, .pp-page { margin: 0 auto; display: flex; flex-direction: column; padding: 0; box-sizing: border-box; }
+.pp-cover, .pp-page { margin: 0 auto; display: flex; flex-direction: column; padding: 0; box-sizing: border-box; overflow: hidden; }
+/* Keep every drawing/stage inside the printable column — no bleed off-page. */
+.pp-studio-sheet, .pp-studio-rows, .pp-studio-row, .pp-studio-row-stage, .pp-studio-row-info { min-width: 0; max-width: 100%; overflow: hidden; }
+.pp-studio-row-stage img, .pp-studio-row-stage .pp-tech-frame, .pp-studio-row-stage .pp-fig img { max-width: 100%; }
 .pp-page { background: #fff; }
 .pp-cover { background: var(--pp-cover-bg); }
 .pp-root[data-orient="portrait"] .pp-cover, .pp-root[data-orient="portrait"] .pp-page { width: 186mm; min-height: 273mm; }
@@ -650,7 +666,10 @@ const STUDIO_CSS = `
 /* Rows = keep-with groups: info (left) aligned beside its artwork (right). A
    continuous hairline divider runs down between the two columns. */
 .pp-studio-rows { flex: 1; display: flex; flex-direction: column; gap: 9mm; }
-.pp-studio-row { display: grid; grid-template-columns: 82mm 1fr; gap: 11mm; align-items: start; }
+.pp-studio-row { display: grid; grid-template-columns: 82mm 1fr; gap: 11mm; align-items: start; break-inside: avoid; }
+/* A drawings-only or info-only row spans the full page width. */
+.pp-studio-row--stage, .pp-studio-row--info { grid-template-columns: 1fr; gap: 4mm; }
+.pp-studio-row--info .pp-studio-row-info { border-right: none; padding-right: 0; }
 .pp-studio-row-info { border-right: 1px solid #e5e7eb; padding-right: 10mm; display: flex; flex-direction: column; gap: 6mm; min-width: 0; }
 .pp-studio-row-stage { display: flex; flex-direction: column; gap: 6mm; min-width: 0; }
 .pp-studio-empty { color: #9ca3af; font-size: 12px; padding: 8mm 0; }

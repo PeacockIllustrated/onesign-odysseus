@@ -11,6 +11,9 @@ import {
     Scissors,
     Tv,
     Layers,
+    FileBox,
+    BadgeCheck,
+    Archive,
 } from 'lucide-react';
 import { useVisualiser, splitPanels } from './store';
 import { sceneCapture } from './Scene3D';
@@ -22,6 +25,33 @@ import {
 } from '@/lib/visualiser/pdf';
 import { saveDesign } from '@/lib/visualiser/actions';
 import { addToBackshop, isDesignOnBackshop } from '@/lib/backshop/actions';
+import { createProductionPackFromContent } from '@/lib/production-packs/actions';
+import {
+    buildPackFromDesignPieces,
+    type DesignPieceGroup,
+    type DesignPackInput,
+    type PackDrawing,
+} from '@/lib/production-packs/from-design';
+import { createVisualApprovalFromDesign } from '@/lib/artwork/visual-approval-actions';
+import { acrylicByHex } from '@/lib/visualiser/acrylic';
+import {
+    buildFilledSvg,
+    buildRectSvg,
+    type DisplayLayer,
+} from '@/lib/visualiser/piece-display';
+import { buildNestedSheets, nestedSheetGeometry } from '@/lib/visualiser/pack-nest';
+import { buildPanelDevelopmentSvg, developmentGeometry } from '@/lib/visualiser/panel-cut-svg';
+import {
+    cutToSvg,
+    cutToDxf,
+    type CutGeometry,
+    type Ring,
+} from '@/lib/visualiser/cut-export';
+import { cutToPdf } from '@/lib/visualiser/cut-pdf';
+import { buildSheetSvg } from '@/lib/nesting/svg-export';
+import { buildSheetDxf } from '@/lib/nesting/dxf';
+import { createZip, type ZipEntry } from '@/lib/visualiser/zip';
+import { getDesignBinderLogo } from '@/lib/binder/actions';
 import { projectingSpecLine } from '@/lib/visualiser/projecting';
 import { composeLayersSvg } from '@/lib/visualiser/compose';
 import { trimImageDataUrl } from '@/lib/visualiser/image';
@@ -206,6 +236,7 @@ export function ExportBar({
         projectingEnabled,
         inactive,
         mount,
+        setCaptureClean,
     } = useVisualiser();
 
     // Flatten a panel's artwork layers into a single aperture SVG, falling
@@ -276,6 +307,10 @@ export function ExportBar({
     const [backshopPending, setBackshopPending] = useState(false);
     const [onBackshop, setOnBackshop] = useState(false);
     const [nesterPending, setNesterPending] = useState(false);
+    const [zipPending, setZipPending] = useState(false);
+    const [packPending, setPackPending] = useState<'prod' | 'approval' | null>(
+        null,
+    );
     const [msg, setMsg] = useState<string | null>(null);
     const [exported, setExported] = useState<string | null>(null);
 
@@ -461,6 +496,656 @@ export function ExportBar({
             }
         } finally {
             setNesterPending(false);
+        }
+    };
+
+    // Ensure the design is persisted (the packs link to a real design id);
+    // returns the id, or null on a save error (message already surfaced).
+    const ensureSaved = async (): Promise<string | null> => {
+        if (designId && !dirty) return designId;
+        const assembled = assembleMain();
+        const saved = await saveDesign({
+            id: designId ?? undefined,
+            params: assembled.params,
+            svgSource: assembled.svgSource,
+            quoteId,
+            quoteItemId,
+        });
+        if (!saved.ok) {
+            setMsg(saved.error);
+            return null;
+        }
+        markSaved(saved.data.id);
+        return saved.data.id;
+    };
+
+    // The design has to actually carry artwork for a pack/approval to mean
+    // anything — a bare panel scaffolds an empty document and (for approval) a
+    // featureless 3D the client can't review. Guard at the source.
+    const designHasArtwork = (): boolean =>
+        (params.artworkLayers?.length ?? 0) > 0 ||
+        !!(imported && imported.paths.length > 0);
+
+    // Grab a clean, "as installed" in-situ render — flip the scene to
+    // annotation-free, let it repaint, capture, then restore. Returns a trimmed
+    // PNG data URI (or null if the scene isn't ready).
+    const captureCleanInsitu = async (): Promise<string | null> => {
+        setCaptureClean(true);
+        // Two frames so React commits the annotation-free scene and r3f redraws
+        // before we force a render in the capture.
+        await new Promise<void>((r) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => r())),
+        );
+        let raw: string | null = null;
+        try {
+            raw = sceneCapture.fn?.() ?? null;
+        } finally {
+            setCaptureClean(false);
+        }
+        if (!raw) return null;
+        try {
+            return await trimImageDataUrl(raw);
+        } catch {
+            return raw;
+        }
+    };
+
+    // Split the live 3D design into its individual production pieces — each its
+    // own works-pack section with a filled material-colour drawing, its nested
+    // cut file and its department route. Built here (where the derived pieces +
+    // nest/display builders live) and handed to the server fully-formed.
+    // Returns aren't modelled on a visualiser design (they come from the
+    // dedicated built-up-returns tool), so no returns section is synthesised.
+    const buildProductionPackInput = async (
+        insituDataUri: string | null,
+        logoDataUri: string | null,
+    ): Promise<DesignPackInput> => {
+        const svgUri = (svg: string) =>
+            `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+        const round = (n: number) => Math.round(n);
+        const w = params.panelWidthMm;
+        const h = params.panelHeightMm;
+        const keyline = !!params.illumination?.keyline?.enabled;
+        const illuminated = keyline || backlightPieces.length > 0;
+        const panelColor = params.panelColor ?? '#c8ccce';
+        const acrylicName = (hex: string) => {
+            const a = acrylicByHex(hex);
+            return a ? `${a.brand} ${a.code ?? a.name}` : hex.toUpperCase();
+        };
+
+        // A filled drawing (material colour, holes punched, contrast bg) → a
+        // dimensioned technical block.
+        const filledDrawing = (
+            layers: DisplayLayer[],
+            caption: string,
+            background?: string | null,
+        ): PackDrawing => {
+            const f = buildFilledSvg({ layers, background, title: caption });
+            return {
+                dataUri: svgUri(f.svg),
+                isSvg: true,
+                kind: 'technical',
+                caption,
+                widthMm: f.widthMm,
+                heightMm: f.heightMm,
+            };
+        };
+
+        // A nested cut LAYOUT (run on the spot) — filled in the material colour,
+        // cropped to the smallest panel — one dimensioned drawing per panel.
+        const nestedDrawings = (
+            pieces: { path: FlatPath; holes?: FlatPath[] }[],
+            label: string,
+            fill: string,
+        ): PackDrawing[] => {
+            const nest = buildNestedSheets(pieces, {
+                label,
+                title: `${params.name} — ${label}`,
+                fill,
+            });
+            return nest.sheets.slice(0, 3).map((sheet, i) => ({
+                dataUri: svgUri(sheet.svg),
+                isSvg: true,
+                kind: 'technical' as const,
+                caption:
+                    nest.sheetCount > 1
+                        ? `Nested cut layout — panel ${i + 1} of ${nest.sheetCount}`
+                        : 'Nested cut layout',
+                widthMm: sheet.widthMm,
+                heightMm: sheet.heightMm,
+            }));
+        };
+
+        // The nested cut layout where possible (filled), else the un-nested
+        // filled display — so a piece always has a drawing.
+        const nestedOrFilled = (
+            pieces: { path: FlatPath; holes?: FlatPath[]; color: string }[],
+            label: string,
+            fill: string,
+            fallbackCaption: string,
+        ): PackDrawing[] => {
+            const nested = nestedDrawings(pieces, label, fill);
+            return nested.length > 0
+                ? nested
+                : [filledDrawing([{ pieces, fill }], fallbackCaption)];
+        };
+
+        const groups: DesignPieceGroup[] = [];
+
+        // The whole-sign FACE, filled in real material colours on the panel
+        // colour — reused on the overview hero and the tray section so the
+        // printed pack reads in colour, not hairline outlines.
+        const faceLayers: DisplayLayer[] = [
+            ...solidPieces.map((p) => ({ pieces: [p], fill: p.color })),
+            ...backlightPieces.map((p) => ({ pieces: [p], fill: p.color })),
+            ...acrylicPieces.map((p) => ({ pieces: [p], fill: p.color })),
+            ...pushThroughPieces.map((p) => ({ pieces: [p], fill: p.color })),
+            ...standoffPieces.map((p) => ({ pieces: [p], fill: p.color })),
+            ...vinylPieces.map((p) => ({ pieces: [p], fill: p.color })),
+            ...extraFacePieces.map((p) => ({ pieces: [p], fill: p.color })),
+        ];
+        const faceDrawing =
+            faceLayers.length > 0
+                ? filledDrawing(faceLayers, 'Whole sign — face', panelColor)
+                : null;
+
+        // 1. The aluminium tray — always present; the carcass everything mounts
+        // to. Its drawing is the UNFOLDED flat blank (the developed cruciform
+        // with every ring cut through the face + the bend lines) — the real
+        // sheet-metal cut file, not the assembled face art. The counters of
+        // aperture letters (apertureHoles) are cut too — they leave an island of
+        // panel that the machine cuts first so it stays put; even-odd nesting
+        // renders each counter as a solid island inside its letter hole.
+        const holesBySection = sectionExport.sections.map((_s, i) => [
+            ...(apertureBySection[i] ?? []),
+            ...(apertureHolesBySection[i] ?? []),
+            ...(pushThroughKeylineBySection[i] ?? []),
+            ...(pushThroughIslandsBySection[i] ?? []),
+            ...(fixingsBySection[i] ?? []),
+            ...(cableHolesBySection[i] ?? []),
+        ]);
+        const trayCut = buildPanelDevelopmentSvg({
+            sectionExport,
+            holesBySection,
+            panelColor,
+            title: `${params.name} — tray`,
+        });
+        const apertureNote =
+            backlightPieces.length > 0
+                ? `${backlightPieces.length} backlit aperture${backlightPieces.length === 1 ? '' : 's'} cut in the face`
+                : null;
+        groups.push({
+            kind: 'panel',
+            title: 'Aluminium tray',
+            count: 1,
+            thicknessMm: params.materialThicknessMm,
+            painted: !!(params.panelRal || params.panelColor),
+            specRows: [
+                { label: 'Face size', value: `${round(w)} × ${round(h)}mm` },
+                { label: 'Flat blank', value: `${trayCut.widthMm} × ${trayCut.heightMm}mm` },
+                { label: 'Material', value: params.materialLabel ?? 'Folded aluminium' },
+                { label: 'Colour', value: params.panelRal ?? params.panelColor ?? '' },
+                { label: 'Return depth', value: `${round(params.returnDepthMm)}mm` },
+                { label: 'Gauge', value: `${params.materialThicknessMm}mm` },
+            ],
+            callouts: [
+                'Folded aluminium tray — cut flat, fold on the dashed lines',
+                ...(apertureNote ? [apertureNote] : []),
+            ],
+            drawings: [
+                {
+                    dataUri: svgUri(trayCut.svg),
+                    isSvg: true,
+                    kind: 'technical',
+                    caption: 'Unfolded tray — cut & fold',
+                    widthMm: trayCut.widthMm,
+                    heightMm: trayCut.heightMm,
+                },
+            ],
+        });
+
+        const byStock = <T extends { color: string; thicknessMm?: number }>(
+            pieces: T[],
+        ): Map<string, T[]> => {
+            const m = new Map<string, T[]>();
+            for (const p of pieces) {
+                const key = `${p.color}|${p.thicknessMm ?? 0}`;
+                (m.get(key) ?? m.set(key, []).get(key)!).push(p);
+            }
+            return m;
+        };
+
+        // 2. Push-through letters — one section per acrylic stock.
+        for (const [key, pieces] of byStock(pushThroughPieces)) {
+            const [color] = key.split('|');
+            const t = pieces[0].thicknessMm;
+            groups.push({
+                kind: 'pushthrough',
+                title: `Push-through letters — ${acrylicName(color)}`,
+                count: pieces.length,
+                thicknessMm: t,
+                specRows: [
+                    { label: 'Acrylic', value: acrylicName(color) },
+                    { label: 'Thickness', value: `${t}mm` },
+                    { label: 'Keyline shoulder', value: `${pieces[0].keylineOffsetMm}mm` },
+                ],
+                callouts: [
+                    'Pressed through the tray face from behind',
+                    'Each counter is a separate piece bonded to the backing',
+                    illuminated
+                        ? 'Opal backing behind for the keyline halo'
+                        : 'Bonded to a backing board',
+                ],
+                drawings: nestedOrFilled(
+                    pieces,
+                    'push-through',
+                    color,
+                    `Push-through — ${acrylicName(color)}`,
+                ),
+            });
+        }
+
+        // 3. Opal backing — the shared diffuser, cut as a single rectangle.
+        if (illuminated && (pushThroughPieces.length > 0 || backlightPieces.length > 0)) {
+            const lit = [...pushThroughPieces, ...backlightPieces];
+            // Rectangle = lit-area bounding box + a 40mm overlap margin.
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const p of lit) for (const [x, y] of p.path.points) {
+                if (x < minX) minX = x; if (y < minY) minY = y;
+                if (x > maxX) maxX = x; if (y > maxY) maxY = y;
+            }
+            const margin = 40;
+            const rectW = Number.isFinite(minX) ? maxX - minX + margin * 2 : w;
+            const rectH = Number.isFinite(minY) ? maxY - minY + margin * 2 : h;
+            const rect = buildRectSvg({ widthMm: rectW, heightMm: rectH, title: 'Opal backing' });
+            groups.push({
+                kind: 'opalBacking',
+                title: 'Opal backing & lighting',
+                count: 1,
+                specRows: [
+                    { label: 'Diffuser', value: 'Opal acrylic backing' },
+                    { label: 'Sheet size', value: `${round(rectW)} × ${round(rectH)}mm` },
+                    { label: 'Illumination', value: keyline ? 'Keyline halo' : 'Backlit' },
+                    { label: 'Lit pieces', value: `${lit.length} shape${lit.length === 1 ? '' : 's'}` },
+                ],
+                callouts: [
+                    'Single opal rectangle behind the illuminated pieces',
+                    'LEDs mounted on the backing — build the wiring in the LED layout tool',
+                    keyline
+                        ? 'Light escapes through the keyline shoulder as a halo'
+                        : 'Light glows through the cut aperture',
+                ],
+                drawings: [
+                    {
+                        dataUri: svgUri(rect.svg),
+                        isSvg: true,
+                        kind: 'technical',
+                        caption: 'Opal backing — cut rectangle',
+                        widthMm: rect.widthMm,
+                        heightMm: rect.heightMm,
+                    },
+                ],
+            });
+        }
+
+        // 4. Face-stuck acrylic — one section per stock.
+        for (const [key, pieces] of byStock(acrylicPieces)) {
+            const [color] = key.split('|');
+            const t = pieces[0].thicknessMm;
+            groups.push({
+                kind: 'acrylic',
+                title: `Face-stuck acrylic — ${acrylicName(color)}`,
+                count: pieces.length,
+                thicknessMm: t,
+                specRows: [
+                    { label: 'Acrylic', value: acrylicName(color) },
+                    ...(t ? [{ label: 'Thickness', value: `${t}mm` }] : []),
+                ],
+                callouts: ['Face-stuck to the tray', 'Weeded & applied'],
+                drawings: nestedOrFilled(
+                    pieces,
+                    'acrylic',
+                    color,
+                    `Acrylic — ${acrylicName(color)}`,
+                ),
+            });
+        }
+
+        // 5. Stood-off lettering — one section per stock (typically painted).
+        for (const [key, pieces] of byStock(standoffPieces)) {
+            const [color] = key.split('|');
+            const t = pieces[0].thicknessMm;
+            const dist = pieces[0].standoffDistanceMm;
+            groups.push({
+                kind: 'standoff',
+                title: 'Stood-off letters',
+                count: pieces.length,
+                thicknessMm: t,
+                painted: true,
+                specRows: [
+                    { label: 'Material', value: acrylicName(color) },
+                    { label: 'Thickness', value: `${t}mm` },
+                    { label: 'Stand-off', value: `${round(dist)}mm` },
+                ],
+                callouts: [
+                    `Stood ${round(dist)}mm off the face on locators`,
+                    'Fixing holes drilled in the tray face',
+                ],
+                drawings: nestedOrFilled(pieces, 'stand-off', color, 'Stood-off letters'),
+            });
+        }
+
+        // 6. Metal faces — one section per finish (brass / stainless / …).
+        const byMetal = new Map<FaceMaterial, ExtraFacePiece[]>();
+        for (const p of extraFacePieces) {
+            (byMetal.get(p.material) ?? byMetal.set(p.material, []).get(p.material)!).push(p);
+        }
+        for (const [material, pieces] of byMetal) {
+            const label = FACE_MATERIALS[material].label;
+            groups.push({
+                kind: 'extraFace',
+                title: `${label} faces`,
+                count: pieces.length,
+                thicknessMm: pieces[0].thicknessMm,
+                specRows: [
+                    { label: 'Material', value: label },
+                    { label: 'Thickness', value: `${pieces[0].thicknessMm}mm` },
+                ],
+                callouts: [
+                    `${label} face laminated over the letter`,
+                    'Same outline + counters as the letter beneath',
+                ],
+                drawings: nestedOrFilled(
+                    pieces,
+                    `${material}-faces`,
+                    pieces[0].color,
+                    `${label} faces`,
+                ),
+            });
+        }
+
+        // 7. Vinyl — printed (digital print) vs cut (spot colour).
+        const printedVinyl = vinylPieces.filter((p) => p.fullColor);
+        const cutVinyl = vinylPieces.filter((p) => !p.fullColor);
+        if (printedVinyl.length > 0) {
+            groups.push({
+                kind: 'vinylPrint',
+                title: 'Printed vinyl graphics',
+                count: printedVinyl.length,
+                specRows: [
+                    { label: 'Process', value: 'Full-colour digital print' },
+                    { label: 'Finish', value: 'Printed, laminated & cut' },
+                ],
+                callouts: ['Full-colour print', 'Laminated, weeded & applied to the face'],
+                // The printed-vinyl raster IS the artwork — show it with its real
+                // print texture when we have it, else a filled representation.
+                drawings: vinylPrintDataUrl
+                    ? [{ dataUri: vinylPrintDataUrl, isSvg: false, kind: 'visual', caption: 'Printed vinyl artwork' }]
+                    : [filledDrawing(printedVinyl.map((p) => ({ pieces: [p], fill: p.color })), 'Printed vinyl', panelColor)],
+            });
+        }
+        if (cutVinyl.length > 0) {
+            const byColor = byStock(cutVinyl);
+            const cutLayers = [...byColor].map(([key, pieces]) => ({
+                pieces,
+                fill: key.split('|')[0],
+            }));
+            groups.push({
+                kind: 'vinylCut',
+                title: 'Cut vinyl graphics',
+                count: cutVinyl.length,
+                specRows: [{ label: 'Process', value: 'Spot-colour cut vinyl' }],
+                callouts: ['Plotter-cut spot-colour vinyl', 'Weeded & applied'],
+                drawings: [filledDrawing(cutLayers, 'Cut vinyl', panelColor)],
+            });
+        }
+
+        const overviewDrawings: PackDrawing[] = [];
+        if (insituDataUri) {
+            overviewDrawings.push({
+                dataUri: insituDataUri,
+                isSvg: false,
+                kind: 'visual',
+                caption: 'In-situ — as installed',
+            });
+        }
+        if (faceDrawing) overviewDrawings.push({ ...faceDrawing, caption: 'Whole sign — face' });
+
+        const ledNote = illuminated
+            ? 'Build the LED module layout & wiring in the LED layout tool, then attach the wiring PDF.'
+            : null;
+
+        return {
+            name: params.name || 'Sign',
+            logoDataUri,
+            overallSpecRows: [
+                { label: 'Overall size', value: `${round(w)} × ${round(h)}mm` },
+                { label: 'Tray material', value: params.materialLabel ?? 'Folded aluminium' },
+                { label: 'Panel colour', value: params.panelRal ?? params.panelColor ?? '' },
+                {
+                    label: 'Illumination',
+                    value: illuminated
+                        ? keyline ? 'Keyline illuminated' : 'Backlit'
+                        : 'Non-illuminated',
+                },
+                { label: 'Fixing', value: '' },
+            ],
+            overviewDrawings,
+            groups,
+            ledToolNote: ledNote,
+        };
+    };
+
+    // Build the full per-piece works pack from this design and open it.
+    const onCreateProductionPack = async () => {
+        if (packPending) return;
+        if (!designHasArtwork()) {
+            setMsg('Add artwork to the panel before creating a production pack.');
+            return;
+        }
+        setPackPending('prod');
+        setMsg(null);
+        try {
+            // Persist the design first so the pack can link back to it later.
+            const id = await ensureSaved();
+            if (!id) return;
+            setMsg('Capturing render…');
+            const insitu = await captureCleanInsitu();
+            // The client's logo from the binder (if their org has one).
+            let logo: string | null = null;
+            const logoRes = await getDesignBinderLogo(id);
+            if (logoRes.ok && logoRes.data?.svg) {
+                logo = `data:image/svg+xml;utf8,${encodeURIComponent(logoRes.data.svg)}`;
+            }
+            // Nesting can take a beat — tell the operator something's happening.
+            setMsg('Nesting pieces & building pack…');
+            await new Promise((r) => setTimeout(r, 20));
+            const input = await buildProductionPackInput(insitu, logo);
+            const content = buildPackFromDesignPieces(input);
+            const res = await createProductionPackFromContent({
+                name: input.name,
+                content,
+            });
+            if (!res.ok) {
+                setMsg(res.error);
+                return;
+            }
+            window.location.assign(`/admin/production-packs/${res.data.id}`);
+        } finally {
+            setPackPending(null);
+        }
+    };
+
+    // Export every production CUT file as a .zip — purely the draw files (true
+    // mm, hairline cut paths), each as SVG + DXF + PDF, ready to send straight to
+    // the machines. No pack chrome: just the tray blank, the nested material
+    // sheets, the opal rectangle and the vinyl.
+    const onExportProductionZip = async () => {
+        if (zipPending) return;
+        if (!designHasArtwork()) {
+            setMsg('Add artwork to the panel before exporting production files.');
+            return;
+        }
+        setZipPending(true);
+        setMsg('Building cut files…');
+        try {
+            // Let the status paint before the (synchronous) nesting work.
+            await new Promise((r) => setTimeout(r, 20));
+
+            const name = params.name || 'sign';
+            const safe = (s: string) =>
+                s.replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '') || 'file';
+            const folder = safe(name);
+            const hex = (c: string) => c.replace('#', '');
+            const entries: ZipEntry[] = [];
+
+            const byStock = <T extends { color: string; thicknessMm?: number }>(
+                arr: T[],
+            ): Map<string, T[]> => {
+                const m = new Map<string, T[]>();
+                for (const p of arr) {
+                    const k = `${p.color}|${p.thicknessMm ?? 0}`;
+                    (m.get(k) ?? m.set(k, []).get(k)!).push(p);
+                }
+                return m;
+            };
+
+            // Each cut file goes in as .svg + .dxf + .pdf from the SAME geometry.
+            const pushCut = (base: string, geo: CutGeometry) => {
+                entries.push({ name: `${folder}/${base}.svg`, data: cutToSvg(geo, base) });
+                entries.push({ name: `${folder}/${base}.dxf`, data: cutToDxf(geo) });
+                entries.push({ name: `${folder}/${base}.pdf`, data: cutToPdf(geo) });
+            };
+
+            // Nested material — reuse the nester's own SVG/DXF; PDF from the rings.
+            const pushNest = (
+                pieces: { path: FlatPath; holes?: FlatPath[] }[],
+                label: string,
+            ) => {
+                const nest = nestedSheetGeometry(pieces, {
+                    label,
+                    title: `${name} — ${label}`,
+                });
+                nest.sheets.forEach((sheet, i) => {
+                    const base = `${safe(label)}${nest.sheets.length > 1 ? `-sheet${i + 1}` : ''}`;
+                    entries.push({ name: `${folder}/${base}.svg`, data: buildSheetSvg(sheet.input) });
+                    entries.push({ name: `${folder}/${base}.dxf`, data: buildSheetDxf(sheet.input) });
+                    entries.push({
+                        name: `${folder}/${base}.pdf`,
+                        data: cutToPdf({ cut: sheet.cut, ref: [sheet.boundary] }),
+                    });
+                });
+            };
+
+            // 1. The aluminium tray — the unfolded flat blank as a CAM cut file.
+            const holesBySection = sectionExport.sections.map((_s, i) => [
+                ...(apertureBySection[i] ?? []),
+                ...(apertureHolesBySection[i] ?? []),
+                ...(pushThroughKeylineBySection[i] ?? []),
+                ...(pushThroughIslandsBySection[i] ?? []),
+                ...(fixingsBySection[i] ?? []),
+                ...(cableHolesBySection[i] ?? []),
+            ]);
+            pushCut('tray-cut', developmentGeometry({ sectionExport, holesBySection }));
+
+            // 2. Nested rigid-sheet pieces — one cut file per stock / finish.
+            for (const [key, pieces] of byStock(pushThroughPieces)) {
+                pushNest(pieces, `push-through-${hex(key.split('|')[0])}`);
+            }
+            for (const [key, pieces] of byStock(acrylicPieces)) {
+                pushNest(pieces, `acrylic-${hex(key.split('|')[0])}`);
+            }
+            for (const [key, pieces] of byStock(standoffPieces)) {
+                pushNest(pieces, `standoff-${hex(key.split('|')[0])}`);
+            }
+            const byMetal = new Map<FaceMaterial, ExtraFacePiece[]>();
+            for (const p of extraFacePieces) {
+                (byMetal.get(p.material) ?? byMetal.set(p.material, []).get(p.material)!).push(p);
+            }
+            for (const [material, pieces] of byMetal) {
+                pushNest(pieces, `${material}-faces`);
+            }
+
+            // 3. Opal backing — a single cut rectangle.
+            const keyline = !!params.illumination?.keyline?.enabled;
+            const illuminated = keyline || backlightPieces.length > 0;
+            if (illuminated && (pushThroughPieces.length > 0 || backlightPieces.length > 0)) {
+                const lit = [...pushThroughPieces, ...backlightPieces];
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                for (const p of lit) for (const [x, y] of p.path.points) {
+                    if (x < minX) minX = x; if (y < minY) minY = y;
+                    if (x > maxX) maxX = x; if (y > maxY) maxY = y;
+                }
+                const margin = 40;
+                const rw = Math.max(1, Math.round(Number.isFinite(minX) ? maxX - minX + margin * 2 : params.panelWidthMm));
+                const rh = Math.max(1, Math.round(Number.isFinite(minY) ? maxY - minY + margin * 2 : params.panelHeightMm));
+                const rectRing: Ring = [
+                    [0, 0],
+                    [rw, 0],
+                    [rw, rh],
+                    [0, rh],
+                ];
+                pushCut('opal-backing', { cut: [rectRing] });
+            }
+
+            // 4. Cut vinyl — plotter outlines (printed vinyl is a raster, below).
+            const cutVinyl = vinylPieces.filter((p) => !p.fullColor);
+            if (cutVinyl.length > 0) {
+                const vinylRings: Ring[] = cutVinyl.flatMap((p) => [
+                    p.path.points.map(([x, y]) => [x, y] as [number, number]),
+                    ...(p.holes ?? []).map((h) => h.points.map(([x, y]) => [x, y] as [number, number])),
+                ]);
+                pushCut('cut-vinyl', { cut: vinylRings });
+            }
+
+            // 5. Printed vinyl — the print artwork (PNG) for the large-format RIP.
+            if (vinylPrintDataUrl) {
+                const comma = vinylPrintDataUrl.indexOf(',');
+                if (comma >= 0) {
+                    try {
+                        const bin = atob(vinylPrintDataUrl.slice(comma + 1));
+                        const bytes = new Uint8Array(bin.length);
+                        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                        entries.push({ name: `${folder}/printed-vinyl.png`, data: bytes });
+                    } catch {
+                        /* skip a malformed raster */
+                    }
+                }
+            }
+
+            const zip = createZip(entries);
+            download(
+                new Blob([zip as BlobPart], { type: 'application/zip' }),
+                `${folder}-production-files.zip`,
+            );
+            setMsg(null);
+            setExported(`Production files · ${entries.length} file${entries.length === 1 ? '' : 's'} (SVG · DXF · PDF)`);
+        } finally {
+            setZipPending(false);
+        }
+    };
+
+    // Spin up a visual-approval pack from this design (the design drives the
+    // interactive 3D the client orbits while they approve) and open the job.
+    const onCreateApprovalPack = async () => {
+        if (packPending) return;
+        if (!designHasArtwork()) {
+            setMsg('Add artwork to the panel before creating an approval pack.');
+            return;
+        }
+        setPackPending('approval');
+        setMsg(null);
+        try {
+            const id = await ensureSaved();
+            if (!id) return;
+            const res = await createVisualApprovalFromDesign(id);
+            if ('error' in res) {
+                setMsg(res.error);
+                return;
+            }
+            window.location.assign(`/admin/artwork/${res.id}`);
+        } finally {
+            setPackPending(null);
         }
     };
 
@@ -814,6 +1499,51 @@ export function ExportBar({
                         {nesterPending ? 'Sending…' : 'Send to nester'}
                     </button>
                 )}
+                <button
+                    type="button"
+                    onClick={onCreateProductionPack}
+                    disabled={packPending !== null}
+                    aria-busy={packPending === 'prod'}
+                    title="Create a production (works) pack scaffolded from this design — saves it, then opens the pack."
+                    className="flex min-h-[36px] items-center gap-1.5 rounded-md border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                    {packPending === 'prod' ? (
+                        <Loader2 size={14} className="animate-spin" aria-hidden />
+                    ) : (
+                        <FileBox size={14} aria-hidden />
+                    )}
+                    {packPending === 'prod' ? 'Creating…' : 'Production pack'}
+                </button>
+                <button
+                    type="button"
+                    onClick={onCreateApprovalPack}
+                    disabled={packPending !== null}
+                    aria-busy={packPending === 'approval'}
+                    title="Create a client approval pack — the design drives an interactive 3D the client orbits while they sign off. Saves it, then opens the job."
+                    className="flex min-h-[36px] items-center gap-1.5 rounded-md border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                    {packPending === 'approval' ? (
+                        <Loader2 size={14} className="animate-spin" aria-hidden />
+                    ) : (
+                        <BadgeCheck size={14} aria-hidden />
+                    )}
+                    {packPending === 'approval' ? 'Creating…' : 'Approval pack'}
+                </button>
+                <button
+                    type="button"
+                    onClick={onExportProductionZip}
+                    disabled={zipPending}
+                    aria-busy={zipPending}
+                    title="Download every production cut file as a .zip — SVG + DXF + PDF, true mm, ready to send straight to the machines."
+                    className="flex min-h-[36px] items-center gap-1.5 rounded-md border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                    {zipPending ? (
+                        <Loader2 size={14} className="animate-spin" aria-hidden />
+                    ) : (
+                        <Archive size={14} aria-hidden />
+                    )}
+                    {zipPending ? 'Zipping…' : 'Production files (.zip)'}
+                </button>
                 <div className="ml-auto flex items-center gap-2 text-xs text-neutral-500">
                     {exported && (
                         <span

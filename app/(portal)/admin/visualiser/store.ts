@@ -270,6 +270,15 @@ interface VisualiserState {
     deleteGroup: (groupId: string) => void;
 
     markSaved: (id: string) => void;
+
+    /**
+     * When true the 3D scene renders annotation-free (no outlines / fixings /
+     * register lines / dimensions) so the export bar can grab a clean, "as
+     * installed" in-situ render for the production pack. Toggled around a
+     * capture, then reset.
+     */
+    captureClean: boolean;
+    setCaptureClean: (v: boolean) => void;
 }
 
 /**
@@ -948,4 +957,7 @@ export const useVisualiser = create<VisualiserState>((set) => ({
         })),
 
     markSaved: (id) => set({ designId: id, dirty: false }),
+
+    captureClean: false,
+    setCaptureClean: (v) => set({ captureClean: v }),
 }));

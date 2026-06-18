@@ -19,6 +19,7 @@ import {
     newTechnicalBlock,
     newSpecTableBlock,
     newHeadingBlock,
+    newCalloutsBlock,
     newStagesBlock,
     newQcBlock,
     PackCoverSchema,
@@ -26,6 +27,7 @@ import {
     type SignSection,
     type Block,
 } from './types';
+import type { PanelParams } from '@/lib/visualiser/types';
 
 export interface JobForPack {
     job_name: string | null;
@@ -132,6 +134,85 @@ export function buildPackFromJob(
             subtitle: 'Signage works pack',
         }),
         sections,
+        style: 'steel',
+    };
+}
+
+/** Plain-English note for each non-trivial material group on the sign. */
+const MATERIAL_NOTE: Record<string, string> = {
+    vinyl: 'Vinyl appliqué',
+    acrylic: 'Face-stuck acrylic',
+    standoff: 'Stand-off lettering',
+    pushthrough: 'Push-through acrylic letters',
+    backlight: 'Backlit opal',
+};
+
+/**
+ * Scaffold a works pack straight from a visualiser design (no artwork job) —
+ * one section with the design's artwork as a technical drawing and a spec table
+ * derived from the panel params (size, material, colour, illumination), plus
+ * material callouts and the build-stage/QC checklist. Used by the "Production
+ * pack" button in the visualiser.
+ */
+export function buildPackFromDesign(
+    name: string,
+    params: PanelParams,
+    svgSource: string | null,
+): ProductionPackContent {
+    const blocks: Block[] = [newVisualBlock()];
+
+    if (svgSource) {
+        const tech = newTechnicalBlock();
+        tech.url = `data:image/svg+xml;utf8,${encodeURIComponent(svgSource)}`;
+        tech.isSvg = true;
+        tech.caption = 'Visualiser artwork';
+        blocks.push(tech);
+    }
+
+    const spec = newSpecTableBlock();
+    spec.title = 'Sign specification';
+    spec.rows = [
+        {
+            label: 'Overall size',
+            value: `${Math.round(params.panelWidthMm)} × ${Math.round(params.panelHeightMm)}mm`,
+        },
+        { label: 'Material', value: params.materialLabel ?? '' },
+        { label: 'Panel colour', value: params.panelRal ?? params.panelColor ?? '' },
+        {
+            label: 'Illumination',
+            value: params.illumination?.keyline?.enabled
+                ? 'Keyline illuminated'
+                : '',
+        },
+        { label: 'Fixing', value: '' },
+    ];
+    blocks.push(spec);
+
+    const mats = Array.from(
+        new Set((params.materialGroups ?? []).map((g) => g.material)),
+    ).filter((m) => m !== 'cut' && m !== 'solid');
+    if (mats.length > 0) {
+        const callouts = newCalloutsBlock();
+        callouts.items = mats.map((m) => MATERIAL_NOTE[m] ?? m);
+        blocks.push(callouts);
+    }
+
+    blocks.push(newStagesBlock(), newQcBlock());
+
+    return {
+        cover: PackCoverSchema.parse({
+            projectName: name,
+            subtitle: 'Signage works pack',
+        }),
+        sections: [
+            {
+                id: genId('sec'),
+                title: name,
+                signRef: 'Sign Ref 1',
+                keepWith: [],
+                blocks,
+            },
+        ],
         style: 'steel',
     };
 }

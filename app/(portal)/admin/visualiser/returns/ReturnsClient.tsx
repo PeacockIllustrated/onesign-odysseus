@@ -323,6 +323,8 @@ export function ReturnsClient({
             const combinedSvg = buildReturnsNestSvg({
                 analysis,
                 returnDepthMm: cfg.returnDepthMm,
+                minStripMm: cfg.minNestStripMm,
+                stockLengthMm: cfg.stockLengthMm,
                 title: jobName.trim() || loaded.name,
             });
             const res = await sendReturnsToNester({
@@ -367,6 +369,8 @@ export function ReturnsClient({
         const svg = buildReturnsNestSvg({
             analysis,
             returnDepthMm: cfg.returnDepthMm,
+            minStripMm: cfg.minNestStripMm,
+            stockLengthMm: cfg.stockLengthMm,
             title: jobName.trim() || loaded.name,
         });
         download(
@@ -744,6 +748,12 @@ export function ReturnsClient({
                                         step={50}
                                         onChange={setNum('stockLengthMm', 1)}
                                     />
+                                    <NumField
+                                        label="Min. strip (mm)"
+                                        value={cfg.minNestStripMm}
+                                        step={5}
+                                        onChange={setNum('minNestStripMm')}
+                                    />
                                     <label className="block">
                                         <span className="flex items-center justify-between text-[10px] text-neutral-500">
                                             <span>Break angle</span>
@@ -803,7 +813,10 @@ export function ReturnsClient({
                                 <p className="mt-1.5 text-[10px] text-neutral-400">
                                     A corner sharper than the break angle starts a
                                     new welded strip; runs over the stock length
-                                    get a butt-weld.
+                                    get a butt-weld. Strips shorter than the min.
+                                    strip are coalesced into a neighbour for the
+                                    nest (no un-cuttable slivers) — total brass and
+                                    every weld mark are unchanged.
                                 </p>
                             </div>
 

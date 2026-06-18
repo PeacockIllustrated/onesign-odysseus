@@ -27,7 +27,8 @@ import {
     type ProductionPack,
     type ProductionPackContent,
 } from './types';
-import { buildPackFromJob } from './from-job';
+import { buildPackFromJob, buildPackFromDesign } from './from-job';
+import type { PanelParams } from '@/lib/visualiser/types';
 
 const TABLE = 'production_packs';
 
@@ -138,6 +139,96 @@ export async function createProductionPackFromJob(
 
     if (error) {
         console.error('error creating production pack from job:', error);
+        return err(error.message);
+    }
+
+    revalidatePath(LIST_PATH);
+    return ok({ id: data.id as string });
+}
+
+/**
+ * Scaffold a works pack straight from a saved visualiser design — the
+ * "Production pack" button in the visualiser. Pulls the design's params + svg
+ * into a starting pack (size, material, colour, illumination, artwork drawing).
+ */
+export async function createProductionPackFromDesign(
+    designId: string,
+): Promise<Result<{ id: string }>> {
+    const user = await getUser();
+    if (!user) return err('not authenticated');
+
+    const supabase = await createServerClient();
+    const { data: design } = await supabase
+        .from('visualiser_designs')
+        .select('name, params_json, svg_source')
+        .eq('id', designId)
+        .maybeSingle();
+    if (!design) return err('design not found');
+
+    const content = buildPackFromDesign(
+        (design.name as string) ?? 'Sign',
+        design.params_json as PanelParams,
+        (design.svg_source as string | null) ?? null,
+    );
+
+    const { data, error } = await supabase
+        .from(TABLE)
+        .insert({
+            title: `${(design.name as string) ?? 'Sign'} — works pack`,
+            status: 'draft',
+            project_name: (design.name as string) ?? null,
+            content,
+            created_by: user.id,
+        })
+        .select('id')
+        .single();
+
+    if (error) {
+        console.error('error creating production pack from design:', error);
+        return err(error.message);
+    }
+
+    revalidatePath(LIST_PATH);
+    return ok({ id: data.id as string });
+}
+
+/**
+ * Insert a works pack whose content was assembled CLIENT-SIDE — the rich
+ * "Production pack" button in the visualiser splits the live 3D design into its
+ * individual pieces (each with its own cut file) where the geometry + nest
+ * builders already live, then hands the finished document here to persist. The
+ * action just validates + inserts, keeping the heavy per-piece derivation off
+ * the server.
+ */
+export async function createProductionPackFromContent(input: {
+    name: string;
+    content: unknown;
+}): Promise<Result<{ id: string }>> {
+    const user = await getUser();
+    if (!user) return err('not authenticated');
+
+    const name = (input?.name ?? '').trim() || 'Sign';
+    const parsed = ProductionPackContentSchema.safeParse(input?.content);
+    if (!parsed.success) {
+        return err(parsed.error.issues[0]?.message ?? 'invalid pack content');
+    }
+
+    const supabase = await createServerClient();
+    const { data, error } = await supabase
+        .from(TABLE)
+        .insert({
+            title: `${name} — works pack`,
+            status: 'draft',
+            project_name: parsed.data.cover.projectName || name,
+            client_name: parsed.data.cover.clientName || null,
+            content: parsed.data,
+            created_by: user.id,
+        })
+        .select('id')
+        .single();
+
+    if (error) {
+        console.error('error creating production pack from content:', error);
         return err(error.message);
     }
 

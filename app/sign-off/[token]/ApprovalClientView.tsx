@@ -11,6 +11,7 @@ import MarketingModal from '@/app/components/MarketingModal';
 import { formatDateTime, isValidSplineUrl } from '@/lib/artwork/utils';
 import SignatureCanvas, { type SignatureCanvasRef } from '@/components/SignatureCanvas';
 import { DayNightSwitch } from '@/components/studio/StudioChrome';
+import { summariseSignPieces } from '@/lib/visualiser/piece-summary';
 
 interface Props {
     data: ApprovalPackData;
@@ -464,6 +465,29 @@ export default function ApprovalClientView({ data, token }: Props) {
                         night={!light}
                         label="your sign in 3D"
                     />
+                    {/* Simple, plain-English breakdown of the pieces that make
+                        up the sign — so the client knows what they're approving
+                        (no production detail). */}
+                    {(() => {
+                        const pieces = summariseSignPieces(data.visualiserDesign.params);
+                        return pieces.length > 0 ? (
+                            <div style={{ padding: '14px 18px 18px', borderTop: '1px solid var(--hairlineSoft)' }}>
+                                <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--accent)', marginBottom: '10px' }}>
+                                    What&rsquo;s in your sign
+                                </div>
+                                <ul style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', listStyle: 'none', margin: 0, padding: 0 }}>
+                                    {pieces.map((p) => (
+                                        <li
+                                            key={p}
+                                            style={{ fontSize: '12.5px', color: 'var(--text)', background: 'var(--imgBg)', border: '1px solid var(--hairlineSoft)', borderRadius: '999px', padding: '5px 12px' }}
+                                        >
+                                            {p}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        ) : null;
+                    })()}
                 </div>
             )}
 

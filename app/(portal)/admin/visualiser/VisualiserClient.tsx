@@ -155,6 +155,7 @@ export function VisualiserClient({
         activeTab,
         inactive,
         mount,
+        captureClean,
     } = useVisualiser();
     const [tab, setTab] = useState<Tab>('folded');
     const [mobilePane, setMobilePane] = useState<MobilePane>('preview');
@@ -1122,9 +1123,10 @@ export function VisualiserClient({
                             showStandoffLetters={showStandoffLetters}
                             showStandoffLocators={showStandoffLocators}
                             showFaceFixings={showFaceFixings}
+                            annotations={!captureClean}
                             illuminationView={illuminationView}
                             illumination={params.illumination}
-                            showDimensions={showDimensions}
+                            showDimensions={showDimensions && !captureClean}
                             onDimensionChange={handleDimensionChange}
                             secondaryPanel={
                                 secondaryParams &&

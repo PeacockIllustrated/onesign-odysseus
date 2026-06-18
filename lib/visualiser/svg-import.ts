@@ -730,6 +730,13 @@ const MITER_LIMIT = 4; // Adobe Illustrator "Offset Path" default
  * keep their relative winding and the band stays uniform on compound paths
  * (letters like O / A), exactly like Illustrator.
  */
+// polygon-clipping snaps every coordinate onto an internal integer precision
+// grid. At mm scale (panels span only a few hundred units) that grid is coarse
+// enough to visibly facet a finely-flattened curve. Scale the rings up by this
+// factor before any union/difference and divide straight back down afterwards,
+// so the clipper's grid is far finer than the curve detail it sees.
+const CLIP_PRECISION = 1000;
+
 export function buildKeyline(paths: FlatPath[], offsetMm: number): FlatPath[] {
     if (offsetMm <= 0) return [];
     const closed = paths.filter((p) => p.closed && p.points.length > 3);
@@ -825,7 +832,13 @@ export function mergeKeyline(paths: FlatPath[]): FlatPath[] {
     const holes = rings.filter((r) => ringSign(r) !== domSign);
     if (solids.length === 0) return paths;
 
-    const toGeom = (r: number[][]): MultiPolygon => [[r as Ring]];
+    // Scale up before clipping so polygon-clipping's integer precision grid is
+    // far finer than the mm-scale curve detail — otherwise its snapping facets
+    // the welded contour. Divide straight back down on the way out. (Mirrors
+    // resolveSelfIntersections.)
+    const toGeom = (r: number[][]): MultiPolygon => [
+        [r.map(([x, y]) => [x * CLIP_PRECISION, y * CLIP_PRECISION] as [number, number]) as Ring],
+    ];
     try {
         let geom = polygonClipping.union(
             toGeom(solids[0]),
@@ -839,7 +852,10 @@ export function mergeKeyline(paths: FlatPath[]): FlatPath[] {
             for (const ring of poly) {
                 if (ring.length < 4) continue;
                 out.push({
-                    points: ring.map(([x, y]) => [x, y] as [number, number]),
+                    points: ring.map(
+                        ([x, y]) =>
+                            [x / CLIP_PRECISION, y / CLIP_PRECISION] as [number, number],
+                    ),
                     closed: true,
                 });
             }
@@ -872,17 +888,18 @@ function dedupeRing(pts: number[][], eps = 1e-3): number[][] {
 }
 
 /**
- * Despike a source ring before it's offset: drop redundant collinear nodes and
- * the near-zero-width needles (stray-anchor whiskers, degenerate cusps) that
- * the offset would otherwise thicken into a real spur. Iterates, because
- * removing a needle tip can expose collinear leftovers underneath.
+ * Despike a source ring before it's offset: drop the near-zero-width needles
+ * (stray-anchor whiskers, degenerate cusps) that the offset would otherwise
+ * thicken into a real spur. Iterates, because removing one needle tip can
+ * expose another underneath.
  *
  * A needle is identified by its THINNESS, not its length: the path doubles back
  * on itself (incoming ≈ −outgoing). The threshold (~169°) only catches sub-11°
  * slivers, so genuine sharp letter corners/serifs (much wider) are untouched.
+ * We deliberately do NOT drop "collinear" curve points here — a finely-
+ * flattened outline's gentle curvature would get faceted, coarsening the cut.
  */
 const SPIKE_REVERSAL_DOT = -0.98; // cos of ~169° — a near-zero-width fold-back
-const COLLINEAR_TOL_MM = 0.03; // 30µm — well below cut precision
 
 function despikeRing(pts: number[][]): Array<[number, number]> {
     let ring = pts.map((p) => [p[0], p[1]] as [number, number]);
@@ -904,20 +921,6 @@ function despikeRing(pts: number[][]): Array<[number, number]> {
                 keep[i] = false;
                 removed = true;
                 continue;
-            }
-            // Collinear: v sits on the a→b line (redundant node).
-            const baseLen = Math.hypot(b[0] - a[0], b[1] - a[1]);
-            if (baseLen > 1e-9) {
-                const perp =
-                    Math.abs(
-                        (b[0] - a[0]) * (v[1] - a[1]) -
-                            (b[1] - a[1]) * (v[0] - a[0]),
-                    ) / baseLen;
-                if (perp < COLLINEAR_TOL_MM) {
-                    keep[i] = false;
-                    removed = true;
-                    continue;
-                }
             }
             // Near-zero-width needle: the path folds straight back on itself.
             if (l2 > 1e-9) {
@@ -1011,18 +1014,30 @@ function ringSelfIntersects(closed: Array<[number, number]>): boolean {
  * crossings and keeps the nonzero-area boundary, dropping the fold-back loops —
  * the sharp original vertices survive. Falls back to the input on any clipper
  * error so a cut is never silently lost.
+ *
+ * Scaled up by CLIP_PRECISION before the union (see the constant's note) so the
+ * clipper's precision grid stays far finer than the mm-scale curve detail and
+ * the output keeps the smoothness of the input.
  */
 function resolveSelfIntersections(
     closed: Array<[number, number]>,
 ): Array<[number, number]>[] {
     if (closed.length < 4) return [closed];
     try {
-        const u = polygonClipping.union([[closed as Ring]]);
+        const scaled = closed.map(
+            ([x, y]) => [x * CLIP_PRECISION, y * CLIP_PRECISION] as [number, number],
+        );
+        const u = polygonClipping.union([[scaled as Ring]]);
         const out: Array<[number, number]>[] = [];
         for (const poly of u) {
             for (const ring of poly) {
                 if (ring.length >= 4) {
-                    out.push(ring.map(([x, y]) => [x, y] as [number, number]));
+                    out.push(
+                        ring.map(
+                            ([x, y]) =>
+                                [x / CLIP_PRECISION, y / CLIP_PRECISION] as [number, number],
+                        ),
+                    );
                 }
             }
         }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { usePanelDerivation } from '@/app/(portal)/admin/visualiser/usePanelDerivation';
 import { importSvg } from '@/lib/visualiser/svg-import';
@@ -37,6 +37,11 @@ export default function VisualiserSignViewer({
     svgSource: string | null;
     night: boolean;
 }) {
+    // Annotation overlay (edges, fixing markers, keyline/reference register
+    // lines, seams). Default OFF so the client first sees the sign exactly as
+    // installed — the wow shot — and can flip the marks on if they want detail.
+    const [annotations, setAnnotations] = useState(false);
+
     // Multi-layer designs compose their artwork inside the derivation; this is
     // the legacy single-upload fallback.
     const imported = useMemo(() => safeImport(svgSource), [svgSource]);
@@ -94,9 +99,52 @@ export default function VisualiserSignViewer({
                 vinylPrintDataUrl={vinylPrintDataUrl}
                 placedPathsByIndex={placedClipByIndex}
                 fold={1}
+                annotations={annotations}
                 illuminationView={night}
                 illumination={params.illumination}
             />
+
+            {/* Single bottom-corner toggle: off = how the sign looks installed
+                (no marks); on = the production overlays. */}
+            <button
+                type="button"
+                onClick={() => setAnnotations((a) => !a)}
+                aria-pressed={annotations}
+                style={{
+                    position: 'absolute',
+                    bottom: '12px',
+                    right: '12px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '7px 12px',
+                    borderRadius: '999px',
+                    border: '1px solid var(--hairline)',
+                    background: 'var(--glass, rgba(255,255,255,0.78))',
+                    backdropFilter: 'blur(8px)',
+                    WebkitBackdropFilter: 'blur(8px)',
+                    color: 'var(--text)',
+                    fontFamily: 'inherit',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    letterSpacing: '0.01em',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 10px -4px rgba(0,0,0,0.35)',
+                }}
+            >
+                <span
+                    aria-hidden
+                    style={{
+                        width: '8px',
+                        height: '8px',
+                        borderRadius: '999px',
+                        background: annotations
+                            ? 'var(--accentSolid, #4e7e8c)'
+                            : 'var(--muted)',
+                    }}
+                />
+                Annotation {annotations ? 'on' : 'off'}
+            </button>
         </div>
     );
 }

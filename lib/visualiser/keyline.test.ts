@@ -163,6 +163,27 @@ describe('buildKeyline — Illustrator-style Offset Path', () => {
         expect(topY).toBeLessThan(75);
     });
 
+    it('does not facet a finely-curved outline (despike keeps curve points)', () => {
+        // A near-circular outline, finely sampled (2° per segment). The old
+        // despike culled "collinear" curve points within 0.03mm — but a gentle
+        // curve's sagitta here (~0.008mm) is under that, so it would coarsen the
+        // smooth circle into a faceted polygon. The keyline must keep the curve.
+        const R = 50;
+        const N = 180;
+        const pts: Array<[number, number]> = [];
+        for (let i = 0; i < N; i++) {
+            const t = (i / N) * Math.PI * 2;
+            pts.push([R * Math.cos(t), R * Math.sin(t)]);
+        }
+        pts.push([pts[0][0], pts[0][1]]);
+        const circle: FlatPath = { closed: true, points: pts };
+        const [out] = buildKeyline([circle], 5);
+        // Convex circle → the outward offset never self-intersects, so it passes
+        // straight through; every source vertex must survive. A facet-prone
+        // despike would crush the count well below the source resolution.
+        expect(out.points.length).toBeGreaterThan(N * 0.9);
+    });
+
     it('keeps a genuine sharp corner (only degenerate slivers are removed)', () => {
         // A 30° arrow point is a real feature, not a sliver — it must survive.
         const arrow: FlatPath = {

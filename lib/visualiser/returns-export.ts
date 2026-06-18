@@ -40,18 +40,82 @@ function pathD(points: Pt[], closed: boolean): string {
     );
 }
 
+/** Shortest return blank worth cutting (mm) when no minimum is supplied. */
+export const DEFAULT_MIN_NEST_STRIP_MM = 30;
+
+/**
+ * Coalesce one contour's welded strips into cuttable nest blanks.
+ *
+ * Returns aren't cut as separate slivers — a fabricator forms a continuous
+ * blank straight through the fine corners (notch-and-fold) rather than welding
+ * a 4 mm offcut between two strips. So for the NEST we merge consecutive strips
+ * until each blank reaches `minStripMm`, capped at the stock length so a blank
+ * never exceeds a buyable strip. Total length is preserved EXACTLY (same brass,
+ * same metres) — only the number of cut blanks drops. The cut-sheet PDF keeps
+ * every weld/corner mark, so the fabrication guidance is unchanged.
+ *
+ * Walks in order: accumulate strip lengths; bank a blank as soon as it reaches
+ * the minimum; never let an in-progress blank overflow the stock cap; fold any
+ * trailing sub-minimum remainder back into the previous blank so the run never
+ * ends on a sliver either. Order-preserving and total-preserving.
+ */
+export function coalesceStripLengths(
+    lengths: number[],
+    minStripMm: number,
+    stockLengthMm = 0,
+): number[] {
+    const cap = stockLengthMm > 0 ? stockLengthMm : Infinity;
+    const min = Math.max(0, minStripMm);
+    const out: number[] = [];
+    let acc = 0;
+    for (const raw of lengths) {
+        const len = Math.max(0, raw);
+        if (len <= 0) continue;
+        // Banking now keeps the in-progress blank from overflowing the stock.
+        if (acc > 0 && acc + len > cap) {
+            out.push(acc);
+            acc = 0;
+        }
+        acc += len;
+        if (acc >= min) {
+            out.push(acc);
+            acc = 0;
+        }
+    }
+    if (acc > 0) {
+        // A trailing remainder under the minimum folds back into the previous
+        // blank (unless that would overflow stock, or there is no previous one).
+        if (out.length > 0 && acc < min && out[out.length - 1] + acc <= cap) {
+            out[out.length - 1] += acc;
+        } else {
+            out.push(acc);
+        }
+    }
+    return out;
+}
+
 export interface ReturnsNestSvgInput {
     analysis: ReturnsAnalysis;
     /** Build-up depth = the flat width of every return strip (mm). */
     returnDepthMm: number;
     /** File comment, e.g. "ACME — faces + returns". */
     title: string;
+    /**
+     * Shortest return blank to cut (mm); shorter strips coalesce into a
+     * neighbour. Defaults to {@link DEFAULT_MIN_NEST_STRIP_MM}; 0 nests every
+     * strip verbatim.
+     */
+    minStripMm?: number;
+    /** Stock strip length (mm) — caps a coalesced blank. */
+    stockLengthMm?: number;
 }
 
 export function buildReturnsNestSvg({
     analysis,
     returnDepthMm,
     title,
+    minStripMm = DEFAULT_MIN_NEST_STRIP_MM,
+    stockLengthMm = 0,
 }: ReturnsNestSvgInput): string {
     const fb = analysis.bbox;
     const depth = Math.max(1, returnDepthMm);
@@ -64,8 +128,16 @@ export function buildReturnsNestSvg({
                 `    <path d="${d}" fill="none" stroke="#000000" stroke-width="0.1"/>`,
         );
 
-    // One rectangle per welded strip, tiled in shelves under the faces.
-    const strips = analysis.contours.flatMap((c) => c.strips);
+    // One rectangle per cut blank. Strips are coalesced PER CONTOUR (strips from
+    // different letters are physically separate brass, never merged) so the nest
+    // never carries an un-cuttable sliver. Tiled in shelves under the faces.
+    const blanks = analysis.contours.flatMap((c) =>
+        coalesceStripLengths(
+            c.strips.map((s) => s.lengthMm),
+            minStripMm,
+            stockLengthMm,
+        ),
+    );
     const gap = Math.max(5, depth * 0.4);
     const rowWidth = Math.max(fb.maxX - fb.minX, 1200);
     let x = fb.minX;
@@ -73,8 +145,8 @@ export function buildReturnsNestSvg({
     let contentMaxX = fb.maxX;
     let contentMaxY = y;
     const rectEls: string[] = [];
-    for (const s of strips) {
-        const w = Math.max(1, s.lengthMm);
+    for (const blank of blanks) {
+        const w = Math.max(1, blank);
         if (x > fb.minX && x + w > fb.minX + rowWidth) {
             x = fb.minX;
             y += depth + gap;
