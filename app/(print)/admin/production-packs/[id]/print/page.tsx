@@ -3,6 +3,7 @@ import { requireAdmin } from '@/lib/auth';
 import { getProductionPack } from '@/lib/production-packs/actions';
 import { notFound } from 'next/navigation';
 import type { Block, PackCover, PackStyle, SignSection } from '@/lib/production-packs/types';
+import { AutoPrint } from './AutoPrint';
 
 // =============================================================================
 // PRINT THEMES — one per pack style (see PACK_STYLES in lib/production-packs)
@@ -75,6 +76,7 @@ export default async function ProductionPackPrintPage({
         >
             <title>{`${pack.title} — works pack`}</title>
             <style>{buildStyles(theme)}</style>
+            <AutoPrint />
 
             <div className="pp-hint">
                 Works pack — ready to print
