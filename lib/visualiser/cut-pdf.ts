@@ -32,17 +32,31 @@ export function cutToPdf(geo: CutGeometry): Uint8Array {
 
     doc.setLineWidth(0.1);
 
+    // Draw each ring as ONE connected closed path (doc.lines + closed), NOT a
+    // pile of separate doc.line() segments — otherwise every letter imports as
+    // disconnected 2-point lines and isn't a cuttable contour.
     const strokeRing = (ring: Ring) => {
-        if (ring.length < 2) return;
-        for (let i = 0; i + 1 < ring.length; i++) {
-            doc.line(X(ring[i][0]), Y(ring[i][1]), X(ring[i + 1][0]), Y(ring[i + 1][1]));
+        // Drop a duplicated closing vertex; `closed: true` re-closes the path.
+        let pts = ring;
+        if (pts.length > 2) {
+            const a = pts[0];
+            const b = pts[pts.length - 1];
+            if (a[0] === b[0] && a[1] === b[1]) pts = pts.slice(0, -1);
         }
-        // Close it.
-        const a = ring[0];
-        const b = ring[ring.length - 1];
-        if (a[0] !== b[0] || a[1] !== b[1]) {
-            doc.line(X(b[0]), Y(b[1]), X(a[0]), Y(a[1]));
+        if (pts.length < 2) return;
+        const x0 = X(pts[0][0]);
+        const y0 = Y(pts[0][1]);
+        const deltas: number[][] = [];
+        let prevX = x0;
+        let prevY = y0;
+        for (let i = 1; i < pts.length; i++) {
+            const nx = X(pts[i][0]);
+            const ny = Y(pts[i][1]);
+            deltas.push([nx - prevX, ny - prevY]);
+            prevX = nx;
+            prevY = ny;
         }
+        doc.lines(deltas, x0, y0, [1, 1], 'S', true);
     };
 
     // Reference (blue): sheet boundary + fold lines.

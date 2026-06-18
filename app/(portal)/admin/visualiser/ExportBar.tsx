@@ -14,6 +14,7 @@ import {
     FileBox,
     BadgeCheck,
     Archive,
+    FileDown,
 } from 'lucide-react';
 import { useVisualiser, splitPanels } from './store';
 import { sceneCapture } from './Scene3D';
@@ -321,9 +322,9 @@ export function ExportBar({
     const [onBackshop, setOnBackshop] = useState(false);
     const [nesterPending, setNesterPending] = useState(false);
     const [zipPending, setZipPending] = useState(false);
-    const [packPending, setPackPending] = useState<'prod' | 'approval' | null>(
-        null,
-    );
+    const [packPending, setPackPending] = useState<
+        'prod' | 'approval' | 'pdf' | null
+    >(null);
     const [msg, setMsg] = useState<string | null>(null);
     const [exported, setExported] = useState<string | null>(null);
 
@@ -965,6 +966,37 @@ export function ExportBar({
         };
     };
 
+    // Build + persist the full per-piece works pack from this design; returns
+    // the new pack id (or null on failure, message already surfaced). Shared by
+    // the "open in builder" and "download PDF" buttons.
+    const buildAndCreatePack = async (): Promise<string | null> => {
+        // Persist the design first so the pack can link back to it later.
+        const id = await ensureSaved();
+        if (!id) return null;
+        setMsg('Capturing render…');
+        const insitu = await captureCleanInsitu();
+        // The client's logo from the binder (if their org has one).
+        let logo: string | null = null;
+        const logoRes = await getDesignBinderLogo(id);
+        if (logoRes.ok && logoRes.data?.svg) {
+            logo = `data:image/svg+xml;utf8,${encodeURIComponent(logoRes.data.svg)}`;
+        }
+        // Nesting can take a beat — tell the operator something's happening.
+        setMsg('Nesting pieces & building pack…');
+        await new Promise((r) => setTimeout(r, 20));
+        const input = await buildProductionPackInput(insitu, logo);
+        const content = buildPackFromDesignPieces(input);
+        const res = await createProductionPackFromContent({
+            name: input.name,
+            content,
+        });
+        if (!res.ok) {
+            setMsg(res.error);
+            return null;
+        }
+        return res.data.id;
+    };
+
     // Build the full per-piece works pack from this design and open it.
     const onCreateProductionPack = async () => {
         if (packPending) return;
@@ -975,31 +1007,35 @@ export function ExportBar({
         setPackPending('prod');
         setMsg(null);
         try {
-            // Persist the design first so the pack can link back to it later.
-            const id = await ensureSaved();
-            if (!id) return;
-            setMsg('Capturing render…');
-            const insitu = await captureCleanInsitu();
-            // The client's logo from the binder (if their org has one).
-            let logo: string | null = null;
-            const logoRes = await getDesignBinderLogo(id);
-            if (logoRes.ok && logoRes.data?.svg) {
-                logo = `data:image/svg+xml;utf8,${encodeURIComponent(logoRes.data.svg)}`;
-            }
-            // Nesting can take a beat — tell the operator something's happening.
-            setMsg('Nesting pieces & building pack…');
-            await new Promise((r) => setTimeout(r, 20));
-            const input = await buildProductionPackInput(insitu, logo);
-            const content = buildPackFromDesignPieces(input);
-            const res = await createProductionPackFromContent({
-                name: input.name,
-                content,
-            });
-            if (!res.ok) {
-                setMsg(res.error);
+            const id = await buildAndCreatePack();
+            if (id) window.location.assign(`/admin/production-packs/${id}`);
+        } finally {
+            setPackPending(null);
+        }
+    };
+
+    // Build the pack, then open its print view auto-printing — the browser's
+    // "Save as PDF" gives a faithful PDF of the whole works pack (studio
+    // template, dimensions, per-piece breakdown). The tab is opened up-front in
+    // the click gesture so it isn't popup-blocked, then pointed at the print URL.
+    const onDownloadPackPdf = async () => {
+        if (packPending) return;
+        if (!designHasArtwork()) {
+            setMsg('Add artwork to the panel before downloading a pack PDF.');
+            return;
+        }
+        const win = window.open('', '_blank');
+        setPackPending('pdf');
+        setMsg(null);
+        try {
+            const id = await buildAndCreatePack();
+            if (!id) {
+                win?.close();
                 return;
             }
-            window.location.assign(`/admin/production-packs/${res.data.id}`);
+            const url = `/admin/production-packs/${id}/print?print=1`;
+            if (win) win.location.href = url;
+            else window.location.assign(url); // popup blocked → same tab
         } finally {
             setPackPending(null);
         }
@@ -1556,6 +1592,21 @@ export function ExportBar({
                         <FileBox size={14} aria-hidden />
                     )}
                     {packPending === 'prod' ? 'Creating…' : 'Production pack'}
+                </button>
+                <button
+                    type="button"
+                    onClick={onDownloadPackPdf}
+                    disabled={packPending !== null}
+                    aria-busy={packPending === 'pdf'}
+                    title="Build the works pack and open it ready to save as PDF — the whole document (studio template, dimensions, per-piece breakdown)."
+                    className="flex min-h-[36px] items-center gap-1.5 rounded-md border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                    {packPending === 'pdf' ? (
+                        <Loader2 size={14} className="animate-spin" aria-hidden />
+                    ) : (
+                        <FileDown size={14} aria-hidden />
+                    )}
+                    {packPending === 'pdf' ? 'Building…' : 'Pack PDF'}
                 </button>
                 <button
                     type="button"
