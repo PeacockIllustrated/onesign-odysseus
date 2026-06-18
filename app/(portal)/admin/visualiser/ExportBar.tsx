@@ -32,6 +32,7 @@ import {
     type DesignPackInput,
     type PackDrawing,
 } from '@/lib/production-packs/from-design';
+import { panelDimensionBreakdown } from '@/lib/production-packs/panel-dimensions';
 import { createVisualApprovalFromDesign } from '@/lib/artwork/visual-approval-actions';
 import { acrylicByHex } from '@/lib/visualiser/acrylic';
 import {
@@ -85,13 +86,20 @@ function download(blob: Blob, filename: string) {
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
+    a.style.display = 'none';
+    // A DETACHED anchor's click() silently no-ops in Chrome for a large blob
+    // built outside the click's gesture window (the small zip worked because it
+    // built fast; the full SVG+DXF+PDF zip doesn't). An in-DOM click is the
+    // reliable trigger. Append + click + remove in ONE synchronous tick so
+    // React never observes the node between commits — leaving it parented (the
+    // previous 1.5s window) is what tripped React 19 reconciliation (#418 / the
+    // $RS parentNode crash). The download is already in flight after click(), so
+    // removing the anchor immediately is safe; only the blob URL must outlive
+    // the browser reading it, so revoke that later.
+    document.body.appendChild(a);
     a.click();
-    // Don't touch document.body — React owns it (the root layout's <body>), and
-    // appending/removing a node there trips React 19's hydration/streaming
-    // reconciliation (#418 + a $RS parentNode crash). The detached anchor still
-    // downloads. Only defer the revoke so a large blob (the production zip)
-    // isn't cancelled before the browser finishes reading it.
-    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
 /** Blob → bare base64 (no data-URL prefix) for sending to a server action. */
@@ -679,22 +687,33 @@ export function ExportBar({
             backlightPieces.length > 0
                 ? `${backlightPieces.length} backlit aperture${backlightPieces.length === 1 ? '' : 's'} cut in the face`
                 : null;
+        // Clear face-vs-unfolded-blank-vs-shadow-gap dimension breakdown, plus
+        // the fold deduction + the developed (flat) face size.
+        const dev0 = sectionExport.sections[0]?.development;
+        const trayDims = panelDimensionBreakdown({
+            faceWmm: w,
+            faceHmm: h,
+            blankWmm: trayCut.widthMm,
+            blankHmm: trayCut.heightMm,
+            faceFlatWmm: dev0?.faceFlatWMm,
+            faceFlatHmm: dev0?.faceFlatHMm,
+            returnDepthMm: params.returnDepthMm,
+            shadowGapMm: params.shadowGapMm ?? 0,
+            shadowGapEdges: params.shadowGapEdges,
+            materialLabel: params.materialLabel ?? 'Folded aluminium',
+            gaugeMm: params.materialThicknessMm,
+            colour: params.panelRal ?? params.panelColor ?? '',
+        });
         groups.push({
             kind: 'panel',
             title: 'Aluminium tray',
             count: 1,
             thicknessMm: params.materialThicknessMm,
             painted: !!(params.panelRal || params.panelColor),
-            specRows: [
-                { label: 'Face size', value: `${round(w)} × ${round(h)}mm` },
-                { label: 'Flat blank', value: `${trayCut.widthMm} × ${trayCut.heightMm}mm` },
-                { label: 'Material', value: params.materialLabel ?? 'Folded aluminium' },
-                { label: 'Colour', value: params.panelRal ?? params.panelColor ?? '' },
-                { label: 'Return depth', value: `${round(params.returnDepthMm)}mm` },
-                { label: 'Gauge', value: `${params.materialThicknessMm}mm` },
-            ],
+            specRows: trayDims.specRows,
             callouts: [
-                'Folded aluminium tray — cut flat, fold on the dashed lines',
+                ...trayDims.callouts,
+                'Folded aluminium tray — cut the flat blank, fold on the dashed lines.',
                 ...(apertureNote ? [apertureNote] : []),
             ],
             drawings: [
@@ -702,7 +721,7 @@ export function ExportBar({
                     dataUri: svgUri(trayCut.svg),
                     isSvg: true,
                     kind: 'technical',
-                    caption: 'Unfolded tray — cut & fold',
+                    caption: `Unfolded flat blank — ${trayCut.widthMm} × ${trayCut.heightMm} mm (cut & fold)`,
                     widthMm: trayCut.widthMm,
                     heightMm: trayCut.heightMm,
                 },
@@ -924,7 +943,12 @@ export function ExportBar({
             name: params.name || 'Sign',
             logoDataUri,
             overallSpecRows: [
-                { label: 'Overall size', value: `${round(w)} × ${round(h)}mm` },
+                { label: 'Face size (visible front)', value: `${round(w)} × ${round(h)} mm` },
+                { label: 'Unfolded flat blank (cut size)', value: `${trayCut.widthMm} × ${trayCut.heightMm} mm` },
+                { label: 'Return depth', value: `${round(params.returnDepthMm)} mm` },
+                ...((params.shadowGapMm ?? 0) > 0
+                    ? [{ label: 'Shadow gap', value: `${round(params.shadowGapMm)} mm` }]
+                    : []),
                 { label: 'Tray material', value: params.materialLabel ?? 'Folded aluminium' },
                 { label: 'Panel colour', value: params.panelRal ?? params.panelColor ?? '' },
                 {
