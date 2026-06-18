@@ -85,17 +85,13 @@ function download(blob: Blob, filename: string) {
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
-    a.rel = 'noopener';
-    // The anchor must be in the DOM for the click to fire in Firefox/Safari,
-    // and the object URL must outlive the browser reading the blob — revoking
-    // it synchronously cancels larger downloads (e.g. the production zip), so
-    // defer the revoke + cleanup.
-    document.body.appendChild(a);
     a.click();
-    setTimeout(() => {
-        URL.revokeObjectURL(url);
-        a.remove();
-    }, 1500);
+    // Don't touch document.body — React owns it (the root layout's <body>), and
+    // appending/removing a node there trips React 19's hydration/streaming
+    // reconciliation (#418 + a $RS parentNode crash). The detached anchor still
+    // downloads. Only defer the revoke so a large blob (the production zip)
+    // isn't cancelled before the browser finishes reading it.
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
 /** Blob → bare base64 (no data-URL prefix) for sending to a server action. */
