@@ -428,6 +428,26 @@ const PanelCoreSchema = z.object({
                     })
                     .nullable()
                     .optional(),
+                /**
+                 * Optional PRINTED FACE VINYL applied to this group's letters — a
+                 * second uploaded SVG (the full-colour print artwork) of the same
+                 * proportions as the letters. It is auto-aligned to the group's
+                 * letter bounding box, clipped to the letter outlines, and
+                 * laminated on the front (drives `faceVinylPrintDataUrl` +
+                 * `faceVinylPieces` + the print-and-cut export). Same letter
+                 * materials as extraFace ('pushthrough', 'cut', 'backlight',
+                 * 'acrylic'). Absent / null → no face vinyl.
+                 */
+                faceVinyl: z
+                    .object({
+                        /** The print artwork SVG (colours + gradients intact). */
+                        svgSource: z.string().min(1).max(2_000_000),
+                        /** Cached native content bbox of the print, for naming. */
+                        wMm: z.number().nonnegative().default(0),
+                        hMm: z.number().nonnegative().default(0),
+                    })
+                    .nullable()
+                    .optional(),
                 pathIndices: z.array(z.number().int().min(0)),
             }),
         )

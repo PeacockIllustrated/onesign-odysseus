@@ -1140,6 +1140,7 @@ function MaterialPieces({
     acrylic,
     solid,
     vinylPrintDataUrl,
+    faceVinylPrintDataUrl,
     outlines = true,
     night = false,
 }: {
@@ -1150,6 +1151,9 @@ function MaterialPieces({
     /** Full-colour vinyl print — a face-sized PNG (colours + gradients) masked
      *  to the printed-vinyl shapes. Painted as one plane over the face. */
     vinylPrintDataUrl?: string | null;
+    /** Printed FACE VINYL — a face-sized PNG masked to a letter group's
+     *  letters; painted as a plane a hair proud of the regular vinyl. */
+    faceVinylPrintDataUrl?: string | null;
     outlines?: boolean;
     night?: boolean;
 }) {
@@ -1157,6 +1161,7 @@ function MaterialPieces({
     // face (the raster IS the face, so default plane UVs map 1:1 — no UV math).
     // Until the async raster is ready, those pieces fall back to flat meshes.
     const vinylTex = useImageTexture(vinylPrintDataUrl);
+    const faceVinylTex = useImageTexture(faceVinylPrintDataUrl);
     const showPrint = !!vinylTex && vinyl.some((p) => p.fullColor);
     const flatVinyl = showPrint ? vinyl.filter((p) => !p.fullColor) : vinyl;
     const toLocal = (q: [number, number]): [number, number] => [
@@ -1220,6 +1225,25 @@ function MaterialPieces({
                     <planeGeometry args={[face.wMm * S, face.hMm * S]} />
                     <meshBasicMaterial
                         map={vinylTex}
+                        transparent
+                        opacity={night ? 0.6 : 1}
+                        depthWrite={false}
+                        side={THREE.DoubleSide}
+                        polygonOffset
+                        polygonOffsetFactor={1}
+                        polygonOffsetUnits={1}
+                    />
+                </mesh>
+            )}
+
+            {/* Printed FACE VINYL — the second-upload print, masked to a letter
+                group's letters, laminated a hair proud of the regular vinyl so
+                it reads as the printed graphic ON the letter faces. */}
+            {faceVinylTex && (
+                <mesh position={[0, 0, 1.8 * S]}>
+                    <planeGeometry args={[face.wMm * S, face.hMm * S]} />
+                    <meshBasicMaterial
+                        map={faceVinylTex}
                         transparent
                         opacity={night ? 0.6 : 1}
                         depthWrite={false}
@@ -2050,6 +2074,7 @@ function Panel({
     backlightPieces,
     extraFacePieces = [],
     vinylPrintDataUrl,
+    faceVinylPrintDataUrl,
     placedPathsByIndex,
     pathGroupColors,
     pendingPaths,
@@ -2093,6 +2118,8 @@ function Panel({
     extraFacePieces?: ExtraFacePiece[];
     /** Full-colour vinyl print PNG (face-sized, masked to the vinyl shapes). */
     vinylPrintDataUrl?: string | null;
+    /** Printed face-vinyl PNG (face-sized, masked to a letter group's letters). */
+    faceVinylPrintDataUrl?: string | null;
     placedPathsByIndex?: Array<FlatPath | null> | null;
     pathGroupColors?: Array<string | null> | null;
     pendingPaths?: Set<number>;
@@ -2370,6 +2397,7 @@ function Panel({
                             acrylic={acrylicPieces}
                             solid={solidPieces}
                             vinylPrintDataUrl={vinylPrintDataUrl}
+                            faceVinylPrintDataUrl={faceVinylPrintDataUrl}
                             outlines={showOutlines}
                             night={night}
                         />
@@ -3039,6 +3067,8 @@ export default function Scene3D(props: {
     extraFacePieces?: ExtraFacePiece[];
     /** Full-colour vinyl print PNG — face-sized, masked to the vinyl shapes. */
     vinylPrintDataUrl?: string | null;
+    /** Printed face-vinyl PNG — face-sized, masked to a letter group's letters. */
+    faceVinylPrintDataUrl?: string | null;
     placedPathsByIndex?: Array<FlatPath | null> | null;
     pathGroupColors?: Array<string | null> | null;
     pendingPaths?: Set<number>;
