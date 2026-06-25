@@ -30,6 +30,13 @@ const PublicEnvSchema = z.object({
 const ServerEnvSchema = PublicEnvSchema.extend({
     // Optional at import time; admin-client calls throw if missing.
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(40).optional(),
+    /**
+     * Higgsfield Cloud API credentials for in-situ mockup generation, in the
+     * SDK's "KEY_ID:KEY_SECRET" form. Optional: when unset the mockup feature
+     * no-ops with a clear "not configured" message (same deferred-integration
+     * pattern as email/push) so unconfigured deploys still build and run.
+     */
+    HIGGSFIELD_API_KEY: z.string().min(3).optional(),
 });
 
 function parseEnv(): z.infer<typeof ServerEnvSchema> {
