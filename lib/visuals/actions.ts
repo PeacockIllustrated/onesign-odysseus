@@ -30,6 +30,8 @@ const GenerateInSituMockupInputSchema = z.object({
     timeOfDay: z.enum(TIMES_OF_DAY),
     /** Optional explicit lettering; falls back to a guess from the design name. */
     text: z.string().max(120).optional(),
+    /** 'preview' (cheap Soul) or 'final' (premium edit model). */
+    quality: z.enum(['preview', 'final']).default('preview'),
 });
 export type GenerateInSituMockupInput = z.infer<typeof GenerateInSituMockupInputSchema>;
 
@@ -41,12 +43,12 @@ export async function generateInSituMockup(
 
     const parsed = GenerateInSituMockupInputSchema.safeParse(input);
     if (!parsed.success) return err(parsed.error.issues[0]?.message ?? 'invalid input');
-    const { params, screenshotBase64, scene, timeOfDay, text } = parsed.data;
+    const { params, screenshotBase64, scene, timeOfDay, text, quality } = parsed.data;
 
     const spec = visualiserToSignSpec(params, text);
     const { prompt } = composePrompt({ spec, scene, timeOfDay });
 
-    const res = await generateMockup({ prompt, referenceBase64: screenshotBase64 });
+    const res = await generateMockup({ prompt, referenceBase64: screenshotBase64, quality });
     if (!res.ok) return err(res.error);
 
     return ok({ url: res.data.url, prompt });

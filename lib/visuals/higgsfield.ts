@@ -20,9 +20,7 @@ import { HiggsfieldClient } from '@higgsfield/client';
 import { createHiggsfieldClient } from '@higgsfield/client/v2';
 import { env } from '../env';
 import { ok, err, type Result } from '../result';
-
-/** Reference-guided text-to-image endpoint (Soul). */
-const ENDPOINT = '/v1/text2image/soul';
+import { buildModelInput, resolveMockupModel, type MockupQuality } from './model-select';
 
 export interface GenerateMockupInput {
     /** The composed in-situ prompt (see `lib/visuals/compose`). */
@@ -31,7 +29,8 @@ export interface GenerateMockupInput {
     referenceBase64: string;
     /** Output size token, e.g. "1536x864" (16:9). Defaults to landscape. */
     size?: string;
-    quality?: '720p' | '1080p';
+    /** Quality tier — 'preview' (cheap Soul) or 'final' (premium). Default preview. */
+    quality?: MockupQuality;
 }
 
 /** The credentials string ("KEY_ID:KEY_SECRET"), or null when not configured. */
@@ -66,19 +65,20 @@ export async function generateMockup(input: GenerateMockupInput): Promise<Result
             uploader.close();
         }
 
-        // 2. Reference-guided generation.
-        const client = createHiggsfieldClient({ credentials: creds });
-        const res = await client.subscribe(ENDPOINT, {
-            input: {
-                prompt: input.prompt,
-                width_and_height: input.size ?? '1536x864',
-                quality: input.quality ?? '1080p',
-                batch_size: 1,
-                image_reference: { type: 'image_url', image_url: referenceUrl },
-                enhance_prompt: false,
-            },
-            withPolling: true,
+        // 2. Reference-guided generation. The quality tier picks the endpoint
+        //    (cheap Soul preview vs a premium edit model) + its input shape.
+        const { endpoint, style } = resolveMockupModel(input.quality ?? 'preview', {
+            preview: env.HIGGSFIELD_MODEL_PREVIEW,
+            final: env.HIGGSFIELD_MODEL_FINAL,
         });
+        const payload = buildModelInput(style, {
+            prompt: input.prompt,
+            referenceUrl,
+            size: input.size ?? '1536x864',
+        });
+
+        const client = createHiggsfieldClient({ credentials: creds });
+        const res = await client.subscribe(endpoint, { input: payload, withPolling: true });
 
         if (res.status !== 'completed') {
             const why = res.status === 'nsfw' ? 'was blocked (nsfw)' : `did not complete (${res.status})`;

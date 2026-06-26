@@ -37,6 +37,14 @@ const ServerEnvSchema = PublicEnvSchema.extend({
      * pattern as email/push) so unconfigured deploys still build and run.
      */
     HIGGSFIELD_API_KEY: z.string().min(3).optional(),
+    /**
+     * Optional per-tier model endpoint overrides for mockup generation. Unset →
+     * both tiers use the cheap Soul model. Point FINAL at a premium edit model
+     * (e.g. a FLUX Kontext / GPT-Image edit endpoint) for client-facing fidelity;
+     * the input shape is inferred from the endpoint (see lib/visuals/model-select).
+     */
+    HIGGSFIELD_MODEL_PREVIEW: z.string().min(1).optional(),
+    HIGGSFIELD_MODEL_FINAL: z.string().min(1).optional(),
 });
 
 function parseEnv(): z.infer<typeof ServerEnvSchema> {

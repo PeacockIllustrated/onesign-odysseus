@@ -15,7 +15,12 @@ import { useState, useTransition } from 'react';
 import { Download, ImageIcon, Loader2, RefreshCw, X } from 'lucide-react';
 import type { PanelParams } from '@/lib/visualiser/types';
 import { generateInSituMockup } from '@/lib/visuals/actions';
-import { SCENES, TIMES_OF_DAY, type Scene, type TimeOfDay } from '@/lib/visuals';
+import { SCENES, TIMES_OF_DAY, type MockupQuality, type Scene, type TimeOfDay } from '@/lib/visuals';
+
+const QUALITY_OPTIONS: { id: MockupQuality; label: string; hint: string }[] = [
+    { id: 'preview', label: 'Quick preview', hint: 'Fast & cheap (~1–2¢)' },
+    { id: 'final', label: 'High fidelity', hint: 'Client-ready (~8–10¢)' },
+];
 
 const SCENE_LABELS: Record<Scene, string> = {
     modern_storefront: 'Modern storefront',
@@ -68,6 +73,7 @@ export function MockupGenerator({
     const [open, setOpen] = useState(false);
     const [scene, setScene] = useState<Scene>('modern_storefront');
     const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>('day');
+    const [quality, setQuality] = useState<MockupQuality>('preview');
     const [pending, startTransition] = useTransition();
     const [error, setError] = useState<string | null>(null);
     const [url, setUrl] = useState<string | null>(null);
@@ -85,6 +91,7 @@ export function MockupGenerator({
                 screenshotBase64: stripDataUrl(shot),
                 scene,
                 timeOfDay,
+                quality,
             });
             if (!res.ok) {
                 setError(res.error);
@@ -172,6 +179,32 @@ export function MockupGenerator({
                                             }`}
                                         >
                                             {TIME_LABELS[t]}
+                                        </button>
+                                    ))}
+                                </div>
+                            </fieldset>
+
+                            {/* Quality picker */}
+                            <fieldset className="mb-4">
+                                <legend className="mb-1.5 text-xs font-medium text-neutral-600">Quality</legend>
+                                <div className="flex flex-wrap gap-2">
+                                    {QUALITY_OPTIONS.map((q) => (
+                                        <button
+                                            key={q.id}
+                                            type="button"
+                                            onClick={() => setQuality(q.id)}
+                                            className={`flex flex-col items-start rounded-lg px-3 py-2 text-left ring-1 transition ${
+                                                quality === q.id
+                                                    ? 'bg-[#4e7e8c] text-white ring-[#4e7e8c]'
+                                                    : 'bg-white text-neutral-700 ring-neutral-300 hover:bg-neutral-50'
+                                            }`}
+                                        >
+                                            <span className="text-xs font-semibold">{q.label}</span>
+                                            <span
+                                                className={`text-[11px] ${quality === q.id ? 'text-white/80' : 'text-neutral-400'}`}
+                                            >
+                                                {q.hint}
+                                            </span>
                                         </button>
                                     ))}
                                 </div>
