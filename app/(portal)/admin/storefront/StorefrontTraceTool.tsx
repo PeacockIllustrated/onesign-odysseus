@@ -11,10 +11,16 @@
  * wrapper, so the direct StorefrontScene import is safe.)
  */
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { RotateCcw, Upload } from 'lucide-react';
 import StorefrontScene from './StorefrontScene';
-import { traceToSpec, type PixelBox, type StorefrontSpec } from '@/lib/storefront';
+import {
+    traceToSpec,
+    type PixelBox,
+    type PlacedSign,
+    type StorefrontSpec,
+    type SurveyAnchor,
+} from '@/lib/storefront';
 
 type ElementKey = 'facade' | 'fascia' | 'door' | 'window' | 'stallriser';
 
@@ -38,7 +44,15 @@ const ANCHOR_SOURCES: { id: AnchorSource; label: string; el: ElementKey; dim: 'w
 
 type Boxes = Partial<Record<ElementKey, PixelBox>>;
 
-export default function StorefrontTraceTool() {
+export default function StorefrontTraceTool({
+    sign = null,
+    onSpec,
+    surveyAnchors = [],
+}: {
+    sign?: PlacedSign | null;
+    onSpec?: (spec: StorefrontSpec) => void;
+    surveyAnchors?: SurveyAnchor[];
+}) {
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [boxes, setBoxes] = useState<Boxes>({});
     const [activeTool, setActiveTool] = useState<ElementKey>('facade');
@@ -100,6 +114,12 @@ export default function StorefrontTraceTool() {
             return null;
         }
     }, [boxes, anchorPx, anchorMm]);
+
+    // Report the computed spec up (for saving). onSpec (setSpec) is stable, so
+    // this can't loop.
+    useEffect(() => {
+        if (spec) onSpec?.(spec);
+    }, [spec, onSpec]);
 
     const missing = ELEMENTS.filter((e) => e.required && !boxes[e.key]).map((e) => e.label);
 
@@ -215,6 +235,21 @@ export default function StorefrontTraceTool() {
                             <p className="text-[11px] text-neutral-400">
                                 Survey measurement is the best anchor. Fallback: a standard door leaf ≈ 2040 mm.
                             </p>
+                            {surveyAnchors.length > 0 && (
+                                <div className="basis-full">
+                                    <span className="mr-2 text-[11px] font-medium text-[#3a5f6a]">From linked survey:</span>
+                                    {surveyAnchors.map((a) => (
+                                        <button
+                                            key={`${a.label}-${a.mm}`}
+                                            type="button"
+                                            onClick={() => setAnchorMm(a.mm)}
+                                            className="mr-1.5 rounded-full bg-[#e8f0f3] px-2.5 py-0.5 text-[11px] font-medium text-[#3a5f6a] ring-1 ring-[#4e7e8c]/30 hover:bg-[#d8e6ec]"
+                                        >
+                                            {a.label}: {a.mm} mm
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </>
                 )}
@@ -224,7 +259,7 @@ export default function StorefrontTraceTool() {
             <div className="space-y-2">
                 <div className="h-[58vh] w-full overflow-hidden rounded-xl border border-neutral-200 bg-[#e4f0f8]">
                     {spec ? (
-                        <StorefrontScene spec={spec} />
+                        <StorefrontScene spec={spec} sign={sign} />
                     ) : (
                         <div className="flex h-full items-center justify-center px-8 text-center text-sm text-neutral-500">
                             {!imageUrl

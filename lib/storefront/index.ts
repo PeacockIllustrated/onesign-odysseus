@@ -10,3 +10,11 @@
 export * from './types';
 export { specToBlocks, specBounds } from './geometry';
 export { traceToSpec, type PixelBox, type TraceInput } from './trace';
+// Server actions ('use server' — functions only; their types live in ./types).
+export {
+    listStorefrontProjects,
+    getStorefrontProject,
+    saveStorefrontProject,
+    listLinkableSurveys,
+    getSurveyAnchors,
+} from './actions';

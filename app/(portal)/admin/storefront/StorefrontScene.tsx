@@ -17,6 +17,7 @@ import { ContactShadows, OrbitControls } from '@react-three/drei';
 import {
     DEFAULT_TEMPLATE,
     specToBlocks,
+    type PlacedSign,
     type StorefrontBlock,
     type StorefrontMaterial,
     type StorefrontSpec,
@@ -41,8 +42,15 @@ function BlockMesh({ b, colours }: { b: StorefrontBlock; colours: Record<Storefr
     );
 }
 
-export default function StorefrontScene({ spec = DEFAULT_TEMPLATE }: { spec?: StorefrontSpec }) {
+export default function StorefrontScene({
+    spec = DEFAULT_TEMPLATE,
+    sign = null,
+}: {
+    spec?: StorefrontSpec;
+    sign?: PlacedSign | null;
+}) {
     const blocks = useMemo(() => specToBlocks(spec), [spec]);
+    const mount = useMemo(() => blocks.find((b) => b.name === 'Fascia_SignMount'), [blocks]);
     const centreX = spec.widthMm / 2000; // metres — centre the facade on the origin
 
     return (
@@ -64,6 +72,16 @@ export default function StorefrontScene({ spec = DEFAULT_TEMPLATE }: { spec?: St
                 {blocks.map((b) => (
                     <BlockMesh key={b.id} b={b} colours={spec.colours} />
                 ))}
+                {sign && mount && (
+                    // Sign placed at its REAL size on the fascia mount, proud of the face.
+                    <mesh
+                        position={[(mount.x + mount.w / 2) / 1000, (mount.z + mount.h / 2) / 1000, 0.118]}
+                        castShadow
+                    >
+                        <boxGeometry args={[sign.widthMm / 1000, sign.heightMm / 1000, 0.03]} />
+                        <meshStandardMaterial color={sign.colour} roughness={0.5} metalness={0.12} />
+                    </mesh>
+                )}
             </group>
             <ContactShadows position={[0, 0.001, 0]} opacity={0.42} scale={14} blur={2.6} far={5} />
             <OrbitControls target={[0, spec.heightMm / 2000, 0]} enablePan makeDefault />
