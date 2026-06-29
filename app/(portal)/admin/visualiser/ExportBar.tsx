@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useVisualiser, splitPanels } from './store';
 import { sceneCapture } from './Scene3D';
+import { MockupGenerator } from './MockupGenerator';
 import {
     generateReferencePdfBlob,
     generateProductionPdfBlob,
@@ -1670,6 +1671,11 @@ export function ExportBar({
                     )}
                     {zipPending ? 'Zipping…' : 'Production files (.zip)'}
                 </button>
+                <MockupGenerator
+                    params={params}
+                    capture={captureCleanInsitu}
+                    disabled={!valid.success}
+                />
                 <div className="ml-auto flex items-center gap-2 text-xs text-neutral-500">
                     {exported && (
                         <span
