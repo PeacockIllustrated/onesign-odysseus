@@ -47,6 +47,10 @@ import { usePanelDerivation } from '../(portal)/admin/visualiser/usePanelDerivat
 import { useSceneInteraction } from '../(portal)/admin/visualiser/useSceneInteraction';
 import { sceneCapture } from '../(portal)/admin/visualiser/Scene3D';
 import { trimImageDataUrl } from '@/lib/visualiser/image';
+import { buildDevelopment } from '@/lib/visualiser/geometry';
+import { splitPanels as splitPanelGeometry } from '@/lib/visualiser/split';
+import { composeLayersSvg } from '@/lib/visualiser/compose';
+import { resolveMount } from '@/lib/visualiser/projecting';
 import { PanelParamsSchema } from '@/lib/visualiser/types';
 import { submitDesignRequest } from '@/lib/design-requests/actions';
 import { assembleDesignPayload } from './assemble';
@@ -168,6 +172,46 @@ export function PublicWizard({
     // 3D interactivity — path-picking + fixing / cable placement. The public
     // studio has no flat tab to fall back to, so clicks must land in 3D.
     const interaction = useSceneInteraction(deriv);
+
+    // Secondary (projecting) panel for the 3D composite — same approach as the
+    // staff tool. When the customer adds a projecting/blade sign it's the
+    // OTHER (inactive) panel; we derive its full geometry live so it shows
+    // attached to the fascia, perpendicular, even while they edit the main
+    // panel. Inert (null) when there's no projecting sign.
+    const secondaryParams =
+        projectingEnabled && inactive ? inactive.params : null;
+    const secondaryDeriv = usePanelDerivation(
+        secondaryParams,
+        projectingEnabled && inactive ? inactive.imported : null,
+        projectingEnabled && inactive ? inactive.svgSource : null,
+    );
+    const secondaryDevelopment = useMemo(
+        () => (secondaryParams ? buildDevelopment(secondaryParams) : null),
+        [secondaryParams],
+    );
+    const secondarySplit = useMemo(
+        () =>
+            secondaryParams
+                ? splitPanelGeometry(
+                      secondaryParams.panelWidthMm,
+                      undefined,
+                      secondaryParams.centrePanelOverrideMm ?? undefined,
+                  )
+                : null,
+        [secondaryParams],
+    );
+    const secondaryArtworkSvg = useMemo(() => {
+        if (!secondaryParams || !inactive) return null;
+        const layers = secondaryParams.artworkLayers ?? [];
+        if (layers.length)
+            return composeLayersSvg(
+                layers,
+                secondaryParams.panelWidthMm,
+                secondaryParams.panelHeightMm,
+            );
+        return inactive.svgSource;
+    }, [secondaryParams, inactive]);
+    const secondaryBundle = projectingEnabled ? secondaryDeriv.bundle : null;
 
     // ── View state (never persisted) ──────────────────────────────────────
     const [night, setNight] = useState(false);
@@ -449,6 +493,23 @@ export function PublicWizard({
                             cableMode={interaction.cableMode}
                             cableHoles={interaction.cableHoles}
                             onFixingClick={interaction.handleFixingClick}
+                            secondaryPanel={
+                                secondaryParams &&
+                                secondaryDevelopment &&
+                                secondarySplit
+                                    ? {
+                                          params: secondaryParams,
+                                          development: secondaryDevelopment,
+                                          split: secondarySplit,
+                                          artworkSvg: secondaryArtworkSvg,
+                                          bundle: secondaryBundle,
+                                          // active tab 'main' ⇒ the stashed
+                                          // panel is the projecting sign.
+                                          isBlade: activeTab === 'main',
+                                      }
+                                    : null
+                            }
+                            mount={resolveMount(mount)}
                             fold={view === 'folded' ? 1 : fold}
                             illuminationView={night}
                             illumination={params.illumination}

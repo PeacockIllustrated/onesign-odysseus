@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { buildDesignPackInput, type DesignPackPieceData } from './design-pack-input';
+import {
+    buildDesignPackInput,
+    appendProjectingSign,
+    type DesignPackPieceData,
+} from './design-pack-input';
 import { buildSectionedExport } from '@/lib/visualiser/geometry';
 import { splitPanels } from '@/lib/visualiser/split';
 import { buildPackFromDesignPieces } from './from-design';
@@ -117,6 +121,55 @@ describe('buildDesignPackInput', () => {
             logoDataUri: null,
         });
         const content = buildPackFromDesignPieces(input);
+        expect(ProductionPackContentSchema.safeParse(content).success).toBe(true);
+    });
+});
+
+describe('appendProjectingSign', () => {
+    const main = buildDesignPackInput(pieceData(baseParams()), {
+        insituDataUri: 'data:image/png;base64,AAAA',
+        logoDataUri: null,
+    });
+    const projData = pieceData(
+        baseParams({ name: 'ABS — Blade', panelWidthMm: 600 }),
+    );
+    // Give the blade a lit piece so it has a whole-sign face to merge.
+    projData.backlightPieces = [squareBacklight()];
+    const proj = buildDesignPackInput(projData, {
+        insituDataUri: null,
+        logoDataUri: null,
+    });
+    const merged = appendProjectingSign(main, proj);
+
+    it('appends the projecting sign as its own prefixed pack sections', () => {
+        // Every fascia group survives…
+        for (const g of main.groups) {
+            expect(merged.groups.some((m) => m.title === g.title)).toBe(true);
+        }
+        // …and the projecting sign's pieces are added, clearly labelled.
+        expect(merged.groups.length).toBe(main.groups.length + proj.groups.length);
+        expect(
+            merged.groups.some((g) => g.title.startsWith('Projecting sign · ')),
+        ).toBe(true);
+    });
+
+    it('adds the projecting face to the overview but keeps one in-situ render', () => {
+        const visuals = merged.overviewDrawings.filter((d) => d.kind === 'visual');
+        expect(visuals).toHaveLength(1); // single in-situ (the fascia's)
+        expect(
+            merged.overviewDrawings.some(
+                (d) => d.caption === 'Projecting sign — face',
+            ),
+        ).toBe(true);
+    });
+
+    it('keeps the fascia cover, name + overall spec', () => {
+        expect(merged.name).toBe(main.name);
+        expect(merged.overallSpecRows).toEqual(main.overallSpecRows);
+    });
+
+    it('still round-trips through the real pack schema', () => {
+        const content = buildPackFromDesignPieces(merged);
         expect(ProductionPackContentSchema.safeParse(content).success).toBe(true);
     });
 });

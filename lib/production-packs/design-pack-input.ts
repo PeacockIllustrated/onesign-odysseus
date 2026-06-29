@@ -77,6 +77,37 @@ export interface DesignPackImages {
     logoDataUri: string | null;
 }
 
+/**
+ * Merge a projecting sign's pack input into the main fascia's — for two-item
+ * jobs (a flat fascia + a blade/projecting sign). The projecting sign is a
+ * separate physical sign, so its pieces become additional pack sections (titled
+ * "Projecting sign · …") and its whole-sign face joins the overview hero. The
+ * cover, overall spec and assembly order stay the main fascia's; the projecting
+ * sign's own spec rides on its piece sections. Build the projecting input with
+ * `insituDataUri: null` so the overview keeps a single in-situ render.
+ */
+export function appendProjectingSign(
+    main: DesignPackInput,
+    projecting: DesignPackInput,
+): DesignPackInput {
+    return {
+        ...main,
+        overviewDrawings: [
+            ...main.overviewDrawings,
+            ...projecting.overviewDrawings
+                .filter((d) => d.kind === 'technical')
+                .map((d) => ({ ...d, caption: 'Projecting sign — face' })),
+        ],
+        groups: [
+            ...main.groups,
+            ...projecting.groups.map((g) => ({
+                ...g,
+                title: `Projecting sign · ${g.title}`,
+            })),
+        ],
+    };
+}
+
 export function buildDesignPackInput(
     d: DesignPackPieceData,
     images: DesignPackImages,

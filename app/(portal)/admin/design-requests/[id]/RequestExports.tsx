@@ -14,11 +14,15 @@ import {
 } from '@/lib/visualiser/pdf';
 import {
     buildDesignPackInput,
+    appendProjectingSign,
     type DesignPackPieceData,
 } from '@/lib/production-packs/design-pack-input';
 import { buildPackFromDesignPieces } from '@/lib/production-packs/from-design';
 import { createProductionPackFromContent } from '@/lib/production-packs/actions';
+import { projectingSpecLine } from '@/lib/visualiser/projecting';
 import type { PanelParams, ImportedSvg } from '@/lib/visualiser/types';
+
+type PanelDerivation = ReturnType<typeof usePanelDerivation>;
 
 const ACCENT = '#4e7e8c';
 
@@ -31,6 +35,16 @@ function download(blob: Blob, filename: string) {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+}
+
+/** Parse a flattened SVG to indexed paths; null on bad/empty input. */
+function safeImport(svg: string | null): ImportedSvg | null {
+    if (!svg) return null;
+    try {
+        return importSvg(svg);
+    } catch {
+        return null;
+    }
 }
 
 export interface RequestExportsProps {
@@ -85,16 +99,26 @@ function RequestExportsInner({
 }: RequestExportsProps) {
     const router = useRouter();
 
-    const imported = useMemo<ImportedSvg | null>(() => {
-        if (!svgSource) return null;
-        try {
-            return importSvg(svgSource);
-        } catch {
-            return null;
-        }
-    }, [svgSource]);
-
+    const imported = useMemo<ImportedSvg | null>(
+        () => safeImport(svgSource),
+        [svgSource],
+    );
     const d = usePanelDerivation(params, imported, svgSource);
+
+    // Projecting (blade) sign, when the design carries one — a second physical
+    // sign that ships its own cut files + pack sections alongside the fascia.
+    // The headline use of the public builder is an aperture fascia + a
+    // projecting sign together, so fulfilment has to cover both. Derived live;
+    // inert (null) when there's no projecting sign.
+    const projecting = params.projectingSign ?? null;
+    const projParams = projecting?.panel ?? null;
+    const projSvg = projecting?.svgSource ?? null;
+    const projImported = useMemo<ImportedSvg | null>(
+        () => safeImport(projSvg),
+        [projSvg],
+    );
+    const pd = usePanelDerivation(projParams, projImported, projSvg);
+    const hasProjecting = !!projParams && !!pd.sectionExport;
 
     const [busy, setBusy] = useState<'ref' | 'prod' | 'pack' | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -104,28 +128,71 @@ function RequestExportsInner({
         (params.artworkLayers?.length ?? 0) > 0 ||
         (imported?.paths.length ?? 0) > 0;
 
-    // The shared PDF option block — the same per-section cut arrays + material
-    // pieces the visualiser feeds its PDF generators, pulled off this derivation.
-    const pdfBase = (): PdfOptions => ({
-        sectionExport: d.sectionExport!,
-        params,
+    // PDF option block for a derivation — the same per-section cut arrays +
+    // material pieces the visualiser feeds its generators. Used for the fascia
+    // and (as `secondary`) the projecting sign.
+    const pdfOptionsFor = (
+        deriv: PanelDerivation,
+        p: PanelParams,
+    ): PdfOptions => ({
+        sectionExport: deriv.sectionExport!,
+        params: p,
         designId: designId ?? null,
-        apertureBySection: d.apertureBySection,
-        keylineBySection: d.keylineBySection,
-        pushThroughKeylineBySection: d.pushThroughKeylineBySection,
-        pushThroughIslandsBySection: d.pushThroughIslandsBySection,
-        fixingsBySection: d.fixingsBySection,
-        cableHolesBySection: d.cableHolesBySection,
-        referenceBySection: d.referenceBySection,
-        apertureHolesBySection: d.apertureHolesBySection,
-        vinylPieces: d.materialPieces.vinyl,
-        acrylicPieces: d.materialPieces.acrylic,
-        solidPieces: d.materialPieces.solid,
-        standoffPieces: d.standoffPieces,
-        pushThroughPieces: d.pushThroughPieces,
-        backlightPieces: d.backlightPieces,
-        vinylPrintDataUrl: d.vinylPrintDataUrl,
-        faceRectMm: d.faceRectMm,
+        apertureBySection: deriv.apertureBySection,
+        keylineBySection: deriv.keylineBySection,
+        pushThroughKeylineBySection: deriv.pushThroughKeylineBySection,
+        pushThroughIslandsBySection: deriv.pushThroughIslandsBySection,
+        fixingsBySection: deriv.fixingsBySection,
+        cableHolesBySection: deriv.cableHolesBySection,
+        referenceBySection: deriv.referenceBySection,
+        apertureHolesBySection: deriv.apertureHolesBySection,
+        vinylPieces: deriv.materialPieces.vinyl,
+        acrylicPieces: deriv.materialPieces.acrylic,
+        solidPieces: deriv.materialPieces.solid,
+        standoffPieces: deriv.standoffPieces,
+        pushThroughPieces: deriv.pushThroughPieces,
+        backlightPieces: deriv.backlightPieces,
+        vinylPrintDataUrl: deriv.vinylPrintDataUrl,
+        faceRectMm: deriv.faceRectMm,
+    });
+
+    // Two-item fields when there's a projecting sign: both signs land in one
+    // PDF, each page labelled, the projecting sign riding along as `secondary`.
+    const twoItem = (): Partial<PdfOptions> =>
+        hasProjecting && projParams && projecting
+            ? {
+                  itemLabel: 'Main fascia',
+                  companionNote: projectingSpecLine(
+                      projParams,
+                      projecting.mount,
+                  ),
+                  secondary: {
+                      ...pdfOptionsFor(pd, projParams),
+                      itemLabel: 'Projecting sign',
+                  },
+              }
+            : {};
+
+    const pieceDataFor = (
+        deriv: PanelDerivation,
+        p: PanelParams,
+    ): DesignPackPieceData => ({
+        params: p,
+        sectionExport: deriv.sectionExport!,
+        apertureBySection: deriv.apertureBySection,
+        apertureHolesBySection: deriv.apertureHolesBySection,
+        pushThroughKeylineBySection: deriv.pushThroughKeylineBySection,
+        pushThroughIslandsBySection: deriv.pushThroughIslandsBySection,
+        fixingsBySection: deriv.fixingsBySection,
+        cableHolesBySection: deriv.cableHolesBySection,
+        vinylPieces: deriv.materialPieces.vinyl,
+        acrylicPieces: deriv.materialPieces.acrylic,
+        solidPieces: deriv.materialPieces.solid,
+        backlightPieces: deriv.backlightPieces,
+        standoffPieces: deriv.standoffPieces,
+        pushThroughPieces: deriv.pushThroughPieces,
+        extraFacePieces: deriv.extraFacePieces,
+        vinylPrintDataUrl: deriv.vinylPrintDataUrl,
     });
 
     const onReferencePdf = async () => {
@@ -134,9 +201,10 @@ function RequestExportsInner({
         setError(null);
         try {
             const blob = await generateReferencePdfBlob({
-                ...pdfBase(),
+                ...pdfOptionsFor(d, params),
                 thumbnailDataUrl: thumbnail ?? undefined,
                 embeddedNests: [],
+                ...twoItem(),
             });
             download(blob, pdfFilename(params, 'reference'));
         } catch (e) {
@@ -152,8 +220,9 @@ function RequestExportsInner({
         setError(null);
         try {
             const blob = await generateProductionPdfBlob({
-                ...pdfBase(),
+                ...pdfOptionsFor(d, params),
                 embeddedNests: [],
+                ...twoItem(),
             });
             download(blob, pdfFilename(params, 'production'));
         } catch (e) {
@@ -168,33 +237,21 @@ function RequestExportsInner({
         setBusy('pack');
         setError(null);
         try {
-            const data: DesignPackPieceData = {
-                params,
-                sectionExport: d.sectionExport!,
-                apertureBySection: d.apertureBySection,
-                apertureHolesBySection: d.apertureHolesBySection,
-                pushThroughKeylineBySection: d.pushThroughKeylineBySection,
-                pushThroughIslandsBySection: d.pushThroughIslandsBySection,
-                fixingsBySection: d.fixingsBySection,
-                cableHolesBySection: d.cableHolesBySection,
-                vinylPieces: d.materialPieces.vinyl,
-                acrylicPieces: d.materialPieces.acrylic,
-                solidPieces: d.materialPieces.solid,
-                backlightPieces: d.backlightPieces,
-                standoffPieces: d.standoffPieces,
-                pushThroughPieces: d.pushThroughPieces,
-                extraFacePieces: d.extraFacePieces,
-                vinylPrintDataUrl: d.vinylPrintDataUrl,
-            };
             // The submitted face-on preview stands in for a live in-situ render.
-            const input = buildDesignPackInput(data, {
+            let input = buildDesignPackInput(pieceDataFor(d, params), {
                 insituDataUri: thumbnail ?? null,
                 logoDataUri: null,
             });
-            const content = buildPackFromDesignPieces({
-                ...input,
-                reference,
-            });
+            // A projecting sign becomes its own pack sections alongside the
+            // fascia (built with no in-situ so the overview keeps one render).
+            if (hasProjecting && projParams) {
+                const proj = buildDesignPackInput(pieceDataFor(pd, projParams), {
+                    insituDataUri: null,
+                    logoDataUri: null,
+                });
+                input = appendProjectingSign(input, proj);
+            }
+            const content = buildPackFromDesignPieces({ ...input, reference });
             const res = await createProductionPackFromContent({
                 name: input.name,
                 content,
@@ -222,6 +279,11 @@ function RequestExportsInner({
             </h3>
             <p className="mb-3 text-[11px] text-neutral-400">
                 Generated from the customer&apos;s submitted design — true 1:1.
+                {hasProjecting && (
+                    <span className="mt-1 block font-medium text-[#3a5f6a]">
+                        Includes the fascia + projecting sign (both items).
+                    </span>
+                )}
             </p>
 
             <div className="space-y-2">

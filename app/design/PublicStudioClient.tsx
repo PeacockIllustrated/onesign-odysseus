@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { PublicWizard } from './PublicWizard';
 import { Tour, type TourStep } from './Tour';
 
-const TOUR_SEEN_KEY = 'onesign_design_tour_v3';
+const TOUR_SEEN_KEY = 'onesign_design_tour_v4';
 
 // A detailed, interactive walkthrough: each stop switches the wizard to the
 // relevant step (via `wizardStep`) and spotlights a REAL control, so a
@@ -24,6 +24,13 @@ const TOUR_STEPS: TourStep[] = [
         wizardStep: 0,
         title: 'Set the size & finish',
         body: "Type your sign's width and height in mm, pick a colour or RAL match, and choose which edges fold back. Everything updates instantly in 3D.",
+        placement: 'auto',
+    },
+    {
+        selector: '[data-tour="projecting"]',
+        wizardStep: 0,
+        title: 'Add a projecting sign',
+        body: 'Want a blade/projecting sign that sticks out from the wall as well as the flat fascia? Tap “+ Add projecting sign” — design both together and see them mounted in 3D. Great for shopfront campaigns.',
         placement: 'auto',
     },
     {
