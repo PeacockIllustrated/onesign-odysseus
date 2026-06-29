@@ -930,11 +930,11 @@ function LightStep({
                     style={glowOn ? { background: ACCENT } : undefined}
                 >
                     <span
-                        className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform"
+                        className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform"
                         style={{
                             transform: glowOn
-                                ? 'translateX(22px)'
-                                : 'translateX(2px)',
+                                ? 'translateX(20px)'
+                                : 'translateX(0)',
                         }}
                     />
                 </button>
