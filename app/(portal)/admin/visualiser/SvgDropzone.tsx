@@ -1000,7 +1000,7 @@ function NumField({
     );
 }
 
-export function SvgDropzone() {
+export function SvgDropzone({ simplified = false }: { simplified?: boolean } = {}) {
     const {
         svgSource,
         imported,
@@ -1725,7 +1725,9 @@ export function SvgDropzone() {
                             section is the procurement + fixing-hole spec, a
                             single global set applied across every standoff path
                             so the shop configures the diameter / density once. */}
-                        {anyStandoffPath && (
+                        {/* Production-only fixing/procurement spec — hidden in the
+                            public studio (`simplified`); the shop sets these. */}
+                        {!simplified && anyStandoffPath && (
                             <Section
                                 title="Stand-off & fixings"
                                 defaultOpen={false}
@@ -2020,7 +2022,7 @@ export function SvgDropzone() {
                             sign, independent of material. A pure
                             positioner: only one or two per letter, placed
                             exactly where the cable run dictates. */}
-                        {hasArtwork && (
+                        {!simplified && hasArtwork && (
                             <Section title="Cable holes" defaultOpen={false}>
                                 <p className="text-[10px] text-neutral-500">
                                     Holes cut in the panel face to feed

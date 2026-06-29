@@ -584,7 +584,10 @@ export function PublicWizard({
                                             />
                                         </button>
                                         <div data-tour="upload">
-                                            <SvgDropzone />
+                                            {/* simplified: hides the production-only
+                                                stud/fixings + cable-hole walls — the
+                                                shop sets those at fabrication. */}
+                                            <SvgDropzone simplified />
                                         </div>
                                     </div>
                                 )}
