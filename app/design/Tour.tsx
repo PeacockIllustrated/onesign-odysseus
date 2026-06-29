@@ -12,6 +12,12 @@ export interface TourStep {
     title: string;
     body: string;
     /**
+     * Wizard step index this tour stop lives on. The host switches the wizard to
+     * it (via `onStepChange`) so the spotlighted control is actually on screen —
+     * turning the tour into a real walkthrough rather than a chrome-only intro.
+     */
+    wizardStep?: number;
+    /**
      * Optional placement hint for the tooltip relative to the target. Defaults
      * to 'auto' (below if there's room, otherwise above; centred if the target
      * can't be found — e.g. hidden in a collapsed mobile pane).

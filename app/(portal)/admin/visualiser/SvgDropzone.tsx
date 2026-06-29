@@ -103,6 +103,7 @@ function GroupEditControls({
     panelColor,
     onApply,
     onCancel,
+    simplified = false,
 }: {
     initialMaterial: Exclude<GroupMaterial, 'cut'>;
     initialColor: string;
@@ -130,6 +131,12 @@ function GroupEditControls({
         },
     ) => void;
     onCancel: () => void;
+    /**
+     * Public-studio mode: same engine + appearance controls, but plain-language
+     * finish labels/help and a friendlier header. The shop tool leaves this off
+     * and keeps the production vocabulary.
+     */
+    simplified?: boolean;
 }) {
     const [material, setMaterial] =
         useState<Exclude<GroupMaterial, 'cut'>>(initialMaterial);
@@ -178,17 +185,51 @@ function GroupEditControls({
     // tool and the public studio: it lives in the shared editor.)
     const canFace = hasPushThrough || hasGlow;
 
-    const materialHelp: Record<Exclude<GroupMaterial, 'cut'>, string> = {
-        solid: 'Kept as panel material — not cut. Use for inner counters of letters.',
-        vinyl: 'Vinyl bonded to the panel face — printed full colour, or a solid cut colour.',
-        acrylic: 'Acrylic sheet face-stuck to the panel.',
-        standoff:
-            'Extruded letter mounted with studs at a distance from the face.',
-        pushthrough:
-            'Acrylic letter pressed through the panel from behind. Outer letter + each counter are cut as separate pieces, mounted to a backing board, and pressed through a keyline hole in the panel face.',
-        backlight:
-            'Aperture cut with an opal diffuser behind it, lit from behind — the solid cut shape glows. Same back panel as keyline illumination. Pick the glow colour + brightness; switch the lit preview on to see it.',
-    };
+    const materialHelp: Record<Exclude<GroupMaterial, 'cut'>, string> = simplified
+        ? {
+              solid: 'Left as solid panel — not cut out. Handy for the holes inside letters like “O” or “A”.',
+              vinyl: 'Your design printed in full colour (or a single colour) straight onto the sign face.',
+              acrylic: 'A coloured acrylic shape stuck onto the face for a crisp, glossy finish.',
+              standoff:
+                  'Raised letters mounted a little off the face on hidden studs — a premium, dimensional look.',
+              pushthrough:
+                  'Acrylic letters pushed through the face so they sit slightly proud — and glow beautifully when lit.',
+              backlight:
+                  'The shape is cut out and lit from behind so it glows. Pick the glow colour and brightness, then flip to night to see it.',
+          }
+        : {
+              solid: 'Kept as panel material — not cut. Use for inner counters of letters.',
+              vinyl: 'Vinyl bonded to the panel face — printed full colour, or a solid cut colour.',
+              acrylic: 'Acrylic sheet face-stuck to the panel.',
+              standoff:
+                  'Extruded letter mounted with studs at a distance from the face.',
+              pushthrough:
+                  'Acrylic letter pressed through the panel from behind. Outer letter + each counter are cut as separate pieces, mounted to a backing board, and pressed through a keyline hole in the panel face.',
+              backlight:
+                  'Aperture cut with an opal diffuser behind it, lit from behind — the solid cut shape glows. Same back panel as keyline illumination. Pick the glow colour + brightness; switch the lit preview on to see it.',
+          };
+
+    // Finish picker tiles. Shop tool keeps the production vocabulary; the public
+    // studio gets plain-language outcomes for the SAME materials (one palette).
+    const materialTiles = simplified
+        ? ([
+              ['cut', 'Cut out'],
+              ['solid', 'Keep solid'],
+              ['vinyl', 'Printed'],
+              ['acrylic', 'Acrylic'],
+              ['standoff', 'Raised letters'],
+              ['pushthrough', 'Push-through'],
+              ['backlight', 'Backlit glow'],
+          ] as const)
+        : ([
+              ['cut', 'Cut'],
+              ['solid', 'Solid'],
+              ['vinyl', 'Vinyl'],
+              ['acrylic', 'Acrylic'],
+              ['standoff', 'Stood off'],
+              ['pushthrough', 'Push through'],
+              ['backlight', 'Backlight'],
+          ] as const);
     return (
         <div
             className="rounded-md border p-2.5 space-y-2"
@@ -198,30 +239,23 @@ function GroupEditControls({
             }}
         >
             <p className="text-[11px] font-medium" style={{ color: ACCENT_DARK }}>
-                {isExistingGroup
-                    ? `Editing group · ${pendingCount} path${pendingCount === 1 ? '' : 's'} selected`
-                    : `New material group · ${pendingCount} path${pendingCount === 1 ? '' : 's'} selected`}
+                {simplified
+                    ? `Choose a finish · ${pendingCount} shape${pendingCount === 1 ? '' : 's'} selected`
+                    : isExistingGroup
+                      ? `Editing group · ${pendingCount} path${pendingCount === 1 ? '' : 's'} selected`
+                      : `New material group · ${pendingCount} path${pendingCount === 1 ? '' : 's'} selected`}
             </p>
             <p className="text-[10px]" style={{ color: ACCENT_DARK }}>
-                Click paths on the canvas to add or remove them, then pick the
-                material below.
+                {simplified
+                    ? 'Tap shapes on the sign to add or remove them, then pick a finish below.'
+                    : 'Click paths on the canvas to add or remove them, then pick the material below.'}
             </p>
 
             <div
                 className="grid grid-cols-3 overflow-hidden rounded-md border text-[10px] font-medium"
                 style={{ borderColor: ACCENT_TINT_BORDER }}
             >
-                {(
-                    [
-                        ['cut', 'Cut'],
-                        ['solid', 'Solid'],
-                        ['vinyl', 'Vinyl'],
-                        ['acrylic', 'Acrylic'],
-                        ['standoff', 'Stood off'],
-                        ['pushthrough', 'Push through'],
-                        ['backlight', 'Backlight'],
-                    ] as const
-                ).map(([v, label], k) => {
+                {materialTiles.map(([v, label], k) => {
                     const inSecondRow = k >= 3;
                     const inFirstCol = k % 3 === 0;
                     return (
@@ -722,6 +756,8 @@ function ShapeMaterialsPanel({
     cancelGroupEdit,
     applyEditMaterial,
     removePathFromGroups,
+    simplified = false,
+    onSelectAll,
 }: {
     paths: FlatPath[];
     outerShapes: number[];
@@ -748,6 +784,14 @@ function ShapeMaterialsPanel({
         },
     ) => void;
     removePathFromGroups: (pathIndex: number) => void;
+    /**
+     * Public-studio mode: this panel becomes the SINGLE material control (the
+     * separate whole-sign default tier is hidden by the parent), so it grows a
+     * "finish the whole sign" entry point and plain-language copy.
+     */
+    simplified?: boolean;
+    /** Open the finish picker with EVERY shape selected (whole-sign finish). */
+    onSelectAll?: () => void;
 }) {
     const isEditing = editingGroupId !== null;
     const pendingSet = new Set(pendingPaths);
@@ -766,11 +810,36 @@ function ShapeMaterialsPanel({
 
     return (
         <div className="space-y-2 border-t border-neutral-100 pt-2">
+            {/* Public studio: one button finishes the whole sign in a couple of
+                taps. It opens the SAME picker as a per-shape change, just with
+                every shape selected — so there's a single finish vocabulary
+                everywhere (no separate "default material" tier to reconcile). */}
+            {simplified && !isEditing && total > 0 && (
+                <button
+                    type="button"
+                    onClick={onSelectAll}
+                    className="flex w-full min-h-[40px] items-center justify-center gap-1.5 rounded-md px-3 py-2 text-[12px] font-semibold text-white shadow-sm transition-colors"
+                    style={{ background: ACCENT }}
+                    onMouseEnter={(e) => {
+                        e.currentTarget.style.background = ACCENT_DARK;
+                    }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.background = ACCENT;
+                    }}
+                >
+                    Choose a finish for the whole sign…
+                </button>
+            )}
+
             <div className="flex items-center justify-between gap-2">
                 <h4 className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
-                    Override individual shapes
+                    {simplified
+                        ? total > 1
+                            ? 'Or finish each part'
+                            : 'Finish'
+                        : 'Override individual shapes'}
                 </h4>
-                {!isEditing && total > 1 && (
+                {!simplified && !isEditing && total > 1 && (
                     <button
                         type="button"
                         onClick={startNewGroupEdit}
@@ -789,9 +858,13 @@ function ShapeMaterialsPanel({
             </div>
 
             <p className="text-[10px] text-neutral-500">
-                {overridden > 0
-                    ? `${overridden} of ${total} shape${total === 1 ? '' : 's'} overridden — the rest are ${defaultModeLabel(apertureMode)}. Overrides win over the whole-sign material.`
-                    : `Every shape is ${defaultModeLabel(apertureMode)}. Pick a shape to make just that part a different material.`}
+                {simplified
+                    ? overridden > 0
+                        ? `${overridden} of ${total} shape${total === 1 ? '' : 's'} given their own finish. Tap any shape to change just that part.`
+                        : 'Tap a shape to give just that part a different finish — or use the button above for the whole sign.'
+                    : overridden > 0
+                      ? `${overridden} of ${total} shape${total === 1 ? '' : 's'} overridden — the rest are ${defaultModeLabel(apertureMode)}. Overrides win over the whole-sign material.`
+                      : `Every shape is ${defaultModeLabel(apertureMode)}. Pick a shape to make just that part a different material.`}
             </p>
 
             {isEditing && (
@@ -821,6 +894,7 @@ function ShapeMaterialsPanel({
                     panelColor={panelColor}
                     onApply={applyEditMaterial}
                     onCancel={cancelGroupEdit}
+                    simplified={simplified}
                 />
             )}
 
@@ -900,7 +974,9 @@ function ShapeMaterialsPanel({
                                                 }
                                             >
                                                 {chip.isDefault
-                                                    ? `Default · ${chip.label}`
+                                                    ? simplified
+                                                        ? chip.label
+                                                        : `Default · ${chip.label}`
                                                     : chip.label}
                                             </span>
                                         </span>
@@ -932,8 +1008,9 @@ function ShapeMaterialsPanel({
 
             {isEditing && (
                 <p className="text-[10px] text-neutral-400">
-                    Click shapes above or on the canvas to add or remove them,
-                    then choose a material in the panel.
+                    {simplified
+                        ? 'Tap shapes above or on the sign to add or remove them, then pick a finish in the panel.'
+                        : 'Click shapes above or on the canvas to add or remove them, then choose a material in the panel.'}
                 </p>
             )}
         </div>
@@ -1000,7 +1077,7 @@ function NumField({
     );
 }
 
-export function SvgDropzone() {
+export function SvgDropzone({ simplified = false }: { simplified?: boolean } = {}) {
     const {
         svgSource,
         imported,
@@ -1017,6 +1094,7 @@ export function SvgDropzone() {
         editingGroupId,
         pendingPaths,
         startNewGroupEdit,
+        selectAllPaths,
         startGroupEditFromPath,
         cancelGroupEdit,
         applyEditMaterial,
@@ -1566,9 +1644,15 @@ export function SvgDropzone() {
                     <div className="space-y-2">
                         {hasArtwork && (
                             <Section title="Materials" step={4} accent>
-                                {/* Whole-sign default — the single choice that
-                                    drives every shape unless it's overridden in
-                                    the list below. */}
+                                {/* Whole-sign default (shop tool only) — the
+                                    single choice that drives every shape unless
+                                    it's overridden in the list below. Hidden in
+                                    the public studio, where the per-shape picker
+                                    is the ONLY material control (one finish
+                                    vocabulary) with a "whole sign" shortcut baked
+                                    into it — no separate default tier to confuse
+                                    a customer. */}
+                                {!simplified && (
                                 <div
                                     className="rounded-md border p-2.5"
                                     style={{
@@ -1692,6 +1776,7 @@ export function SvgDropzone() {
                                         </div>
                                     )}
                                 </div>
+                                )}
 
                                 <ShapeMaterialsPanel
                                     paths={shapesSvg?.paths ?? []}
@@ -1715,6 +1800,12 @@ export function SvgDropzone() {
                                     cancelGroupEdit={cancelGroupEdit}
                                     applyEditMaterial={applyEditMaterial}
                                     removePathFromGroups={removePathFromGroups}
+                                    simplified={simplified}
+                                    onSelectAll={() =>
+                                        selectAllPaths(
+                                            shapesSvg?.paths.length ?? 0,
+                                        )
+                                    }
                                 />
                             </Section>
                         )}
@@ -1725,7 +1816,9 @@ export function SvgDropzone() {
                             section is the procurement + fixing-hole spec, a
                             single global set applied across every standoff path
                             so the shop configures the diameter / density once. */}
-                        {anyStandoffPath && (
+                        {/* Production-only fixing/procurement spec — hidden in the
+                            public studio (`simplified`); the shop sets these. */}
+                        {!simplified && anyStandoffPath && (
                             <Section
                                 title="Stand-off & fixings"
                                 defaultOpen={false}
@@ -2020,7 +2113,7 @@ export function SvgDropzone() {
                             sign, independent of material. A pure
                             positioner: only one or two per letter, placed
                             exactly where the cable run dictates. */}
-                        {hasArtwork && (
+                        {!simplified && hasArtwork && (
                             <Section title="Cable holes" defaultOpen={false}>
                                 <p className="text-[10px] text-neutral-500">
                                     Holes cut in the panel face to feed

@@ -212,6 +212,13 @@ interface VisualiserState {
 
     /* Material group actions */
     startNewGroupEdit: () => void;
+    /**
+     * Like startNewGroupEdit, but pre-selects EVERY shape — the public studio's
+     * "choose a finish for the whole sign" entry point, so one finish can be
+     * applied to all shapes through the same picker as a per-shape change
+     * (unifying the old default-material + per-shape override into one palette).
+     */
+    selectAllPaths: (count: number) => void;
     startEditingGroup: (groupId: string) => void;
     /**
      * Click-to-edit entry point: given a path, enter that path's
@@ -721,6 +728,17 @@ export const useVisualiser = create<VisualiserState>((set) => ({
             pendingPaths: [],
             // Fixing + cable edits can't run at the same time as a
             // group edit — clear both.
+            fixingMode: 'off',
+            cableMode: 'off',
+        }),
+
+    selectAllPaths: (count) =>
+        set({
+            editingGroupId: 'new',
+            pendingPaths: Array.from(
+                { length: Math.max(0, count) },
+                (_, i) => i,
+            ),
             fixingMode: 'off',
             cableMode: 'off',
         }),

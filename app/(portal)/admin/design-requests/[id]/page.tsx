@@ -5,6 +5,7 @@ import { requireAdmin } from '@/lib/auth';
 import { Card } from '@/app/(portal)/components/ui';
 import { getDesignRequest } from '@/lib/design-requests/actions';
 import { RequestActions } from './RequestActions';
+import { RequestExports } from './RequestExports';
 
 export const dynamic = 'force-dynamic';
 
@@ -184,6 +185,14 @@ export default async function DesignRequestDetailPage({
                         status={r.status}
                         designId={r.design_id}
                         email={r.customer_email}
+                        reference={r.reference}
+                    />
+
+                    <RequestExports
+                        params={r.params_json}
+                        svgSource={r.svg_source}
+                        thumbnail={r.thumbnail}
+                        designId={r.design_id}
                         reference={r.reference}
                     />
                 </div>

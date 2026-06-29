@@ -133,7 +133,7 @@ export function ControlsPanel({
                 projecting (blade) sign. Each tab edits its own full panel;
                 everything below (dimensions, material, artwork) applies to the
                 panel of the active tab. */}
-            <div>
+            <div data-tour="projecting">
                 <span className="text-[11px] font-medium text-neutral-600">
                     Sign
                 </span>
