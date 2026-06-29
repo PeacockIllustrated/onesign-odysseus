@@ -122,7 +122,16 @@ const STEPS: {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export function PublicWizard({ onShowHelp }: { onShowHelp?: () => void }) {
+export function PublicWizard({
+    onShowHelp,
+    stepIdx,
+    onStep,
+}: {
+    onShowHelp?: () => void;
+    /** Controlled step index (lifted to the host so the tour can drive it). */
+    stepIdx: number;
+    onStep: (i: number) => void;
+}) {
     const {
         params,
         setParam,
@@ -161,7 +170,6 @@ export function PublicWizard({ onShowHelp }: { onShowHelp?: () => void }) {
     const interaction = useSceneInteraction(deriv);
 
     // ── View state (never persisted) ──────────────────────────────────────
-    const [stepIdx, setStepIdx] = useState(0);
     const [night, setNight] = useState(false);
     const [view, setView] = useState<'folded' | 'unfold'>('folded');
     const [explodeT, setExplodeT] = useState(0);
@@ -229,7 +237,7 @@ export function PublicWizard({ onShowHelp }: { onShowHelp?: () => void }) {
     };
 
     const goToStep = (i: number) => {
-        setStepIdx(i);
+        onStep(i);
         setDockOpen(true);
     };
 
@@ -258,6 +266,18 @@ export function PublicWizard({ onShowHelp }: { onShowHelp?: () => void }) {
         setParam('illumination', {
             ...params.illumination,
             keyline: { ...kl, enabled: true, intensity },
+        });
+    };
+    const glowColor = params.illumination?.keyline?.color ?? '#ffffff';
+    const setGlowColor = (color: string) => {
+        const kl = params.illumination?.keyline ?? {
+            enabled: true,
+            color: '#ffffff',
+            intensity: 1,
+        };
+        setParam('illumination', {
+            ...params.illumination,
+            keyline: { ...kl, enabled: true, color },
         });
     };
 
@@ -526,12 +546,15 @@ export function PublicWizard({ onShowHelp }: { onShowHelp?: () => void }) {
                                     {step.intro}
                                 </p>
                                 {step.key === 'size' && (
-                                    <ControlsPanel hideIllumination />
+                                    <div data-tour="size">
+                                        <ControlsPanel hideIllumination />
+                                    </div>
                                 )}
                                 {step.key === 'artwork' && (
                                     <div className="space-y-3">
                                         <button
                                             type="button"
+                                            data-tour="builtup"
                                             onClick={() => setBuiltUpOpen(true)}
                                             className="flex w-full items-center gap-3 rounded-lg border border-[#cfe0e6] bg-[#e8f0f3] px-3 py-2.5 text-left transition-colors hover:border-[#4e7e8c]"
                                         >
@@ -560,19 +583,25 @@ export function PublicWizard({ onShowHelp }: { onShowHelp?: () => void }) {
                                                 className="shrink-0 text-[#4e7e8c]"
                                             />
                                         </button>
-                                        <SvgDropzone />
+                                        <div data-tour="upload">
+                                            <SvgDropzone />
+                                        </div>
                                     </div>
                                 )}
                                 {step.key === 'light' && (
-                                    <LightStep
-                                        night={night}
-                                        onNight={setNight}
-                                        glowOn={glowOn}
-                                        onGlow={setGlow}
-                                        glowIntensity={glowIntensity}
-                                        onGlowIntensity={setGlowIntensity}
-                                        somethingGlows={somethingGlows}
-                                    />
+                                    <div data-tour="light">
+                                        <LightStep
+                                            night={night}
+                                            onNight={setNight}
+                                            glowOn={glowOn}
+                                            onGlow={setGlow}
+                                            glowIntensity={glowIntensity}
+                                            onGlowIntensity={setGlowIntensity}
+                                            glowColor={glowColor}
+                                            onGlowColor={setGlowColor}
+                                            somethingGlows={somethingGlows}
+                                        />
+                                    </div>
                                 )}
                                 {step.key === 'details' && (
                                     <ContactForm
@@ -634,6 +663,7 @@ export function PublicWizard({ onShowHelp }: { onShowHelp?: () => void }) {
                                 <button
                                     type="submit"
                                     form="contact-form"
+                                    data-tour="send"
                                     disabled={preparing || submitting}
                                     aria-busy={preparing || submitting}
                                     className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-lg px-5 text-sm font-semibold text-white shadow-sm transition-colors disabled:opacity-60 sm:flex-none"
@@ -843,6 +873,15 @@ function Stepper({
 }
 
 /** The "Light it up" step — the day/night wow, plus glow controls. */
+const GLOW_PRESETS: Array<[string, string]> = [
+    ['#ffffff', 'White'],
+    ['#ffd9a0', 'Warm'],
+    ['#9ed0dc', 'Ice'],
+    ['#ff5d5d', 'Red'],
+    ['#5db4ff', 'Blue'],
+    ['#7CFC8A', 'Green'],
+];
+
 function LightStep({
     night,
     onNight,
@@ -850,6 +889,8 @@ function LightStep({
     onGlow,
     glowIntensity,
     onGlowIntensity,
+    glowColor,
+    onGlowColor,
     somethingGlows,
 }: {
     night: boolean;
@@ -858,6 +899,8 @@ function LightStep({
     onGlow: (v: boolean) => void;
     glowIntensity: number;
     onGlowIntensity: (v: number) => void;
+    glowColor: string;
+    onGlowColor: (v: string) => void;
     somethingGlows: boolean;
 }) {
     return (
@@ -894,26 +937,62 @@ function LightStep({
                 </button>
             </label>
             {glowOn && (
-                <label className="block">
-                    <span className="flex items-center justify-between text-[11px] font-medium text-neutral-600">
-                        Glow intensity
-                        <span className="tabular-nums text-neutral-400">
-                            {glowIntensity.toFixed(1)}
+                <div className="space-y-3">
+                    <label className="block">
+                        <span className="flex items-center justify-between text-[11px] font-medium text-neutral-600">
+                            Glow intensity
+                            <span className="tabular-nums text-neutral-400">
+                                {glowIntensity.toFixed(1)}
+                            </span>
                         </span>
-                    </span>
-                    <input
-                        type="range"
-                        min={0.2}
-                        max={3}
-                        step={0.1}
-                        value={glowIntensity}
-                        onChange={(e) =>
-                            onGlowIntensity(Number(e.target.value))
-                        }
-                        className="mt-1.5 w-full"
-                        style={{ accentColor: ACCENT }}
-                    />
-                </label>
+                        <input
+                            type="range"
+                            min={0.2}
+                            max={3}
+                            step={0.1}
+                            value={glowIntensity}
+                            onChange={(e) => onGlowIntensity(Number(e.target.value))}
+                            className="mt-1.5 w-full"
+                            style={{ accentColor: ACCENT }}
+                        />
+                    </label>
+                    <div>
+                        <span className="text-[11px] font-medium text-neutral-600">Glow colour</span>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                            {GLOW_PRESETS.map(([hex, label]) => {
+                                const active = glowColor.toLowerCase() === hex.toLowerCase();
+                                return (
+                                    <button
+                                        key={hex}
+                                        type="button"
+                                        onClick={() => onGlowColor(hex)}
+                                        aria-label={label}
+                                        title={label}
+                                        className="h-7 w-7 rounded-full ring-offset-1 transition"
+                                        style={{
+                                            background: hex,
+                                            boxShadow: active
+                                                ? `0 0 0 2px ${ACCENT}`
+                                                : '0 0 0 1px rgba(0,0,0,0.12)',
+                                        }}
+                                    />
+                                );
+                            })}
+                            <label
+                                className="flex h-7 cursor-pointer items-center gap-1 rounded-full border border-neutral-300 px-2 text-[11px] text-neutral-500 hover:bg-neutral-50"
+                                title="Custom colour"
+                            >
+                                <input
+                                    type="color"
+                                    value={glowColor}
+                                    onChange={(e) => onGlowColor(e.target.value)}
+                                    className="h-4 w-4 cursor-pointer border-0 bg-transparent p-0"
+                                />
+                                Custom
+                            </label>
+                        </div>
+                    </div>
+                </div>
             )}
             {night && !somethingGlows && (
                 <p className="rounded-lg bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
