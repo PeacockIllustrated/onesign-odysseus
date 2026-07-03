@@ -16,6 +16,9 @@ const eslintConfig = defineConfig([
     // worker (public/pdf.worker.min.mjs), which otherwise floods lint with
     // errors from third-party minified code.
     "public/**",
+    // Standalone marketing sub-projects (e.g. the Remotion reel) have their
+    // own toolchain/tsconfig/deps and are not part of the app build.
+    "marketing/**",
   ]),
   {
     rules: {
