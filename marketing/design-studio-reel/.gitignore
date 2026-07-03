@@ -1,0 +1,12 @@
+node_modules/
+package-lock.json
+
+# QA still frames — regenerated on demand
+out/*.png
+out/frame.png
+
+# keep the rendered reel (the deliverable)
+!out/onesign-design-studio-reel.mp4
+
+# QA still frames
+qa/
