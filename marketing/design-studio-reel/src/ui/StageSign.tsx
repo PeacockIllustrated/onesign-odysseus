@@ -41,7 +41,12 @@ export function StageSign({
     centerY?: number;
     extraScale?: number;
 }) {
-    const idle = 4 * Math.sin((2 * Math.PI * absFrame) / 180);
+    // A livelier idle: a bigger primary sway plus a faster secondary wobble,
+    // and a gentle breathing scale — so the sign never sits still.
+    const idle =
+        6.5 * Math.sin((2 * Math.PI * absFrame) / 150) +
+        1.5 * Math.sin((2 * Math.PI * absFrame) / 47);
+    const breathe = 1 + 0.012 * Math.sin((2 * Math.PI * absFrame) / 96);
     const widthPx = wMm * K;
     const heightPx = hMm * K;
     const depthPx = Math.max(20, dMm * 0.52);
@@ -70,7 +75,7 @@ export function StageSign({
                 glow={glow}
                 art={art}
                 artwork={artwork}
-                scale={extraScale}
+                scale={extraScale * breathe}
             />
         </div>
     );

@@ -58,25 +58,29 @@ export function Caption({
             {lines.map((ln, i) => {
                 const at = startF + i * stagger;
                 const t = ramp(frame, at, at + 12, EASE.out);
+                // punch: a slight overshoot scale on entry for extra snap
+                const s = ramp(frame, at, at + 16, EASE.pop);
+                const scale = 0.86 + s * 0.14;
                 return (
                     <div
                         key={i}
                         style={{
                             overflow: 'hidden',
-                            paddingBottom: size * 0.06,
+                            paddingBottom: size * 0.08,
                         }}
                     >
                         <div
                             style={{
                                 fontFamily: FONT,
-                                fontWeight: 700,
+                                fontWeight: 800,
                                 fontSize: size,
                                 lineHeight: 1.02,
                                 letterSpacing: '-0.02em',
                                 color: BRAND.light,
                                 textAlign: align,
-                                textShadow: '0 10px 40px rgba(0,0,0,0.55)',
-                                transform: `translateY(${(1 - t) * (size * 0.34)}px)`,
+                                textShadow: '0 10px 40px rgba(0,0,0,0.6)',
+                                transform: `translateY(${(1 - t) * (size * 0.4)}px) scale(${scale})`,
+                                transformOrigin: align === 'center' ? '50% 100%' : '0% 100%',
                                 opacity: t,
                                 maxWidth: 940,
                                 whiteSpace: 'normal',
@@ -106,8 +110,10 @@ function renderWords(ln: CaptionLine): React.ReactNode {
                 style={{
                     color: isAccent ? BRAND.accentGlow : undefined,
                     textShadow: isGlow
-                        ? `0 0 18px ${BRAND.accentGlow}`
-                        : undefined,
+                        ? `0 0 28px ${BRAND.accentGlow}, 0 0 12px ${BRAND.accentGlow}`
+                        : isAccent
+                          ? `0 0 16px rgba(158,208,220,0.6)`
+                          : undefined,
                 }}
             >
                 {p}

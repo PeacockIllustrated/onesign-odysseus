@@ -12,6 +12,7 @@ import {
     Scene9,
     Scene10,
 } from './scenes';
+import { BeatPulse, EntryFlash, Grain, ScanSweep } from './ui/Fx';
 
 // [startFrame, durationFrames] — tiles 0→1140 (38s @ 30fps) with no gaps.
 const TL: Array<[React.FC<{ start: number }>, number, number]> = [
@@ -32,11 +33,20 @@ export const TOTAL_FRAMES = 1140;
 export const DesignStudioReel: React.FC = () => {
     return (
         <AbsoluteFill style={{ background: '#050a0d' }}>
-            {TL.map(([Comp, from, dur], i) => (
-                <Sequence key={i} from={from} durationInFrames={dur}>
-                    <Comp start={from} />
-                </Sequence>
+            <BeatPulse>
+                {TL.map(([Comp, from, dur], i) => (
+                    <Sequence key={i} from={from} durationInFrames={dur}>
+                        <Comp start={from} />
+                    </Sequence>
+                ))}
+            </BeatPulse>
+            {/* whip-flash on every scene cut (global frame, so `at` = scene start) */}
+            {TL.slice(1).map(([, from], i) => (
+                <EntryFlash key={`fl${i}`} at={from} dur={7} strength={0.55} />
             ))}
+            {/* global energy layers, above the scenes */}
+            <ScanSweep period={150} opacity={0.08} />
+            <Grain opacity={0.05} />
         </AbsoluteFill>
     );
 };

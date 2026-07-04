@@ -4,6 +4,7 @@ import { BRAND, FONT, MONO, stageBackground } from './theme';
 import { ramp, enter, windowOpacity, countTo } from './ui/anim';
 import { EASE } from './theme';
 import { Stage, TopBar, SpecHud, WizardDock, NextButton, Cursor, Nudge } from './ui/Studio';
+import { EntryFlash, ShockwaveRing, SparkBurst, SpeedLines } from './ui/Fx';
 import { OnesignWordmark } from './ui/Logo';
 import { StageSign } from './ui/StageSign';
 import { Caption } from './ui/Caption';
@@ -56,7 +57,8 @@ function hx(h: string): [number, number, number] {
 export const Scene1: React.FC<SceneProps> = ({ start }) => {
     const frame = useCurrentFrame();
     const abs = useAbs(start);
-    const intro = ramp(frame, 0, 22, EASE.out);
+    const intro = ramp(frame, 0, 18, EASE.out);
+    const popIn = ramp(frame, 0, 28, EASE.pop);
     const halo = 0.5 + 0.5 * Math.sin((2 * Math.PI * abs) / 90);
     return (
         <Stage night={false}>
@@ -68,7 +70,7 @@ export const Scene1: React.FC<SceneProps> = ({ start }) => {
                     opacity: 0.5 + 0.5 * halo,
                 }}
             />
-            <div style={{ opacity: intro, transform: `scale(${0.92 + intro * 0.08})` }}>
+            <div style={{ opacity: intro, transform: `scale(${0.64 + popIn * 0.36})` }}>
                 <StageSign
                     absFrame={abs}
                     wMm={D0.w}
@@ -83,6 +85,8 @@ export const Scene1: React.FC<SceneProps> = ({ start }) => {
                 <OnesignWordmark height={34} color="white" />
             </div>
             <SpecHud w={D0.w} h={D0.h} d={D0.d} opacity={intro} />
+            <SpeedLines startF={2} dur={20} count={24} />
+            <ShockwaveRing x={540} y={760} startF={12} size={1100} dur={30} />
             <Caption
                 startF={20}
                 bottom={520}
@@ -439,6 +443,9 @@ export const Scene7: React.FC<SceneProps> = ({ start }) => {
                 />
             </AbsoluteFill>
 
+            {/* the ignite: a spark burst + a bright bloom flash on the flick */}
+            <SparkBurst x={540} y={520} startF={46} count={30} spread={660} dur={44} />
+            <EntryFlash at={46} dur={12} strength={0.45} />
             <TopBar title="Light it up" night={wipe > 0.5} dayNightT={dayNightT} />
             <SpecHud w={D1.w} h={D1.h} d={D1.d} opacity={0.5} />
             <Caption
@@ -600,6 +607,9 @@ export const Scene10: React.FC<SceneProps> = ({ start }) => {
                 />
             </div>
             <AbsoluteFill style={{ background: 'rgba(4,7,10,0.55)', opacity: cardIn }} />
+            {/* celebratory burst behind the card */}
+            <ShockwaveRing x={540} y={660} startF={2} size={1220} dur={34} />
+            <SparkBurst x={540} y={660} startF={2} count={28} spread={780} dur={46} />
             {/* success card */}
             <div
                 style={{

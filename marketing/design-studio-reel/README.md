@@ -51,7 +51,8 @@ src/
     ├── StageSign.tsx  places the sign with the continuous idle rotation
     ├── Studio.tsx     stage / top bar / spec HUD / wizard dock / stepper / switches / cursor
     ├── Controls.tsx   the dock's inner controls (size fields, RAL swatches, dropzone, glow…)
-    ├── Caption.tsx    the kinetic broadcast captions (masked line reveal, accent words)
+    ├── Fx.tsx         the energy layer — beat pulse, film grain, light sweep, whip-flash cuts, shockwave rings, spark bursts, speed lines
+    ├── Caption.tsx    the kinetic broadcast captions (masked line reveal, punch-in, accent-word glow)
     ├── BrandArt.tsx   the demo customer's logo (AURELIA)
     ├── Logo.tsx       the real Onesign wordmark + a brand mark
     ├── Icons.tsx      inline icon set (no icon-font dependency)
