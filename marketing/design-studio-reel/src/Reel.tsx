@@ -11,42 +11,39 @@ import {
     Scene8,
     Scene9,
     Scene10,
+    Scene11,
 } from './scenes';
-import { BeatPulse, EntryFlash, Grain, ScanSweep } from './ui/Fx';
+import { Grain } from './ui/Fx';
+import { ensureFonts } from './fonts';
 
-// [startFrame, durationFrames] — tiles 0→1140 (38s @ 30fps) with no gaps.
+// [startFrame, durationFrames] — the viral cut, tiles 0→1020 (34s @ 30fps).
 const TL: Array<[React.FC<{ start: number }>, number, number]> = [
-    [Scene1, 0, 105],
-    [Scene2, 105, 105],
-    [Scene3, 210, 120],
-    [Scene4, 330, 120],
-    [Scene5, 450, 135],
-    [Scene6, 585, 105],
-    [Scene7, 690, 150],
-    [Scene8, 840, 105],
-    [Scene9, 945, 105],
-    [Scene10, 1050, 90],
+    [Scene1, 0, 60], // HOOK — result first
+    [Scene2, 60, 45], // PIVOT — rewind to blank
+    [Scene3, 105, 120], // SIZE
+    [Scene4, 225, 120], // ARTWORK
+    [Scene5, 345, 105], // LIGHT — presets rip
+    [Scene6, 450, 105], // GLOW — day→night
+    [Scene7, 555, 90], // SEND + proof
+    [Scene8, 645, 30], // MONTAGE STINGER
+    [Scene9, 675, 192], // REAL-BRAND MONTAGE (6×32)
+    [Scene10, 867, 45], // SOCIAL-PROOF LINE
+    [Scene11, 912, 108], // CTA
 ];
 
-export const TOTAL_FRAMES = 1140;
+export const TOTAL_FRAMES = 1020;
 
 export const DesignStudioReel: React.FC = () => {
+    ensureFonts(); // register bundled display fonts once, within render scope
     return (
-        <AbsoluteFill style={{ background: '#050a0d' }}>
-            <BeatPulse>
-                {TL.map(([Comp, from, dur], i) => (
-                    <Sequence key={i} from={from} durationInFrames={dur}>
-                        <Comp start={from} />
-                    </Sequence>
-                ))}
-            </BeatPulse>
-            {/* whip-flash on every scene cut (global frame, so `at` = scene start) */}
-            {TL.slice(1).map(([, from], i) => (
-                <EntryFlash key={`fl${i}`} at={from} dur={7} strength={0.55} />
+        <AbsoluteFill style={{ background: '#04070a' }}>
+            {TL.map(([Comp, from, dur], i) => (
+                <Sequence key={i} from={from} durationInFrames={dur}>
+                    <Comp start={from} />
+                </Sequence>
             ))}
-            {/* global energy layers, above the scenes */}
-            <ScanSweep period={150} opacity={0.08} />
-            <Grain opacity={0.05} />
+            {/* film grain only — the disliked full-frame pulse is gone. */}
+            <Grain opacity={0.045} />
         </AbsoluteFill>
     );
 };

@@ -31,6 +31,14 @@ export const FONT =
 export const MONO =
     "'Geist Mono', ui-monospace, 'SF Mono', 'Roboto Mono', Menlo, monospace";
 
+// Bold display faces (bundled under public/fonts, loaded in src/fonts.ts).
+// CONDENSED (Anton) is the tall, punchy caption face; DISPLAY (Archivo Black)
+// is the heavy grotesque for brand/hero titles.
+export const CONDENSED =
+    "'Anton', 'Oswald', 'Arial Narrow', 'Impact', sans-serif";
+export const DISPLAY =
+    "'Archivo Black', 'Archivo', 'Arial Black', system-ui, sans-serif";
+
 // Standard easings (cubic-bezier control points) used across scenes for a
 // coherent motion signature — confident, springy-but-controlled.
 export const EASE = {

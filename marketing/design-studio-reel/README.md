@@ -1,10 +1,16 @@
 # Design Your Sign — social reel (9:16)
 
-A polished, 38-second vertical **motion-graphics reel** advertising the public
-**[Onesign & Digital sign builder](../../app/design)** (`/design`). It walks a
-viewer through building their own folded-aluminium sign in the studio — **Size →
-Artwork → Light → Send** — and ends on the real success screen with a call to
-action.
+A bold, **34-second vertical "viral cut"** advertising the public
+**[Onesign & Digital sign builder](../../app/design)** (`/design`). Result-first
+hook, heavy **Anton / Archivo Black** kinetic type, snap-zoom cuts, the four-step
+build (**Size → Artwork → Light → Send**), the day→night glow money-shot, a
+**real-brand social-proof montage** (Black Rabbit, HERD, Ginger, Aqua TCG, FCR
+Roofing, Persimmon — genuine Onesign clients pulled from the production
+database), and a hard CTA. No music yet (works sound-off on captions).
+
+Display fonts (`public/fonts/`, loaded in `src/fonts.ts`): **Anton** (condensed
+caption face) and **Archivo Black** (numbers / brand nameplates). The frosted
+app dock keeps a system UI sans so the product reads as authentic.
 
 This is a **standalone [Remotion](https://remotion.dev) project**. It is *not*
 part of the Next.js app build (its own `package.json` / `node_modules`), so it
