@@ -335,14 +335,14 @@ export const Scene8: React.FC<SceneProps> = () => {
             <WhipFlashCard at={0} dur={3} color={BRAND.accentGlow} opacity={0.85} />
             <Caption startF={2} bottom={780} size={150} lines={[{ text: "These aren't" }, { text: 'demos.', accent: ['demos.'] }]} />
             <div style={{ position: 'absolute', left: 0, right: 0, bottom: 640, textAlign: 'center', opacity: ramp(frame, 10, 20, EASE.out) }}>
-                <Kicker text="Real signs we've actually made" size={34} color="rgba(255,255,255,0.7)" />
+                <Kicker text="Any material · any fixing · really made" size={32} color="rgba(255,255,255,0.7)" />
             </div>
         </Stage>
     );
 };
 
-// ═══ SCENE 9 — REAL-BRAND MONTAGE (6 cards) ════════════════════════════════
-export const CARD = 32; // frames per card
+// ═══ SCENE 9 — REAL-BRAND MONTAGE (case-study signs) ═══════════════════════
+export const CARD = 64; // frames per card (3 cards × 64 = 192f window)
 export const Scene9: React.FC<SceneProps> = () => {
     return (
         <AbsoluteFill style={{ background: '#04070a' }}>
@@ -350,9 +350,7 @@ export const Scene9: React.FC<SceneProps> = () => {
                 <Sequence key={k} from={k * CARD} durationInFrames={CARD}>
                     <Stage night={brand.lit} nightGlow={brand.lit ? 0.7 : 0}>
                         <MontageCard brand={brand} index={k} dur={CARD} />
-                        {k % 4 === 0 && (
-                            <WhipFlashCard at={0} dur={2} color="#e8f0f3" opacity={0.9} />
-                        )}
+                        <WhipFlashCard at={0} dur={2} color="#e8f0f3" opacity={0.85} />
                         <div style={{ position: 'absolute', right: 40, bottom: 44, fontFamily: DISPLAY, fontWeight: 900, fontSize: 30, letterSpacing: '0.12em', color: 'rgba(255,255,255,0.5)' }}>
                             {String(k + 1).padStart(2, '0')} / {String(REAL_BRANDS.length).padStart(2, '0')}
                         </div>

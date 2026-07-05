@@ -1,55 +1,46 @@
-// Real Onesign & Digital clients, pulled from the production database
-// (visualiser_designs / brand_profiles / psp_orders). Used for the
-// social-proof montage — real signs, real North-East businesses.
+// Real Onesign & Digital client signs for the case-study montage — using the
+// actual client logo SVGs (public/brands/*.svg), each presented as a real
+// fabricated sign that highlights a different material + fixing method.
 export interface RealBrand {
     name: string;
     kind: string; // business type
-    spec: string; // short sign description
-    accent: string; // card accent colour
-    lit: boolean; // illuminated sign?
+    logo: string; // staticFile path under public/
+    face: string; // sign panel/face colour
+    accent: string; // nameplate accent
+    material: string; // build / material callout
+    fixing: string; // fixing method callout
+    lit: boolean; // illuminated?
 }
 
 export const REAL_BRANDS: RealBrand[] = [
     {
-        name: 'Black Rabbit',
-        kind: 'Bar · The Warren',
-        spec: '4050 × 285 mm · illuminated aluminium',
-        accent: '#d9a441',
+        name: 'Ginger',
+        kind: 'Salon',
+        logo: 'brands/ginger.svg',
+        face: '#f3ede1',
+        accent: '#e0a24a',
+        material: 'Built-up illuminated letters',
+        fixing: 'Stand-off locators',
         lit: true,
     },
     {
         name: 'HERD',
         kind: 'Restaurant',
-        spec: 'Neon feature sign',
-        accent: '#ff5d5d',
+        logo: 'brands/herd.svg',
+        face: '#191d20',
+        accent: '#e0201c',
+        material: 'Fabricated tray · LED halo',
+        fixing: 'Concealed studs',
         lit: true,
     },
     {
-        name: 'Ginger',
-        kind: 'Salon',
-        spec: '4400 × 650 mm · illuminated aluminium',
-        accent: '#e8743b',
-        lit: true,
-    },
-    {
-        name: 'Aqua TCG',
-        kind: 'Card & games store',
-        spec: 'Cut-vinyl aperture sign',
-        accent: '#35b6c7',
-        lit: false,
-    },
-    {
-        name: 'FCR Roofing',
-        kind: 'Roofing & building',
-        spec: 'Fabricated fascia sign',
-        accent: '#376fa4',
-        lit: false,
-    },
-    {
-        name: 'Persimmon',
-        kind: 'National housebuilder',
-        spec: 'Live production orders',
-        accent: '#5c9a4f',
+        name: 'MetroCentre',
+        kind: 'Retail destination',
+        logo: 'brands/metrocentre.svg',
+        face: '#f4f6f6',
+        accent: '#03848a',
+        material: 'Flat-cut acrylic on tray',
+        fixing: 'Flush stud-mount',
         lit: false,
     },
 ];

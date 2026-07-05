@@ -1,5 +1,5 @@
 import React from 'react';
-import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
+import { AbsoluteFill, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import { BRAND, CONDENSED, DISPLAY, FONT } from '../theme';
 import { ramp } from './anim';
 import { EASE } from '../theme';
@@ -152,37 +152,194 @@ export function Iris({
 }
 
 /**
- * One real-brand montage card: a mini lit sign in the client's own colour with
- * the brand name on it, plus a nameplate strip (name · kind · spec chip).
- * Entrance varies by index so six cards never feel templated.
+ * A real fabricated sign board: the client's actual logo SVG mounted on a
+ * painted/brushed panel, raised off the wall on visible stand-off fixings, lit
+ * where the real sign is illuminated. Sells signage quality + the fixing method.
+ */
+export function SignBoard({
+    logo,
+    face,
+    accent,
+    lit,
+    width = 860,
+    height = 470,
+}: {
+    logo: string;
+    face: string;
+    accent: string;
+    lit: boolean;
+    width?: number;
+    height?: number;
+}) {
+    const isDark = luminance(face) < 0.4;
+    const facePaint = `linear-gradient(160deg, ${shade(face, 0.06)}, ${face} 55%, ${shade(face, -0.08)})`;
+    const stud = 26;
+    const inset = 34;
+    const studPositions = [
+        { top: inset, left: inset },
+        { top: inset, right: inset },
+        { bottom: inset, left: inset },
+        { bottom: inset, right: inset },
+    ];
+    return (
+        <div style={{ perspective: 1600 }}>
+            <div
+                style={{
+                    position: 'relative',
+                    width,
+                    height,
+                    transform: 'rotateX(6deg) rotateY(-11deg)',
+                    transformStyle: 'preserve-3d',
+                }}
+            >
+                {/* wall shadow behind (stand-off depth) */}
+                <div
+                    style={{
+                        position: 'absolute',
+                        inset: 0,
+                        borderRadius: 16,
+                        transform: 'translate(26px, 34px) translateZ(-40px)',
+                        background: 'rgba(0,0,0,0.55)',
+                        filter: 'blur(26px)',
+                    }}
+                />
+                {/* the panel */}
+                <div
+                    style={{
+                        position: 'absolute',
+                        inset: 0,
+                        borderRadius: 16,
+                        background: facePaint,
+                        boxShadow: lit
+                            ? `0 0 70px ${withAlpha(accent, 0.6)}, inset 0 2px 0 rgba(255,255,255,0.5), inset 0 -30px 60px rgba(0,0,0,0.12)`
+                            : 'inset 0 2px 0 rgba(255,255,255,0.5), inset 0 -30px 60px rgba(0,0,0,0.14)',
+                        overflow: 'hidden',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                    }}
+                >
+                    {/* brushed sheen */}
+                    <div
+                        style={{
+                            position: 'absolute',
+                            inset: 0,
+                            background:
+                                'linear-gradient(105deg, transparent 34%, rgba(255,255,255,0.16) 48%, transparent 62%)',
+                            mixBlendMode: isDark ? 'screen' : 'soft-light',
+                        }}
+                    />
+                    {/* the real client logo */}
+                    <Img
+                        src={staticFile(logo)}
+                        style={{
+                            width: '72%',
+                            height: '68%',
+                            objectFit: 'contain',
+                            filter: lit
+                                ? `drop-shadow(0 0 18px ${withAlpha(accent, 0.55)})`
+                                : 'drop-shadow(2px 5px 5px rgba(0,0,0,0.28))',
+                        }}
+                    />
+                </div>
+                {/* stand-off fixing studs */}
+                {studPositions.map((p, i) => (
+                    <div
+                        key={i}
+                        style={{
+                            position: 'absolute',
+                            ...p,
+                            width: stud,
+                            height: stud,
+                            borderRadius: 999,
+                            transform: 'translateZ(6px)',
+                            background:
+                                'radial-gradient(circle at 35% 30%, #ffffff, #c7ccd0 45%, #7c848a 80%)',
+                            boxShadow: '0 3px 6px rgba(0,0,0,0.5)',
+                        }}
+                    />
+                ))}
+            </div>
+        </div>
+    );
+}
+
+/**
+ * The client's actual logo mounted on a folded-aluminium fascia panel — the
+ * exact tray-sign construction Onesign fabricates for a shopfront. Real face
+ * colour, folded returns reading as brushed metal edges, and a soft halo behind
+ * the lit brands so illuminated signs glow on the dark presentation stage while
+ * the face colour stays true.
+ */
+function SignPanelBrand({ brand }: { brand: RealBrand }) {
+    const w = 820;
+    const h = 470;
+    return (
+        <div style={{ position: 'relative', display: 'grid', placeItems: 'center' }}>
+            {/* illuminated halo behind the panel (day-mode stage, so we add our
+                own glow rather than SignPanel's night keyline) */}
+            {brand.lit && (
+                <div
+                    style={{
+                        position: 'absolute',
+                        width: w * 1.02,
+                        height: h * 1.02,
+                        borderRadius: 40,
+                        background: `radial-gradient(closest-side, ${withAlpha(brand.accent, 0.55)}, ${withAlpha(brand.accent, 0)} 72%)`,
+                        filter: 'blur(46px)',
+                        transform: 'translateY(10px)',
+                    }}
+                />
+            )}
+            <SignPanel
+                widthPx={w}
+                heightPx={h}
+                depthPx={42}
+                color={brand.face}
+                rotY={-19}
+                rotX={7}
+                art="none"
+                artwork={
+                    <Img
+                        src={staticFile(brand.logo)}
+                        style={{
+                            width: w * 0.72,
+                            height: h * 0.64,
+                            objectFit: 'contain',
+                            filter: brand.lit
+                                ? `drop-shadow(0 0 16px ${withAlpha(brand.accent, 0.5)})`
+                                : 'drop-shadow(2px 5px 5px rgba(0,0,0,0.28))',
+                        }}
+                    />
+                }
+            />
+        </div>
+    );
+}
+
+/**
+ * One real-brand case-study card: the client's actual sign (logo on a folded
+ * aluminium fascia panel) + a Gilroy nameplate and two chips calling out the
+ * MATERIAL and the FIXING method. Entrance varies by index.
  */
 export function MontageCard({
     brand,
     index,
-    dur,
 }: {
     brand: RealBrand;
     index: number;
-    dur: number;
+    dur?: number;
 }) {
     const frame = useCurrentFrame();
     const { fps } = useVideoConfig();
     const inS = spring({ frame, fps, config: { damping: 14, stiffness: 240, mass: 0.6 } });
-    // snap-settle: overshoot then rest
-    const settle = interpolate(frame, [0, 4, 9], [1, 0.965, 1], {
-        extrapolateRight: 'clamp',
-    });
+    const settle = interpolate(frame, [0, 4, 9], [1, 0.965, 1], { extrapolateRight: 'clamp' });
 
-    const variant = index % 4;
-    let enter: React.CSSProperties = {};
-    if (variant === 0) enter = { transform: `translateX(${(1 - inS) * -160}px)` }; // slide L
-    else if (variant === 1) enter = { transform: `scale(${0.7 + inS * 0.3})` }; // bloom
-    else if (variant === 2)
-        enter = { transform: `perspective(1200px) rotateY(${(1 - inS) * 70}deg)` }; // flip
-    else enter = { transform: `translateY(${(1 - inS) * 90}px)` }; // stamp up
-
-    const w = 900;
-    const h = 236;
+    const variant = index % 3;
+    let enter = '';
+    if (variant === 0) enter = `translateX(${(1 - inS) * -170}px)`;
+    else if (variant === 1) enter = `perspective(1400px) rotateY(${(1 - inS) * 55}deg)`;
+    else enter = `translateY(${(1 - inS) * 90}px)`;
 
     return (
         <AbsoluteFill
@@ -191,84 +348,97 @@ export function MontageCard({
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 40,
+                gap: 52,
                 opacity: Math.min(1, inS * 1.6),
             }}
         >
-            <div style={{ ...enter, transform: `${enter.transform ?? ''} scale(${settle})` }}>
-                <SignPanel
-                    widthPx={w}
-                    heightPx={h}
-                    depthPx={30}
-                    color={brand.accent}
-                    rotY={-14}
-                    rotX={8}
-                    night={brand.lit}
-                    glow={{ on: brand.lit, color: brand.accent, intensity: 1.7 }}
-                    art={brand.lit ? 'aperture' : 'vinyl'}
-                    artwork={
-                        <span
-                            style={{
-                                fontFamily: DISPLAY,
-                                fontWeight: 900,
-                                fontSize: h * 0.42,
-                                letterSpacing: '-0.01em',
-                                textTransform: 'uppercase',
-                                color: 'currentColor',
-                                whiteSpace: 'nowrap',
-                            }}
-                        >
-                            {brand.name}
-                        </span>
-                    }
-                />
+            <div style={{ transform: `${enter} scale(${settle})` }}>
+                <SignPanelBrand brand={brand} />
             </div>
 
-            {/* nameplate strip */}
             <div style={{ textAlign: 'center', transform: `translateY(${(1 - inS) * 20}px)` }}>
                 <div
                     style={{
                         fontFamily: DISPLAY,
-                        fontWeight: 900,
-                        fontSize: 64,
+                        fontWeight: 800,
+                        fontSize: 60,
                         letterSpacing: '-0.01em',
                         color: brand.accent,
-                        textTransform: 'uppercase',
                     }}
                 >
                     {brand.name}
                 </div>
                 <div
                     style={{
-                        marginTop: 8,
+                        marginTop: 6,
                         fontFamily: DISPLAY,
-                        fontWeight: 900,
-                        fontSize: 24,
-                        letterSpacing: '0.16em',
+                        fontWeight: 800,
+                        fontSize: 22,
+                        letterSpacing: '0.14em',
                         textTransform: 'uppercase',
-                        color: 'rgba(255,255,255,0.55)',
+                        color: 'rgba(255,255,255,0.5)',
                     }}
                 >
                     {brand.kind}
                 </div>
-                <div
-                    style={{
-                        marginTop: 16,
-                        display: 'inline-block',
-                        padding: '9px 20px',
-                        borderRadius: 999,
-                        border: `1px solid ${withAlpha(brand.accent, 0.6)}`,
-                        background: withAlpha(brand.accent, 0.12),
-                        fontFamily: FONT,
-                        fontWeight: 600,
-                        fontSize: 22,
-                        letterSpacing: '0.02em',
-                        color: '#e8f0f3',
-                    }}
-                >
-                    {brand.spec}
+                {/* material + fixing capability chips */}
+                <div style={{ marginTop: 20, display: 'flex', gap: 14, justifyContent: 'center' }}>
+                    <Chip label={brand.material} accent={brand.accent} />
+                    <Chip label={brand.fixing} accent={brand.accent} pin />
                 </div>
             </div>
         </AbsoluteFill>
     );
+}
+
+function Chip({ label, accent, pin = false }: { label: string; accent: string; pin?: boolean }) {
+    return (
+        <span
+            style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '10px 20px',
+                borderRadius: 999,
+                border: `1px solid ${withAlpha(accent, 0.55)}`,
+                background: withAlpha(accent, 0.12),
+                fontFamily: DISPLAY,
+                fontWeight: 600,
+                fontSize: 21,
+                letterSpacing: '0.01em',
+                color: '#eef4f5',
+            }}
+        >
+            <span
+                style={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: pin ? 999 : 3,
+                    background: pin
+                        ? 'radial-gradient(circle at 35% 30%, #fff, #b9bec2 60%, #7c848a)'
+                        : accent,
+                    boxShadow: pin ? '0 1px 2px rgba(0,0,0,0.5)' : 'none',
+                }}
+            />
+            {label}
+        </span>
+    );
+}
+
+// small colour helpers
+function hexToRgb(hex: string): [number, number, number] {
+    const h = hex.replace('#', '');
+    const v = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+    return [parseInt(v.slice(0, 2), 16), parseInt(v.slice(2, 4), 16), parseInt(v.slice(4, 6), 16)];
+}
+function luminance(hex: string): number {
+    const [r, g, b] = hexToRgb(hex);
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+}
+function shade(hex: string, amt: number): string {
+    const [r, g, b] = hexToRgb(hex);
+    const t = amt < 0 ? 0 : 255;
+    const p = Math.abs(amt);
+    const c = (x: number) => Math.round(x + (t - x) * p);
+    return `rgb(${c(r)}, ${c(g)}, ${c(b)})`;
 }

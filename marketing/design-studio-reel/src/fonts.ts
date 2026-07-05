@@ -1,15 +1,18 @@
 import { continueRender, delayRender, staticFile } from 'remotion';
 
-// Local display faces bundled under public/fonts. Loaded via the FontFace API
-// with delayRender so headless rendering waits until they're ready.
+// Local display faces bundled under public/fonts, loaded via FontFace with
+// delayRender (called once from a component body, never at module eval).
 //
-// IMPORTANT: delayRender() must be called *during a render*, not at module
-// eval time (that throws at webpack startup on `remotion render`). So this is a
-// guarded function called once from a component body, not module-scope code.
+// GILROY: the brand's font (commercial — not fetchable in this sandbox). Drop
+// `public/fonts/Gilroy-ExtraBold.woff2` in and it's used automatically; until
+// then the `Gilroy` load 404s (caught) and the CSS stack falls back to
+// Montserrat, the closest free geometric match.
 const FACES: Array<{ family: string; file: string; weight: string }> = [
-    { family: 'Archivo Black', file: 'fonts/ArchivoBlack.woff2', weight: '900' },
+    { family: 'Gilroy', file: 'fonts/Gilroy-ExtraBold.woff2', weight: '800 900' },
+    { family: 'Montserrat', file: 'fonts/Montserrat-800.woff2', weight: '800 900' },
+    { family: 'Montserrat', file: 'fonts/Montserrat-600.woff2', weight: '500 700' },
     { family: 'Anton', file: 'fonts/Anton.woff2', weight: '400' },
-    { family: 'Archivo', file: 'fonts/Archivo.woff2', weight: '800 900' },
+    { family: 'Archivo Black', file: 'fonts/ArchivoBlack.woff2', weight: '900' },
 ];
 
 let started = false;
@@ -19,7 +22,7 @@ export function ensureFonts(): void {
     if (typeof document === 'undefined' || typeof FontFace === 'undefined') return;
     started = true;
     FACES.forEach(({ family, file, weight }) => {
-        const handle = delayRender(`font:${family}`);
+        const handle = delayRender(`font:${family}:${weight}`);
         const face = new FontFace(
             family,
             `url(${staticFile(file)}) format('woff2')`,
