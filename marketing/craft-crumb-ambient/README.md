@@ -14,9 +14,13 @@ black, warm coffee-brown `#995c28`, Bebas Neue, artisan/warm/minimal).
   state. The real circular badge on a warm dim-café stage: powder-coated-metal light sweep, an
   orbiting ring glint, a soft breath, drifting warm motes, and a slow rota of artisan lines
   (CRAFTED DAILY / FRESHLY BAKED / SINGLE ORIGIN / MADE TO ORDER). Loops forever with no seam.
-- **`CraftCrumbPromos`** — a **~19s promotional set** cross-dissolving four cards: Single-Origin
-  Espresso · Sourdough Sandos · Grab & Go Breakfast · brand sign-off. Line-art motifs, Bebas
-  headlines with brand-brown `&`/`.`, on the same warm stage.
+- **`CraftCrumbPromos`** — a **~23s promotional set**: the badge sits fixed on the left while the
+  message changes around it, five ads handing off with a fluid motion-blur lift over a continuous
+  **animated warm field** (dark→amber directional wash with drifting topographic contour lines).
+  Big **mixed-weight** headlines (light Oswald line over heavy Bebas line, à la *FRESHLY /
+  GROUND*), brand-brown `&`/`.`, a subtle printed **texture inside the letters**, and a
+  light/heavy sub-stack. Copy: Freshly Ground · Sourdough Sandos · Grab & Go · All-Day Brunch ·
+  brand sign-off.
 
 Both are **16:9 1920×1080** (landscape menu boards). For portrait screens set `WIDTH=1080`,
 `HEIGHT=1920` in `src/theme.ts` — layouts are centred/relative so it's a small change.
@@ -36,8 +40,10 @@ Headless renders use the `chrome-headless-shell` binary (baked into the scripts)
 
 ## Change the copy
 
-Promo cards live in `PROMOS` at the top of `src/Promos.tsx` (`head` lines + `sub`). The
-screensaver's rota is `WORDS` in `src/Screensaver.tsx`. The logo is inlined from
+Promo cards live in `ADS` at the top of `src/Promos.tsx` (`light` + `heavy` headline lines,
+`subLight` + `subHeavy`). The screensaver's rota is `WORDS` in `src/Screensaver.tsx`. Type is
+Bebas Neue (heavy) + Oswald Light (thin); the in-letter texture is `TexturedText` (tune
+`textureOpacity`); the animated background is `ui/WarmField.tsx`. The logo is inlined from
 `public/logo/craft-crumb-logo.svg` (its two fixed-position tagline nodes are replaced with one
 centred, self-fitting tagline in `src/ui/Badge.tsx` so substituted Bebas can't collide).
 

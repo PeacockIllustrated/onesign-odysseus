@@ -26,6 +26,8 @@ export const HEIGHT = 1080;
 // somehow doesn't load.
 export const BEBAS =
     "'Bebas Neue', 'Oswald', 'Anton', 'Arial Narrow', sans-serif";
+// Light condensed companion for the thin words in the mixed-weight headlines.
+export const OSWALD = "'Oswald', 'Bebas Neue', 'Arial Narrow', sans-serif";
 // Tiny supporting text (rare) — a clean, quiet humanist sans.
 export const SANS =
     "'Inter', -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif";

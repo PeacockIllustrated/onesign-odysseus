@@ -1,148 +1,140 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, Sequence, spring, useCurrentFrame, useVideoConfig } from 'remotion';
-import { BEBAS, CC, withAlpha } from './theme';
+import { BEBAS, CC, OSWALD, withAlpha } from './theme';
 import { ensureFonts } from './fonts';
-import { Grain, Motes, Rule, Stage } from './ui/atoms';
+import { Grain } from './ui/atoms';
+import { WarmField } from './ui/WarmField';
+import { TexturedText } from './ui/TexturedText';
 import { Badge } from './ui/Badge';
-import { CoffeeCup, Sando, ToGo } from './ui/icons';
 
-const PROMO = 160; // 5.33s per card
-const OVER = 22; // cross-dissolve overlap
-const STEAM_LOOP = 90;
+const DUR = 150; // per ad
+const OVER = 12; // brief cross-transition overlap (outgoing blurs away as incoming rises in)
+const BADGE_LOOP = 300;
 
-type Motif = 'coffee' | 'sando' | 'togo' | 'badge';
-interface Promo {
-    motif: Motif;
-    head: string[]; // 1–2 lines
-    sub: string;
+interface Ad {
+    light: string; // thin headline line
+    heavy: string; // bold headline line
+    subLight: string;
+    subHeavy: string;
 }
 
-const PROMOS: Promo[] = [
-    { motif: 'coffee', head: ['SINGLE-ORIGIN', 'ESPRESSO'], sub: 'PULLED FRESH · ALL DAY' },
-    { motif: 'sando', head: ['SOURDOUGH', 'SANDOS'], sub: 'MADE TO ORDER' },
-    { motif: 'togo', head: ['GRAB & GO', 'BREAKFAST'], sub: 'OPEN FROM 7AM' },
-    { motif: 'badge', head: ['CRAFT & CRUMB'], sub: 'COFFEE BAR · SANDO DELI' },
+// Impactful, on-brand ad copy in the reference's "FRESHLY / GROUND" mould.
+// (Placeholder specifics — swap for the real menu / hours before going live.)
+const ADS: Ad[] = [
+    { light: 'FRESHLY', heavy: 'GROUND', subLight: 'MADE TO ORDER', subHeavy: 'SINGLE ORIGIN' },
+    { light: 'SOURDOUGH', heavy: 'SANDOS', subLight: 'SLICED FRESH', subHeavy: 'MADE TO ORDER' },
+    { light: 'GRAB &', heavy: 'GO', subLight: 'BREAKFAST', subHeavy: 'OPEN FROM 7AM' },
+    { light: 'ALL-DAY', heavy: 'BRUNCH', subLight: 'SERVED FRESH', subHeavy: 'TILL 3PM' },
+    { light: 'CRAFT &', heavy: 'CRUMB', subLight: 'COFFEE BAR', subHeavy: 'SANDO DELI' },
 ];
 
-/** Render a headline string, tinting brand punctuation (& and .) warm brown. */
-function Head({ text, size }: { text: string; size: number }) {
-    const parts = text.split(/(&|\.)/g).filter((s) => s !== '');
-    return (
-        <span
-            style={{
-                fontFamily: BEBAS,
-                fontSize: size,
-                lineHeight: 0.92,
-                letterSpacing: '0.01em',
-                color: CC.cream,
-                display: 'block',
-                textShadow: `0 6px 40px rgba(0,0,0,0.5)`,
-            }}
-        >
-            {parts.map((p, i) =>
-                p === '&' || p === '.' ? (
-                    <span key={i} style={{ color: CC.brown }}>
-                        {p}
-                    </span>
-                ) : (
-                    <span key={i}>{p}</span>
-                ),
-            )}
-        </span>
-    );
-}
-
-function Motif({ kind, phase, loop }: { kind: Motif; phase: number; loop: number }) {
-    if (kind === 'coffee') return <CoffeeCup size={220} phase={phase} />;
-    if (kind === 'sando') return <Sando size={220} />;
-    if (kind === 'togo') return <ToGo size={220} phase={phase} />;
-    return <Badge size={300} loop={loop} />;
-}
-
-const PromoCard: React.FC<{ promo: Promo }> = ({ promo }) => {
+const AdContent: React.FC<{ ad: Ad }> = ({ ad }) => {
     const frame = useCurrentFrame();
     const { fps } = useVideoConfig();
-    const phase = (frame % STEAM_LOOP) / STEAM_LOOP;
 
-    const fadeIn = interpolate(frame, [0, 16], [0, 1], { extrapolateRight: 'clamp' });
-    const fadeOut = interpolate(frame, [PROMO - 16, PROMO], [1, 0], { extrapolateLeft: 'clamp' });
-    const alpha = Math.min(fadeIn, fadeOut);
+    const appear = interpolate(frame, [0, 18], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
+    const exit = interpolate(frame, [DUR - 16, DUR], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
+    // Group envelope: incoming rises up sharp, outgoing rises further and blurs
+    // away — so mid-transition the two headlines separate vertically and the
+    // outgoing one reads as motion blur, never a muddy double-exposure.
+    const groupOp = Math.min(appear, 1 - exit);
+    const groupY = (1 - appear) * 74 + exit * -128;
+    const groupBlur = (1 - appear) * 7 + exit * 12;
 
-    const rise = (delay: number) => {
-        const s = spring({ frame: frame - delay, fps, config: { damping: 18, stiffness: 120, mass: 0.9 } });
-        return { opacity: s, transform: `translateY(${(1 - s) * 26}px)` };
+    const rise = (delay: number, dist = 40) => {
+        const s = spring({ frame: frame - delay, fps, config: { damping: 20, stiffness: 130, mass: 0.9 } });
+        return { opacity: s, transform: `translateX(${(1 - s) * -dist}px)` };
     };
-
-    const isBadge = promo.motif === 'badge';
-    const float = Math.sin((frame / PROMO) * Math.PI) * 6;
+    const wipe = spring({ frame: frame - 12, fps, config: { damping: 22, stiffness: 120, mass: 0.8 } });
 
     return (
-        <AbsoluteFill style={{ opacity: alpha }}>
-            <AbsoluteFill
+        <AbsoluteFill
+            style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                justifyContent: 'center',
+                paddingLeft: 840,
+                paddingRight: 90,
+                opacity: groupOp,
+                transform: `translateY(${groupY}px)`,
+                filter: groupBlur > 0.05 ? `blur(${groupBlur}px)` : undefined,
+            }}
+        >
+            <div style={{ ...rise(2) }}>
+                <TexturedText text={ad.light} family={OSWALD} weight={300} size={150} letterSpacing="0.005em" textureOpacity={0.42} />
+            </div>
+            <div style={{ marginTop: -6, ...rise(7) }}>
+                <TexturedText text={ad.heavy} family={BEBAS} weight={400} size={214} letterSpacing="0.004em" textureOpacity={0.5} />
+            </div>
+
+            {/* brand rule — wipes in from the left */}
+            <div
                 style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: isBadge ? 30 : 26,
-                    transform: `translateY(${float}px)`,
+                    marginTop: 26,
+                    marginBottom: 24,
+                    width: 470,
+                    height: 7,
+                    borderRadius: 2,
+                    background: `linear-gradient(90deg, ${CC.brownDeep}, ${CC.brown} 45%, ${CC.brownLit})`,
+                    transformOrigin: 'left center',
+                    transform: `scaleX(${wipe})`,
+                    boxShadow: `0 2px 14px ${withAlpha(CC.brown, 0.5)}`,
                 }}
-            >
-                <div style={{ ...rise(4) }}>
-                    <Motif kind={promo.motif} phase={phase} loop={PROMO} />
-                </div>
+            />
 
-                {!isBadge && (
-                    <div style={{ textAlign: 'center', ...rise(9) }}>
-                        {promo.head.map((line, i) => (
-                            <Head key={i} text={line} size={132} />
-                        ))}
-                    </div>
-                )}
-                {isBadge && (
-                    <div style={{ textAlign: 'center', ...rise(9) }}>
-                        {promo.head.map((line, i) => (
-                            <Head key={i} text={line} size={92} />
-                        ))}
-                    </div>
-                )}
-
-                <div style={{ ...rise(15) }}>
-                    <Rule width={200} />
-                </div>
-
-                <div
+            <div style={{ ...rise(15, 30) }}>
+                <span
                     style={{
-                        fontFamily: BEBAS,
-                        fontSize: 40,
-                        letterSpacing: '0.34em',
-                        paddingLeft: '0.34em',
-                        color: withAlpha(CC.cream, 0.92),
-                        ...rise(19),
+                        fontFamily: OSWALD,
+                        fontWeight: 300,
+                        fontSize: 56,
+                        letterSpacing: '0.16em',
+                        color: withAlpha(CC.cream, 0.86),
+                        display: 'block',
                     }}
                 >
-                    {promo.sub}
-                </div>
-            </AbsoluteFill>
+                    {ad.subLight}
+                </span>
+            </div>
+            <div style={{ marginTop: 2, ...rise(19, 30) }}>
+                <TexturedText text={ad.subHeavy} family={BEBAS} weight={400} size={80} letterSpacing="0.02em" textureOpacity={0.4} />
+            </div>
         </AbsoluteFill>
     );
 };
 
-export const PROMOS_TOTAL = PROMOS.length * PROMO - (PROMOS.length - 1) * OVER;
+export const PROMOS_TOTAL = ADS.length * DUR - (ADS.length - 1) * OVER;
 
 export const CraftCrumbPromos: React.FC = () => {
     ensureFonts();
+    const frame = useCurrentFrame();
+    const badgeFloat = Math.sin((frame / BADGE_LOOP) * Math.PI * 2) * 8;
+
     return (
         <AbsoluteFill>
-            <Stage loop={STEAM_LOOP * 4}>
-                <Motes loop={STEAM_LOOP * 4} count={20} />
-                {PROMOS.map((promo, i) => (
-                    <Sequence key={i} from={i * (PROMO - OVER)} durationInFrames={PROMO}>
-                        <PromoCard promo={promo} />
-                    </Sequence>
-                ))}
-            </Stage>
-            <Grain opacity={0.045} />
+            <WarmField />
+
+            {/* persistent badge on the left — the message changes around it */}
+            <div
+                style={{
+                    position: 'absolute',
+                    left: 140,
+                    top: '50%',
+                    transform: `translateY(calc(-50% + ${badgeFloat}px))`,
+                }}
+            >
+                <Badge size={600} loop={BADGE_LOOP} />
+            </div>
+
+            {/* the rotating message block, right side, fluid transitions */}
+            {ADS.map((ad, i) => (
+                <Sequence key={i} from={i * (DUR - OVER)} durationInFrames={DUR}>
+                    <AdContent ad={ad} />
+                </Sequence>
+            ))}
+
+            <Grain opacity={0.05} />
         </AbsoluteFill>
     );
 };

@@ -6,6 +6,8 @@ import { continueRender, delayRender, staticFile } from 'remotion';
 // gstatic — the only webfont host reachable in this sandbox).
 const FACES: Array<{ family: string; file: string; weight: string }> = [
     { family: 'Bebas Neue', file: 'fonts/BebasNeue.woff2', weight: '400 700' },
+    { family: 'Oswald', file: 'fonts/Oswald-300.woff2', weight: '300' },
+    { family: 'Oswald', file: 'fonts/Oswald-500.woff2', weight: '500' },
 ];
 
 let started = false;
