@@ -24,10 +24,11 @@ export const HEIGHT = 1080;
 // Bebas Neue is THE brand face (tall condensed all-caps). Loaded in fonts.ts
 // from a bundled woff2; a condensed fallback stack keeps type on-brand if it
 // somehow doesn't load.
-export const BEBAS =
-    "'Bebas Neue', 'Oswald', 'Anton', 'Arial Narrow', sans-serif";
-// Light condensed companion for the thin words in the mixed-weight headlines.
-export const OSWALD = "'Oswald', 'Bebas Neue', 'Arial Narrow', sans-serif";
+// The real Bebas Neue Pro cuts. BEBAS = Regular (logo tagline); BEBAS_BOOK =
+// the light headline/sub line; BEBAS_BOLD = the heavy line.
+export const BEBAS = "'Bebas Neue', 'Anton', 'Arial Narrow', sans-serif";
+export const BEBAS_BOOK = "'Bebas Neue Book', 'Bebas Neue', 'Arial Narrow', sans-serif";
+export const BEBAS_BOLD = "'Bebas Neue Bold', 'Bebas Neue', 'Arial Narrow', sans-serif";
 // Tiny supporting text (rare) — a clean, quiet humanist sans.
 export const SANS =
     "'Inter', -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif";

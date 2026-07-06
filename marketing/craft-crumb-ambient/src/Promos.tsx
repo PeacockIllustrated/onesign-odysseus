@@ -1,6 +1,6 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, Sequence, spring, useCurrentFrame, useVideoConfig } from 'remotion';
-import { BEBAS, CC, OSWALD, withAlpha } from './theme';
+import { BEBAS_BOLD, BEBAS_BOOK, CC, withAlpha } from './theme';
 import { ensureFonts } from './fonts';
 import { Grain } from './ui/atoms';
 import { WarmField } from './ui/WarmField';
@@ -47,6 +47,12 @@ const AdContent: React.FC<{ ad: Ad }> = ({ ad }) => {
     };
     const wipe = spring({ frame: frame - 12, fps, config: { damping: 22, stiffness: 120, mass: 0.8 } });
 
+    // Fit the headline lines to the available width — Bebas's wide round caps
+    // (O/U/D/G) run long, so a word like SOURDOUGH scales down to stay on canvas.
+    const AVAIL = 1010;
+    const lightSize = Math.min(178, Math.floor(AVAIL / (ad.light.length * 0.7)));
+    const heavySize = Math.min(196, Math.floor(AVAIL / (ad.heavy.length * 0.72)));
+
     return (
         <AbsoluteFill
             style={{
@@ -61,18 +67,20 @@ const AdContent: React.FC<{ ad: Ad }> = ({ ad }) => {
                 filter: groupBlur > 0.05 ? `blur(${groupBlur}px)` : undefined,
             }}
         >
+            {/* Bebas Neue Book (light) over Bebas Neue Bold (heavy) — the real
+                Pro cuts, so weight contrast with matching letterforms. */}
             <div style={{ ...rise(2) }}>
-                <TexturedText text={ad.light} family={OSWALD} weight={300} size={150} letterSpacing="0.005em" textureOpacity={0.42} />
+                <TexturedText text={ad.light} family={BEBAS_BOOK} size={lightSize} letterSpacing="0.006em" textureOpacity={0.4} />
             </div>
-            <div style={{ marginTop: -6, ...rise(7) }}>
-                <TexturedText text={ad.heavy} family={BEBAS} weight={400} size={214} letterSpacing="0.004em" textureOpacity={0.5} />
+            <div style={{ marginTop: -4, ...rise(7) }}>
+                <TexturedText text={ad.heavy} family={BEBAS_BOLD} size={heavySize} letterSpacing="0.004em" textureOpacity={0.5} />
             </div>
 
             {/* brand rule — wipes in from the left */}
             <div
                 style={{
-                    marginTop: 26,
-                    marginBottom: 24,
+                    marginTop: 24,
+                    marginBottom: 22,
                     width: 470,
                     height: 7,
                     borderRadius: 2,
@@ -84,21 +92,10 @@ const AdContent: React.FC<{ ad: Ad }> = ({ ad }) => {
             />
 
             <div style={{ ...rise(15, 30) }}>
-                <span
-                    style={{
-                        fontFamily: OSWALD,
-                        fontWeight: 300,
-                        fontSize: 56,
-                        letterSpacing: '0.16em',
-                        color: withAlpha(CC.cream, 0.86),
-                        display: 'block',
-                    }}
-                >
-                    {ad.subLight}
-                </span>
+                <TexturedText text={ad.subLight} family={BEBAS_BOOK} size={58} letterSpacing="0.13em" textureOpacity={0.3} color={withAlpha(CC.cream, 0.88)} />
             </div>
-            <div style={{ marginTop: 2, ...rise(19, 30) }}>
-                <TexturedText text={ad.subHeavy} family={BEBAS} weight={400} size={80} letterSpacing="0.02em" textureOpacity={0.4} />
+            <div style={{ marginTop: 4, ...rise(19, 30) }}>
+                <TexturedText text={ad.subHeavy} family={BEBAS_BOLD} size={74} letterSpacing="0.02em" textureOpacity={0.42} />
             </div>
         </AbsoluteFill>
     );

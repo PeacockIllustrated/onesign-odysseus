@@ -37,6 +37,7 @@ export function TexturedText({
     letterSpacing = '0',
     lineHeight = 0.9,
     textureOpacity = 0.5,
+    strokePx = 0,
     style,
 }: {
     text: string;
@@ -47,6 +48,10 @@ export function TexturedText({
     letterSpacing?: string;
     lineHeight?: number;
     textureOpacity?: number;
+    // Faux-bold: Bebas Neue ships one weight, so a heavier "Bold" cut is made by
+    // stroking the same glyphs in their own colour — identical letterforms, real
+    // weight. paintOrder keeps the crisp fill on top of the thickening stroke.
+    strokePx?: number;
     style?: React.CSSProperties;
 }) {
     const shared: React.CSSProperties = {
@@ -58,10 +63,14 @@ export function TexturedText({
         whiteSpace: 'nowrap',
         display: 'block',
     };
+    const strokeStyle: React.CSSProperties =
+        strokePx > 0
+            ? ({ WebkitTextStroke: `${strokePx}px ${color}`, paintOrder: 'stroke' } as React.CSSProperties)
+            : {};
     return (
         <span style={{ position: 'relative', display: 'inline-block', ...style }}>
             {/* base coloured text */}
-            <span style={{ ...shared, textShadow: '0 4px 26px rgba(0,0,0,0.4)' }}>{tint(text, color)}</span>
+            <span style={{ ...shared, ...strokeStyle, textShadow: '0 4px 26px rgba(0,0,0,0.4)' }}>{tint(text, color)}</span>
             {/* noise clipped to the same glyphs */}
             <span
                 aria-hidden
