@@ -14,14 +14,15 @@ black, warm coffee-brown `#995c28`, Bebas Neue, artisan/warm/minimal).
   state. The real circular badge on a warm dim-café stage: powder-coated-metal light sweep, an
   orbiting ring glint, a soft breath, drifting warm motes, and a slow rota of artisan lines
   (CRAFTED DAILY / FRESHLY BAKED / SINGLE ORIGIN / MADE TO ORDER). Loops forever with no seam.
-- **`CraftCrumbPromos`** — a **~23s promotional set**: the badge sits fixed on the left while the
-  message changes around it, five ads handing off with a fluid motion-blur lift over a continuous
-  **animated topographic field** (dark→amber directional wash with slowly-breathing tree-ring /
-  elevation-contour lines nested off the upper-left). Big **mixed-weight** headlines set in the
-  real **Bebas Neue Book** (light line) over **Bebas Neue Bold** (heavy line), à la *FRESHLY /
-  GROUND*, brand-brown `&`/`.`, a subtle printed **texture inside the letters**, and a light/heavy
-  sub-stack. Copy: Freshly Ground · Sourdough Sandos · Grab & Go · All-Day Brunch · brand
-  sign-off.
+- **`CraftCrumbPromos`** — a **20s seamless-loop** promotional set of four ads (Freshly Ground ·
+  Sourdough Sandos · Grab & Go · All-Day Brunch) built to the promotional-starter pack. Each ad
+  uses the real **4-point / accented-edges gradient** background (`public/bg/bg{1..4}.png`,
+  extracted from the brand SVGs). The transition is choreographed per the annotated reference:
+  the **headline splits up & down** (light word up, heavy word down), the **logo slides over** the
+  composition to the opposite side, and the **gradient shifts** by crossfading to the ad whose
+  amber pool sits on the new text side. Everything is periodic (mod 600f) so it loops. Type is
+  real **Bebas Neue Book** (light) over **Bold** (heavy), brand-brown `&`/`.`, subtle in-letter
+  texture, light/heavy sub-stack.
 
 Both are **16:9 1920×1080** (landscape menu boards). For portrait screens set `WIDTH=1080`,
 `HEIGHT=1920` in `src/theme.ts` — layouts are centred/relative so it's a small change.
