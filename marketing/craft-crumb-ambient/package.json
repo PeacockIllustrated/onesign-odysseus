@@ -1,0 +1,22 @@
+{
+  "name": "craft-crumb-ambient",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Ambient logo animation + promotional ad set for Craft & Crumb (coffee bar · sando deli) menu screens. Standalone Remotion project — not part of the main app build.",
+  "scripts": {
+    "studio": "remotion studio",
+    "render:saver": "remotion render src/index.ts CraftCrumbScreensaver out/craft-crumb-screensaver.mp4 --browser-executable=/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell --concurrency=2",
+    "render:promos": "remotion render src/index.ts CraftCrumbPromos out/craft-crumb-promos.mp4 --browser-executable=/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell --concurrency=2",
+    "still": "remotion still src/index.ts CraftCrumbScreensaver out/frame.png --browser-executable=/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "remotion": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "typescript": "^5.9.0"
+  }
+}
