@@ -14,7 +14,11 @@ import { LOGO_SVG } from '../logoSvg';
 // makes them overrun and collide. We drop both and inject one centred,
 // self-fitting tagline (in viewBox space, so it scales with the badge) with the
 // divider dot in the brand brown.
-const TAGLINE = `<text x="170.08" y="265.2" text-anchor="middle" font-family="'Bebas Neue', sans-serif" font-weight="400" font-size="13.2" letter-spacing="2.15" fill="#fff">COFFEE BAR <tspan fill="#995c28" dx="1.5">·</tspan><tspan dx="1.5"> SANDO DELI</tspan></text>`;
+// Original designer metrics: baseline y=260.27, font-size 14.05, tracking
+// 0.21em (≈2.95 units). text-anchor=middle centres on the advance width, which
+// includes one trailing tracking unit — compensate x by +tracking/2 so the
+// glyphs sit optically centred. No dx offsets: even spacing around the dot.
+const TAGLINE = `<text x="171.55" y="260.27" text-anchor="middle" font-family="'Bebas Neue', sans-serif" font-weight="400" font-size="14.05" letter-spacing="2.95" fill="#fff">COFFEE BAR&#160;<tspan fill="#995c28">&#8226;</tspan>&#160;SANDO DELI</text>`;
 
 const SVG_SIZED = LOGO_SVG.replace(
     '<svg ',
