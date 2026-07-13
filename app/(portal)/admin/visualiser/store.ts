@@ -286,6 +286,16 @@ interface VisualiserState {
      */
     captureClean: boolean;
     setCaptureClean: (v: boolean) => void;
+
+    /**
+     * When true the 3D scene forces the assembled pose — folded (fold = 1) and
+     * un-exploded (explodeT = 0), snapping rather than easing — so the STL
+     * export reads the sign as one coherent, together-positioned mesh no matter
+     * where the unfold / explode sliders sit. Toggled around a capture, then
+     * reset. Pairs with captureClean (annotations off) for a clean export.
+     */
+    capturePose: boolean;
+    setCapturePose: (v: boolean) => void;
 }
 
 /**
@@ -978,4 +988,7 @@ export const useVisualiser = create<VisualiserState>((set) => ({
 
     captureClean: false,
     setCaptureClean: (v) => set({ captureClean: v }),
+
+    capturePose: false,
+    setCapturePose: (v) => set({ capturePose: v }),
 }));

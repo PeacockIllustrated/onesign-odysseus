@@ -156,6 +156,7 @@ export function VisualiserClient({
         inactive,
         mount,
         captureClean,
+        capturePose,
     } = useVisualiser();
     const [tab, setTab] = useState<Tab>('folded');
     const [mobilePane, setMobilePane] = useState<MobilePane>('preview');
@@ -1114,7 +1115,7 @@ export function VisualiserClient({
                             pendingPaths={pendingPathsSet}
                             isEditingGroup={isEditingGroup}
                             onPathToggle={handlePathPick}
-                            fold={tab === 'folded' ? 1 : fold}
+                            fold={capturePose ? 1 : tab === 'folded' ? 1 : fold}
                             fixingMode={fixingMode}
                             cableMode={cableMode}
                             cableHoles={cableHoles}
@@ -1145,8 +1146,12 @@ export function VisualiserClient({
                                     : null
                             }
                             mount={resolveMount(mount)}
-                            explodeT={tab === 'folded' ? explodeT : 0}
-                            reducedMotion={reducedMotion}
+                            explodeT={
+                                capturePose ? 0 : tab === 'folded' ? explodeT : 0
+                            }
+                            // Snap (no ease) while forcing the export pose so a
+                            // couple of frames is enough for the assembled STL.
+                            reducedMotion={reducedMotion || capturePose}
                         />
                     )}
 

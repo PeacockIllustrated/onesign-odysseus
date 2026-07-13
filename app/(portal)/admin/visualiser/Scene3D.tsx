@@ -26,17 +26,44 @@ import type {
     PanelRenderBundle,
 } from '@/lib/visualiser/types';
 import type { ResolvedMount } from '@/lib/visualiser/projecting';
+import { sceneToStl } from '@/lib/visualiser/stl-scene';
 
 /**
- * Set by the scene on mount so ExportBar can grab thumbnails. `fn` is the
- * current orbit view (the nice angled shot used on the reference PDF);
+ * STL layer names — the `solid` labels the sign exports under. Each is a
+ * physical sub-assembly the operator can animate independently (an exploded /
+ * assembly reveal), so they're tagged onto the matching scene groups via
+ * `userData.stlLayer` and the exporter walks them into separate named solids.
+ * Untagged meshes (annotation overlays, glow, hit targets, dimensions) carry no
+ * tag and are left out of the export entirely.
+ */
+export const STL_LAYER = {
+    /** The folded aluminium tray — face + returns + back, one rigid part. */
+    tray: 'tray',
+    /** Retained counter islands kept as panel material (donut centres). */
+    counters: 'panel-counters',
+    vinyl: 'vinyl',
+    acrylic: 'acrylic',
+    standoffLetters: 'standoff-letters',
+    standoffStuds: 'standoff-studs',
+    pushThrough: 'push-through',
+    opalBacking: 'opal-backing',
+    metalFaces: 'metal-faces',
+} as const;
+
+/**
+ * Set by the scene on mount so ExportBar can grab thumbnails + the STL. `fn` is
+ * the current orbit view (the nice angled shot used on the reference PDF);
  * `faceOn` is a straight-on orthographic shot of the sign face, framed to its
  * bounds — a clean wide rectangle that crops tightly for the backshop banner.
+ * `stl` walks the assembled scene and returns a multi-solid ASCII STL of the
+ * whole sign (see sceneToStl in lib/visualiser/stl-scene). The caller forces the
+ * assembled, annotation-free pose (fold = 1, explode = 0) before reading it.
  */
 export const sceneCapture: {
     fn: (() => string | null) | null;
     faceOn: (() => string | null) | null;
-} = { fn: null, faceOn: null };
+    stl: (() => string | null) | null;
+} = { fn: null, faceOn: null, stl: null };
 
 function CaptureBinder() {
     const { gl, scene, camera } = useThree();
@@ -90,9 +117,11 @@ function CaptureBinder() {
                 return null;
             }
         };
+        sceneCapture.stl = () => sceneToStl(scene);
         return () => {
             sceneCapture.fn = null;
             sceneCapture.faceOn = null;
+            sceneCapture.stl = null;
         };
     }, [gl, scene, camera]);
     return null;
@@ -832,7 +861,9 @@ function StandoffLettering({
         : undefined;
 
     return (
-        <group position={[0, 0, baseZ]}>
+        <group
+            position={[0, 0, baseZ]}
+            userData={{ stlLayer: STL_LAYER.standoffLetters }}>
             {shapes.map((shape, i) => (
                 <mesh
                     key={i}
@@ -915,7 +946,7 @@ function StandoffLocators({
     const length = standoffMm * S;
     const zCenter = (standoffMm / 2) * S;
     return (
-        <group>
+        <group userData={{ stlLayer: STL_LAYER.standoffStuds }}>
             {fixings.map((f, i) => {
                 if (f.points.length < 3) return null;
                 let cx = 0;
@@ -1194,23 +1225,25 @@ function MaterialPieces({
                 centres" — the floating bits of letters that aren't
                 cut away. Drawn first / lowest so vinyl and acrylic
                 pieces layer on top. */}
-            {solid.map((piece, i) => (
-                <mesh
-                    key={`solid-${piece.pathIndex}-${i}`}
-                    position={[0, 0, 0.5 * S]}>
-                    <shapeGeometry args={[compoundShape(piece), 48]} />
-                    <meshBasicMaterial
-                        color={displayColor(piece.color, night)}
-                        side={THREE.DoubleSide}
-                        polygonOffset
-                        polygonOffsetFactor={1}
-                        polygonOffsetUnits={1}
-                    />
-                    {outlines && (
-                        <Edges color={EDGE_COLOR} lineWidth={1} />
-                    )}
-                </mesh>
-            ))}
+            <group userData={{ stlLayer: STL_LAYER.counters }}>
+                {solid.map((piece, i) => (
+                    <mesh
+                        key={`solid-${piece.pathIndex}-${i}`}
+                        position={[0, 0, 0.5 * S]}>
+                        <shapeGeometry args={[compoundShape(piece), 48]} />
+                        <meshBasicMaterial
+                            color={displayColor(piece.color, night)}
+                            side={THREE.DoubleSide}
+                            polygonOffset
+                            polygonOffsetFactor={1}
+                            polygonOffsetUnits={1}
+                        />
+                        {outlines && (
+                            <Edges color={EDGE_COLOR} lineWidth={1} />
+                        )}
+                    </mesh>
+                ))}
+            </group>
 
             {/* Printed full-colour vinyl — one masked image plane ~1 mm proud
                 of the face, showing the artwork's true colours + gradients.
@@ -1233,54 +1266,58 @@ function MaterialPieces({
 
             {/* Solid-colour cut vinyl: paper-thin flat fill ~1 mm in front of
                 the face (avoids z-fighting with the panel surface). */}
-            {flatVinyl.map((piece, i) => (
-                <mesh
-                    key={`vinyl-${piece.pathIndex}-${i}`}
-                    position={[0, 0, 1 * S]}>
-                    <shapeGeometry args={[compoundShape(piece), 48]} />
-                    <meshBasicMaterial
-                        color={displayColor(piece.color, night)}
-                        side={THREE.DoubleSide}
-                        polygonOffset
-                        polygonOffsetFactor={1}
-                        polygonOffsetUnits={1}
-                    />
-                    {outlines && (
-                        <Edges color={EDGE_COLOR} lineWidth={1} />
-                    )}
-                </mesh>
-            ))}
-
-            {/* Acrylic: extruded sheet sitting on the face. Sits at z = 0
-                to z = thicknessMm so its back is flush with the panel
-                front (face is paper-thin at z = 0). */}
-            {acrylic.map((piece, i) => {
-                const depth = Math.max(0.1, piece.thicknessMm ?? 5) * S;
-                return (
+            <group userData={{ stlLayer: STL_LAYER.vinyl }}>
+                {flatVinyl.map((piece, i) => (
                     <mesh
-                        key={`acrylic-${piece.pathIndex}-${i}`}>
-                        <extrudeGeometry
-                            args={[
-                                compoundShape(piece),
-                                {
-                                    depth,
-                                    bevelEnabled: false,
-                                    curveSegments: 48,
-                                },
-                            ]}
-                        />
+                        key={`vinyl-${piece.pathIndex}-${i}`}
+                        position={[0, 0, 1 * S]}>
+                        <shapeGeometry args={[compoundShape(piece), 48]} />
                         <meshBasicMaterial
                             color={displayColor(piece.color, night)}
+                            side={THREE.DoubleSide}
                             polygonOffset
                             polygonOffsetFactor={1}
                             polygonOffsetUnits={1}
                         />
                         {outlines && (
-                            <Edges color={EDGE_COLOR} lineWidth={1.5} />
+                            <Edges color={EDGE_COLOR} lineWidth={1} />
                         )}
                     </mesh>
-                );
-            })}
+                ))}
+            </group>
+
+            {/* Acrylic: extruded sheet sitting on the face. Sits at z = 0
+                to z = thicknessMm so its back is flush with the panel
+                front (face is paper-thin at z = 0). */}
+            <group userData={{ stlLayer: STL_LAYER.acrylic }}>
+                {acrylic.map((piece, i) => {
+                    const depth = Math.max(0.1, piece.thicknessMm ?? 5) * S;
+                    return (
+                        <mesh
+                            key={`acrylic-${piece.pathIndex}-${i}`}>
+                            <extrudeGeometry
+                                args={[
+                                    compoundShape(piece),
+                                    {
+                                        depth,
+                                        bevelEnabled: false,
+                                        curveSegments: 48,
+                                    },
+                                ]}
+                            />
+                            <meshBasicMaterial
+                                color={displayColor(piece.color, night)}
+                                polygonOffset
+                                polygonOffsetFactor={1}
+                                polygonOffsetUnits={1}
+                            />
+                            {outlines && (
+                                <Edges color={EDGE_COLOR} lineWidth={1.5} />
+                            )}
+                        </mesh>
+                    );
+                })}
+            </group>
         </group>
     );
 }
@@ -1359,7 +1396,7 @@ function PushThroughPieces({
     if (pieces.length === 0) return null;
 
     return (
-        <group>
+        <group userData={{ stlLayer: STL_LAYER.pushThrough }}>
             {pieces.map((piece, pi) => {
                 const built = builtShapes[pi];
                 if (!built.hasOuter) return null;
@@ -1458,7 +1495,7 @@ function ExtraFacePieces({
     if (pieces.length === 0) return null;
 
     return (
-        <group>
+        <group userData={{ stlLayer: STL_LAYER.metalFaces }}>
             {pieces.map((piece, pi) => {
                 const built = builtShapes[pi];
                 if (!built.hasOuter) return null;
@@ -1728,7 +1765,7 @@ function PushThroughBacking({
     const cz = (-materialThicknessMm - BACKING_THICKNESS_MM / 2) * S;
 
     return (
-        <group>
+        <group userData={{ stlLayer: STL_LAYER.opalBacking }}>
             {layouts.map((layout, idx) => {
                 const cx = (layout.cxMm - face.xMm - face.wMm / 2) * S;
                 const cy = (face.yMm + face.hMm / 2 - layout.cyMm) * S;
@@ -2402,38 +2439,43 @@ function Panel({
                 />
             )}
 
-            <FacePlane
-                W={W}
-                H={H}
-                color={panelColor}
-                holesLocal={holesLocal}
-                outlines={showOutlines}
-                faceShape={faceShape}
-                cursorCrosshair={placementActive}
-                onClick={
-                    placementActive && face && onFixingClick
-                        ? (sceneX, sceneY) => {
-                              // Scene units are mm × S. The face mesh is
-                              // centred at world origin, so convert back to
-                              // flat-development coords (y-down).
-                              const devX =
-                                  face.xMm + face.wMm / 2 + sceneX / S;
-                              const devY =
-                                  face.yMm + face.hMm / 2 - sceneY / S;
-                              onFixingClick([devX, devY]);
-                          }
-                        : undefined
-                }
-            />
+            {/* Face — tagged as part of the one-piece `tray` solid for STL
+                export (the returns + back below share the same tag). */}
+            <group userData={{ stlLayer: STL_LAYER.tray }}>
+                <FacePlane
+                    W={W}
+                    H={H}
+                    color={panelColor}
+                    holesLocal={holesLocal}
+                    outlines={showOutlines}
+                    faceShape={faceShape}
+                    cursorCrosshair={placementActive}
+                    onClick={
+                        placementActive && face && onFixingClick
+                            ? (sceneX, sceneY) => {
+                                  // Scene units are mm × S. The face mesh is
+                                  // centred at world origin, so convert back to
+                                  // flat-development coords (y-down).
+                                  const devX =
+                                      face.xMm + face.wMm / 2 + sceneX / S;
+                                  const devY =
+                                      face.yMm + face.hMm / 2 - sceneY / S;
+                                  onFixingClick([devX, devY]);
+                              }
+                            : undefined
+                    }
+                />
+            </group>
 
             {/* Closed back — seals the tray into a box (projecting signs). The
                 returns fold back to z = -D, so the back panel sits there.
-                Circle signs get a matching disc back. */}
+                Circle signs get a matching disc back. Shares the `tray` STL tag. */}
             {enclosed &&
                 (faceShape === 'circle' ? (
                     <mesh
                         position={[0, 0, -D * S]}
                         scale={[1, W > 0 ? H / W : 1, 1]}
+                        userData={{ stlLayer: STL_LAYER.tray }}
                     >
                         <circleGeometry args={[(W * S) / 2, 64]} />
                         <meshBasicMaterial
@@ -2445,7 +2487,10 @@ function Panel({
                         )}
                     </mesh>
                 ) : (
-                    <mesh position={[0, 0, -D * S]}>
+                    <mesh
+                        position={[0, 0, -D * S]}
+                        userData={{ stlLayer: STL_LAYER.tray }}
+                    >
                         <planeGeometry args={[W * S, H * S]} />
                         <meshBasicMaterial
                             color={panelColor}
@@ -2645,43 +2690,47 @@ function Panel({
 
             {/* Returns. Square signs fold four flat flaps; a circle sign has a
                 continuous cylindrical rim (the box depth) instead. */}
-            {faceShape === 'circle'
-                ? D > 0 && (
-                      <mesh
-                          position={[0, 0, (-D * S) / 2]}
-                          rotation={[HALF_PI, 0, 0]}
-                          scale={[1, 1, W > 0 ? H / W : 1]}
-                      >
-                          {/* Open-ended cylinder: axis along Z (depth) after the
-                              X-rotation; radius = W/2, scaled to H/W on the
-                              vertical so it matches an elliptical face. */}
-                          <cylinderGeometry
-                              args={[(W * S) / 2, (W * S) / 2, D * S, 64, 1, true]}
-                          />
-                          <meshBasicMaterial
-                              color={panelColor}
-                              side={THREE.DoubleSide}
-                          />
-                          {showOutlines && (
-                              <Edges color={EDGE_COLOR} lineWidth={1} />
-                          )}
-                      </mesh>
-                  )
-                : edges.map((e) =>
-                      r[e] ? (
-                          <Flap
-                              key={e}
-                              edge={e}
-                              W={W}
-                              H={H}
-                              D={D}
-                              Sg={sgFor(e)}
-                              fold={fold}
-                              color={panelColor}
-                              outlines={showOutlines}
-                          />
-                      ) : null,
-                  )}
+            {/* Returns / rim — folded flaps (or a cylindrical rim for a disc),
+                sharing the one-piece `tray` STL tag with the face + back. */}
+            <group userData={{ stlLayer: STL_LAYER.tray }}>
+                {faceShape === 'circle'
+                    ? D > 0 && (
+                          <mesh
+                              position={[0, 0, (-D * S) / 2]}
+                              rotation={[HALF_PI, 0, 0]}
+                              scale={[1, 1, W > 0 ? H / W : 1]}
+                          >
+                              {/* Open-ended cylinder: axis along Z (depth) after
+                                  the X-rotation; radius = W/2, scaled to H/W on
+                                  the vertical so it matches an elliptical face. */}
+                              <cylinderGeometry
+                                  args={[(W * S) / 2, (W * S) / 2, D * S, 64, 1, true]}
+                              />
+                              <meshBasicMaterial
+                                  color={panelColor}
+                                  side={THREE.DoubleSide}
+                              />
+                              {showOutlines && (
+                                  <Edges color={EDGE_COLOR} lineWidth={1} />
+                              )}
+                          </mesh>
+                      )
+                    : edges.map((e) =>
+                          r[e] ? (
+                              <Flap
+                                  key={e}
+                                  edge={e}
+                                  W={W}
+                                  H={H}
+                                  D={D}
+                                  Sg={sgFor(e)}
+                                  fold={fold}
+                                  color={panelColor}
+                                  outlines={showOutlines}
+                              />
+                          ) : null,
+                      )}
+            </group>
 
             {/* Seam lines on the face */}
             {annotations &&
