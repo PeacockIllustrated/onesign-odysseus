@@ -1,0 +1,34 @@
+{
+  "name": "Back to the Future — neon",
+  "targetWidthMm": 1000,
+  "artworkMm": {
+    "w": 1000,
+    "h": 320
+  },
+  "runs": 20,
+  "totalMm": 8590,
+  "totalM": 8.59,
+  "transformers": 1,
+  "metresPerTransformer": 10,
+  "cableSide": "bottom",
+  "backboard": {
+    "shape": "rectangle",
+    "paddingMm": 60,
+    "wMm": 1120,
+    "hMm": 440,
+    "areaM2": 0.49
+  },
+  "colours": [
+    {
+      "colour": "#ff2e1c",
+      "runs": 7,
+      "m": 5.39
+    },
+    {
+      "colour": "#ffd21e",
+      "runs": 13,
+      "m": 3.2
+    }
+  ],
+  "shapedBackboardAreaM2": 0.44
+}
