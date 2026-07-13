@@ -15,6 +15,7 @@ import {
     BadgeCheck,
     Archive,
     FileDown,
+    Box,
 } from 'lucide-react';
 import { useVisualiser, splitPanels } from './store';
 import { sceneCapture } from './Scene3D';
@@ -244,6 +245,7 @@ export function ExportBar({
         inactive,
         mount,
         setCaptureClean,
+        setCapturePose,
     } = useVisualiser();
 
     // Flatten a panel's artwork layers into a single aperture SVG, falling
@@ -315,6 +317,7 @@ export function ExportBar({
     const [onBackshop, setOnBackshop] = useState(false);
     const [nesterPending, setNesterPending] = useState(false);
     const [zipPending, setZipPending] = useState(false);
+    const [stlPending, setStlPending] = useState(false);
     const [packPending, setPackPending] = useState<
         'prod' | 'approval' | 'pdf' | null
     >(null);
@@ -843,6 +846,59 @@ export function ExportBar({
         }
     };
 
+    // Export the whole sign as ONE STL with its layers kept separate. We force
+    // the assembled, annotation-free pose (folded, un-exploded) so every part
+    // lands in its together-position, let r3f repaint, then walk the tagged
+    // scene: each layer (tray / letters / studs / acrylic / push-through / …)
+    // comes out as its own named `solid`, so the sign travels as a single file
+    // yet drops into a 3D / animation tool as independently-animatable parts.
+    // Reads the live 3D scene, so it needs one of the 3D tabs open.
+    const onExportStl = async () => {
+        if (stlPending) return;
+        setStlPending(true);
+        setMsg('Building STL…');
+        // captureClean strips annotation marks; capturePose folds + collapses
+        // the sign so the mesh is coherent regardless of the view sliders.
+        setCaptureClean(true);
+        setCapturePose(true);
+        try {
+            // Three frames: React commits the forced pose, the fold / explode
+            // snap settles, and r3f repaints before we read the scene.
+            await new Promise<void>((r) =>
+                requestAnimationFrame(() =>
+                    requestAnimationFrame(() =>
+                        requestAnimationFrame(() => r()),
+                    ),
+                ),
+            );
+            const stl = sceneCapture.stl?.() ?? null;
+            if (!stl) {
+                setMsg(
+                    'Could not read the 3D scene — open the 3D view and try again.',
+                );
+                return;
+            }
+            const safe = (s: string) =>
+                s.replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '') ||
+                'sign';
+            const fname = `${safe(params.name || 'sign')}.stl`;
+            download(new Blob([stl], { type: 'model/stl' }), fname);
+            setMsg(null);
+            setExported(`STL · ${fname}`);
+        } catch (e) {
+            console.error('stl export failed:', e);
+            setMsg(
+                e instanceof Error
+                    ? `STL export failed: ${e.message}`
+                    : 'STL export failed — see the console.',
+            );
+        } finally {
+            setCapturePose(false);
+            setCaptureClean(false);
+            setStlPending(false);
+        }
+    };
+
     // Spin up a visual-approval pack from this design (the design drives the
     // interactive 3D the client orbits while they approve) and open the job.
     const onCreateApprovalPack = async () => {
@@ -1292,6 +1348,21 @@ export function ExportBar({
                         <Archive size={14} aria-hidden />
                     )}
                     {zipPending ? 'Zipping…' : 'Production files (.zip)'}
+                </button>
+                <button
+                    type="button"
+                    onClick={onExportStl}
+                    disabled={!valid.success || stlPending}
+                    aria-busy={stlPending}
+                    title="Export the whole sign as one STL for 3D / animation — every layer (tray, letters, studs, acrylic, …) kept as a separate named solid, positioned together. Reads the live 3D view."
+                    className="flex min-h-[36px] items-center gap-1.5 rounded-md border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                    {stlPending ? (
+                        <Loader2 size={14} className="animate-spin" aria-hidden />
+                    ) : (
+                        <Box size={14} aria-hidden />
+                    )}
+                    {stlPending ? 'Building STL…' : 'Export STL (3D)'}
                 </button>
                 <MockupGenerator
                     params={params}
