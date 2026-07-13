@@ -128,7 +128,12 @@ export function buildAsciiStl(solids: StlSolidInput[]): string {
         }
         if (facets.length === 0) continue; // layer carried no real geometry
         const name = sanitizeName(solid.name);
-        out.push(`solid ${name}`, ...facets, `endsolid ${name}`);
+        // Join the facets rather than spreading them into out.push(...facets):
+        // a letter-heavy sign produces hundreds of thousands of facet lines, and
+        // spreading an array that large blows the call-stack argument limit
+        // (RangeError). join() has no such limit, so each solid becomes one
+        // string and `out` stays tiny (one entry per layer).
+        out.push(`solid ${name}\n${facets.join('\n')}\nendsolid ${name}`);
     }
     return out.length > 0 ? out.join('\n') + '\n' : '';
 }

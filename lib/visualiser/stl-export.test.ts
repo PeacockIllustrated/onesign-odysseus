@@ -81,6 +81,30 @@ describe('buildAsciiStl', () => {
     it('returns an empty string when there is nothing to export', () => {
         expect(buildAsciiStl([])).toBe('');
     });
+
+    it('serialises a very large solid without a spread/stack overflow', () => {
+        // A letter-heavy sign produces hundreds of thousands of facet lines.
+        // Spreading that many entries into out.push(...facets) throws a
+        // RangeError (max call-stack args); this locks in the join-based path.
+        const N = 50_000;
+        const positions = new Float32Array(N * 9);
+        for (let i = 0; i < N; i++) {
+            const o = i * 9;
+            // Non-degenerate triangle (i,0,0)-(i+1,0,0)-(i,1,0), shifted per i
+            // so none coincide. Normal is +Z.
+            positions[o] = i;
+            positions[o + 3] = i + 1;
+            positions[o + 6] = i;
+            positions[o + 7] = 1;
+        }
+        let stl = '';
+        expect(() => {
+            stl = buildAsciiStl([{ name: 'big', positions }]);
+        }).not.toThrow();
+        expect((stl.match(/facet normal/g) ?? []).length).toBe(N);
+        expect(stl.startsWith('solid big')).toBe(true);
+        expect(stl.trimEnd().endsWith('endsolid big')).toBe(true);
+    });
 });
 
 describe('countStlFacets', () => {

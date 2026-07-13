@@ -82,7 +82,10 @@ export function sceneToStl(
         );
         const stl = buildAsciiStl(solids);
         return stl.length > 0 ? stl : null;
-    } catch {
+    } catch (e) {
+        // Surface the real cause in the console — the caller only sees a null,
+        // so without this a genuine failure is invisible to whoever's debugging.
+        console.error('sceneToStl failed:', e);
         return null;
     }
 }
