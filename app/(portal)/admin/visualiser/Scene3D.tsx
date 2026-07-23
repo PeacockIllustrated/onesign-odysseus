@@ -1959,6 +1959,7 @@ function DimensionEditLabel({
     valueMm,
     onCommit,
     addWhenZero,
+    onOpen,
 }: {
     position: [number, number, number];
     label: string;
@@ -1971,6 +1972,12 @@ function DimensionEditLabel({
      * normal editable state.
      */
     addWhenZero?: { label: string; defaultMm: number };
+    /**
+     * Intercept: when provided, clicking the label (or the "+ add" pill)
+     * calls this instead of inline editing / instant add — the host owns
+     * the interaction (e.g. the public studio's shadow-gap explainer).
+     */
+    onOpen?: () => void;
 }) {
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState(String(Math.round(valueMm)));
@@ -1988,10 +1995,15 @@ function DimensionEditLabel({
     // Absent feature → a plus affordance to add it.
     if (addWhenZero && valueMm <= 0 && !editing) {
         return (
-            <Html position={position} center zIndexRange={[30, 0]}>
+            // zIndexRange caps the chip's z-index BELOW the host page's
+            // floating chrome (z-10+) — annotations must never sit on top
+            // of sheets, docks or nav bars (they used to at [30, 0]).
+            <Html position={position} center zIndexRange={[5, 0]}>
                 <button
                     type="button"
-                    onClick={() => onCommit(addWhenZero.defaultMm)}
+                    onClick={
+                        onOpen ?? (() => onCommit(addWhenZero.defaultMm))
+                    }
                     title={`Add ${addWhenZero.label.toLowerCase()}`}
                     className="flex items-center gap-1 whitespace-nowrap rounded-full border border-dashed border-neutral-300 bg-white/80 px-2 py-0.5 text-[11px] font-medium text-neutral-500 shadow-sm hover:border-neutral-400 hover:text-neutral-700"
                 >
@@ -2003,7 +2015,7 @@ function DimensionEditLabel({
     }
 
     return (
-        <Html position={position} center zIndexRange={[30, 0]}>
+        <Html position={position} center zIndexRange={[5, 0]}>
             {editing ? (
                 <div className="flex items-center gap-1 rounded-full bg-white px-1.5 py-0.5 shadow ring-1 ring-[var(--accent)]/10">
                     <input
@@ -2025,7 +2037,7 @@ function DimensionEditLabel({
             ) : (
                 <button
                     type="button"
-                    onClick={() => setEditing(true)}
+                    onClick={onOpen ?? (() => setEditing(true))}
                     title={`Edit ${label} — click to change`}
                     className="flex items-center gap-1 whitespace-nowrap rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium tabular-nums text-neutral-700 shadow-sm ring-1 ring-[var(--accent)]/5 hover:bg-white hover:ring-[var(--accent)]/20"
                 >
@@ -2054,6 +2066,7 @@ function Dimensions3D({
     hasReturns,
     shadowGapMm,
     onDimensionChange,
+    onShadowGapAdd,
 }: {
     W: number;
     H: number;
@@ -2064,6 +2077,8 @@ function Dimensions3D({
         field: 'width' | 'height' | 'return' | 'shadowGap',
         valueMm: number,
     ) => void;
+    /** Route shadow-gap interactions to the host instead of inline edit. */
+    onShadowGapAdd?: () => void;
 }) {
     const hw = (W / 2) * S;
     const hh = (H / 2) * S;
@@ -2144,6 +2159,7 @@ function Dimensions3D({
                 valueMm={shadowGapMm}
                 onCommit={(v) => onDimensionChange?.('shadowGap', v)}
                 addWhenZero={{ label: 'Shadow gap', defaultMm: 15 }}
+                onOpen={onShadowGapAdd}
             />
         </group>
     );
@@ -2187,6 +2203,7 @@ function Panel({
     illumination,
     showDimensions = false,
     onDimensionChange,
+    onShadowGapAdd,
     enclosed = false,
     faceShape = 'square',
 }: {
@@ -2241,6 +2258,8 @@ function Panel({
         field: 'width' | 'height' | 'return' | 'shadowGap',
         valueMm: number,
     ) => void;
+    /** Route shadow-gap interactions to the host instead of inline edit. */
+    onShadowGapAdd?: () => void;
     /**
      * Close the back of the tray with a panel at z = -returnDepth, so the
      * sign reads as a fully enclosed box (used for projecting signs, which
@@ -2862,6 +2881,7 @@ function Panel({
                     hasReturns={r.top || r.bottom || r.left || r.right}
                     shadowGapMm={Sg}
                     onDimensionChange={onDimensionChange}
+                    onShadowGapAdd={onShadowGapAdd}
                 />
             )}
         </group>
@@ -3195,6 +3215,12 @@ export default function Scene3D(props: {
         valueMm: number,
     ) => void;
     /**
+     * When set, the shadow-gap dimension label defers to the host on click
+     * (instead of inline editing / instant add) — the public studio uses
+     * this to explain what a shadow gap is before adding one.
+     */
+    onShadowGapAdd?: () => void;
+    /**
      * The OTHER panel in a projecting-sign design, shown as a positioned ghost
      * slab (footprint + colour) so both signs read together in real space.
      * `isBlade` true ⇒ the active panel is the fascia and this ghost is the
@@ -3490,6 +3516,7 @@ export default function Scene3D(props: {
                             illumination={props.illumination}
                             showDimensions={props.showDimensions}
                             onDimensionChange={props.onDimensionChange}
+                            onShadowGapAdd={props.onShadowGapAdd}
                             enclosed={!mount.doubleSided}
                             faceShape={mount.shape}
                         />

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useVisualiser } from './store';
 import { Section } from './Section';
 import { MAX_PANEL_WIDTH_MM, type PanelEdge } from '@/lib/visualiser/types';
@@ -19,6 +20,12 @@ const ACCENT = '#4e7e8c';
  * Numeric field with built-in range validation. Out-of-range values get
  * a red ring + inline message rather than silently accepting an invalid
  * value that breaks the geometry downstream.
+ *
+ * Edits are held in a local draft and committed on blur / Enter — NOT on
+ * every keystroke. Committing live meant select-all + retype passed an
+ * empty field upstream as 0, which the clamps rejected and the input
+ * fought the user mid-type. The model only updates once the field is
+ * accepted; clearing it and tabbing away reverts to the last good value.
  */
 function NumberField({
     label,
@@ -39,9 +46,22 @@ function NumberField({
     suffix?: string;
     hint?: string;
 }) {
-    const tooLow = typeof min === 'number' && value < min;
-    const tooHigh = typeof max === 'number' && value > max;
+    // null = not editing (display tracks the live value).
+    const [draft, setDraft] = useState<string | null>(null);
+    const shown =
+        draft ?? (Number.isFinite(value) ? String(value) : '');
+    const parsed = parseFloat(shown);
+    const hasNumber = Number.isFinite(parsed);
+    const tooLow = hasNumber && typeof min === 'number' && parsed < min;
+    const tooHigh = hasNumber && typeof max === 'number' && parsed > max;
     const invalid = tooLow || tooHigh;
+    const commit = () => {
+        if (draft !== null) {
+            const n = parseFloat(draft);
+            if (Number.isFinite(n)) onChange(n);
+        }
+        setDraft(null); // revert display to the (possibly unchanged) value
+    };
     return (
         <label className="block">
             <span className="text-[11px] font-medium text-neutral-600">
@@ -51,14 +71,17 @@ function NumberField({
                 <input
                     type="number"
                     inputMode="decimal"
-                    value={Number.isFinite(value) ? value : ''}
+                    value={shown}
                     min={min}
                     max={max}
                     step={step}
                     aria-invalid={invalid}
-                    onChange={(e) => {
-                        const n = parseFloat(e.target.value);
-                        onChange(Number.isNaN(n) ? 0 : n);
+                    onFocus={() => setDraft(shown)}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onBlur={commit}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') e.currentTarget.blur();
+                        else if (e.key === 'Escape') setDraft(null);
                     }}
                     className={`w-full rounded-md border px-2 py-1.5 text-sm focus:outline-none ${
                         invalid
