@@ -151,6 +151,8 @@ export function PublicWizard({
         mount,
         captureClean,
         setCaptureClean,
+        setActiveTab,
+        enableProjecting,
     } = useVisualiser();
 
     // Same pure-geometry pipeline as the staff tool — this is a live engine.
@@ -597,13 +599,63 @@ export function PublicWizard({
                     )}
                 </div>
 
-                {/* ── Onboarding nudge (populated stage, gentle prompt) ──── */}
-                {!storeImported && stepIdx === 0 && !reference && (
-                    <div className="pointer-events-none absolute inset-x-3 top-20 z-10 flex justify-center md:top-24">
-                        <div className="pointer-events-auto max-w-sm rounded-xl border border-white/10 bg-black/40 px-4 py-2.5 text-center text-[12px] text-white/70 backdrop-blur-md">
-                            👋 Set your size below, then add your logo in step 2 —
-                            the preview updates as you go. Drag to spin it.
+                {/* ── Sign switcher + onboarding nudge (one column so they
+                    never overlap) ─────────────────────────────────────── */}
+                {!reference && (
+                    <div className="pointer-events-none absolute inset-x-3 top-16 z-10 flex flex-col items-center gap-2 md:top-20">
+                        {/* Swap between the fascia and the projecting sign
+                            right on the canvas — no trip back to step 1. The
+                            "+" side doubles as the add affordance. */}
+                        <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-white/25 bg-[#0c1114]/60 p-1 shadow-lg backdrop-blur-md">
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab('main')}
+                                aria-pressed={activeTab === 'main'}
+                                className={`min-h-[36px] rounded-full px-3.5 text-[11px] font-semibold tracking-wide transition-colors ${
+                                    activeTab === 'main'
+                                        ? 'text-[#0c1114]'
+                                        : 'text-white/75 hover:text-white'
+                                }`}
+                                style={
+                                    activeTab === 'main'
+                                        ? { background: ACCENT_GLOW }
+                                        : undefined
+                                }
+                            >
+                                Main sign
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (!projectingEnabled) enableProjecting();
+                                    setActiveTab('projecting');
+                                }}
+                                aria-pressed={activeTab === 'projecting'}
+                                className={`min-h-[36px] rounded-full px-3.5 text-[11px] font-semibold tracking-wide transition-colors ${
+                                    activeTab === 'projecting'
+                                        ? 'text-[#0c1114]'
+                                        : 'text-white/75 hover:text-white'
+                                }`}
+                                style={
+                                    activeTab === 'projecting'
+                                        ? { background: ACCENT_GLOW }
+                                        : undefined
+                                }
+                            >
+                                {projectingEnabled
+                                    ? 'Projecting'
+                                    : '+ Projecting'}
+                            </button>
                         </div>
+
+                        {/* Onboarding nudge (populated stage, gentle prompt) */}
+                        {!storeImported && stepIdx === 0 && (
+                            <div className="pointer-events-auto max-w-sm rounded-xl border border-white/10 bg-black/40 px-4 py-2.5 text-center text-[12px] text-white/70 backdrop-blur-md">
+                                👋 Set your size below, then add your logo in
+                                step 2 — the preview updates as you go. Drag to
+                                spin it.
+                            </div>
+                        )}
                     </div>
                 )}
 
