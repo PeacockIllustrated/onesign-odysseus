@@ -1354,6 +1354,10 @@ export function VisualiserClient({
                     ) : development && sectionExport ? (
                         <ExportBar
                             sectionExport={sectionExport}
+                            development={development}
+                            aperture={aperture}
+                            pushThroughIslands={pushThroughIslands}
+                            fixings={fixings}
                             apertureBySection={apertureBySection}
                             keylineBySection={keylineBySection}
                             pushThroughKeylineBySection={

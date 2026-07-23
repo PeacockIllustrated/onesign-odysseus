@@ -12,7 +12,12 @@ import {
     circlePoly,
 } from '@/lib/visualiser/geometry';
 import { splitPanels } from '@/lib/visualiser/split';
-import { buildKeyline, mergeKeyline, importSvg } from '@/lib/visualiser/svg-import';
+import {
+    buildKeyline,
+    mergeKeyline,
+    mergeKeylineOuters,
+    importSvg,
+} from '@/lib/visualiser/svg-import';
 import { composeLayers } from '@/lib/visualiser/compose';
 import {
     rasterizeFaceArtwork,
@@ -757,7 +762,15 @@ export function usePanelDerivation(
         }
         const clip = (paths: FlatPath[]) =>
             clipApertureToFace(development, paths).paths;
-        return { keyline: clip(mergeKeyline(keylineOut)), islands: clip(islands) };
+        // Weld overlapping sibling keylines with the winding-AGNOSTIC union.
+        // These outers come from independent per-piece buildKeyline calls, so
+        // they can carry opposite winding — mergeKeyline (winding-based) would
+        // subtract a real letter's keyline instead of welding it. Counters are
+        // already peeled off into `islands`, so there are no holes to preserve.
+        return {
+            keyline: clip(mergeKeylineOuters(keylineOut)),
+            islands: clip(islands),
+        };
     }, [development, pushThroughPieces]);
     const pushThroughKeyline = pushThrough.keyline;
     const pushThroughIslands = pushThrough.islands;
@@ -891,6 +904,10 @@ export function usePanelDerivation(
         return {
             params,
             sectionExport,
+            development,
+            aperture,
+            pushThroughIslands,
+            fixings,
             apertureBySection,
             keylineBySection,
             pushThroughKeylineBySection,
@@ -913,6 +930,9 @@ export function usePanelDerivation(
         params,
         development,
         sectionExport,
+        aperture,
+        pushThroughIslands,
+        fixings,
         apertureBySection,
         keylineBySection,
         pushThroughKeylineBySection,

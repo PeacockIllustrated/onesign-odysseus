@@ -31,6 +31,7 @@ import {
     type PanelParams,
     type FlatPath,
     type SectionedExport,
+    type PanelDevelopment,
     type MaterialPiece,
     type StandoffPiece,
     type PushThroughPiece,
@@ -113,6 +114,19 @@ export interface PdfOptions {
     designId?: string | null;
     /** Author of the export — shown in the rev block (reference PDF). */
     drawnBy?: string | null;
+    /**
+     * The WHOLE-SIGN continuous flat development + its continuous cut arrays
+     * (full-development coords, same space as the material pieces). Used ONLY by
+     * the reference-PDF human-facing pages to draw a split sign as ONE
+     * continuous panel with dashed seam lines — so the artwork can't drift
+     * against gapped section blanks. Absent (single-panel signs, or callers that
+     * don't provide it) → the pages fall back to the sectioned layout. The
+     * machine cut files never read these; they keep separate physical blanks.
+     */
+    development?: PanelDevelopment;
+    aperture?: FlatPath[];
+    pushThroughIslands?: FlatPath[];
+    fixings?: FlatPath[];
     /** Per-section path arrays, already in export-sheet coords. */
     apertureBySection?: FlatPath[][];
     keylineBySection?: FlatPath[][];
@@ -831,6 +845,166 @@ function drawApertureCuts(
             }
         }
     });
+}
+
+/* ------------------------------------------------------------------ *
+ * CONTINUOUS flat-development drawing (split-sign reference pages)
+ *
+ * A split sign's reference drawing reads as ONE continuous panel with the
+ * physical cut positions marked as dashed seam lines — the same model the
+ * on-screen FlatPreview uses — so the artwork (continuous material pieces)
+ * lines up with the blank instead of drifting against gapped section blanks.
+ * These three helpers draw the whole-sign `development` at its natural coords
+ * (no per-section layout offset), so cuts + material + seams all share one
+ * coordinate space.
+ * ------------------------------------------------------------------ */
+
+/** Draw the ONE continuous flat blank (fill + perimeter + folds + one dim row). */
+function drawContinuousBlank(
+    doc: jsPDF,
+    development: PanelDevelopment,
+    dX: number,
+    dY: number,
+    scale: number,
+    options: {
+        outlineWeight?: number;
+        foldDashWeight?: number;
+        showFolds?: boolean;
+        showDims?: boolean;
+        dimFont?: number;
+        fillColor?: [number, number, number];
+    } = {},
+): { px: (x: number) => number; py: (y: number) => number } {
+    const showFolds = options.showFolds ?? true;
+    const showDims = options.showDims ?? false;
+    const outlineWeight = options.outlineWeight ?? 0.5;
+    const foldDashWeight = options.foldDashWeight ?? 0.3;
+    const px = (x: number) => dX + x * scale;
+    const py = (y: number) => dY + y * scale;
+
+    if (options.fillColor) {
+        const [fr, fg, fb] = options.fillColor;
+        doc.setFillColor(fr, fg, fb);
+        for (const seg of development.segments) {
+            doc.rect(
+                px(seg.xMm),
+                py(seg.yMm),
+                seg.wMm * scale,
+                seg.hMm * scale,
+                'F',
+            );
+        }
+    }
+
+    doc.setDrawColor(20);
+    doc.setLineWidth(outlineWeight);
+    const perimeter = outlinePerimeter(development);
+    if (perimeter) {
+        const pts = perimeter.points;
+        for (let k = 0; k + 1 < pts.length; k++) {
+            doc.line(px(pts[k][0]), py(pts[k][1]), px(pts[k + 1][0]), py(pts[k + 1][1]));
+        }
+    } else {
+        for (const seg of development.segments) {
+            doc.rect(px(seg.xMm), py(seg.yMm), seg.wMm * scale, seg.hMm * scale);
+        }
+    }
+
+    if (showFolds) {
+        doc.setDrawColor(200, 0, 0);
+        doc.setLineWidth(foldDashWeight);
+        doc.setLineDashPattern([1.4, 1.0], 0);
+        for (const f of development.foldLines) {
+            doc.line(px(f.x1), py(f.y1), px(f.x2), py(f.y2));
+        }
+        doc.setLineDashPattern([], 0);
+    }
+
+    if (showDims) {
+        const dimFont = options.dimFont ?? 9;
+        const tick = 1.6;
+        dimH(
+            doc,
+            px(0),
+            px(development.totalFlatWMm),
+            py(development.totalFlatHMm) + 6,
+            txt(`${Math.round(development.totalFlatWMm)} mm`),
+            dimFont,
+            tick,
+        );
+        dimV(
+            doc,
+            py(0),
+            py(development.totalFlatHMm),
+            px(0) - 6,
+            txt(`${Math.round(development.totalFlatHMm)} mm`),
+            dimFont,
+            tick,
+        );
+    }
+
+    return { px, py };
+}
+
+/** Draw continuous aperture cuts (white even-odd hole fill, then the cut line). */
+function drawApertureCutsFlat(
+    doc: jsPDF,
+    aperture: FlatPath[] | undefined,
+    px: (x: number) => number,
+    py: (y: number) => number,
+    color: [number, number, number],
+    weight: number,
+) {
+    if (!aperture || aperture.length === 0) return;
+    const sc = px(1) - px(0);
+    doc.setFillColor(255, 255, 255);
+    for (const p of aperture) {
+        if (!p.closed || p.points.length < 3) continue;
+        const head = p.points[0];
+        const tail = p.points[p.points.length - 1];
+        const pts =
+            Math.abs(tail[0] - head[0]) < 1e-6 && Math.abs(tail[1] - head[1]) < 1e-6
+                ? p.points.slice(0, -1)
+                : p.points;
+        if (pts.length < 3) continue;
+        const deltas: number[][] = [];
+        for (let k = 1; k < pts.length; k++) {
+            deltas.push([pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]]);
+        }
+        doc.lines(deltas, px(pts[0][0]), py(pts[0][1]), [sc, sc], 'F', true);
+    }
+    doc.setDrawColor(color[0], color[1], color[2]);
+    doc.setLineWidth(weight);
+    for (const p of aperture) {
+        for (let k = 0; k + 1 < p.points.length; k++) {
+            doc.line(px(p.points[k][0]), py(p.points[k][1]), px(p.points[k + 1][0]), py(p.points[k + 1][1]));
+        }
+    }
+}
+
+/** Overlay a dashed green seam line at each internal cut position. */
+function drawSeamLines(
+    doc: jsPDF,
+    development: PanelDevelopment,
+    sectionExport: SectionedExport,
+    px: (x: number) => number,
+    py: (y: number) => number,
+) {
+    const face = development.segments.find((s) => s.role === 'face');
+    if (!face) return;
+    const k = development.faceNominalWMm
+        ? face.wMm / development.faceNominalWMm
+        : 1;
+    doc.setDrawColor(0, 150, 60);
+    doc.setLineWidth(0.4);
+    doc.setLineDashPattern([2.2, 1.4], 0);
+    // Skip section 0 (its left edge is the panel edge, not a seam).
+    sectionExport.sections.forEach((section, i) => {
+        if (i === 0) return;
+        const seamXFlat = face.xMm + section.faceSliceXMm * k;
+        doc.line(px(seamXFlat), py(face.yMm), px(seamXFlat), py(face.yMm + face.hMm));
+    });
+    doc.setLineDashPattern([], 0);
 }
 
 function drawMaterialPiece(
@@ -1566,13 +1740,36 @@ function drawOverviewPage(ctx: PageContext): void {
 function drawFlatLayoutPage(ctx: PageContext): void {
     const { doc, pageW, pageH, margin, params, opts } = ctx;
     const T = (s: string) => txt(s);
-    drawHeaderBar(ctx, 'Flat development — cutting layout');
+    // A split sign is drawn as ONE continuous panel with dashed seam lines (so
+    // the artwork can't drift against gapped section blanks) whenever the caller
+    // supplied the whole-sign `development`; single-panel signs and callers that
+    // don't provide it keep the sectioned layout unchanged. The real cut is
+    // still N separate blanks (see the production files) — so the header + footer
+    // say "assembled reference", never "cutting layout", in the continuous case.
+    const continuous =
+        !!opts.development && opts.sectionExport.sections.length > 1;
+    drawHeaderBar(
+        ctx,
+        continuous
+            ? 'Flat development — assembled reference'
+            : 'Flat development — cutting layout',
+    );
 
     const drawTop = margin + 18;
     const drawW = pageW - margin * 2;
     const drawH = pageH - drawTop - margin - 10;
-    const partW = Math.max(1, opts.sectionExport.totalLayoutWMm);
-    const partH = Math.max(1, opts.sectionExport.totalLayoutHMm);
+    const partW = Math.max(
+        1,
+        continuous
+            ? opts.development!.totalFlatWMm
+            : opts.sectionExport.totalLayoutWMm,
+    );
+    const partH = Math.max(
+        1,
+        continuous
+            ? opts.development!.totalFlatHMm
+            : opts.sectionExport.totalLayoutHMm,
+    );
     const scale = fitScale(drawW - 18, drawH - 8, partW, partH);
     const dX = margin + (drawW - partW * scale) / 2;
     const dY = drawTop;
@@ -1583,24 +1780,39 @@ function drawFlatLayoutPage(ctx: PageContext): void {
     // face material so each counter reveals the panel — continuity with the
     // finished sign.
     const panelRgb = hexToRgb(params.panelColor ?? '#d6d6d6');
-    const { px, py } = drawFlatBlank(doc, opts.sectionExport, dX, dY, scale, {
+    const blankOpts = {
         outlineWeight: 0.4 * Math.max(1, scale),
         showFolds: true,
         showDims: true,
         dimFont: Math.max(8, Math.min(14, scale * 4)),
         fillColor: panelRgb,
-    });
+    };
+    const { px, py } = continuous
+        ? drawContinuousBlank(doc, opts.development!, dX, dY, scale, blankOpts)
+        : drawFlatBlank(doc, opts.sectionExport, dX, dY, scale, blankOpts);
 
-    // Aperture cuts (dark blue)
-    drawApertureCuts(
-        doc,
-        opts.apertureBySection,
-        opts.sectionExport,
-        px,
-        py,
-        [30, 90, 200],
-        0.3 * Math.max(1, scale),
-    );
+    // Aperture cuts (dark blue) — continuous full-dev array when continuous, so
+    // they align with the continuous material pieces below.
+    if (continuous) {
+        drawApertureCutsFlat(
+            doc,
+            opts.aperture,
+            px,
+            py,
+            [30, 90, 200],
+            0.3 * Math.max(1, scale),
+        );
+    } else {
+        drawApertureCuts(
+            doc,
+            opts.apertureBySection,
+            opts.sectionExport,
+            px,
+            py,
+            [30, 90, 200],
+            0.3 * Math.max(1, scale),
+        );
+    }
 
     // Material pieces — drawn filled with their colour; counters reveal the
     // panel (holeFill = panelRgb) for continuity with the finished sign.
@@ -1690,7 +1902,10 @@ function drawFlatLayoutPage(ctx: PageContext): void {
     // blob that reads as "something it isn't". The ring + the legend entry are
     // what say "retained island, keyline gap rings it".
     {
-        for (const arr of opts.pushThroughIslandsBySection ?? []) {
+        const islandArrays = continuous
+            ? [opts.pushThroughIslands ?? []]
+            : (opts.pushThroughIslandsBySection ?? []);
+        for (const arr of islandArrays) {
             for (const isl of arr) {
                 if (!isl.closed || isl.points.length < 3) continue;
                 drawMaterialPiece(
@@ -1749,7 +1964,10 @@ function drawFlatLayoutPage(ctx: PageContext): void {
     }
 
     // Fixings (filled blue dots)
-    for (const arr of opts.fixingsBySection ?? []) {
+    const fixingArrays = continuous
+        ? [opts.fixings ?? []]
+        : (opts.fixingsBySection ?? []);
+    for (const arr of fixingArrays) {
         doc.setFillColor(30, 90, 200);
         doc.setDrawColor(30, 90, 200);
         for (const f of arr) {
@@ -1770,40 +1988,72 @@ function drawFlatLayoutPage(ctx: PageContext): void {
         }
     }
 
+    // Dashed seam lines at the physical cut positions (continuous mode only —
+    // the sectioned mode shows the gaps themselves). Drawn before the labels so
+    // the text sits on top.
+    if (continuous) {
+        drawSeamLines(doc, opts.development!, opts.sectionExport, px, py);
+    }
+
     // Section labels
     if (opts.sectionExport.sections.length > 1) {
         doc.setFont(ctx.font, 'bold');
         doc.setFontSize(Math.max(9, scale * 4));
         doc.setTextColor(80);
-        opts.sectionExport.sections.forEach((section) => {
-            const sFace = section.development.segments.find(
+        if (continuous) {
+            // Label each section at its centre on the continuous face.
+            const face = opts.development!.segments.find(
                 (s) => s.role === 'face',
             );
-            if (!sFace) return;
-            const ox = section.layoutOriginXMm;
-            doc.text(
-                T(
-                    `SECTION ${section.index + 1}/${section.count} - ${Math.round(section.sectionWidthMm)} mm`,
-                ),
-                px(sFace.xMm + sFace.wMm / 2 + ox),
-                py(sFace.yMm + sFace.hMm / 2),
-                { align: 'center' },
-            );
-        });
+            const k =
+                face && opts.development!.faceNominalWMm
+                    ? face.wMm / opts.development!.faceNominalWMm
+                    : 1;
+            if (face) {
+                opts.sectionExport.sections.forEach((section) => {
+                    const cx =
+                        face.xMm +
+                        (section.faceSliceXMm + section.sectionWidthMm / 2) * k;
+                    doc.text(
+                        T(
+                            `SECTION ${section.index + 1}/${section.count} - ${Math.round(section.sectionWidthMm)} mm`,
+                        ),
+                        px(cx),
+                        py(face.yMm + face.hMm / 2),
+                        { align: 'center' },
+                    );
+                });
+            }
+        } else {
+            opts.sectionExport.sections.forEach((section) => {
+                const sFace = section.development.segments.find(
+                    (s) => s.role === 'face',
+                );
+                if (!sFace) return;
+                const ox = section.layoutOriginXMm;
+                doc.text(
+                    T(
+                        `SECTION ${section.index + 1}/${section.count} - ${Math.round(section.sectionWidthMm)} mm`,
+                    ),
+                    px(sFace.xMm + sFace.wMm / 2 + ox),
+                    py(sFace.yMm + sFace.hMm / 2),
+                    { align: 'center' },
+                );
+            });
+        }
         doc.setTextColor(0);
     }
 
-    // Footer note
+    // Footer note. In continuous mode the drawing is the ASSEMBLED sign, not a
+    // cuttable blank — say so + how many panels it's really cut as, so nobody
+    // cuts from this page instead of the production files.
     doc.setFont(ctx.font, 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(110);
-    doc.text(
-        T(
-            `Scale 1:${scale < 1 ? Math.round(1 / scale) : '1'}  ·  Blank ${Math.round(partW)} × ${Math.round(partH)} mm  ·  Bend allowance: ${params.materialThicknessMm / 2} mm per side of every fold`,
-        ),
-        margin,
-        pageH - margin + 4,
-    );
+    const footer = continuous
+        ? `Scale 1:${scale < 1 ? Math.round(1 / scale) : '1'}  ·  Assembled sign ${Math.round(partW)} × ${Math.round(partH)} mm — cut as ${opts.sectionExport.sections.length} panels at the dashed seams (see production files)  ·  Bend allowance: ${params.materialThicknessMm / 2} mm per side of every fold`
+        : `Scale 1:${scale < 1 ? Math.round(1 / scale) : '1'}  ·  Blank ${Math.round(partW)} × ${Math.round(partH)} mm  ·  Bend allowance: ${params.materialThicknessMm / 2} mm per side of every fold`;
+    doc.text(T(footer), margin, pageH - margin + 4);
     doc.setTextColor(0);
     drawCornerQr(doc, {
         pageW,
@@ -1971,31 +2221,59 @@ function drawMaterialPage(ctx: PageContext, spec: MaterialPageSpec): void {
         return;
     }
 
+    // A split sign draws continuously here too (one faded blank + seam lines),
+    // so the material pieces — which are in continuous full-dev coords — line up
+    // with the blank instead of drifting against the gapped sections.
+    const continuous =
+        !!opts.development && opts.sectionExport.sections.length > 1;
+
     // Drawing area — left of the specs strip
     const drawTop = margin + 18;
     const drawW = specX - margin - 8;
     const drawH = pageH - drawTop - margin - 10;
-    const partW = Math.max(1, opts.sectionExport.totalLayoutWMm);
-    const partH = Math.max(1, opts.sectionExport.totalLayoutHMm);
+    const partW = Math.max(
+        1,
+        continuous
+            ? opts.development!.totalFlatWMm
+            : opts.sectionExport.totalLayoutWMm,
+    );
+    const partH = Math.max(
+        1,
+        continuous
+            ? opts.development!.totalFlatHMm
+            : opts.sectionExport.totalLayoutHMm,
+    );
     const scale = fitScale(drawW - 6, drawH - 8, partW, partH);
     const dX = margin + (drawW - partW * scale) / 2;
     const dY = drawTop;
 
     // Faded panel outline + folds (so the operator sees the sign shape
     // without the focused material being lost in detail).
-    const { px, py } = drawFlatBlank(doc, opts.sectionExport, dX, dY, scale, {
-        outlineWeight: 0.3,
-        showFolds: false,
-        showDims: false,
-    });
+    const { px, py } = continuous
+        ? drawContinuousBlank(doc, opts.development!, dX, dY, scale, {
+              outlineWeight: 0.3,
+              showFolds: false,
+              showDims: false,
+          })
+        : drawFlatBlank(doc, opts.sectionExport, dX, dY, scale, {
+              outlineWeight: 0.3,
+              showFolds: false,
+              showDims: false,
+          });
+    if (continuous) {
+        drawSeamLines(doc, opts.development!, opts.sectionExport, px, py);
+    }
 
     // Each material page shows ONLY its own material (filled solid below) plus
     // the faded panel outline + section labels drawn above. We deliberately do
     // NOT ghost the other materials here: a faint outline of, say, a vinyl
     // decal on the "Cut apertures" page reads as "cut this too", which is
     // exactly the misread we want to avoid. The panel outline alone gives
-    // enough spatial context. `apAll` is reused by the cut page below.
-    const apAll = (opts.apertureBySection ?? []).flatMap((a) => a);
+    // enough spatial context. `apAll` is reused by the cut page below —
+    // continuous full-dev aperture when continuous so it aligns with the blank.
+    const apAll = continuous
+        ? (opts.aperture ?? [])
+        : (opts.apertureBySection ?? []).flatMap((a) => a);
 
     // THIS material — drawn boldly. Multiple pieces of the same
     // material share one page, each drawn with its own colour /

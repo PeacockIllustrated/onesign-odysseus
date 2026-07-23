@@ -1,6 +1,68 @@
 import { describe, it, expect } from 'vitest';
-import { buildPanelDevelopmentSvg } from './panel-cut-svg';
+import { buildPanelDevelopmentSvg, composeTrayHoles } from './panel-cut-svg';
 import type { FlatPath, SectionedExport } from './types';
+
+/** A distinct closed square at an offset, tagged by its first point for identity. */
+function tag(id: number): FlatPath {
+    return {
+        closed: true,
+        points: [
+            [id, id],
+            [id + 10, id],
+            [id + 10, id + 10],
+            [id, id],
+        ],
+    };
+}
+
+describe('composeTrayHoles — shared tray face-cut authority', () => {
+    const base = {
+        sectionCount: 1,
+        apertureBySection: [[tag(1)]],
+        keylineBySection: [[]] as FlatPath[][],
+        pushThroughKeylineBySection: [[tag(2)]],
+        pushThroughIslandsBySection: [[tag(3)]],
+        fixingsBySection: [[tag(4)]],
+        cableHolesBySection: [[tag(5)]],
+    };
+
+    it('uses the raw aperture when there is no keyline, and folds in the rest', () => {
+        const [holes] = composeTrayHoles(base);
+        const firsts = holes.map((h) => h.points[0][0]);
+        expect(firsts).toEqual([1, 2, 3, 4, 5]); // aperture + pt-keyline + island + fixing + cable
+    });
+
+    it('a global keyline SUPERSEDES the raw aperture', () => {
+        const [holes] = composeTrayHoles({
+            ...base,
+            keylineBySection: [[tag(9)]],
+        });
+        const firsts = holes.map((h) => h.points[0][0]);
+        expect(firsts).toContain(9); // keyline present
+        expect(firsts).not.toContain(1); // raw aperture dropped
+        expect(firsts).toEqual([9, 2, 3, 4, 5]);
+    });
+
+    it('never cuts letter counters into the tray (no apertureHoles input at all)', () => {
+        // The signature structurally excludes apertureHoles — a counter can only
+        // reach the cutter via the acrylic insert, never the aluminium tray.
+        expect('apertureHolesBySection' in base).toBe(false);
+    });
+
+    it('is index-wise per section', () => {
+        const two = composeTrayHoles({
+            sectionCount: 2,
+            apertureBySection: [[tag(1)], [tag(11)]],
+            keylineBySection: [[], [tag(19)]],
+            pushThroughKeylineBySection: [[], []],
+            pushThroughIslandsBySection: [[], []],
+            fixingsBySection: [[], []],
+            cableHolesBySection: [[], []],
+        });
+        expect(two[0].map((h) => h.points[0][0])).toEqual([1]); // section 0: aperture
+        expect(two[1].map((h) => h.points[0][0])).toEqual([19]); // section 1: keyline supersedes
+    });
+});
 
 function sectionExport(): SectionedExport {
     return {

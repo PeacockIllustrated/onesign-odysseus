@@ -35,7 +35,10 @@ import {
 import { buildDesignPackInput } from '@/lib/production-packs/design-pack-input';
 import { createVisualApprovalFromDesign } from '@/lib/artwork/visual-approval-actions';
 import { nestedSheetGeometry } from '@/lib/visualiser/pack-nest';
-import { developmentGeometry } from '@/lib/visualiser/panel-cut-svg';
+import {
+    composeTrayHoles,
+    developmentGeometry,
+} from '@/lib/visualiser/panel-cut-svg';
 import {
     cutToSvg,
     cutToDxf,
@@ -54,6 +57,7 @@ import {
     PanelParamsSchema,
     type PanelParams,
     type PanelPdfData,
+    type PanelDevelopment,
     type FlatPath,
     type SectionedExport,
     type ExportWarning,
@@ -174,6 +178,10 @@ function ReadyChecklist({
 
 export function ExportBar({
     sectionExport,
+    development,
+    aperture,
+    pushThroughIslands,
+    fixings,
     apertureBySection,
     keylineBySection,
     pushThroughKeylineBySection,
@@ -198,6 +206,12 @@ export function ExportBar({
     projectingSummary = null,
 }: {
     sectionExport: SectionedExport;
+    /** Whole-sign continuous development + cut arrays — for the reference PDF's
+     *  continuous split-sign drawing (see PdfOptions). */
+    development: PanelDevelopment;
+    aperture: FlatPath[];
+    pushThroughIslands: FlatPath[];
+    fixings: FlatPath[];
     apertureBySection: FlatPath[][];
     keylineBySection: FlatPath[][];
     pushThroughKeylineBySection: FlatPath[][];
@@ -367,6 +381,10 @@ export function ExportBar({
                 sectionExport,
                 params,
                 designId: designId ?? null,
+                development,
+                aperture,
+                pushThroughIslands,
+                fixings,
                 apertureBySection,
                 keylineBySection,
                 pushThroughKeylineBySection,
@@ -573,6 +591,7 @@ export function ExportBar({
                 sectionExport,
                 apertureBySection,
                 apertureHolesBySection,
+                keylineBySection,
                 pushThroughKeylineBySection,
                 pushThroughIslandsBySection,
                 fixingsBySection,
@@ -748,15 +767,19 @@ export function ExportBar({
                 });
             };
 
-            // 1. The aluminium tray — the unfolded flat blank as a CAM cut file.
-            const holesBySection = sectionExport.sections.map((_s, i) => [
-                ...(apertureBySection[i] ?? []),
-                ...(apertureHolesBySection[i] ?? []),
-                ...(pushThroughKeylineBySection[i] ?? []),
-                ...(pushThroughIslandsBySection[i] ?? []),
-                ...(fixingsBySection[i] ?? []),
-                ...(cableHolesBySection[i] ?? []),
-            ]);
+            // 1. The aluminium tray — the unfolded flat blank as a CAM cut
+            // file. Face holes from the shared composeTrayHoles authority
+            // (keyline supersedes aperture, counters excluded), identical to the
+            // production pack so the two cut definitions can't drift.
+            const holesBySection = composeTrayHoles({
+                sectionCount: sectionExport.sections.length,
+                apertureBySection,
+                keylineBySection,
+                pushThroughKeylineBySection,
+                pushThroughIslandsBySection,
+                fixingsBySection,
+                cableHolesBySection,
+            });
             pushCut('tray-cut', developmentGeometry({ sectionExport, holesBySection }));
 
             // 2. Nested rigid-sheet pieces — one cut file per stock / finish.
@@ -777,16 +800,39 @@ export function ExportBar({
                 pushNest(pieces, `${material}-faces`);
             }
 
-            // 3. Opal backing — a single cut rectangle.
+            // 2b. Illuminated-acrylic inserts for a legacy global-keyline sign
+            // (keyline on, letters as apertures, no explicit push-through
+            // group) — the acrylic that presses into the keyline openings. Cut
+            // faces + counters as separate nested pieces (matches the PDF).
+            const hasGlobalKeyline = keylineBySection.some((a) => a.length > 0);
+            if (hasGlobalKeyline && pushThroughPieces.length === 0) {
+                const insertPieces = [
+                    ...apertureBySection.flat(),
+                    ...apertureHolesBySection.flat(),
+                ].map((p) => ({ path: p, color: '#f5f5f0' }));
+                if (insertPieces.length > 0) pushNest(insertPieces, 'keyline-inserts');
+            }
+
+            // 3. Opal backing — a single cut rectangle. Needed for any lit
+            // construction: push-through, backlit, OR a global keyline halo.
             const keyline = !!params.illumination?.keyline?.enabled;
             const illuminated = keyline || backlightPieces.length > 0;
-            if (illuminated && (pushThroughPieces.length > 0 || backlightPieces.length > 0)) {
+            if (
+                illuminated &&
+                (pushThroughPieces.length > 0 ||
+                    backlightPieces.length > 0 ||
+                    hasGlobalKeyline)
+            ) {
                 const lit = [...pushThroughPieces, ...backlightPieces];
                 let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-                for (const p of lit) for (const [x, y] of p.path.points) {
-                    if (x < minX) minX = x; if (y < minY) minY = y;
-                    if (x > maxX) maxX = x; if (y > maxY) maxY = y;
-                }
+                const eat = (pts: Array<[number, number]>) => {
+                    for (const [x, y] of pts) {
+                        if (x < minX) minX = x; if (y < minY) minY = y;
+                        if (x > maxX) maxX = x; if (y > maxY) maxY = y;
+                    }
+                };
+                for (const p of lit) eat(p.path.points);
+                for (const arr of keylineBySection) for (const p of arr) eat(p.points);
                 const margin = 40;
                 const rw = Math.max(1, Math.round(Number.isFinite(minX) ? maxX - minX + margin * 2 : params.panelWidthMm));
                 const rh = Math.max(1, Math.round(Number.isFinite(minY) ? maxY - minY + margin * 2 : params.panelHeightMm));
@@ -910,6 +956,10 @@ export function ExportBar({
                 sectionExport,
                 params,
                 designId: id,
+                development,
+                aperture,
+                pushThroughIslands,
+                fixings,
                 apertureBySection,
                 keylineBySection,
                 pushThroughKeylineBySection,

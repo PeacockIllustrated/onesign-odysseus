@@ -25,6 +25,45 @@ export interface PanelCutSvg {
     heightMm: number;
 }
 
+/** The per-section derived cut arrays the tray blank is punched with. */
+export interface TrayHoleInput {
+    sectionCount: number;
+    apertureBySection: FlatPath[][];
+    /** Global keyline per section; when present it SUPERSEDES the aperture. */
+    keylineBySection: FlatPath[][];
+    pushThroughKeylineBySection: FlatPath[][];
+    pushThroughIslandsBySection: FlatPath[][];
+    fixingsBySection: FlatPath[][];
+    cableHolesBySection: FlatPath[][];
+}
+
+/**
+ * The set of face-cut rings punched into the tray blank, per section — the
+ * SINGLE authority shared by the production pack and the production ZIP so the
+ * two cut definitions can never drift. Mirrors the production cut PDF's
+ * `panelCuts`:
+ *   • a global keyline SUPERSEDES the raw aperture (the wider halo groove is the
+ *     real opening);
+ *   • letter COUNTERS are deliberately absent — a bridge-less counter falls out,
+ *     so it is cut on the acrylic insert, never into the aluminium tray;
+ *   • push-through keyline + retained islands + fixings + cable holes fold in as
+ *     face holes.
+ * All arrays are already clipped to their own section's face + offset by
+ * layoutOriginXMm, so composition is a pure index-wise concat with no geometry.
+ */
+export function composeTrayHoles(input: TrayHoleInput): FlatPath[][] {
+    return Array.from({ length: input.sectionCount }, (_, i) => {
+        const kl = input.keylineBySection[i] ?? [];
+        return [
+            ...(kl.length > 0 ? kl : (input.apertureBySection[i] ?? [])),
+            ...(input.pushThroughKeylineBySection[i] ?? []),
+            ...(input.pushThroughIslandsBySection[i] ?? []),
+            ...(input.fixingsBySection[i] ?? []),
+            ...(input.cableHolesBySection[i] ?? []),
+        ];
+    });
+}
+
 /**
  * The unfolded tray as raw cut geometry — the blank perimeter + every face hole
  * as cut rings, plus the bend lines as fold segments. Drives the .svg/.dxf/.pdf

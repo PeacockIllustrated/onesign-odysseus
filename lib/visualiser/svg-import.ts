@@ -868,6 +868,103 @@ export function mergeKeyline(paths: FlatPath[]): FlatPath[] {
     }
 }
 
+/**
+ * Weld a set of keyline OUTER contours into clean, non-overlapping cut paths by
+ * unioning every input ring as a filled solid — winding-agnostic, unlike
+ * `mergeKeyline`.
+ *
+ * `mergeKeyline` classifies rings into solids/holes by winding (signed-area sign
+ * vs the largest ring) and DIFFERENCES the minority. That's correct for a single
+ * sign's global keyline (one `buildKeyline` call → one consistent offset sign,
+ * counters genuinely oppose the outer). But push-through keyline outers are each
+ * produced by an INDEPENDENT `buildKeyline` call, so sibling letters can carry
+ * opposite winding — `mergeKeyline` then subtracts a real letter's keyline
+ * instead of welding it, and ships overlapping loops on any clipper throw. This
+ * primitive treats every ring as a solid (polygon-clipping ignores orientation),
+ * so opposite-wound siblings weld, and only genuinely-enclosed inter-letter
+ * regions become holes. Optional `holes` are differenced afterwards (e.g. a
+ * global keyline's counters, when a caller does have them).
+ *
+ * Robust: coordinates are snapped to an integer grid (CLIP_PRECISION finer than
+ * the mm curve detail) so the clipper's exact core stays stable on dense offset
+ * vertices, and the union folds in incrementally — a single degenerate ring is
+ * skipped and re-appended raw rather than dumping the whole merge, so a cut is
+ * never silently dropped.
+ */
+export function mergeKeylineOuters(
+    solids: FlatPath[],
+    holes: FlatPath[] = [],
+): FlatPath[] {
+    // Normalise a FlatPath to a closed integer-grid ring, or null if degenerate.
+    const norm = (p: FlatPath): Ring | null => {
+        if (!p.closed || p.points.length < 4) return null;
+        const dd = dedupeRing(p.points.map(([x, y]) => [x, y]));
+        if (dd.length < 3) return null;
+        const r = dd.map(
+            ([x, y]) =>
+                [
+                    Math.round(x * CLIP_PRECISION),
+                    Math.round(y * CLIP_PRECISION),
+                ] as [number, number],
+        );
+        const a = r[0];
+        const b = r[r.length - 1];
+        if (a[0] !== b[0] || a[1] !== b[1]) r.push([a[0], a[1]]);
+        return r.length >= 4 ? (r as Ring) : null;
+    };
+
+    const solidRings = solids.map(norm).filter((r): r is Ring => r !== null);
+    const holeRings = holes.map(norm).filter((r): r is Ring => r !== null);
+
+    // Nothing to combine — return the input untouched (no clipper round-trip
+    // that could facet a lone clean ring), matching mergeKeyline's passthrough.
+    if (solidRings.length <= 1 && holeRings.length === 0) return solids;
+
+    const toGeom = (r: Ring): MultiPolygon => [[r]];
+    const down = (r: Ring): FlatPath => ({
+        points: r.map(
+            ([x, y]) =>
+                [x / CLIP_PRECISION, y / CLIP_PRECISION] as [number, number],
+        ),
+        closed: true,
+    });
+    const fromGeom = (geom: MultiPolygon): FlatPath[] => {
+        const out: FlatPath[] = [];
+        for (const poly of geom)
+            for (const ring of poly)
+                if (ring.length >= 4) out.push(down(ring as Ring));
+        return out;
+    };
+
+    let acc: MultiPolygon | null = null;
+    const leftover: FlatPath[] = [];
+    for (const r of solidRings) {
+        if (acc === null) {
+            acc = toGeom(r);
+            continue;
+        }
+        try {
+            acc = polygonClipping.union(acc, toGeom(r));
+        } catch {
+            // This one ring defeated the clipper — keep it raw rather than
+            // losing its cut; the rest still weld.
+            leftover.push(down(r));
+        }
+    }
+    if (acc === null) return solids;
+
+    for (const h of holeRings) {
+        try {
+            acc = polygonClipping.difference(acc, toGeom(h));
+        } catch {
+            /* skip this hole rather than sink the union */
+        }
+    }
+
+    const merged = [...fromGeom(acc), ...leftover];
+    return merged.length > 0 ? merged : solids;
+}
+
 /** Drop consecutive points within `eps` mm — kills flattening noise. */
 function dedupeRing(pts: number[][], eps = 1e-3): number[][] {
     const out: number[][] = [];

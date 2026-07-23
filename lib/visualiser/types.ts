@@ -692,6 +692,17 @@ export interface PanelRenderBundle {
 export interface PanelPdfData {
     params: PanelParams;
     sectionExport: SectionedExport;
+    /**
+     * The WHOLE-SIGN continuous flat development + its continuous cut arrays —
+     * used only by the reference-PDF human pages to draw a split sign as one
+     * continuous panel with seam lines (so artwork can't drift against gapped
+     * section blanks). Carried here so a two-item job's projecting sign gets the
+     * same treatment via the `secondary` PdfOptions.
+     */
+    development: PanelDevelopment;
+    aperture: FlatPath[];
+    pushThroughIslands: FlatPath[];
+    fixings: FlatPath[];
     apertureBySection: FlatPath[][];
     keylineBySection: FlatPath[][];
     pushThroughKeylineBySection: FlatPath[][];
