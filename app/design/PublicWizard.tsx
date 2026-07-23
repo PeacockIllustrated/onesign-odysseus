@@ -66,6 +66,11 @@ import { finishSpec } from '@/lib/visualiser/returns-finish';
 const ACCENT = '#4e7e8c';
 const ACCENT_GLOW = '#9ed0dc';
 
+/** Mobile bottom-sheet snap points — peek (canvas-first), half, full. */
+type SheetSnap = 'peek' | 'half' | 'full';
+/** Collapsed (peek) sheet height: just the grabber + step-title strip. */
+const SHEET_PEEK_PX = 44;
+
 const Scene3D = dynamic(
     () => import('../(portal)/admin/visualiser/Scene3D'),
     { ssr: false, loading: () => <StageLoader /> },
@@ -235,10 +240,93 @@ export function PublicWizard({
     const [explodeT, setExplodeT] = useState(0);
     const [fold, setFold] = useState(1);
     const [unfoldKey, setUnfoldKey] = useState(0);
-    const [dockOpen, setDockOpen] = useState(true);
     const [builtUpOpen, setBuiltUpOpen] = useState(false);
     const [mounted, setMounted] = useState(false);
     const [reducedMotion, setReducedMotion] = useState(false);
+
+    // ── Mobile bottom sheet (phones only; desktop keeps the fixed column) ──
+    // A REAL sheet: draggable by its grabber with three snap points — peek
+    // (canvas-first, just the grabber above the nav bar), half (the working
+    // state) and full (forms + deep lists). The old collapse toggle looked
+    // draggable but wasn't, which is exactly what made mobile feel dead.
+    const [snap, setSnap] = useState<SheetSnap>('half');
+    const [dragH, setDragH] = useState<number | null>(null);
+    const [stageH, setStageH] = useState(0);
+    const [isMobile, setIsMobile] = useState(false);
+    const sheetRef = useRef<HTMLDivElement | null>(null);
+    const dragRef = useRef<{
+        startY: number;
+        startH: number;
+        moved: boolean;
+    } | null>(null);
+
+    useEffect(() => {
+        const mq = window.matchMedia('(max-width: 767px)');
+        const sync = () => setIsMobile(mq.matches);
+        sync();
+        mq.addEventListener('change', sync);
+        return () => mq.removeEventListener('change', sync);
+    }, []);
+
+    const snapHeights = (H: number): Record<SheetSnap, number> => ({
+        peek: SHEET_PEEK_PX,
+        half: Math.round(H * 0.44),
+        full: Math.round(H * 0.86),
+    });
+
+    const onGrabberPointerDown = (e: React.PointerEvent) => {
+        if (!isMobile) return;
+        (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+        dragRef.current = {
+            startY: e.clientY,
+            startH:
+                sheetRef.current?.getBoundingClientRect().height ??
+                snapHeights(stageH)[snap],
+            moved: false,
+        };
+    };
+    const onGrabberPointerMove = (e: React.PointerEvent) => {
+        const d = dragRef.current;
+        if (!d || !isMobile) return;
+        const dy = e.clientY - d.startY;
+        if (Math.abs(dy) > 6) d.moved = true;
+        const H = stageH || sheetRef.current?.parentElement?.clientHeight || 0;
+        const hs = snapHeights(H);
+        setDragH(Math.min(hs.full, Math.max(hs.peek, d.startH - dy)));
+    };
+    const onGrabberPointerUp = () => {
+        const d = dragRef.current;
+        dragRef.current = null;
+        if (!d || !isMobile) return;
+        if (!d.moved) {
+            // A tap on the grabber toggles peek ↔ half.
+            setSnap((s) => (s === 'peek' ? 'half' : 'peek'));
+            setDragH(null);
+            return;
+        }
+        const H = stageH || 1;
+        const hs = snapHeights(H);
+        const h = dragH ?? hs[snap];
+        const nearest = (Object.keys(hs) as SheetSnap[]).reduce((a, b) =>
+            Math.abs(hs[a] - h) < Math.abs(hs[b] - h) ? a : b,
+        );
+        setSnap(nearest);
+        setDragH(null);
+    };
+
+    // Inline height drives the sheet ONLY on phones (desktop keeps the md:*
+    // fixed-column classes). While dragging, no transition — it must track the
+    // finger 1:1; on release it eases to the snap.
+    const sheetStyle: React.CSSProperties | undefined =
+        isMobile && stageH > 0
+            ? {
+                  height: dragH ?? snapHeights(stageH)[snap],
+                  transition:
+                      dragH === null && !reducedMotion
+                          ? 'height 280ms cubic-bezier(0.2, 0.9, 0.25, 1)'
+                          : 'none',
+              }
+            : undefined;
 
     // ── Contact / submission state ────────────────────────────────────────
     const [name, setName] = useState('');
@@ -261,14 +349,26 @@ export function PublicWizard({
 
     const step = STEPS[stepIdx];
 
+    // Track the stage height so the sheet's snap heights follow rotation /
+    // URL-bar resizes on phones. Re-runs when the sheet remounts after the
+    // success screen resets (`reference` flips back to null).
+    useEffect(() => {
+        const parent = sheetRef.current?.parentElement;
+        if (!parent) return;
+        const ro = new ResizeObserver(() => setStageH(parent.clientHeight));
+        ro.observe(parent);
+        setStageH(parent.clientHeight);
+        return () => ro.disconnect();
+    }, [reference]);
+
     // Path-picking only makes sense on the Artwork step — that's where the
     // finish editor lives. On any other step a tap would silently arm a group
-    // edit with no visible panel (especially with the mobile sheet collapsed),
-    // so gate the handler to the step and pop the sheet open on a pick.
+    // edit with no visible panel (especially with the mobile sheet peeked),
+    // so gate the handler to the step and pop the sheet up on a pick.
     const handleScenePathPick = interaction.handlePathPick
         ? (i: number) => {
               if (step.key !== 'artwork') return;
-              setDockOpen(true);
+              setSnap((s) => (s === 'peek' ? 'half' : s));
               interaction.handlePathPick?.(i);
           }
         : undefined;
@@ -310,7 +410,12 @@ export function PublicWizard({
 
     const goToStep = (i: number) => {
         onStep(i);
-        setDockOpen(true);
+        // On phones, surface the new step's content: the details form opens
+        // the sheet fully, everything else needs at least half. A user who
+        // dragged to full keeps full.
+        setSnap((s) =>
+            STEPS[i]?.key === 'details' ? 'full' : s === 'peek' ? 'half' : s,
+        );
     };
 
     // ── Illumination quick-controls (mirrors the staff keyline glow) ───────
@@ -632,7 +737,10 @@ export function PublicWizard({
                         {/* Swap between the fascia and the projecting sign
                             right on the canvas — no trip back to step 1. The
                             "+" side doubles as the add affordance. */}
-                        <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-white/25 bg-[#0c1114]/60 p-1 shadow-lg backdrop-blur-md">
+                        <div
+                            data-tour="projecting"
+                            className="pointer-events-auto flex items-center gap-1 rounded-full border border-white/25 bg-[#0c1114]/60 p-1 shadow-lg backdrop-blur-md"
+                        >
                             <button
                                 type="button"
                                 onClick={() => setActiveTab('main')}
@@ -674,9 +782,11 @@ export function PublicWizard({
                             </button>
                         </div>
 
-                        {/* Onboarding nudge (populated stage, gentle prompt) */}
+                        {/* Onboarding nudge (populated stage, gentle prompt).
+                            Desktop only — on phones the sheet's step intro
+                            covers it and canvas space is precious. */}
                         {!storeImported && stepIdx === 0 && (
-                            <div className="pointer-events-auto max-w-sm rounded-xl border border-white/10 bg-black/40 px-4 py-2.5 text-center text-[12px] text-white/70 backdrop-blur-md">
+                            <div className="pointer-events-auto hidden max-w-sm rounded-xl border border-white/10 bg-black/40 px-4 py-2.5 text-center text-[12px] text-white/70 backdrop-blur-md md:block">
                                 👋 Set your size below, then add your logo in
                                 step 2 — the preview updates as you go. Drag to
                                 spin it.
@@ -685,41 +795,59 @@ export function PublicWizard({
                     </div>
                 )}
 
-                {/* ── The wizard dock ───────────────────────────────────── */}
+                {/* ── The wizard dock ───────────────────────────────────
+                    Desktop: the fixed left column, unchanged. Phones: a REAL
+                    bottom sheet — drag the grabber between peek / half /
+                    full; step navigation lives in the persistent bar below
+                    the stage, so Next is never hidden by the sheet state. */}
                 {!reference && (
                     <div
-                        className="pointer-events-auto absolute inset-x-2 bottom-2 z-20 flex max-h-[62%] flex-col overflow-hidden rounded-2xl border border-white/60 bg-white/90 shadow-2xl backdrop-blur-2xl md:inset-y-5 md:left-5 md:right-auto md:bottom-5 md:top-5 md:max-h-none md:w-[360px]"
-                        style={revealStyle}
+                        ref={sheetRef}
+                        className="pointer-events-auto absolute inset-x-0 bottom-0 z-20 flex h-[44%] flex-col overflow-hidden rounded-t-2xl border-t border-white/60 bg-white/95 shadow-2xl backdrop-blur-2xl md:inset-x-auto md:bottom-5 md:left-5 md:top-5 md:h-auto md:w-[360px] md:rounded-2xl md:border"
+                        style={isMobile ? sheetStyle : revealStyle}
                     >
-                        {/* Stepper header (also the mobile sheet handle). */}
+                        {/* Grabber — phones only. Drag to resize, tap to
+                            toggle peek/half; the current step titles the
+                            strip so peek still says where you are. */}
+                        <div
+                            role="button"
+                            tabIndex={0}
+                            aria-label={
+                                snap === 'peek'
+                                    ? 'Expand options panel'
+                                    : 'Drag to resize options panel'
+                            }
+                            onPointerDown={onGrabberPointerDown}
+                            onPointerMove={onGrabberPointerMove}
+                            onPointerUp={onGrabberPointerUp}
+                            onPointerCancel={onGrabberPointerUp}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    setSnap((s) =>
+                                        s === 'peek' ? 'half' : 'peek',
+                                    );
+                                }
+                            }}
+                            className="flex shrink-0 cursor-grab touch-none select-none flex-col items-center gap-1 pb-1.5 pt-2.5 active:cursor-grabbing md:hidden"
+                        >
+                            <span className="h-1.5 w-10 rounded-full bg-neutral-300" />
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
+                                {step.title}
+                            </span>
+                        </div>
+
+                        {/* Stepper header — desktop only (phones step via the
+                            bottom nav bar). */}
                         <div
                             data-tour="steps"
-                            className="shrink-0 border-b border-neutral-200/70 px-3 py-3"
+                            className="hidden shrink-0 border-b border-neutral-200/70 px-3 py-3 md:block"
                         >
-                            <div className="mb-2 flex items-center justify-center md:hidden">
-                                <button
-                                    type="button"
-                                    onClick={() => setDockOpen((o) => !o)}
-                                    aria-label={
-                                        dockOpen
-                                            ? 'Collapse panel'
-                                            : 'Expand panel'
-                                    }
-                                    aria-expanded={dockOpen}
-                                    className="flex h-6 items-center"
-                                >
-                                    <span className="h-1.5 w-10 rounded-full bg-neutral-300" />
-                                </button>
-                            </div>
                             <Stepper current={stepIdx} onJump={goToStep} />
                         </div>
 
-                        <div
-                            className={`min-h-0 flex-1 overflow-y-auto ${
-                                dockOpen ? 'block' : 'hidden md:block'
-                            }`}
-                        >
-                            <div className="px-4 py-3">
+                        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                            <div className="px-4 pb-4 pt-2 md:py-3">
                                 <p className="mb-3 text-[12px] leading-relaxed text-neutral-500">
                                     {step.intro}
                                 </p>
@@ -816,12 +944,9 @@ export function PublicWizard({
                             </div>
                         </div>
 
-                        {/* Footer nav — primary action sits in the thumb zone. */}
-                        <div
-                            className={`shrink-0 border-t border-neutral-200/70 px-3 py-2.5 ${
-                                dockOpen ? 'flex' : 'hidden md:flex'
-                            } items-center gap-2`}
-                        >
+                        {/* Footer nav — desktop only; on phones Back / Next
+                            live in the persistent bar under the stage. */}
+                        <div className="hidden shrink-0 items-center gap-2 border-t border-neutral-200/70 px-3 py-2.5 md:flex">
                             {stepIdx > 0 ? (
                                 <button
                                     type="button"
@@ -873,12 +998,18 @@ export function PublicWizard({
                     </div>
                 )}
 
-                {/* ── Bottom motion dock (3D views only) ────────────────── */}
+                {/* ── Bottom motion dock (3D views only) ─────────────────
+                    On phones it appears just above the peeked sheet — pull
+                    the sheet down and the explode / fold slider is there. */}
                 {!reference &&
                     step.key !== 'details' &&
                     (view === 'folded' || view === 'unfold') && (
                         <div
-                            className="pointer-events-none absolute inset-x-0 bottom-4 z-10 hidden justify-center md:flex"
+                            className={`pointer-events-none absolute inset-x-0 bottom-14 z-10 justify-center px-3 md:bottom-4 ${
+                                isMobile && snap !== 'peek'
+                                    ? 'hidden md:flex'
+                                    : 'flex'
+                            }`}
                             style={revealStyle}
                         >
                             <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-white/15 bg-black/30 px-4 py-2 backdrop-blur-md">
@@ -899,7 +1030,7 @@ export function PublicWizard({
                                         if (view === 'folded') setExplodeT(v);
                                         else setFold(v);
                                     }}
-                                    className="h-2 w-40"
+                                    className="h-2 w-28 md:w-40"
                                     style={{ accentColor: ACCENT_GLOW }}
                                     aria-label={
                                         view === 'folded'
@@ -951,6 +1082,73 @@ export function PublicWizard({
                     />
                 )}
             </StudioStage>
+
+            {/* ── Mobile nav spine — phones only. Steps + Back + Next live in
+                a fixed thumb-zone bar below the stage that never disappears;
+                the sheet resizes above it. (Desktop keeps the in-dock nav.) */}
+            {!reference && (
+                <nav
+                    data-tour="steps"
+                    aria-label="Design steps"
+                    className="flex shrink-0 items-center gap-1.5 border-t border-neutral-200 bg-white px-2 pt-1.5 md:hidden"
+                    style={{
+                        paddingBottom:
+                            'max(0.375rem, env(safe-area-inset-bottom))',
+                    }}
+                >
+                    <button
+                        type="button"
+                        onClick={() => goToStep(stepIdx - 1)}
+                        disabled={stepIdx === 0}
+                        aria-label="Back"
+                        className="flex h-11 w-10 shrink-0 items-center justify-center rounded-xl text-neutral-500 transition-colors hover:bg-neutral-100 disabled:opacity-25"
+                    >
+                        <ArrowLeft size={18} aria-hidden />
+                    </button>
+                    <div className="min-w-0 flex-1">
+                        <Stepper
+                            current={stepIdx}
+                            onJump={goToStep}
+                            compact
+                        />
+                    </div>
+                    {step.key !== 'details' ? (
+                        <button
+                            type="button"
+                            onClick={() => goToStep(stepIdx + 1)}
+                            className="flex h-11 shrink-0 items-center gap-1 rounded-xl px-4 text-sm font-semibold text-white shadow-sm"
+                            style={{ background: ACCENT }}
+                        >
+                            Next <ArrowRight size={15} aria-hidden />
+                        </button>
+                    ) : (
+                        <button
+                            type="submit"
+                            form="contact-form"
+                            data-tour="send"
+                            disabled={preparing || submitting}
+                            aria-busy={preparing || submitting}
+                            className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl px-4 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
+                            style={{ background: ACCENT }}
+                        >
+                            {preparing || submitting ? (
+                                <Loader2
+                                    size={15}
+                                    className="animate-spin"
+                                    aria-hidden
+                                />
+                            ) : (
+                                <Send size={15} aria-hidden />
+                            )}
+                            {preparing
+                                ? 'Preparing…'
+                                : submitting
+                                  ? 'Sending…'
+                                  : 'Send'}
+                        </button>
+                    )}
+                </nav>
+            )}
             <BuiltUpModal
                 open={builtUpOpen}
                 onClose={() => setBuiltUpOpen(false)}
@@ -1094,13 +1292,16 @@ function ViewSwitch({
     );
 }
 
-/** Labelled, clickable stepper — current highlighted, past steps ticked. */
+/** Labelled, clickable stepper — current highlighted, past steps ticked.
+ *  `compact` shrinks it for the mobile nav bar (smaller circles + labels). */
 function Stepper({
     current,
     onJump,
+    compact = false,
 }: {
     current: number;
     onJump: (i: number) => void;
+    compact?: boolean;
 }) {
     return (
         <ol className="flex items-center gap-1">
@@ -1113,11 +1314,17 @@ function Stepper({
                             type="button"
                             onClick={() => onJump(i)}
                             aria-current={active ? 'step' : undefined}
-                            className="group flex flex-1 flex-col items-center gap-1"
+                            className={`group flex flex-1 flex-col items-center ${
+                                compact ? 'gap-0.5' : 'gap-1'
+                            }`}
                             title={s.title}
                         >
                             <span
-                                className={`flex h-8 w-8 items-center justify-center rounded-full text-[12px] font-bold tabular-nums transition-colors ${
+                                className={`flex items-center justify-center rounded-full font-bold tabular-nums transition-colors ${
+                                    compact
+                                        ? 'h-7 w-7 text-[11px]'
+                                        : 'h-8 w-8 text-[12px]'
+                                } ${
                                     active
                                         ? 'text-white'
                                         : done
@@ -1133,13 +1340,18 @@ function Stepper({
                                 }
                             >
                                 {done ? (
-                                    <Check size={15} aria-hidden />
+                                    <Check
+                                        size={compact ? 13 : 15}
+                                        aria-hidden
+                                    />
                                 ) : (
                                     i + 1
                                 )}
                             </span>
                             <span
-                                className={`text-[10px] font-semibold uppercase tracking-wide ${
+                                className={`font-semibold uppercase tracking-wide ${
+                                    compact ? 'text-[9px]' : 'text-[10px]'
+                                } ${
                                     active
                                         ? 'text-neutral-800'
                                         : 'text-neutral-400'
