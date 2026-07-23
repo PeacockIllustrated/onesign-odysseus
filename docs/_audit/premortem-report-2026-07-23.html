@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Premortem: public /design studio launch</title>
+<style>
+    :root {
+        --accent: #4e7e8c;
+        --accent-dark: #3a5f6a;
+        --accent-light: #e8f0f3;
+        --ink: #1a1f23;
+        --muted: #6b7280;
+        --line: #d9dee2;
+        --high: #b4232a;
+        --medium: #b06d10;
+        --low: #4e7e8c;
+        --fixed: #2f7a44;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: #f4f5f6;
+        line-height: 1.55;
+        padding: 32px 16px 64px;
+    }
+    .page { max-width: 880px; margin: 0 auto; }
+    header.masthead {
+        background: var(--ink);
+        color: #fff;
+        padding: 28px 28px 24px;
+        border-bottom: 4px solid var(--accent);
+        margin-bottom: 24px;
+    }
+    header.masthead h1 { font-size: 22px; letter-spacing: -0.01em; }
+    header.masthead p { color: #b9c2c7; font-size: 13px; margin-top: 6px; }
+    h2 {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        margin: 32px 0 12px;
+    }
+    .card {
+        background: #fff;
+        border: 1px solid var(--line);
+        padding: 18px 20px;
+        margin-bottom: 12px;
+    }
+    .card h3 { font-size: 15px; margin-bottom: 6px; }
+    .card p { font-size: 14px; color: #374151; }
+    .card p + p { margin-top: 8px; }
+    .synth { border-left: 4px solid var(--accent); }
+    .synth .label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--accent-dark);
+        font-weight: 700;
+        display: block;
+        margin-bottom: 4px;
+    }
+    .meta { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+    .chip {
+        display: inline-block;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        padding: 2px 8px;
+        border: 1px solid currentColor;
+    }
+    .sev-high   { color: var(--high); }
+    .sev-medium { color: var(--medium); }
+    .sev-low    { color: var(--low); }
+    .st-fixed       { color: var(--fixed); }
+    .st-outstanding { color: var(--high); }
+    .st-partial     { color: var(--medium); }
+    ol.checklist { counter-reset: item; list-style: none; }
+    ol.checklist li {
+        background: #fff;
+        border: 1px solid var(--line);
+        padding: 14px 16px 14px 52px;
+        position: relative;
+        margin-bottom: 8px;
+        font-size: 14px;
+    }
+    ol.checklist li::before {
+        counter-increment: item;
+        content: counter(item);
+        position: absolute;
+        left: 16px;
+        top: 12px;
+        width: 24px;
+        height: 24px;
+        background: var(--accent);
+        color: #fff;
+        font-weight: 700;
+        font-size: 13px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .foot { margin-top: 28px; font-size: 12px; color: var(--muted); }
+    code { background: var(--accent-light); padding: 0 4px; font-size: 0.92em; }
+</style>
+</head>
+<body>
+<div class="page">
+    <header class="masthead">
+        <h1>Premortem: public /design studio launch</h1>
+        <p>Onesign &amp; Digital · 23 July 2026 · frame: it is January 2027 and the public launch has failed; this is the post-hoc.</p>
+    </header>
+
+    <h2>Synthesis</h2>
+    <div class="card synth">
+        <span class="label">Most likely failure</span>
+        <p>Leads landed unseen. Nothing told staff a design request had arrived: no notification row, no dashboard entry, no badge, no email. The success card promised a reply "usually within 1 working day" and the software had no way to keep it. Fixed in this change (migration 073 plus the <code>design_request</code> attention kind), but the migration must actually be applied on deploy.</p>
+    </div>
+    <div class="card synth">
+        <span class="label">Most dangerous failure</span>
+        <p>The send step silently ate real enquiries. Browser autofill filled the hidden "Company website" honeypot and the action returned a fake success with no row written; separately, a retina thumbnail over 4 MB rejected the whole submission with a raw validation string. Both were invisible in every metric, and both hit the best-qualified customers hardest. Fixed: the honeypot now flags instead of drops, the thumbnail is captured clean and downscaled client-side, and the server strips oversize optional fields rather than rejecting the lead.</p>
+    </div>
+    <div class="card synth">
+        <span class="label">The hidden assumption</span>
+        <p>"The staff engine, relabelled, is safe to hand to the public." The wizard mounts the staff components wholesale, so every staff affordance ships to customers by default; <code>simplified</code> is a contract, not a skin. Any control added to the shared visualiser components lands on the public page the day it merges unless it is explicitly gated. This is now written into CLAUDE.md so future work honours it.</p>
+    </div>
+
+    <h2>Failure cards</h2>
+
+    <div class="card">
+        <div class="meta"><span class="chip sev-high">High</span><span class="chip st-fixed">Fixed in this change</span></div>
+        <h3>1. Leads sit unseen and go stale</h3>
+        <p>Migration 060 published the table to Realtime but nothing subscribed; the dashboard kind gate skipped unknown kinds; the sidebar link had no badge. A Friday submission waited for someone to open the inbox by habit.</p>
+        <p>Fix: SECURITY DEFINER trigger (migration 073) inserts a Needs Attention notification per request, rendered live by the existing dashboard feed.</p>
+    </div>
+
+    <div class="card">
+        <div class="meta"><span class="chip sev-high">High</span><span class="chip st-fixed">Fixed in this change</span></div>
+        <h3>2. The honeypot swallowed real enquiries</h3>
+        <p>The hidden field was labelled "Company website", a string autofill heuristics match. A hit returned success and wrote nothing; the customer saw the celebration card.</p>
+        <p>Fix: a honeypot hit now records the lead with a triage note ("possible bot, please verify"), and the field is relabelled so autofill leaves it alone. Volume stays bounded by the rate limit.</p>
+    </div>
+
+    <div class="card">
+        <div class="meta"><span class="chip sev-high">High</span><span class="chip st-fixed">Fixed in this change</span></div>
+        <h3>3. Big designs failed at the last step</h3>
+        <p>A dpr-2 capture could exceed the 4 MB thumbnail cap and sink the whole submission with a raw Zod string; the 5 MB flattened SVG had the same failure mode. Neither was checked client-side.</p>
+        <p>Fix: thumbnails are trimmed and downscaled to a small JPEG before sending; the server nulls an oversize thumbnail or flattened SVG instead of rejecting (the design survives in <code>params_json.artworkLayers</code>); database errors return a human message with the email fallback.</p>
+    </div>
+
+    <div class="card">
+        <div class="meta"><span class="chip sev-high">High</span><span class="chip st-fixed">Fixed in this change</span></div>
+        <h3>4. The enquiry underspecified the premium job</h3>
+        <p>The built-up lettering spec (finish, depth, metres of return, welds) rode in <code>params_json</code> but was displayed nowhere; the engine renders built-up letters as flat stand-off. A quote from the detail view missed the most expensive fabrication on the sign.</p>
+        <p>Fix: a "Built-up lettering (premium)" card on the request detail page with the full spec and a warning to quote returns and welds. Fabricating built-up letters directly from the enquiry remains the flagged follow-up in CLAUDE.md.</p>
+    </div>
+
+    <div class="card">
+        <div class="meta"><span class="chip sev-medium">Medium</span><span class="chip st-fixed">Fixed in this change</span></div>
+        <h3>5. Internal leftovers read as broken software</h3>
+        <p>The binder button (super-admin actions) could only error for an anonymous visitor; the trace panel linked into the login-walled vectoriser; help text referenced a Flat tab that does not exist publicly; staff rail step numbers collided with the wizard's own stepper.</p>
+        <p>Fix: all four gated behind <code>simplified</code> (hidden or reworded).</p>
+    </div>
+
+    <div class="card">
+        <div class="meta"><span class="chip sev-medium">Medium</span><span class="chip st-fixed">Fixed in this change</span></div>
+        <h3>6. Material selection confused laymen</h3>
+        <p>Shop vocabulary leaked through the shared controls: returns, bend deduction, keyline offset, protrusion, shadow gap, free-text material spec. The customer picked nothing, or picked wrong, and the enquiry arrived ambiguous.</p>
+        <p>Fix: the public size step now leads with quick size presets and plain words ("Folded edges", "Depth off the wall", "Sign colour"); thickness, shadow gap and panel splitting are staff-only; the finish editor keeps one plain-language vocabulary with friendlier labels for the technical numbers; the built-up modal speaks customer ("Metal sides to fold", "Welded corners").</p>
+    </div>
+
+    <div class="card">
+        <div class="meta"><span class="chip sev-medium">Medium</span><span class="chip st-fixed">Fixed in this change</span></div>
+        <h3>7. A 3D tap on the wrong step armed an invisible edit</h3>
+        <p>Path picking was live on every step but the finish editor only exists on the Artwork step; on mobile with the sheet collapsed a tap flashed orange and did nothing visible.</p>
+        <p>Fix: picking is gated to the Artwork step and a pick opens the sheet.</p>
+    </div>
+
+    <div class="card">
+        <div class="meta"><span class="chip sev-medium">Medium</span><span class="chip st-fixed">Fixed in this change</span></div>
+        <h3>8. A crash was a dead end</h3>
+        <p>No /design error boundary: a WebGL failure bubbled to the root boundary with staff-toned copy and a "Go home" link into the login flow.</p>
+        <p>Fix: a customer-facing boundary with "Try again" and "Email us instead", so a crash still captures the enquiry.</p>
+    </div>
+
+    <div class="card">
+        <div class="meta"><span class="chip sev-low">Low</span><span class="chip st-fixed">Fixed in this change</span></div>
+        <h3>9. Previews carried production linework</h3>
+        <p>The submitted thumbnail was captured with annotations on, so the success card and inbox preview looked like a draft.</p>
+        <p>Fix: the wizard renders annotation-free and uses the same clean-capture flip as staff exports for the thumbnail.</p>
+    </div>
+
+    <div class="card">
+        <div class="meta"><span class="chip sev-medium">Medium</span><span class="chip st-fixed">Fixed in this change</span></div>
+        <h3>10. The lead path was untested</h3>
+        <p>Zero tests on <code>submitDesignRequest</code> and <code>assembleDesignPayload</code> against 562 elsewhere; a refactor could break the one path the office never exercises.</p>
+        <p>Fix: 16 tests covering the honeypot flag, oversize stripping, the projecting sign round trip and the built-up passthrough.</p>
+    </div>
+
+    <div class="card">
+        <div class="meta"><span class="chip sev-medium">Medium</span><span class="chip st-partial">Partially mitigated</span></div>
+        <h3>11. Spam or throttling under a marketing push</h3>
+        <p>The rate limit is in-memory per serverless instance and the 60-per-minute cap is app-wide: a link blast can throttle legitimate visitors while a distributed bot walks past the counters. Flag-not-drop makes bot noise visible rather than silent.</p>
+        <p>Remaining: turn on Turnstile or hCaptcha when volume justifies it; the seam is documented in the actions file.</p>
+    </div>
+
+    <div class="card">
+        <div class="meta"><span class="chip sev-medium">Medium</span><span class="chip st-outstanding">Outstanding: Tom's call</span></div>
+        <h3>12. One person owns the reply promise</h3>
+        <p>"Usually within 1 working day" appears on the form and the success card, and Tom is the single point of failure for triage. The notification fix means the dashboard tells you, but nobody has been named to watch it on Fridays and holidays.</p>
+        <p>Decide: keep the promise and own the inbox, or soften the wording in PublicWizard (it appears twice).</p>
+    </div>
+
+    <div class="card">
+        <div class="meta"><span class="chip sev-low">Low</span><span class="chip st-partial">Partially mitigated</span></div>
+        <h3>13. Mobile ergonomics degrade to fiddly</h3>
+        <p>Bare millimetre fields on the size step, keyboard plus the bottom sheet squeezing the stage, tour cards overlapping targets on small screens.</p>
+        <p>Mitigated: quick size presets anchor the size step. Remaining: a real-device pass before the link goes out (see checklist).</p>
+    </div>
+
+    <h2>Pre-launch checklist</h2>
+    <ol class="checklist">
+        <li>Apply migration 073 to the live Supabase project as part of the deploy, then submit a test request and confirm it appears on the dashboard Needs Attention feed without opening the inbox manually.</li>
+        <li>Real-device pass on iPhone Safari and Android Chrome: build a sign with a logo upload, per-shape finishes and a projecting sign; submit; confirm the success card and a clean thumbnail in the inbox.</li>
+        <li>Fill the details form with a password manager or Chrome autofill and confirm the enquiry lands (flagged at worst), never a fake success.</li>
+        <li>Submit a heavy design (multi-layer SVG, full-colour vinyl) from a retina display and confirm the send succeeds with a small JPEG thumbnail stored.</li>
+        <li>Sweep /design logged out: every visible control works without a session, and nothing routes into /admin or /login except the footer staff link.</li>
+    </ol>
+
+    <p class="foot">Companion transcript with the full context and audit detail: docs/_audit/premortem-transcript-2026-07-23.md. Prepared with the premortem skill, single-pass mode grounded in two code audits at commit 6846540.</p>
+</div>
+</body>
+</html>

@@ -46,7 +46,10 @@ import { SvgDropzone } from '../(portal)/admin/visualiser/SvgDropzone';
 import { usePanelDerivation } from '../(portal)/admin/visualiser/usePanelDerivation';
 import { useSceneInteraction } from '../(portal)/admin/visualiser/useSceneInteraction';
 import { sceneCapture } from '../(portal)/admin/visualiser/Scene3D';
-import { trimImageDataUrl } from '@/lib/visualiser/image';
+import {
+    downscaleImageDataUrl,
+    trimImageDataUrl,
+} from '@/lib/visualiser/image';
 import { buildDevelopment } from '@/lib/visualiser/geometry';
 import { splitPanels as splitPanelGeometry } from '@/lib/visualiser/split';
 import { composeLayersSvg } from '@/lib/visualiser/compose';
@@ -146,6 +149,8 @@ export function PublicWizard({
         activeTab,
         inactive,
         mount,
+        captureClean,
+        setCaptureClean,
     } = useVisualiser();
 
     // Same pure-geometry pipeline as the staff tool — this is a live engine.
@@ -244,6 +249,18 @@ export function PublicWizard({
     const inFlightRef = useRef(false);
 
     const step = STEPS[stepIdx];
+
+    // Path-picking only makes sense on the Artwork step — that's where the
+    // finish editor lives. On any other step a tap would silently arm a group
+    // edit with no visible panel (especially with the mobile sheet collapsed),
+    // so gate the handler to the step and pop the sheet open on a pick.
+    const handleScenePathPick = interaction.handlePathPick
+        ? (i: number) => {
+              if (step.key !== 'artwork') return;
+              setDockOpen(true);
+              interaction.handlePathPick?.(i);
+          }
+        : undefined;
 
     useEffect(() => {
         const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -358,12 +375,29 @@ export function PublicWizard({
                 inactive,
                 mount,
             });
-            // Face-on shot trimmed to the sign (falls back to the orbit shot).
-            const faceThumb =
-                sceneCapture.faceOn?.() ?? sceneCapture.fn?.() ?? null;
-            const thumbnail = faceThumb
+            // Face-on shot with the production linework stripped (same
+            // captureClean flip the staff exports use), trimmed to the sign
+            // (falls back to the orbit shot) and downscaled so a retina
+            // capture can't blow the submission's size cap.
+            setCaptureClean(true);
+            await new Promise<void>((r) =>
+                requestAnimationFrame(() => requestAnimationFrame(() => r())),
+            );
+            let faceThumb: string | null = null;
+            try {
+                faceThumb =
+                    sceneCapture.faceOn?.() ?? sceneCapture.fn?.() ?? null;
+            } finally {
+                setCaptureClean(false);
+            }
+            let thumbnail = faceThumb
                 ? await trimImageDataUrl(faceThumb).catch(() => faceThumb)
                 : null;
+            if (thumbnail) {
+                thumbnail = await downscaleImageDataUrl(thumbnail).catch(
+                    () => thumbnail,
+                );
+            }
             setPreparing(false);
             setSubmitting(true);
             const res = await submitDesignRequest({
@@ -488,7 +522,7 @@ export function PublicWizard({
                             pathGroupColors={interaction.pathGroupColors}
                             pendingPaths={interaction.pendingPathsSet}
                             isEditingGroup={interaction.isEditingGroup}
-                            onPathToggle={interaction.handlePathPick}
+                            onPathToggle={handleScenePathPick}
                             fixingMode={interaction.fixingMode}
                             cableMode={interaction.cableMode}
                             cableHoles={interaction.cableHoles}
@@ -515,6 +549,11 @@ export function PublicWizard({
                             illumination={params.illumination}
                             explodeT={view === 'folded' ? explodeT : 0}
                             reducedMotion={reducedMotion}
+                            // Customers see the sign as it will look installed —
+                            // no register/keyline linework — and the submitted
+                            // thumbnail drops the artwork outlines too.
+                            annotations={false}
+                            showOutlines={!captureClean}
                         />
                     </div>
                 ) : (
@@ -608,7 +647,10 @@ export function PublicWizard({
                                 </p>
                                 {step.key === 'size' && (
                                     <div data-tour="size">
-                                        <ControlsPanel hideIllumination />
+                                        <ControlsPanel
+                                            hideIllumination
+                                            simplified
+                                        />
                                     </div>
                                 )}
                                 {step.key === 'artwork' && (
@@ -1163,7 +1205,11 @@ function ContactForm(props: {
                 />
             </label>
 
-            {/* Honeypot — off-screen, not tabbable. A human never fills this. */}
+            {/* Honeypot — off-screen, not tabbable. A human never fills this.
+                The label deliberately matches NO autofill heuristic ("Company
+                website" used to — password managers filled it and the lead was
+                silently dropped as a bot). The server now flags rather than
+                drops, but keeping autofill away is the first line. */}
             <div
                 aria-hidden
                 style={{
@@ -1175,9 +1221,10 @@ function ContactForm(props: {
                 }}
             >
                 <label>
-                    Company website
+                    Leave this field empty
                     <input
                         type="text"
+                        name="verify_blank"
                         tabIndex={-1}
                         autoComplete="off"
                         value={props.honeypot}

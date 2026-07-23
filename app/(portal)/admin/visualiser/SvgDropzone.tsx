@@ -426,7 +426,11 @@ function GroupEditControls({
 
             {hasStandoff && (
                 <NumField
-                    label="Standoff distance (mm)"
+                    label={
+                        simplified
+                            ? 'Gap off the face (mm)'
+                            : 'Standoff distance (mm)'
+                    }
                     step={1}
                     value={standoff}
                     onChange={(n) => setStandoff(n >= 0 ? n : 0)}
@@ -435,7 +439,7 @@ function GroupEditControls({
 
             {hasGlow && (
                 <NumField
-                    label="Glow intensity"
+                    label={simplified ? 'Glow brightness' : 'Glow intensity'}
                     step={0.1}
                     value={glowIntensity}
                     onChange={(n) => setGlowIntensity(n >= 0 ? n : 0)}
@@ -445,7 +449,11 @@ function GroupEditControls({
             {hasPushThrough && (
                 <>
                     <NumField
-                        label="Keyline offset (mm)"
+                        label={
+                            simplified
+                                ? 'Halo gap around letters (mm)'
+                                : 'Keyline offset (mm)'
+                        }
                         step={0.5}
                         value={keylineOffset}
                         onChange={(n) =>
@@ -453,15 +461,19 @@ function GroupEditControls({
                         }
                     />
                     <NumField
-                        label="Protrusion (mm)"
+                        label={
+                            simplified
+                                ? 'How far letters stick out (mm)'
+                                : 'Protrusion (mm)'
+                        }
                         step={1}
                         value={protrusion}
                         onChange={(n) => setProtrusion(n >= 0 ? n : 0)}
                     />
                     <p className="text-[10px] text-neutral-500">
-                        Outer letter + each counter are cut as separate
-                        pieces. Mount both on a backing board behind the
-                        panel.
+                        {simplified
+                            ? 'We cut the acrylic letters and mount them through the face so they sit proud — and glow when lit.'
+                            : 'Outer letter + each counter are cut as separate pieces. Mount both on a backing board behind the panel.'}
                     </p>
                 </>
             )}
@@ -488,7 +500,9 @@ function GroupEditControls({
                                 )
                             }
                         />
-                        Extra face (cut from metal, laminated on front)
+                        {simplified
+                            ? 'Add a metal face (brass, steel…) — premium'
+                            : 'Extra face (cut from metal, laminated on front)'}
                     </label>
                     {extraFace && (
                         <div className="grid grid-cols-2 gap-1.5">
@@ -532,9 +546,9 @@ function GroupEditControls({
                     )}
                     {extraFace && (
                         <p className="text-[10px] text-neutral-500">
-                            {FACE_MATERIALS[extraFace.material].label} faces cut
-                            to the letter shape (counters as holes) — exported as
-                            cut files and sent to the nester like acrylic.
+                            {simplified
+                                ? `A real ${FACE_MATERIALS[extraFace.material].label.toLowerCase()} face on the front of each letter — a high-end architectural finish.`
+                                : `${FACE_MATERIALS[extraFace.material].label} faces cut to the letter shape (counters as holes) — exported as cut files and sent to the nester like acrylic.`}
                         </p>
                     )}
                 </div>
@@ -1187,13 +1201,18 @@ export function SvgDropzone({ simplified = false }: { simplified?: boolean } = {
         <div className="space-y-3">
             <div className="flex items-center justify-between">
                 <h3 className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
-                    <span
-                        className="flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold text-white"
-                        style={{ background: hasArtwork ? '#4e7e8c' : '#9ca3af' }}
-                        aria-hidden
-                    >
-                        3
-                    </span>
+                    {/* The numbered chip is the STAFF rail's workflow ordering —
+                        meaningless (and clashing with the wizard's own 1–4
+                        stepper) in the public studio. */}
+                    {!simplified && (
+                        <span
+                            className="flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold text-white"
+                            style={{ background: hasArtwork ? '#4e7e8c' : '#9ca3af' }}
+                            aria-hidden
+                        >
+                            3
+                        </span>
+                    )}
                     Artwork
                 </h3>
                 {hasArtwork && (
@@ -1208,7 +1227,10 @@ export function SvgDropzone({ simplified = false }: { simplified?: boolean } = {
             </div>
 
             {traceMode ? (
-                <TraceImage onClose={() => setTraceMode(false)} />
+                <TraceImage
+                    onClose={() => setTraceMode(false)}
+                    simplified={simplified}
+                />
             ) : !hasArtwork ? (
                 <div className="space-y-2">
                     <button
@@ -1232,17 +1254,22 @@ export function SvgDropzone({ simplified = false }: { simplified?: boolean } = {
                             beta
                         </span>
                     </button>
-                    <BinderButton
-                        label="or pick from the binder"
-                        onPick={(a) =>
-                            void handleFile(
-                                new File([a.svgSource], `${a.name}.svg`, {
-                                    type: 'image/svg+xml',
-                                }),
-                            )
-                        }
-                        className="flex w-full items-center justify-center gap-1.5 rounded-md border border-neutral-200 px-3 py-2 text-[11px] font-medium text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700"
-                    />
+                    {/* The binder is the INTERNAL client-logo library (super-
+                        admin actions) — on the unauth public studio it can only
+                        error, so it's staff-only. */}
+                    {!simplified && (
+                        <BinderButton
+                            label="or pick from the binder"
+                            onPick={(a) =>
+                                void handleFile(
+                                    new File([a.svgSource], `${a.name}.svg`, {
+                                        type: 'image/svg+xml',
+                                    }),
+                                )
+                            }
+                            className="flex w-full items-center justify-center gap-1.5 rounded-md border border-neutral-200 px-3 py-2 text-[11px] font-medium text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700"
+                        />
+                    )}
                 </div>
             ) : composite ? (
                 <div className="space-y-2">
@@ -1464,21 +1491,26 @@ export function SvgDropzone({ simplified = false }: { simplified?: boolean } = {
                         >
                             <ImageUp size={12} aria-hidden /> Trace
                         </button>
-                        <BinderButton
-                            label="Binder"
-                            onPick={(a) =>
-                                void handleFile(
-                                    new File([a.svgSource], `${a.name}.svg`, {
-                                        type: 'image/svg+xml',
-                                    }),
-                                )
-                            }
-                            className="flex min-h-[32px] flex-1 items-center justify-center gap-1 rounded-md border border-neutral-300 px-2 py-1.5 text-[11px] font-medium text-neutral-600 hover:bg-neutral-100"
-                        />
+                        {!simplified && (
+                            <BinderButton
+                                label="Binder"
+                                onPick={(a) =>
+                                    void handleFile(
+                                        new File([a.svgSource], `${a.name}.svg`, {
+                                            type: 'image/svg+xml',
+                                        }),
+                                    )
+                                }
+                                className="flex min-h-[32px] flex-1 items-center justify-center gap-1 rounded-md border border-neutral-300 px-2 py-1.5 text-[11px] font-medium text-neutral-600 hover:bg-neutral-100"
+                            />
+                        )}
                     </div>
                     <p className="text-[10px] text-neutral-400">
-                        Select a layer, then drag its handle on the Flat
-                        development tab to move it.
+                        {/* The Flat development tab only exists in the staff
+                            tool — pointing a customer at it is a dead end. */}
+                        {simplified
+                            ? 'Select a piece to set its size and position on the sign, or centre it with one tap.'
+                            : 'Select a layer, then drag its handle on the Flat development tab to move it.'}
                     </p>
                 </div>
             ) : (
@@ -1643,7 +1675,11 @@ export function SvgDropzone({ simplified = false }: { simplified?: boolean } = {
                         isn't a wall of always-open panels. */}
                     <div className="space-y-2">
                         {hasArtwork && (
-                            <Section title="Materials" step={4} accent>
+                            <Section
+                                title={simplified ? 'Finish' : 'Materials'}
+                                step={simplified ? undefined : 4}
+                                accent
+                            >
                                 {/* Whole-sign default (shop tool only) — the
                                     single choice that drives every shape unless
                                     it's overridden in the list below. Hidden in

@@ -597,16 +597,20 @@ export function BuiltUpModal({
                                             {analysis.faceCount}
                                         </dd>
                                     </div>
+                                    {/* Customer-facing wording — "return to
+                                        form" / "welds" are shop-floor terms. */}
                                     <div className="flex justify-between gap-2">
                                         <dt className="text-neutral-500">
-                                            Return to form
+                                            Metal sides to fold
                                         </dt>
                                         <dd className="font-medium tabular-nums text-neutral-800">
                                             {metres} m
                                         </dd>
                                     </div>
                                     <div className="flex justify-between gap-2">
-                                        <dt className="text-neutral-500">Welds</dt>
+                                        <dt className="text-neutral-500">
+                                            Welded corners
+                                        </dt>
                                         <dd className="font-medium tabular-nums text-neutral-800">
                                             {analysis.weldCount}
                                         </dd>

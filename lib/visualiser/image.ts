@@ -267,6 +267,47 @@ export async function rasterizeFaceArtwork(
 }
 
 /**
+ * Downscale a data-URL image so its longest edge is at most `maxEdge` px,
+ * re-encoding as JPEG (opaque captures compress far smaller than PNG). Keeps
+ * the original when it's already small enough and the original encoding isn't
+ * dramatically larger. The public studio uses this on the submitted thumbnail:
+ * a retina-DPR canvas capture can exceed the server's field cap and reject the
+ * whole enquiry, and a lead is worth more than a lossless preview.
+ * Browser-only (uses canvas); falls back to the input on any failure.
+ */
+export async function downscaleImageDataUrl(
+    dataUrl: string,
+    maxEdge = 1200,
+    quality = 0.85,
+): Promise<string> {
+    if (typeof document === 'undefined') return dataUrl;
+    try {
+        const img = await loadImage(dataUrl);
+        const w = img.naturalWidth;
+        const h = img.naturalHeight;
+        if (!w || !h) return dataUrl;
+        const scale = Math.min(1, maxEdge / Math.max(w, h));
+        const cw = Math.max(1, Math.round(w * scale));
+        const ch = Math.max(1, Math.round(h * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = cw;
+        canvas.height = ch;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return dataUrl;
+        // JPEG has no alpha — lay the capture over white so transparent
+        // captures don't come out black.
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, cw, ch);
+        ctx.drawImage(img, 0, 0, cw, ch);
+        const out = canvas.toDataURL('image/jpeg', quality);
+        // Only keep the re-encode when it actually helps.
+        return out.length < dataUrl.length ? out : dataUrl;
+    } catch {
+        return dataUrl;
+    }
+}
+
+/**
  * Crop a PNG/JPEG data URL to its non-background content (with a small pad),
  * returning a fresh PNG data URL. Falls back to the original on any failure
  * or when there's nothing meaningful to crop. Browser-only (uses canvas).

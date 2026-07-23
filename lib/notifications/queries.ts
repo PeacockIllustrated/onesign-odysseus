@@ -5,6 +5,7 @@ export type AttentionKind =
     | 'artwork_changes_requested'
     | 'shop_floor_flag'
     | 'external_order'
+    | 'design_request'
     | 'quote_expiring'
     | 'quote_to_convert'
     | 'invoice_overdue'
@@ -49,6 +50,7 @@ export async function getAttentionItems(): Promise<AttentionSummary> {
         artwork_changes_requested: 0,
         shop_floor_flag: 0,
         external_order: 0,
+        design_request: 0,
         quote_expiring: 0,
         quote_to_convert: 0,
         invoice_overdue: 0,

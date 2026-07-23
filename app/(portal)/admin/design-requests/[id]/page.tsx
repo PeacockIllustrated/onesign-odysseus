@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { requireAdmin } from '@/lib/auth';
 import { Card } from '@/app/(portal)/components/ui';
 import { getDesignRequest } from '@/lib/design-requests/actions';
+import { finishSpec } from '@/lib/visualiser/returns-finish';
 import { RequestActions } from './RequestActions';
 import { RequestExports } from './RequestExports';
 
@@ -128,6 +129,64 @@ export default async function DesignRequestDetailPage({
                             />
                         )}
                     </Card>
+
+                    {/* Premium built-up lettering — the public studio stashes
+                        the full fabrication spec on params_json.builtUp, but
+                        the engine still renders it as stand-off, so nothing
+                        else surfaces it. Without this block the quote misses
+                        the (expensive) built-up work entirely. */}
+                    {p?.builtUp && (
+                        <Card className="p-4">
+                            <h3 className="mb-2 text-xs font-semibold uppercase tracking-widest text-neutral-500">
+                                Built-up lettering (premium)
+                            </h3>
+                            <p className="mb-2 text-[11px] text-amber-700">
+                                The customer built fabricated built-up letters —
+                                quote returns + welds, not flat stand-off.
+                                Rebuild in the built-up returns tool for the cut
+                                sheet.
+                            </p>
+                            <Row
+                                label="Finish"
+                                value={
+                                    <span className="inline-flex items-center gap-2">
+                                        <span
+                                            className="inline-block h-4 w-4 rounded border border-neutral-300"
+                                            style={{
+                                                background: finishSpec(
+                                                    p.builtUp.finish,
+                                                ).face,
+                                            }}
+                                        />
+                                        {finishSpec(p.builtUp.finish).label}
+                                    </span>
+                                }
+                            />
+                            <Row
+                                label="Build-up depth"
+                                value={`${p.builtUp.returnDepthMm} mm`}
+                            />
+                            <Row
+                                label="Material thickness"
+                                value={`${p.builtUp.materialThicknessMm} mm`}
+                            />
+                            {typeof p.builtUp.realHeightMm === 'number' && (
+                                <Row
+                                    label="Letter height"
+                                    value={`${Math.round(p.builtUp.realHeightMm)} mm`}
+                                />
+                            )}
+                            <Row
+                                label="Letters"
+                                value={p.builtUp.faceCount}
+                            />
+                            <Row
+                                label="Return to form"
+                                value={`${(p.builtUp.totalReturnLengthMm / 1000).toFixed(2)} m`}
+                            />
+                            <Row label="Welds" value={p.builtUp.weldCount} />
+                        </Card>
+                    )}
 
                     {r.project_notes && (
                         <Card className="p-4">

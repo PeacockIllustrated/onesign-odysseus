@@ -28,7 +28,14 @@ type LoadedImage = { rgba: Uint8ClampedArray; w: number; h: number };
  * path — surfaced as "concept" so a messy trace never reaches the
  * cutter unreviewed.
  */
-export function TraceImage({ onClose }: { onClose: () => void }) {
+export function TraceImage({
+    onClose,
+    simplified = false,
+}: {
+    onClose: () => void;
+    /** Public-studio mode — hides links into auth-gated staff tools. */
+    simplified?: boolean;
+}) {
     const { addArtworkLayer } = useVisualiser();
     const inputRef = useRef<HTMLInputElement>(null);
     const [img, setImg] = useState<LoadedImage | null>(null);
@@ -145,16 +152,20 @@ export function TraceImage({ onClose }: { onClose: () => void }) {
                 The result is a rough silhouette to ballpark ideas, not a
                 production cut file.
             </p>
-            <p className="text-[10px] text-neutral-500">
-                Need colour or more control?{' '}
-                <Link
-                    href="/admin/visualiser/vectorise"
-                    className="font-medium text-[#4e7e8c] hover:underline"
-                >
-                    Open the full Image&nbsp;→&nbsp;SVG converter
-                </Link>
-                .
-            </p>
+            {/* The vectorise tool is behind the staff login — linking a public
+                customer to it dead-ends at the login wall. */}
+            {!simplified && (
+                <p className="text-[10px] text-neutral-500">
+                    Need colour or more control?{' '}
+                    <Link
+                        href="/admin/visualiser/vectorise"
+                        className="font-medium text-[#4e7e8c] hover:underline"
+                    >
+                        Open the full Image&nbsp;→&nbsp;SVG converter
+                    </Link>
+                    .
+                </p>
+            )}
 
             {!img ? (
                 <button
