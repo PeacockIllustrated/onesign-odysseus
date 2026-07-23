@@ -213,6 +213,116 @@ function displayColor(hex: string, night: boolean): string {
 }
 
 /* ------------------------------------------------------------------ *
+ * Shading modes
+ *
+ * 'flat' is the historical unlit render (every surface meshBasicMaterial,
+ * night simulated by albedo dimming) — still the default, so the staff
+ * visualiser, backshop captures and every export keep their exact look.
+ * 'realistic' lights the same scene: a procedural studio environment (no
+ * network fetches — the public page must never depend on a CDN HDRI) plus
+ * physically-based materials tuned per finish role. Overlay/UI meshes
+ * (hover washes, fixing rings, hit targets, ghosts) stay unlit in both.
+ * ------------------------------------------------------------------ */
+
+export type ShadingMode = 'flat' | 'realistic';
+
+const ShadingContext = createContext<ShadingMode>('flat');
+
+/** What a lit surface is made of — drives its PBR response. */
+type SurfaceFinish = 'paint' | 'acrylic' | 'metal' | 'print';
+
+const FINISH_PBR: Record<
+    SurfaceFinish,
+    {
+        roughness: number;
+        metalness: number;
+        clearcoat: number;
+        clearcoatRoughness: number;
+    }
+> = {
+    /** Wet-coated aluminium — satin paint with a light lacquer sheen. */
+    paint: { roughness: 0.42, metalness: 0.06, clearcoat: 0.25, clearcoatRoughness: 0.3 },
+    /** Cast acrylic — deep gloss. */
+    acrylic: { roughness: 0.16, metalness: 0, clearcoat: 0.85, clearcoatRoughness: 0.12 },
+    /** Brass / steel / aluminium faces + studs. */
+    metal: { roughness: 0.32, metalness: 0.85, clearcoat: 0, clearcoatRoughness: 0 },
+    /** Printed vinyl — satin laminate, no metal response. */
+    print: { roughness: 0.55, metalness: 0, clearcoat: 0.08, clearcoatRoughness: 0.4 },
+};
+
+interface SurfaceMaterialProps {
+    finish?: SurfaceFinish;
+    color?: string;
+    map?: THREE.Texture | null;
+    transparent?: boolean;
+    opacity?: number;
+    side?: THREE.Side;
+    depthWrite?: boolean;
+    polygonOffset?: boolean;
+    polygonOffsetFactor?: number;
+    polygonOffsetUnits?: number;
+}
+
+/**
+ * A visible sign surface: unlit meshBasicMaterial in 'flat' shading (the
+ * exact historical output), a finish-tuned meshPhysicalMaterial under the
+ * studio environment in 'realistic'.
+ */
+function SurfaceMaterial({ finish = 'paint', ...props }: SurfaceMaterialProps) {
+    const shading = useContext(ShadingContext);
+    if (shading === 'flat') return <meshBasicMaterial {...props} />;
+    return <meshPhysicalMaterial {...props} {...FINISH_PBR[finish]} />;
+}
+
+/**
+ * Lighting rig for 'realistic' shading: a procedural room environment (via
+ * PMREM — generated on the GPU at mount, zero downloads) for image-based
+ * reflections, plus a soft key/fill pair for definition. At night the
+ * environment drops away so the albedo dimming + emissive glow keep carrying
+ * the dark look the flat pipeline established.
+ */
+function StudioLighting({ night }: { night: boolean }) {
+    const { gl, scene } = useThree();
+    useEffect(() => {
+        let cancelled = false;
+        let pmrem: THREE.PMREMGenerator | null = null;
+        let envTex: THREE.Texture | null = null;
+        void import('three/examples/jsm/environments/RoomEnvironment.js').then(
+            ({ RoomEnvironment }) => {
+                if (cancelled) return;
+                pmrem = new THREE.PMREMGenerator(gl);
+                envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+                scene.environment = envTex;
+            },
+        );
+        return () => {
+            cancelled = true;
+            scene.environment = null;
+            envTex?.dispose();
+            pmrem?.dispose();
+        };
+    }, [gl, scene]);
+    useEffect(() => {
+        scene.environmentIntensity = night ? 0.35 : 1.1;
+        return () => {
+            scene.environmentIntensity = 1;
+        };
+    }, [scene, night]);
+    return (
+        <>
+            <directionalLight
+                position={[4, 6, 8]}
+                intensity={night ? 0.3 : 1.2}
+            />
+            <directionalLight
+                position={[-5, 2, -4]}
+                intensity={night ? 0.12 : 0.4}
+            />
+        </>
+    );
+}
+
+/* ------------------------------------------------------------------ *
  * Exploded assembly view
  *
  * A single 0..1 `explodeT` fans the panel's layer stack apart along the
@@ -324,7 +434,7 @@ function PanelPlane({
     return (
         <mesh position={position}>
             <planeGeometry args={args} />
-            <meshBasicMaterial
+            <SurfaceMaterial
                 color={color}
                 side={THREE.DoubleSide}
                 polygonOffset
@@ -419,7 +529,7 @@ function FacePlane({
                     : undefined
             }>
             <shapeGeometry args={[shape, 48]} />
-            <meshBasicMaterial
+            <SurfaceMaterial
                 color={color}
                 side={THREE.DoubleSide}
                 polygonOffset
@@ -849,7 +959,8 @@ function StandoffLettering({
                             },
                         ]}
                     />
-                    <meshBasicMaterial
+                    <SurfaceMaterial
+                        finish="acrylic"
                         color={color}
                         side={THREE.DoubleSide}
                         polygonOffset
@@ -936,7 +1047,8 @@ function StandoffLocators({
                         <cylinderGeometry
                             args={[radius, radius, length, 20]}
                         />
-                        <meshBasicMaterial
+                        <SurfaceMaterial
+                            finish="metal"
                             color={displayColor(STANDOFF_STUD_COLOR, night)}
                             polygonOffset
                             polygonOffsetFactor={1}
@@ -1199,7 +1311,7 @@ function MaterialPieces({
                     key={`solid-${piece.pathIndex}-${i}`}
                     position={[0, 0, 0.5 * S]}>
                     <shapeGeometry args={[compoundShape(piece), 48]} />
-                    <meshBasicMaterial
+                    <SurfaceMaterial
                         color={displayColor(piece.color, night)}
                         side={THREE.DoubleSide}
                         polygonOffset
@@ -1218,7 +1330,8 @@ function MaterialPieces({
             {showPrint && vinylTex && (
                 <mesh position={[0, 0, 1 * S]}>
                     <planeGeometry args={[face.wMm * S, face.hMm * S]} />
-                    <meshBasicMaterial
+                    <SurfaceMaterial
+                        finish="print"
                         map={vinylTex}
                         transparent
                         opacity={night ? 0.6 : 1}
@@ -1238,7 +1351,8 @@ function MaterialPieces({
                     key={`vinyl-${piece.pathIndex}-${i}`}
                     position={[0, 0, 1 * S]}>
                     <shapeGeometry args={[compoundShape(piece), 48]} />
-                    <meshBasicMaterial
+                    <SurfaceMaterial
+                        finish="print"
                         color={displayColor(piece.color, night)}
                         side={THREE.DoubleSide}
                         polygonOffset
@@ -1269,7 +1383,8 @@ function MaterialPieces({
                                 },
                             ]}
                         />
-                        <meshBasicMaterial
+                        <SurfaceMaterial
+                            finish="acrylic"
                             color={displayColor(piece.color, night)}
                             polygonOffset
                             polygonOffsetFactor={1}
@@ -1388,7 +1503,8 @@ function PushThroughPieces({
                                 },
                             ]}
                         />
-                        <meshBasicMaterial
+                        <SurfaceMaterial
+                            finish="acrylic"
                             color={displayColor(piece.color, night)}
                             polygonOffset
                             polygonOffsetFactor={1}
@@ -1409,9 +1525,9 @@ function PushThroughPieces({
  * as the underlying letter (outer outline + counters as holes), cut from sheet
  * metal. It sits at the letter's front (`frontZMm`: push-through letters stand
  * proud of the panel; flat cut/backlit sit on the face) and extrudes proud by
- * its sheet thickness. Flat `meshBasicMaterial` like the other pieces — the
- * scene is unlit (a metal shader would render black), so the metal reads from
- * its colour.
+ * its sheet thickness. In flat shading the metal reads from its colour (the
+ * scene is unlit); in realistic shading it gets a true metallic response from
+ * the studio environment.
  */
 function ExtraFacePieces({
     face,
@@ -1480,7 +1596,8 @@ function ExtraFacePieces({
                                 },
                             ]}
                         />
-                        <meshBasicMaterial
+                        <SurfaceMaterial
+                            finish="metal"
                             color={displayColor(piece.color, night)}
                             polygonOffset
                             polygonOffsetFactor={1}
@@ -1565,7 +1682,8 @@ function BacklightGlow({
                             side={THREE.DoubleSide}
                         />
                     ) : (
-                        <meshBasicMaterial
+                        <SurfaceMaterial
+                            finish="acrylic"
                             color="#f5f5f0"
                             side={THREE.DoubleSide}
                         />
@@ -1755,7 +1873,8 @@ function PushThroughBacking({
                 ) : (
                     <mesh key={idx} position={[cx, cy, cz]}>
                         <boxGeometry args={boxArgs} />
-                        <meshBasicMaterial
+                        <SurfaceMaterial
+                            finish="acrylic"
                             // Unlit opal: a dim sheet in the dark view, the
                             // usual translucent opal in daylight.
                             color={night ? shadeHex('#f5f5f0', 0.28) : '#f5f5f0'}
@@ -2110,8 +2229,9 @@ function Panel({
      * Master switch for the non-physical overlay marks — the keyline/reference
      * register lines, cable-hole rings and seam markers. Off (the approval
      * pack's "Annotation" toggle) leaves only how the sign actually looks
-     * installed. Edges + fixing markers are gated upstream via showOutlines /
-     * showStandoffLocators, which the caller turns off in step with this.
+     * installed. Edges are gated upstream via showOutlines in step with this;
+     * stand-off locators are PHYSICAL studs and stay independent (a stood-off
+     * sign without them floats).
      */
     annotations?: boolean;
     illuminationView?: boolean;
@@ -2436,7 +2556,7 @@ function Panel({
                         scale={[1, W > 0 ? H / W : 1, 1]}
                     >
                         <circleGeometry args={[(W * S) / 2, 64]} />
-                        <meshBasicMaterial
+                        <SurfaceMaterial
                             color={panelColor}
                             side={THREE.DoubleSide}
                         />
@@ -2447,7 +2567,7 @@ function Panel({
                 ) : (
                     <mesh position={[0, 0, -D * S]}>
                         <planeGeometry args={[W * S, H * S]} />
-                        <meshBasicMaterial
+                        <SurfaceMaterial
                             color={panelColor}
                             side={THREE.DoubleSide}
                         />
@@ -2503,7 +2623,7 @@ function Panel({
                             key={`pt-island-${i}`}
                             position={[0, 0, 0.5 * S]}>
                             <shapeGeometry args={[shape, 48]} />
-                            <meshBasicMaterial
+                            <SurfaceMaterial
                                 color={panelColor}
                                 side={THREE.DoubleSide}
                                 polygonOffset
@@ -2542,7 +2662,7 @@ function Panel({
                             key={`bl-island-${i}`}
                             position={[0, 0, 0.5 * S]}>
                             <shapeGeometry args={[shape, 48]} />
-                            <meshBasicMaterial
+                            <SurfaceMaterial
                                 color={panelColor}
                                 side={THREE.DoubleSide}
                                 polygonOffset
@@ -2658,7 +2778,7 @@ function Panel({
                           <cylinderGeometry
                               args={[(W * S) / 2, (W * S) / 2, D * S, 64, 1, true]}
                           />
-                          <meshBasicMaterial
+                          <SurfaceMaterial
                               color={panelColor}
                               side={THREE.DoubleSide}
                           />
@@ -2880,7 +3000,8 @@ function ProjectingMounted({
                         <>
                             <mesh position={[0, 0, 0.8 * S]}>
                                 <planeGeometry args={[artW, artH]} />
-                                <meshBasicMaterial
+                                <SurfaceMaterial
+                                    finish="print"
                                     map={artworkTex}
                                     transparent
                                     opacity={night ? 0.6 : 1}
@@ -2892,7 +3013,8 @@ function ProjectingMounted({
                                     rotation={[0, Math.PI, 0]}
                                 >
                                     <planeGeometry args={[artW, artH]} />
-                                    <meshBasicMaterial
+                                    <SurfaceMaterial
+                                        finish="print"
                                         map={artworkTex}
                                         transparent
                                         opacity={night ? 0.6 : 1}
@@ -3093,6 +3215,13 @@ export default function Scene3D(props: {
     explodeT?: number;
     /** Honour prefers-reduced-motion: snap the explode instead of easing it. */
     reducedMotion?: boolean;
+    /**
+     * 'flat' (default) = the historical unlit render — staff surfaces and
+     * every capture keep their exact look. 'realistic' = studio-lit PBR
+     * shading (procedural environment, finish-tuned materials); the public
+     * studio uses it with a "Flat colours" fallback toggle.
+     */
+    shading?: ShadingMode;
 }) {
     const fold = props.fold ?? 1;
     const autoFixings = props.autoFixings ?? [];
@@ -3109,14 +3238,17 @@ export default function Scene3D(props: {
     const pushThroughPieces = props.pushThroughPieces ?? [];
     const extraFacePieces = props.extraFacePieces ?? [];
     // The "Annotation" master switch. Off strips every non-physical mark so the
-    // sign reads exactly as installed: no edge wireframes, fixing markers,
-    // register lines, cable rings or seams. Edges + fixing markers ride on
-    // showOutlines / showStandoffLocators; the overlay lines on `annotations`
-    // itself (threaded into Panel).
+    // sign reads exactly as installed: no edge wireframes, register lines,
+    // cable rings or seams. Edges ride on showOutlines; the overlay lines on
+    // `annotations` itself (threaded into Panel).
     const annotations = props.annotations ?? true;
     const showOutlines = (props.showOutlines ?? true) && annotations;
     const showStandoffLetters = props.showStandoffLetters ?? true;
-    const showStandoffLocators = (props.showStandoffLocators ?? true) && annotations;
+    // Locators are PHYSICAL studs, not annotation linework — they stay when
+    // annotations are stripped, otherwise stood-off letters float in space
+    // (the "as installed" render includes the studs that hold the sign up).
+    const showStandoffLocators = props.showStandoffLocators ?? true;
+    const shading = props.shading ?? 'flat';
     const illuminationView = props.illuminationView ?? false;
     const explodeT = props.explodeT ?? 0;
     const reducedMotion = props.reducedMotion ?? false;
@@ -3240,6 +3372,14 @@ export default function Scene3D(props: {
                 goalPos={goalPos}
                 goalLook={goalLook}
             />
+
+            {/* Realistic shading: procedural studio environment + key/fill.
+                (Context providers must sit INSIDE the Canvas — R3F runs its
+                own React tree.) */}
+            {shading === 'realistic' && (
+                <StudioLighting night={illuminationView} />
+            )}
+            <ShadingContext.Provider value={shading}>
 
             {/* One explode rig wraps the whole composite so the fascia AND the
                 projecting sign (and a double-sided sign's back face) all fan
@@ -3397,6 +3537,7 @@ export default function Scene3D(props: {
             )}
 
             </ExplodeProvider>
+            </ShadingContext.Provider>
 
             <OrbitControls enablePan makeDefault />
         </Canvas>

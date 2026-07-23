@@ -38,6 +38,7 @@ import {
     Ruler,
     Send,
     ShieldCheck,
+    SlidersHorizontal,
     Sparkles,
 } from 'lucide-react';
 import { useVisualiser } from '../(portal)/admin/visualiser/store';
@@ -223,6 +224,14 @@ export function PublicWizard({
     // ── View state (never persisted) ──────────────────────────────────────
     const [night, setNight] = useState(false);
     const [view, setView] = useState<'folded' | 'unfold'>('folded');
+    // Display options — realistic studio shading by default with a "Flat
+    // colours" fallback (the historical unlit render); the technical marks
+    // are off for customers but one tap away.
+    const [flatColours, setFlatColours] = useState(false);
+    const [showOutlinesOpt, setShowOutlinesOpt] = useState(false);
+    const [showMarks, setShowMarks] = useState(false);
+    const [showDims, setShowDims] = useState(false);
+    const [showStuds, setShowStuds] = useState(true);
     const [explodeT, setExplodeT] = useState(0);
     const [fold, setFold] = useState(1);
     const [unfoldKey, setUnfoldKey] = useState(0);
@@ -551,11 +560,16 @@ export function PublicWizard({
                             illumination={params.illumination}
                             explodeT={view === 'folded' ? explodeT : 0}
                             reducedMotion={reducedMotion}
-                            // Customers see the sign as it will look installed —
-                            // no register/keyline linework — and the submitted
-                            // thumbnail drops the artwork outlines too.
-                            annotations={false}
-                            showOutlines={!captureClean}
+                            // Customers see the sign as it will look installed
+                            // by default — realistic shading, no technical
+                            // linework — with every mark one tap away in the
+                            // Display options. Captures always strip the
+                            // toggleable linework.
+                            annotations={showMarks && !captureClean}
+                            showOutlines={showOutlinesOpt && !captureClean}
+                            showDimensions={showDims && !captureClean}
+                            showStandoffLocators={showStuds}
+                            shading={flatColours ? 'flat' : 'realistic'}
                         />
                     </div>
                 ) : (
@@ -588,6 +602,18 @@ export function PublicWizard({
                     </div>
                     {!reference && (
                         <div className="pointer-events-auto flex items-center gap-2 md:gap-3">
+                            <DisplayOptions
+                                flatColours={flatColours}
+                                onFlatColours={setFlatColours}
+                                outlines={showOutlinesOpt}
+                                onOutlines={setShowOutlinesOpt}
+                                marks={showMarks}
+                                onMarks={setShowMarks}
+                                dims={showDims}
+                                onDims={setShowDims}
+                                studs={showStuds}
+                                onStuds={setShowStuds}
+                            />
                             <ViewSwitch tab={view} onChange={changeView} />
                             <span data-tour="daynight">
                                 <DayNightSwitch
@@ -930,6 +956,101 @@ export function PublicWizard({
                 onClose={() => setBuiltUpOpen(false)}
                 onConfirm={handleBuiltUp}
             />
+        </div>
+    );
+}
+
+/**
+ * Display options popover — how the preview renders. Realistic studio
+ * shading is the default; "Flat colours" flips back to the classic unlit
+ * look, and the technical marks (outlines / register lines / dimensions /
+ * stud fixings) are individually toggleable.
+ */
+function DisplayOptions({
+    flatColours,
+    onFlatColours,
+    outlines,
+    onOutlines,
+    marks,
+    onMarks,
+    dims,
+    onDims,
+    studs,
+    onStuds,
+}: {
+    flatColours: boolean;
+    onFlatColours: (v: boolean) => void;
+    outlines: boolean;
+    onOutlines: (v: boolean) => void;
+    marks: boolean;
+    onMarks: (v: boolean) => void;
+    dims: boolean;
+    onDims: (v: boolean) => void;
+    studs: boolean;
+    onStuds: (v: boolean) => void;
+}) {
+    const [open, setOpen] = useState(false);
+    const rows: Array<[string, boolean, (v: boolean) => void]> = [
+        ['Flat colours', flatColours, onFlatColours],
+        ['Cut outlines', outlines, onOutlines],
+        ['Technical marks', marks, onMarks],
+        ['Dimensions', dims, onDims],
+        ['Stud fixings', studs, onStuds],
+    ];
+    return (
+        <div className="relative">
+            <button
+                type="button"
+                onClick={() => setOpen((o) => !o)}
+                aria-expanded={open}
+                aria-label="Display options"
+                title="Display options"
+                className={`flex h-9 w-9 items-center justify-center rounded-full border shadow-lg backdrop-blur-md transition-colors ${
+                    open
+                        ? 'border-white/40 text-[#0c1114]'
+                        : 'border-white/25 bg-[#0c1114]/60 text-white/75 hover:text-white'
+                }`}
+                style={open ? { background: ACCENT_GLOW } : undefined}
+            >
+                <SlidersHorizontal size={15} aria-hidden />
+            </button>
+            {open && (
+                <div className="absolute right-0 top-11 z-30 w-52 rounded-xl border border-white/15 bg-[#0c1114]/90 p-2 shadow-2xl backdrop-blur-md">
+                    {rows.map(([label, value, set]) => (
+                        <button
+                            key={label}
+                            type="button"
+                            role="switch"
+                            aria-checked={value}
+                            onClick={() => set(!value)}
+                            className="flex min-h-[38px] w-full items-center justify-between gap-2 rounded-lg px-2.5 text-left text-[12px] font-medium text-white/85 hover:bg-white/10"
+                        >
+                            {label}
+                            <span
+                                className={`relative h-[18px] w-8 shrink-0 rounded-full transition-colors ${
+                                    value ? '' : 'bg-white/20'
+                                }`}
+                                style={
+                                    value ? { background: ACCENT } : undefined
+                                }
+                                aria-hidden
+                            >
+                                <span
+                                    className="absolute left-0.5 top-0.5 h-3.5 w-3.5 rounded-full bg-white shadow transition-transform"
+                                    style={{
+                                        transform: value
+                                            ? 'translateX(14px)'
+                                            : 'translateX(0)',
+                                    }}
+                                />
+                            </span>
+                        </button>
+                    ))}
+                    <p className="px-2.5 pb-1 pt-1.5 text-[10px] leading-snug text-white/40">
+                        Flat colours shows the classic unshaded preview.
+                    </p>
+                </div>
+            )}
         </div>
     );
 }
