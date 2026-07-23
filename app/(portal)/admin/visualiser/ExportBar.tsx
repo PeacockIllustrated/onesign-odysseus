@@ -800,12 +800,14 @@ export function ExportBar({
                 pushNest(pieces, `${material}-faces`);
             }
 
-            // 2b. Illuminated-acrylic inserts for a legacy global-keyline sign
-            // (keyline on, letters as apertures, no explicit push-through
-            // group) — the acrylic that presses into the keyline openings. Cut
-            // faces + counters as separate nested pieces (matches the PDF).
+            // 2b. Illuminated-acrylic inserts for the global-keyline APERTURE
+            // letters — the acrylic that presses into the keyline openings. Cut
+            // faces + counters as separate nested pieces. The production PDF
+            // sums these with any push-through pieces (disjoint sets), so this
+            // fires whenever a global keyline produced geometry, coexisting with
+            // the push-through nests above (no double-up).
             const hasGlobalKeyline = keylineBySection.some((a) => a.length > 0);
-            if (hasGlobalKeyline && pushThroughPieces.length === 0) {
+            if (hasGlobalKeyline) {
                 const insertPieces = [
                     ...apertureBySection.flat(),
                     ...apertureHolesBySection.flat(),

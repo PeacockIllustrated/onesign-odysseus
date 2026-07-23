@@ -342,13 +342,14 @@ export function buildDesignPackInput(
         });
     }
 
-    // 2b. Illuminated-acrylic INSERTS for a legacy global-keyline sign (keyline
-    // on, letters cut as apertures, no explicit push-through group). The
-    // production cut PDF emits these on its insert page; without this section
-    // they had no pack counterpart and no cut file — the acrylic that presses
-    // into the keyline openings would be missing on the floor. Guarded on "no
-    // push-through pieces" so a sign that has BOTH doesn't double up.
-    if (hasGlobalKeyline && pushThroughPieces.length === 0) {
+    // 2b. Illuminated-acrylic INSERTS for the global-keyline aperture letters —
+    // the acrylic that presses into the keyline openings. The production cut PDF
+    // emits these on its insert page (summed with any push-through pieces:
+    // insertOuters = apertures + pushThroughPieces); without this section they
+    // had no pack counterpart and no cut file. This group covers the APERTURE
+    // letters, a set DISJOINT from the push-through group above, so both coexist
+    // whenever a sign has a global keyline AND push-through pieces (no double-up).
+    if (hasGlobalKeyline) {
         const insertPieces = [
             ...apertureBySection.flat(),
             ...apertureHolesBySection.flat(),

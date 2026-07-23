@@ -147,7 +147,7 @@ describe('buildDesignPackInput', () => {
         ).toBe(true);
     });
 
-    it('does not duplicate the insert when an explicit push-through group exists', () => {
+    it('emits BOTH the aperture insert and the push-through group when a sign has both (disjoint sets, matching the production PDF)', () => {
         const params = baseParams({
             keylineMm: 3,
             illumination: {
@@ -155,17 +155,30 @@ describe('buildDesignPackInput', () => {
             },
         });
         const data = pieceData(params);
+        // Global-keyline APERTURE letter (section 0)…
         const ap: FlatPath = {
             closed: true,
             points: [[100, 100], [300, 100], [300, 250], [100, 250]],
         };
-        data.keylineBySection = data.sectionExport.sections.map((_s, i) =>
+        const kl: FlatPath = {
+            closed: true,
+            points: [[97, 97], [303, 97], [303, 253], [97, 253]],
+        };
+        data.apertureBySection = data.sectionExport.sections.map((_s, i) =>
             i === 0 ? [ap] : [],
         );
+        data.keylineBySection = data.sectionExport.sections.map((_s, i) =>
+            i === 0 ? [kl] : [],
+        );
+        // …AND a SEPARATE explicit push-through piece.
+        const pt: FlatPath = {
+            closed: true,
+            points: [[400, 100], [600, 100], [600, 250], [400, 250]],
+        };
         data.pushThroughPieces = [
             {
-                pathIndex: 0,
-                path: ap,
+                pathIndex: 1,
+                path: pt,
                 holes: [],
                 color: '#f5f5f0',
                 thicknessMm: 5,
@@ -177,12 +190,14 @@ describe('buildDesignPackInput', () => {
             insituDataUri: null,
             logoDataUri: null,
         });
+        // Both cut pieces exist — the aperture inserts AND the push-through
+        // group. They cover disjoint letters, so neither is dropped (the
+        // production PDF sums them: insertOuters = apertures + pushThrough).
         expect(
             input.groups.filter(
                 (g) => g.title === 'Illuminated acrylic inserts',
             ).length,
-        ).toBe(0);
-        // The real push-through group is still there.
+        ).toBe(1);
         expect(
             input.groups.some((g) => g.title.startsWith('Push-through letters')),
         ).toBe(true);
