@@ -262,6 +262,8 @@ interface VisualiserState {
     updateGroupProps: (
         groupId: string,
         patch: {
+            /** Switch the group's material in place (cut = use deleteGroup). */
+            material?: Exclude<GroupMaterial, 'cut'>;
             color?: string;
             thicknessMm?: number;
             standoffDistanceMm?: number;
@@ -275,6 +277,27 @@ interface VisualiserState {
         },
     ) => void;
     deleteGroup: (groupId: string) => void;
+    /**
+     * Create several material groups in one state update — the public upload
+     * modal turns an uploaded SVG's colour clusters into one group per colour
+     * so the artwork lands already finished. Indices are into the COMPOSED
+     * path set (the new layer's paths sit at the tail after addArtworkLayer).
+     * Paths are stripped from any existing group first (one group per path).
+     */
+    addMaterialGroups: (
+        defs: Array<{
+            pathIndices: number[];
+            material: Exclude<GroupMaterial, 'cut'>;
+            color?: string;
+            thicknessMm?: number;
+            standoffDistanceMm?: number;
+            keylineOffsetMm?: number;
+            protrusionMm?: number;
+            printFullColor?: boolean;
+            glowIntensity?: number;
+            label?: string;
+        }>,
+    ) => void;
 
     markSaved: (id: string) => void;
 
@@ -930,6 +953,7 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                 g.id === groupId
                     ? {
                           ...g,
+                          material: patch.material ?? g.material,
                           color: patch.color ?? g.color,
                           thicknessMm:
                               patch.thicknessMm ?? g.thicknessMm,
@@ -956,6 +980,50 @@ export const useVisualiser = create<VisualiserState>((set) => ({
             );
             return {
                 params: { ...s.params, materialGroups: next },
+                dirty: true,
+            };
+        }),
+
+    addMaterialGroups: (defs) =>
+        set((s) => {
+            const usable = defs.filter((d) => d.pathIndices.length > 0);
+            if (usable.length === 0) return {};
+            const claimed = new Set(usable.flatMap((d) => d.pathIndices));
+            // A path belongs to at most one group — strip the new indices
+            // from any existing group (same rule as applyEditMaterial).
+            const stripped = (s.params.materialGroups ?? [])
+                .map((g) => ({
+                    ...g,
+                    pathIndices: g.pathIndices.filter((i) => !claimed.has(i)),
+                }))
+                .filter((g) => g.pathIndices.length > 0);
+            const created: MaterialGroup[] = usable.map((d) => ({
+                id: nextGroupId(),
+                label: d.label,
+                material: d.material,
+                color:
+                    d.color ??
+                    defaultGroupColor(d.material, s.params.panelColor),
+                thicknessMm:
+                    d.thicknessMm ?? defaultGroupThickness(d.material),
+                standoffDistanceMm:
+                    d.standoffDistanceMm ?? defaultGroupStandoff(d.material),
+                keylineOffsetMm:
+                    d.keylineOffsetMm ?? defaultGroupKeylineOffset(d.material),
+                protrusionMm:
+                    d.protrusionMm ?? defaultGroupProtrusion(d.material),
+                printFullColor: d.printFullColor,
+                glowIntensity:
+                    d.glowIntensity ??
+                    (d.material === 'backlight' ? 1 : undefined),
+                extraFace: undefined,
+                pathIndices: [...d.pathIndices].sort((a, b) => a - b),
+            }));
+            return {
+                params: {
+                    ...s.params,
+                    materialGroups: [...stripped, ...created],
+                },
                 dirty: true,
             };
         }),

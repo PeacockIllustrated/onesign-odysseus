@@ -58,26 +58,53 @@ function rateLimited(email: string): boolean {
  * approval/delivery actions in CLAUDE.md §3. Do NOT add getUser()/requireAuth()
  * here: the whole point is that customers have no Supabase session.
  */
+// Keep in sync with SubmitDesignRequestSchema's field maxes. An oversize
+// OPTIONAL field (thumbnail / flattened svg) must never sink the whole lead —
+// the design still lives in params_json.artworkLayers, and a request without a
+// preview beats a customer staring at a failed send.
+const THUMBNAIL_MAX = 4_000_000;
+const SVG_SOURCE_MAX = 5_000_000;
+
 export async function submitDesignRequest(
     input: SubmitDesignRequestInput,
 ): Promise<Result<{ reference: string }>> {
-    const parsed = SubmitDesignRequestSchema.safeParse(input);
+    const sanitised: SubmitDesignRequestInput = {
+        ...input,
+        thumbnail:
+            typeof input?.thumbnail === 'string' &&
+            input.thumbnail.length > THUMBNAIL_MAX
+                ? null
+                : input?.thumbnail,
+        svgSource:
+            typeof input?.svgSource === 'string' &&
+            input.svgSource.length > SVG_SOURCE_MAX
+                ? null
+                : input?.svgSource,
+    };
+    const parsed = SubmitDesignRequestSchema.safeParse(sanitised);
     if (!parsed.success) {
-        return err(parsed.error.issues[0]?.message ?? 'Invalid submission');
+        return err(
+            'We could not read part of your design. Please try sending again — or email hello@onesignanddigital.com and we will take it from there.',
+        );
     }
     const d = parsed.data;
 
-    // Honeypot: a real person never fills this hidden field. Pretend success so
-    // a bot gets no signal that it was caught.
-    if (d.companyWebsite && d.companyWebsite.length > 0) {
-        return ok({ reference: 'received' });
-    }
+    // Honeypot: the hidden field should stay empty. Browser autofill can fill
+    // it on a real customer's machine, so a hit is a FLAG, not a drop — the
+    // lead is still recorded and staff triage it. (Silent discard here cost
+    // real enquiries; volume is bounded by the rate limit below.)
+    const honeypotHit = !!(d.companyWebsite && d.companyWebsite.length > 0);
 
     if (rateLimited(d.customerEmail)) {
         return err(
             'Too many submissions just now — please try again in a few minutes.',
         );
     }
+
+    const notes = d.projectNotes || '';
+    const flaggedNotes = honeypotHit
+        ? `${notes}${notes ? '\n\n' : ''}[Automated check: hidden form field was filled — possible bot, please verify before quoting]`
+        : notes;
 
     const supabase = createAdminClient();
     const { data, error } = await supabase
@@ -88,7 +115,7 @@ export async function submitDesignRequest(
             customer_phone: d.customerPhone || null,
             company: d.company || null,
             postcode: d.postcode || null,
-            project_notes: d.projectNotes || null,
+            project_notes: flaggedNotes || null,
             sign_type: d.signType || null,
             params_json: d.params,
             svg_source: d.svgSource ?? null,
@@ -97,7 +124,11 @@ export async function submitDesignRequest(
         .select('reference')
         .single();
 
-    if (error) return err(error.message);
+    if (error) {
+        return err(
+            'Something went wrong saving your design — please try again, or email hello@onesignanddigital.com.',
+        );
+    }
     revalidatePath('/admin/design-requests');
     return ok({ reference: data.reference as string });
 }

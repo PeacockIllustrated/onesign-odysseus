@@ -84,12 +84,28 @@ function NumberField({
 }
 
 
+/** Common fascia sizes so a customer can start from something sensible
+ *  instead of a blank mm field (they can still type any size). */
+const SIZE_PRESETS: Array<{ label: string; w: number; h: number }> = [
+    { label: 'Small fascia', w: 2000, h: 500 },
+    { label: 'Shop fascia', w: 3000, h: 600 },
+    { label: 'Large fascia', w: 4000, h: 750 },
+    { label: 'Square sign', w: 600, h: 600 },
+];
+
 export function ControlsPanel({
     hideIllumination = false,
+    simplified = false,
 }: {
     /** Hide the Illumination section — the guided wizard / concept have a
      *  dedicated "Light" step, so it's redundant (and confusing) in stage 1. */
     hideIllumination?: boolean;
+    /**
+     * Public-studio mode: same engine, but customer-friendly language and no
+     * production-only spec (material thickness, shadow gap, panel splitting).
+     * The shop sets those at fabrication; asking a layman only confuses them.
+     */
+    simplified?: boolean;
 } = {}) {
     const {
         params,
@@ -118,13 +134,16 @@ export function ControlsPanel({
                     htmlFor="visualiser-design-name"
                     className="text-[11px] font-medium text-neutral-600"
                 >
-                    Design name
+                    {simplified ? 'Sign name' : 'Design name'}
                 </label>
                 <input
                     id="visualiser-design-name"
                     type="text"
                     value={params.name}
                     onChange={(e) => setParam('name', e.target.value)}
+                    placeholder={
+                        simplified ? 'e.g. your business name' : undefined
+                    }
                     className="mt-1 w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm focus:border-[var(--accent)] focus:outline-none"
                 />
             </div>
@@ -286,7 +305,62 @@ export function ControlsPanel({
                 </Section>
             )}
 
-            <Section title="Panel dimensions" step={1}>
+            <Section
+                title={simplified ? 'Size' : 'Panel dimensions'}
+                step={simplified ? undefined : 1}
+            >
+                {simplified && !onProjectingTab && (
+                    <div>
+                        <span className="text-[11px] font-medium text-neutral-600">
+                            Quick sizes
+                        </span>
+                        <div className="mt-1.5 grid grid-cols-2 gap-1">
+                            {SIZE_PRESETS.map((preset) => {
+                                const active =
+                                    params.panelWidthMm === preset.w &&
+                                    params.panelHeightMm === preset.h;
+                                return (
+                                    <button
+                                        key={preset.label}
+                                        type="button"
+                                        onClick={() => {
+                                            setParam('panelWidthMm', preset.w);
+                                            setParam('panelHeightMm', preset.h);
+                                        }}
+                                        aria-pressed={active}
+                                        className={`min-h-[40px] rounded-md px-2 py-1.5 text-left transition-colors ${
+                                            active
+                                                ? 'text-white'
+                                                : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                                        }`}
+                                        style={
+                                            active
+                                                ? { background: ACCENT }
+                                                : undefined
+                                        }
+                                    >
+                                        <span className="block text-[11px] font-semibold">
+                                            {preset.label}
+                                        </span>
+                                        <span
+                                            className={`block text-[10px] tabular-nums ${
+                                                active
+                                                    ? 'text-white/80'
+                                                    : 'text-neutral-400'
+                                            }`}
+                                        >
+                                            {preset.w} × {preset.h} mm
+                                        </span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <span className="mt-1 block text-[10px] text-neutral-400">
+                            Not sure? Pick the closest — or type your exact size
+                            below.
+                        </span>
+                    </div>
+                )}
                 <div className="grid grid-cols-2 gap-3">
                     <NumberField
                         label="Width"
@@ -307,7 +381,7 @@ export function ControlsPanel({
                     />
                 </div>
 
-                {params.panelWidthMm > MAX_PANEL_WIDTH_MM && (
+                {!simplified && params.panelWidthMm > MAX_PANEL_WIDTH_MM && (
                     <NumberField
                         label="Centre panel override"
                         value={params.centrePanelOverrideMm ?? 0}
@@ -327,15 +401,20 @@ export function ControlsPanel({
                 )}
 
                 <NumberField
-                    label="Return depth"
+                    label={simplified ? 'Depth off the wall' : 'Return depth'}
                     value={params.returnDepthMm}
                     onChange={(n) => setParam('returnDepthMm', n)}
                     min={0}
+                    hint={
+                        simplified
+                            ? 'How far the sign stands out from the wall.'
+                            : undefined
+                    }
                 />
 
                 <div>
                     <span className="text-[11px] font-medium text-neutral-600">
-                        Returns on edges
+                        {simplified ? 'Folded edges' : 'Returns on edges'}
                     </span>
                     <div className="mt-1.5 grid grid-cols-4 gap-1">
                         {edges.map((e) => {
@@ -360,10 +439,18 @@ export function ControlsPanel({
                     </div>
                 </div>
 
+                {simplified && (
+                    <span className="block text-[10px] text-neutral-400">
+                        Folded edges give the sign its box depth — most signs
+                        fold all four.
+                    </span>
+                )}
+
                 {/* A projecting sign is simply width / height / returns —
                     no shadow gap. (Keyline is push-through specific, so it's
-                    configured per push-through material group, not here.) */}
-                {!onProjectingTab && (
+                    configured per push-through material group, not here.)
+                    Shadow gap is a fabrication detail — staff only. */}
+                {!simplified && !onProjectingTab && (
                     <NumberField
                         label="Shadow gap"
                         value={params.shadowGapMm}
@@ -373,7 +460,7 @@ export function ControlsPanel({
                     />
                 )}
 
-                {!onProjectingTab && params.shadowGapMm > 0 && (
+                {!simplified && !onProjectingTab && params.shadowGapMm > 0 && (
                     <div>
                         <span className="text-[11px] font-medium text-neutral-600">
                             Shadow gap on edges
@@ -414,45 +501,60 @@ export function ControlsPanel({
                 )}
             </Section>
 
-            <Section title="Material spec" step={2} defaultOpen={false}>
-                <NumberField
-                    label="Material thickness"
-                    value={params.materialThicknessMm}
-                    onChange={(n) => setParam('materialThicknessMm', n)}
-                    step={0.1}
-                    min={0.1}
-                    max={20}
-                    hint="Drives the bend deduction (½ thickness each side of every fold)"
-                />
+            <Section
+                title={simplified ? 'Colour' : 'Material spec'}
+                step={simplified ? undefined : 2}
+                defaultOpen={simplified}
+            >
+                {/* Thickness + the free-text material label are fabrication
+                    spec — the shop decides them, so the public studio only
+                    asks for the colour. */}
+                {!simplified && (
+                    <>
+                        <NumberField
+                            label="Material thickness"
+                            value={params.materialThicknessMm}
+                            onChange={(n) => setParam('materialThicknessMm', n)}
+                            step={0.1}
+                            min={0.1}
+                            max={20}
+                            hint="Drives the bend deduction (½ thickness each side of every fold)"
+                        />
 
-                <div>
-                    <label
-                        htmlFor="visualiser-material-label"
-                        className="text-[11px] font-medium text-neutral-600"
-                    >
-                        Material / finish
-                    </label>
-                    <input
-                        id="visualiser-material-label"
-                        type="text"
-                        value={params.materialLabel ?? ''}
-                        onChange={(e) =>
-                            setParam('materialLabel', e.target.value)
-                        }
-                        placeholder="e.g. 3mm aluminium, satin white"
-                        className="mt-1 w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm focus:border-[var(--accent)] focus:outline-none"
-                    />
-                </div>
+                        <div>
+                            <label
+                                htmlFor="visualiser-material-label"
+                                className="text-[11px] font-medium text-neutral-600"
+                            >
+                                Material / finish
+                            </label>
+                            <input
+                                id="visualiser-material-label"
+                                type="text"
+                                value={params.materialLabel ?? ''}
+                                onChange={(e) =>
+                                    setParam('materialLabel', e.target.value)
+                                }
+                                placeholder="e.g. 3mm aluminium, satin white"
+                                className="mt-1 w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm focus:border-[var(--accent)] focus:outline-none"
+                            />
+                        </div>
+                    </>
+                )}
 
                 <div>
                     <span className="text-[11px] font-medium text-neutral-600">
-                        Panel colour (RAL)
+                        {simplified ? 'Sign colour' : 'Panel colour (RAL)'}
                     </span>
                     <div className="mt-1">
                         <SwatchPicker
                             items={RAL_ITEMS}
                             value={params.panelColor}
-                            placeholder="Pick a RAL colour…"
+                            placeholder={
+                                simplified
+                                    ? 'Pick a colour…'
+                                    : 'Pick a RAL colour…'
+                            }
                             onPick={(i) => {
                                 setParam('panelColor', i.hex);
                                 setParam('panelRal', i.label);
@@ -460,9 +562,13 @@ export function ControlsPanel({
                         />
                     </div>
                     <span className="mt-1 block text-[10px] text-neutral-400">
-                        {params.panelRal
-                            ? `${params.panelRal} — preview is an approximation; the coat is ordered by RAL number.`
-                            : `Nearest match: ${nearestRal(params.panelColor ?? '#d6d6d6').code}. Pick a RAL to lock the production colour.`}
+                        {simplified
+                            ? params.panelRal
+                                ? `${params.panelRal} — an industry-standard paint colour, so the real sign matches exactly.`
+                                : 'Colours are industry-standard (RAL) paint references, so the real sign matches what you pick.'
+                            : params.panelRal
+                              ? `${params.panelRal} — preview is an approximation; the coat is ordered by RAL number.`
+                              : `Nearest match: ${nearestRal(params.panelColor ?? '#d6d6d6').code}. Pick a RAL to lock the production colour.`}
                     </span>
                 </div>
             </Section>

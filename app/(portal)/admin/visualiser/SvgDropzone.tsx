@@ -8,8 +8,18 @@ import { TraceImage } from './TraceImage';
 import { BinderButton } from '@/components/admin/BinderPicker';
 import { Section } from './Section';
 import { SwatchPicker, type SwatchItem } from './SwatchPicker';
-import { ACRYLIC_COLOURS } from '@/lib/visualiser/acrylic';
+import {
+    UploadFinishModal,
+    type PendingUpload,
+    type UploadFinishChoice,
+} from './UploadFinishModal';
+import { ACRYLIC_COLOURS, nearestAcrylic } from '@/lib/visualiser/acrylic';
 import { RAL_CLASSIC } from '@/lib/visualiser/ral';
+import {
+    ACRYLIC_THICKNESSES_MM,
+    clusterByColour,
+    matchedStockColour,
+} from '@/lib/visualiser/upload-finish';
 import {
     GROUP_HIGHLIGHT_PALETTE,
     type AlignH,
@@ -55,6 +65,66 @@ const ACCENT_TINT_BORDER = '#b8d0d8';
 
 type MaterialGroup = NonNullable<PanelParams['materialGroups']>[number];
 type GroupMaterial = MaterialGroup['material'];
+
+/** Customer-facing names for each finish (the simplified tile labels). */
+const SIMPLE_LABELS: Record<GroupMaterial, string> = {
+    cut: 'Cut out',
+    solid: 'Keep solid',
+    vinyl: 'Printed',
+    acrylic: 'Acrylic',
+    standoff: 'Raised letters',
+    pushthrough: 'Push-through',
+    backlight: 'Backlit glow',
+};
+
+/**
+ * The public studio's acrylic thickness choice — the stocked sheets only
+ * (3 / 5 / 20 mm), instead of a free mm field a layman can't answer.
+ */
+function ThicknessChoice({
+    value,
+    onChange,
+}: {
+    value: number;
+    onChange: (n: number) => void;
+}) {
+    return (
+        <div>
+            <span
+                className="text-[10px] font-medium"
+                style={{ color: ACCENT_DARK }}
+            >
+                Acrylic thickness
+            </span>
+            <div
+                className="mt-0.5 grid grid-cols-3 overflow-hidden rounded-md border text-[10px] font-medium"
+                style={{ borderColor: ACCENT_TINT_BORDER }}
+            >
+                {ACRYLIC_THICKNESSES_MM.map((t, k) => {
+                    const on = value === t;
+                    return (
+                        <button
+                            key={t}
+                            type="button"
+                            onClick={() => onChange(t)}
+                            aria-pressed={on}
+                            className={`min-h-[32px] py-1.5 ${
+                                k > 0 ? 'border-l' : ''
+                            } ${on ? 'text-white' : 'bg-white text-neutral-700 hover:bg-neutral-100'}`}
+                            style={{
+                                borderColor:
+                                    k > 0 ? ACCENT_TINT_BORDER : undefined,
+                                background: on ? ACCENT : undefined,
+                            }}
+                        >
+                            {t} mm
+                        </button>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
 
 /**
  * Material-group editor. Aperture mode lets the operator bundle SVG
@@ -415,18 +485,25 @@ function GroupEditControls({
                 </label>
             )}
 
-            {hasThickness && (
-                <NumField
-                    label="Thickness (mm)"
-                    step={0.5}
-                    value={thickness}
-                    onChange={(n) => setThickness(n > 0 ? n : 0.5)}
-                />
-            )}
+            {hasThickness &&
+                (simplified ? (
+                    <ThicknessChoice value={thickness} onChange={setThickness} />
+                ) : (
+                    <NumField
+                        label="Thickness (mm)"
+                        step={0.5}
+                        value={thickness}
+                        onChange={(n) => setThickness(n > 0 ? n : 0.5)}
+                    />
+                ))}
 
             {hasStandoff && (
                 <NumField
-                    label="Standoff distance (mm)"
+                    label={
+                        simplified
+                            ? 'Gap off the face (mm)'
+                            : 'Standoff distance (mm)'
+                    }
                     step={1}
                     value={standoff}
                     onChange={(n) => setStandoff(n >= 0 ? n : 0)}
@@ -435,7 +512,7 @@ function GroupEditControls({
 
             {hasGlow && (
                 <NumField
-                    label="Glow intensity"
+                    label={simplified ? 'Glow brightness' : 'Glow intensity'}
                     step={0.1}
                     value={glowIntensity}
                     onChange={(n) => setGlowIntensity(n >= 0 ? n : 0)}
@@ -445,23 +522,31 @@ function GroupEditControls({
             {hasPushThrough && (
                 <>
                     <NumField
-                        label="Keyline offset (mm)"
+                        label={
+                            simplified
+                                ? 'Halo gap around letters (mm)'
+                                : 'Keyline offset (mm)'
+                        }
                         step={0.5}
                         value={keylineOffset}
                         onChange={(n) =>
                             setKeylineOffset(n >= 0 ? n : 0)
                         }
                     />
-                    <NumField
-                        label="Protrusion (mm)"
-                        step={1}
-                        value={protrusion}
-                        onChange={(n) => setProtrusion(n >= 0 ? n : 0)}
-                    />
+                    {/* Protrusion is redundant next to thickness for a
+                        customer — the shop sets it. Staff keep the field. */}
+                    {!simplified && (
+                        <NumField
+                            label="Protrusion (mm)"
+                            step={1}
+                            value={protrusion}
+                            onChange={(n) => setProtrusion(n >= 0 ? n : 0)}
+                        />
+                    )}
                     <p className="text-[10px] text-neutral-500">
-                        Outer letter + each counter are cut as separate
-                        pieces. Mount both on a backing board behind the
-                        panel.
+                        {simplified
+                            ? 'We cut the acrylic letters and mount them through the face so they sit proud — and glow when lit.'
+                            : 'Outer letter + each counter are cut as separate pieces. Mount both on a backing board behind the panel.'}
                     </p>
                 </>
             )}
@@ -488,7 +573,9 @@ function GroupEditControls({
                                 )
                             }
                         />
-                        Extra face (cut from metal, laminated on front)
+                        {simplified
+                            ? 'Add a metal face (brass, steel…) — premium'
+                            : 'Extra face (cut from metal, laminated on front)'}
                     </label>
                     {extraFace && (
                         <div className="grid grid-cols-2 gap-1.5">
@@ -532,9 +619,9 @@ function GroupEditControls({
                     )}
                     {extraFace && (
                         <p className="text-[10px] text-neutral-500">
-                            {FACE_MATERIALS[extraFace.material].label} faces cut
-                            to the letter shape (counters as holes) — exported as
-                            cut files and sent to the nester like acrylic.
+                            {simplified
+                                ? `A real ${FACE_MATERIALS[extraFace.material].label.toLowerCase()} face on the front of each letter — a high-end architectural finish.`
+                                : `${FACE_MATERIALS[extraFace.material].label} faces cut to the letter shape (counters as holes) — exported as cut files and sent to the nester like acrylic.`}
                         </p>
                     )}
                 </div>
@@ -1013,6 +1100,412 @@ function ShapeMaterialsPanel({
                         : 'Click shapes above or on the canvas to add or remove them, then choose a material in the panel.'}
                 </p>
             )}
+
+            {/* Public studio: existing finishes stay open for adjustment —
+                no re-selecting shapes to tweak a colour or thickness. Hidden
+                while a selection edit is in flight so two editors never fight
+                over the same group. */}
+            {simplified && !isEditing && (
+                <FinishAccordion groups={groups} panelColor={panelColor} />
+            )}
+        </div>
+    );
+}
+
+/**
+ * Public-studio finish accordion — every material group as an always-available
+ * card that opens to its full options, editing the group LIVE (no re-selecting
+ * shapes, no Apply). This is the "go back and adjust" path: the transient
+ * GroupEditControls flow above stays for choosing WHICH shapes get a finish;
+ * this is for tuning a finish that already exists.
+ */
+function FinishAccordion({
+    groups,
+    panelColor,
+}: {
+    groups: MaterialGroup[];
+    panelColor: string;
+}) {
+    const { updateGroupProps, deleteGroup } = useVisualiser();
+    if (groups.length === 0) return null;
+
+    const switchMaterial = (g: MaterialGroup, next: GroupMaterial) => {
+        if (next === g.material) return;
+        // "Cut out" = no override group at all — the shapes fall back to the
+        // whole-sign default (cut-out on the public studio).
+        if (next === 'cut') {
+            deleteGroup(g.id);
+            return;
+        }
+        const patch: {
+            material: Exclude<GroupMaterial, 'cut'>;
+            color?: string;
+            thicknessMm?: number;
+            glowIntensity?: number;
+        } = { material: next };
+        // Snap the colour to the new finish's stock palette so a vinyl white
+        // doesn't silently become an "acrylic" nobody stocks.
+        if (
+            next === 'acrylic' ||
+            next === 'standoff' ||
+            next === 'pushthrough'
+        ) {
+            patch.color = nearestAcrylic(g.color ?? panelColor).colour.hex;
+            if (g.thicknessMm == null) patch.thicknessMm = 5;
+        } else if (next === 'solid') {
+            patch.color = panelColor;
+        } else if (next === 'vinyl') {
+            patch.color = g.color ?? '#ffffff';
+        } else if (next === 'backlight') {
+            patch.color = g.color ?? '#fff4e0';
+            if (g.glowIntensity == null) patch.glowIntensity = 1;
+        }
+        updateGroupProps(g.id, patch);
+    };
+
+    return (
+        <div className="space-y-1.5 border-t border-neutral-100 pt-2">
+            <h4 className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                Your finishes
+            </h4>
+            <p className="text-[10px] text-neutral-500">
+                Open a finish to adjust it — changes apply to every shape in
+                that group straight away.
+            </p>
+            {groups.map((g, pos) => {
+                const isVinyl = g.material === 'vinyl';
+                const printed = isVinyl && g.printFullColor !== false;
+                const acrylicBased =
+                    g.material === 'acrylic' ||
+                    g.material === 'standoff' ||
+                    g.material === 'pushthrough';
+                const canFace =
+                    g.material === 'pushthrough' || g.material === 'backlight';
+                const dot =
+                    g.color ??
+                    GROUP_HIGHLIGHT_PALETTE[
+                        pos % GROUP_HIGHLIGHT_PALETTE.length
+                    ];
+                const title = isVinyl
+                    ? printed
+                        ? 'Printed (full colour)'
+                        : 'Printed (single colour)'
+                    : SIMPLE_LABELS[g.material];
+                return (
+                    <details
+                        key={g.id}
+                        className="group rounded-md border border-neutral-200 bg-white"
+                    >
+                        <summary className="flex min-h-[44px] cursor-pointer items-center gap-2 px-2.5 py-2 [&::-webkit-details-marker]:hidden">
+                            <span
+                                className="h-4 w-4 shrink-0 rounded-full border border-black/10"
+                                style={{ background: dot }}
+                                aria-hidden
+                            />
+                            <span className="min-w-0 flex-1">
+                                <span className="block truncate text-[12px] font-semibold text-neutral-800">
+                                    {title}
+                                </span>
+                                <span className="block text-[10px] text-neutral-400">
+                                    {g.pathIndices.length} shape
+                                    {g.pathIndices.length === 1 ? '' : 's'}
+                                </span>
+                            </span>
+                            <ChevronRight
+                                size={14}
+                                aria-hidden
+                                className="shrink-0 text-neutral-400 transition-transform group-open:rotate-90"
+                            />
+                        </summary>
+                        <div className="space-y-2 border-t border-neutral-100 px-2.5 py-2.5">
+                            {/* Switch the finish in place. */}
+                            <div
+                                className="grid grid-cols-3 overflow-hidden rounded-md border text-[10px] font-medium"
+                                style={{ borderColor: ACCENT_TINT_BORDER }}
+                            >
+                                {(
+                                    [
+                                        'cut',
+                                        'solid',
+                                        'vinyl',
+                                        'acrylic',
+                                        'standoff',
+                                        'pushthrough',
+                                        'backlight',
+                                    ] as const
+                                ).map((m, k) => {
+                                    const on = g.material === m;
+                                    return (
+                                        <button
+                                            key={m}
+                                            type="button"
+                                            onClick={() => switchMaterial(g, m)}
+                                            aria-pressed={on}
+                                            className={`min-h-[32px] py-1.5 ${
+                                                k % 3 !== 0 ? 'border-l' : ''
+                                            } ${k >= 3 ? 'border-t' : ''} ${
+                                                m === 'cut'
+                                                    ? 'bg-white text-red-600 hover:bg-red-50'
+                                                    : on
+                                                      ? 'text-white'
+                                                      : 'bg-white text-neutral-700 hover:bg-neutral-100'
+                                            }`}
+                                            style={{
+                                                borderColor:
+                                                    k % 3 !== 0 || k >= 3
+                                                        ? ACCENT_TINT_BORDER
+                                                        : undefined,
+                                                background:
+                                                    m !== 'cut' && on
+                                                        ? ACCENT
+                                                        : undefined,
+                                            }}
+                                        >
+                                            {SIMPLE_LABELS[m]}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {isVinyl && (
+                                <div
+                                    className="grid grid-cols-2 overflow-hidden rounded-md border text-[10px] font-medium"
+                                    style={{ borderColor: ACCENT_TINT_BORDER }}
+                                >
+                                    {(
+                                        [
+                                            [true, 'Full colour'],
+                                            [false, 'Single colour'],
+                                        ] as const
+                                    ).map(([v, label], k) => (
+                                        <button
+                                            key={label}
+                                            type="button"
+                                            onClick={() =>
+                                                updateGroupProps(g.id, {
+                                                    printFullColor: v,
+                                                })
+                                            }
+                                            aria-pressed={printed === v}
+                                            className={`min-h-[32px] py-1.5 ${
+                                                k > 0 ? 'border-l' : ''
+                                            } ${
+                                                printed === v
+                                                    ? 'text-white'
+                                                    : 'bg-white text-neutral-700 hover:bg-neutral-100'
+                                            }`}
+                                            style={{
+                                                borderColor:
+                                                    k > 0
+                                                        ? ACCENT_TINT_BORDER
+                                                        : undefined,
+                                                background:
+                                                    printed === v
+                                                        ? ACCENT
+                                                        : undefined,
+                                            }}
+                                        >
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            {(acrylicBased || (isVinyl && !printed)) && (
+                                <div>
+                                    <span
+                                        className="text-[10px] font-medium"
+                                        style={{ color: ACCENT_DARK }}
+                                    >
+                                        Colour
+                                    </span>
+                                    <div className="mt-0.5">
+                                        <SwatchPicker
+                                            items={
+                                                acrylicBased
+                                                    ? ACRYLIC_ITEMS
+                                                    : RAL_ITEMS
+                                            }
+                                            value={g.color}
+                                            placeholder="Pick a colour…"
+                                            onPick={(i) =>
+                                                updateGroupProps(g.id, {
+                                                    color: i.hex,
+                                                })
+                                            }
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {g.material === 'backlight' && (
+                                <div>
+                                    <span
+                                        className="text-[10px] font-medium"
+                                        style={{ color: ACCENT_DARK }}
+                                    >
+                                        Glow colour
+                                    </span>
+                                    <div className="mt-0.5 flex items-center gap-1.5">
+                                        <input
+                                            type="color"
+                                            value={g.color ?? '#fff4e0'}
+                                            onChange={(e) =>
+                                                updateGroupProps(g.id, {
+                                                    color: e.target.value,
+                                                })
+                                            }
+                                            className="h-11 w-14 cursor-pointer rounded border bg-white p-0.5"
+                                            style={{
+                                                borderColor:
+                                                    ACCENT_TINT_BORDER,
+                                            }}
+                                            aria-label="Glow colour"
+                                        />
+                                        <NumField
+                                            label="Glow brightness"
+                                            step={0.1}
+                                            value={g.glowIntensity ?? 1}
+                                            onChange={(n) =>
+                                                updateGroupProps(g.id, {
+                                                    glowIntensity:
+                                                        n >= 0 ? n : 0,
+                                                })
+                                            }
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {acrylicBased && (
+                                <ThicknessChoice
+                                    value={g.thicknessMm ?? 5}
+                                    onChange={(n) =>
+                                        updateGroupProps(g.id, {
+                                            thicknessMm: n,
+                                        })
+                                    }
+                                />
+                            )}
+
+                            {g.material === 'standoff' && (
+                                <NumField
+                                    label="Gap off the face (mm)"
+                                    step={1}
+                                    value={g.standoffDistanceMm ?? 25}
+                                    onChange={(n) =>
+                                        updateGroupProps(g.id, {
+                                            standoffDistanceMm: n >= 0 ? n : 0,
+                                        })
+                                    }
+                                />
+                            )}
+
+                            {g.material === 'pushthrough' && (
+                                <NumField
+                                    label="Halo gap around letters (mm)"
+                                    step={0.5}
+                                    value={g.keylineOffsetMm ?? 1.5}
+                                    onChange={(n) =>
+                                        updateGroupProps(g.id, {
+                                            keylineOffsetMm: n >= 0 ? n : 0,
+                                        })
+                                    }
+                                />
+                            )}
+
+                            {canFace && (
+                                <div
+                                    className="space-y-1.5 rounded-md border p-2"
+                                    style={{ borderColor: ACCENT_TINT_BORDER }}
+                                >
+                                    <label className="flex items-center gap-2 text-[11px] font-medium text-neutral-700">
+                                        <input
+                                            type="checkbox"
+                                            checked={!!g.extraFace}
+                                            onChange={(e) =>
+                                                updateGroupProps(g.id, {
+                                                    extraFace: e.target.checked
+                                                        ? {
+                                                              material: 'brass',
+                                                              thicknessMm:
+                                                                  FACE_MATERIALS
+                                                                      .brass
+                                                                      .defaultThicknessMm,
+                                                          }
+                                                        : null,
+                                                })
+                                            }
+                                        />
+                                        Add a metal face (brass, steel…) —
+                                        premium
+                                    </label>
+                                    {g.extraFace && (
+                                        <div className="grid grid-cols-2 gap-1.5">
+                                            <label className="block">
+                                                <span className="mb-0.5 block text-[10px] text-neutral-500">
+                                                    Material
+                                                </span>
+                                                <select
+                                                    value={g.extraFace.material}
+                                                    onChange={(e) => {
+                                                        const m = e.target
+                                                            .value as FaceMaterial;
+                                                        updateGroupProps(g.id, {
+                                                            extraFace: {
+                                                                material: m,
+                                                                thicknessMm:
+                                                                    FACE_MATERIALS[
+                                                                        m
+                                                                    ]
+                                                                        .defaultThicknessMm,
+                                                            },
+                                                        });
+                                                    }}
+                                                    className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-xs focus:border-[var(--accent)] focus:outline-none"
+                                                >
+                                                    {FACE_MATERIAL_ORDER.map(
+                                                        (m) => (
+                                                            <option
+                                                                key={m}
+                                                                value={m}
+                                                            >
+                                                                {
+                                                                    FACE_MATERIALS[
+                                                                        m
+                                                                    ].label
+                                                                }
+                                                            </option>
+                                                        ),
+                                                    )}
+                                                </select>
+                                            </label>
+                                            <NumField
+                                                label="Face thick. (mm)"
+                                                step={0.5}
+                                                value={g.extraFace.thicknessMm}
+                                                onChange={(n) =>
+                                                    updateGroupProps(g.id, {
+                                                        extraFace: {
+                                                            material:
+                                                                g.extraFace!
+                                                                    .material,
+                                                            thicknessMm:
+                                                                n > 0
+                                                                    ? n
+                                                                    : 0.5,
+                                                        },
+                                                    })
+                                                }
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </details>
+                );
+            })}
         </div>
     );
 }
@@ -1101,6 +1594,7 @@ export function SvgDropzone({ simplified = false }: { simplified?: boolean } = {
         togglePendingPath,
         removePathFromGroups,
         addArtworkLayer,
+        addMaterialGroups,
         updateArtworkLayer,
         removeArtworkLayer,
         reorderArtworkLayer,
@@ -1110,6 +1604,11 @@ export function SvgDropzone({ simplified = false }: { simplified?: boolean } = {
     const inputRef = useRef<HTMLInputElement>(null);
     const [error, setError] = useState<string | null>(null);
     const [traceMode, setTraceMode] = useState(false);
+    // Public studio: an upload waits here for its finish choice (the modal)
+    // instead of landing on the sign raw.
+    const [pendingUpload, setPendingUpload] = useState<PendingUpload | null>(
+        null,
+    );
 
     const layers = params.artworkLayers ?? [];
     const composite = layers.length > 0;
@@ -1171,14 +1670,73 @@ export function SvgDropzone({ simplified = false }: { simplified?: boolean } = {
                 setError('No usable vector shapes found in that SVG.');
                 return;
             }
-            // Each upload is an artwork layer — add it to the
+            const cleanName = file.name.replace(/\.svg$/i, '');
+            // Public studio: hold the upload and ask for a finish first, so
+            // the artwork never appears on the sign before the customer has
+            // said how it should be made.
+            if (simplified) {
+                setPendingUpload({
+                    text,
+                    name: cleanName || 'Your artwork',
+                    imported: result,
+                });
+                return;
+            }
+            // Staff flow: each upload is an artwork layer — add it to the
             // composition so several pieces (icon + wordmark, …) can sit
             // on the sign and move independently.
-            const cleanName = file.name.replace(/\.svg$/i, '');
             addArtworkLayer(text, cleanName || undefined);
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Could not read SVG');
         }
+    };
+
+    // Land a pending public upload with its chosen finish: add the layer,
+    // then group the layer's shapes per artwork colour so each part arrives
+    // matched to the nearest stock swatch (see lib/visualiser/upload-finish).
+    // The new layer appends at the end of the composition, so its paths take
+    // the tail indices after the current composed set.
+    const confirmPendingUpload = (choice: UploadFinishChoice) => {
+        const up = pendingUpload;
+        if (!up) return;
+        setPendingUpload(null);
+        const base = shapesSvg?.paths.length ?? 0;
+        addArtworkLayer(up.text, up.name);
+        if (choice.material === 'cut') return; // whole-sign default already
+        const localCounters = new Set(detectInnerCounters(up.imported.paths));
+        const outer = up.imported.paths
+            .map((_, i) => i)
+            .filter((i) => !localCounters.has(i));
+        if (outer.length === 0) return;
+        if (choice.material === 'vinyl' && choice.printFullColor !== false) {
+            addMaterialGroups([
+                {
+                    pathIndices: outer.map((i) => base + i),
+                    material: 'vinyl',
+                    printFullColor: true,
+                    label: up.name,
+                },
+            ]);
+            return;
+        }
+        const clusters = clusterByColour(up.imported.paths, outer);
+        addMaterialGroups(
+            clusters.map((c) => ({
+                pathIndices: c.indices.map((i) => base + i),
+                material: choice.material as Exclude<GroupMaterial, 'cut'>,
+                color:
+                    (clusters.length === 1 ? choice.colourOverride : undefined) ??
+                    matchedStockColour(choice.material, c.colour, {
+                        printFullColor: choice.printFullColor,
+                    }),
+                thicknessMm: choice.thicknessMm,
+                printFullColor:
+                    choice.material === 'vinyl'
+                        ? choice.printFullColor
+                        : undefined,
+                label: up.name,
+            })),
+        );
     };
 
     const placement = params.aperturePlacement;
@@ -1187,13 +1745,18 @@ export function SvgDropzone({ simplified = false }: { simplified?: boolean } = {
         <div className="space-y-3">
             <div className="flex items-center justify-between">
                 <h3 className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
-                    <span
-                        className="flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold text-white"
-                        style={{ background: hasArtwork ? '#4e7e8c' : '#9ca3af' }}
-                        aria-hidden
-                    >
-                        3
-                    </span>
+                    {/* The numbered chip is the STAFF rail's workflow ordering —
+                        meaningless (and clashing with the wizard's own 1–4
+                        stepper) in the public studio. */}
+                    {!simplified && (
+                        <span
+                            className="flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold text-white"
+                            style={{ background: hasArtwork ? '#4e7e8c' : '#9ca3af' }}
+                            aria-hidden
+                        >
+                            3
+                        </span>
+                    )}
                     Artwork
                 </h3>
                 {hasArtwork && (
@@ -1208,7 +1771,10 @@ export function SvgDropzone({ simplified = false }: { simplified?: boolean } = {
             </div>
 
             {traceMode ? (
-                <TraceImage onClose={() => setTraceMode(false)} />
+                <TraceImage
+                    onClose={() => setTraceMode(false)}
+                    simplified={simplified}
+                />
             ) : !hasArtwork ? (
                 <div className="space-y-2">
                     <button
@@ -1232,17 +1798,22 @@ export function SvgDropzone({ simplified = false }: { simplified?: boolean } = {
                             beta
                         </span>
                     </button>
-                    <BinderButton
-                        label="or pick from the binder"
-                        onPick={(a) =>
-                            void handleFile(
-                                new File([a.svgSource], `${a.name}.svg`, {
-                                    type: 'image/svg+xml',
-                                }),
-                            )
-                        }
-                        className="flex w-full items-center justify-center gap-1.5 rounded-md border border-neutral-200 px-3 py-2 text-[11px] font-medium text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700"
-                    />
+                    {/* The binder is the INTERNAL client-logo library (super-
+                        admin actions) — on the unauth public studio it can only
+                        error, so it's staff-only. */}
+                    {!simplified && (
+                        <BinderButton
+                            label="or pick from the binder"
+                            onPick={(a) =>
+                                void handleFile(
+                                    new File([a.svgSource], `${a.name}.svg`, {
+                                        type: 'image/svg+xml',
+                                    }),
+                                )
+                            }
+                            className="flex w-full items-center justify-center gap-1.5 rounded-md border border-neutral-200 px-3 py-2 text-[11px] font-medium text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700"
+                        />
+                    )}
                 </div>
             ) : composite ? (
                 <div className="space-y-2">
@@ -1464,21 +2035,26 @@ export function SvgDropzone({ simplified = false }: { simplified?: boolean } = {
                         >
                             <ImageUp size={12} aria-hidden /> Trace
                         </button>
-                        <BinderButton
-                            label="Binder"
-                            onPick={(a) =>
-                                void handleFile(
-                                    new File([a.svgSource], `${a.name}.svg`, {
-                                        type: 'image/svg+xml',
-                                    }),
-                                )
-                            }
-                            className="flex min-h-[32px] flex-1 items-center justify-center gap-1 rounded-md border border-neutral-300 px-2 py-1.5 text-[11px] font-medium text-neutral-600 hover:bg-neutral-100"
-                        />
+                        {!simplified && (
+                            <BinderButton
+                                label="Binder"
+                                onPick={(a) =>
+                                    void handleFile(
+                                        new File([a.svgSource], `${a.name}.svg`, {
+                                            type: 'image/svg+xml',
+                                        }),
+                                    )
+                                }
+                                className="flex min-h-[32px] flex-1 items-center justify-center gap-1 rounded-md border border-neutral-300 px-2 py-1.5 text-[11px] font-medium text-neutral-600 hover:bg-neutral-100"
+                            />
+                        )}
                     </div>
                     <p className="text-[10px] text-neutral-400">
-                        Select a layer, then drag its handle on the Flat
-                        development tab to move it.
+                        {/* The Flat development tab only exists in the staff
+                            tool — pointing a customer at it is a dead end. */}
+                        {simplified
+                            ? 'Select a piece to set its size and position on the sign, or centre it with one tap.'
+                            : 'Select a layer, then drag its handle on the Flat development tab to move it.'}
                     </p>
                 </div>
             ) : (
@@ -1643,7 +2219,11 @@ export function SvgDropzone({ simplified = false }: { simplified?: boolean } = {
                         isn't a wall of always-open panels. */}
                     <div className="space-y-2">
                         {hasArtwork && (
-                            <Section title="Materials" step={4} accent>
+                            <Section
+                                title={simplified ? 'Finish' : 'Materials'}
+                                step={simplified ? undefined : 4}
+                                accent
+                            >
                                 {/* Whole-sign default (shop tool only) — the
                                     single choice that drives every shape unless
                                     it's overridden in the list below. Hidden in
@@ -2197,6 +2777,16 @@ export function SvgDropzone({ simplified = false }: { simplified?: boolean } = {
                         )}
                     </div>
                 </div>
+            )}
+
+            {/* Public-studio upload gate — finish first, then the artwork
+                lands already made the way the customer chose. */}
+            {pendingUpload && (
+                <UploadFinishModal
+                    upload={pendingUpload}
+                    onCancel={() => setPendingUpload(null)}
+                    onConfirm={confirmPendingUpload}
+                />
             )}
         </div>
     );
