@@ -501,7 +501,7 @@ export function PublicWizard({
 
     return (
         <div className="flex h-full flex-col">
-            <StudioStage night={night} className="relative flex-1 min-h-0">
+            <StudioStage night={night} flush className="relative flex-1 min-h-0">
                 {/* Accessible, non-visual description of the 3D preview (the
                     canvas itself is opaque to screen readers). Not aria-live —
                     it would announce on every dimension keystroke. */}
@@ -1015,7 +1015,11 @@ function DisplayOptions({
                 <SlidersHorizontal size={15} aria-hidden />
             </button>
             {open && (
-                <div className="absolute right-0 top-11 z-30 w-52 rounded-xl border border-white/15 bg-[#0c1114]/90 p-2 shadow-2xl backdrop-blur-md">
+                // The button sits left-of-centre in the top-right cluster, so a
+                // right-anchored popover runs off the LEFT edge on a phone. Open
+                // it leftward-from-the-button's-left (on-screen at 375px) and
+                // switch to the tidy right-aligned drop on ≥sm where there's room.
+                <div className="absolute left-0 top-11 z-30 w-52 rounded-xl border border-white/15 bg-[#0c1114]/90 p-2 shadow-2xl backdrop-blur-md sm:left-auto sm:right-0">
                     {rows.map(([label, value, set]) => (
                         <button
                             key={label}

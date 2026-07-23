@@ -10,16 +10,25 @@ import { STUDIO, stageBackground } from './tokens';
 export function StudioStage({
     night = false,
     className = '',
+    flush = false,
     children,
 }: {
     /** Deep near-black backdrop so illumination can glow. */
     night?: boolean;
     className?: string;
+    /**
+     * Drop the floating-card chrome (rounded corners, border, drop shadow) so
+     * the stage can go full-bleed to the viewport edges — used by the public
+     * builder, where the card wrapper just steals space from the 3D stage.
+     */
+    flush?: boolean;
     children: ReactNode;
 }) {
     return (
         <div
-            className={`relative overflow-hidden rounded-3xl border border-white/10 shadow-2xl ${className}`}
+            className={`relative overflow-hidden ${
+                flush ? '' : 'rounded-3xl border border-white/10 shadow-2xl'
+            } ${className}`}
             style={{
                 background: stageBackground(night),
                 transition: 'background 0.7s ease',
