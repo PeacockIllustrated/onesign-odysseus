@@ -40,6 +40,7 @@ function pieceData(params: PanelParams): DesignPackPieceData {
         sectionExport,
         apertureBySection: empty,
         apertureHolesBySection: empty,
+        keylineBySection: empty,
         pushThroughKeylineBySection: empty,
         pushThroughIslandsBySection: empty,
         fixingsBySection: empty,
@@ -112,6 +113,94 @@ describe('buildDesignPackInput', () => {
 
         expect(input.groups.some((g) => g.kind === 'opalBacking')).toBe(true);
         expect(input.ledToolNote).toMatch(/LED/i);
+    });
+
+    it('a global-keyline sign gets an opal backing AND an illuminated-acrylic insert', () => {
+        const params = baseParams({
+            keylineMm: 3,
+            illumination: {
+                keyline: { enabled: true, color: '#ffffff', intensity: 1 },
+            },
+        });
+        const data = pieceData(params);
+        const ap: FlatPath = {
+            closed: true,
+            points: [[100, 100], [300, 100], [300, 250], [100, 250]],
+        };
+        const kl: FlatPath = {
+            closed: true,
+            points: [[97, 97], [303, 97], [303, 253], [97, 253]],
+        };
+        data.apertureBySection = data.sectionExport.sections.map((_s, i) =>
+            i === 0 ? [ap] : [],
+        );
+        data.keylineBySection = data.sectionExport.sections.map((_s, i) =>
+            i === 0 ? [kl] : [],
+        );
+        const input = buildDesignPackInput(data, {
+            insituDataUri: null,
+            logoDataUri: null,
+        });
+        expect(input.groups.some((g) => g.kind === 'opalBacking')).toBe(true);
+        expect(
+            input.groups.some((g) => g.title === 'Illuminated acrylic inserts'),
+        ).toBe(true);
+    });
+
+    it('emits BOTH the aperture insert and the push-through group when a sign has both (disjoint sets, matching the production PDF)', () => {
+        const params = baseParams({
+            keylineMm: 3,
+            illumination: {
+                keyline: { enabled: true, color: '#ffffff', intensity: 1 },
+            },
+        });
+        const data = pieceData(params);
+        // Global-keyline APERTURE letter (section 0)…
+        const ap: FlatPath = {
+            closed: true,
+            points: [[100, 100], [300, 100], [300, 250], [100, 250]],
+        };
+        const kl: FlatPath = {
+            closed: true,
+            points: [[97, 97], [303, 97], [303, 253], [97, 253]],
+        };
+        data.apertureBySection = data.sectionExport.sections.map((_s, i) =>
+            i === 0 ? [ap] : [],
+        );
+        data.keylineBySection = data.sectionExport.sections.map((_s, i) =>
+            i === 0 ? [kl] : [],
+        );
+        // …AND a SEPARATE explicit push-through piece.
+        const pt: FlatPath = {
+            closed: true,
+            points: [[400, 100], [600, 100], [600, 250], [400, 250]],
+        };
+        data.pushThroughPieces = [
+            {
+                pathIndex: 1,
+                path: pt,
+                holes: [],
+                color: '#f5f5f0',
+                thicknessMm: 5,
+                keylineOffsetMm: 3,
+                protrusionMm: 5,
+            },
+        ];
+        const input = buildDesignPackInput(data, {
+            insituDataUri: null,
+            logoDataUri: null,
+        });
+        // Both cut pieces exist — the aperture inserts AND the push-through
+        // group. They cover disjoint letters, so neither is dropped (the
+        // production PDF sums them: insertOuters = apertures + pushThrough).
+        expect(
+            input.groups.filter(
+                (g) => g.title === 'Illuminated acrylic inserts',
+            ).length,
+        ).toBe(1);
+        expect(
+            input.groups.some((g) => g.title.startsWith('Push-through letters')),
+        ).toBe(true);
     });
 
     it('produces content that round-trips through the real pack schema', () => {

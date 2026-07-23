@@ -25,7 +25,10 @@ import {
     type DisplayLayer,
 } from '@/lib/visualiser/piece-display';
 import { buildNestedSheets } from '@/lib/visualiser/pack-nest';
-import { buildPanelDevelopmentSvg } from '@/lib/visualiser/panel-cut-svg';
+import {
+    buildPanelDevelopmentSvg,
+    composeTrayHoles,
+} from '@/lib/visualiser/panel-cut-svg';
 import { acrylicByHex } from '@/lib/visualiser/acrylic';
 import { FACE_MATERIALS } from '@/lib/visualiser/extra-face';
 import { panelDimensionBreakdown } from './panel-dimensions';
@@ -56,6 +59,12 @@ export interface DesignPackPieceData {
     sectionExport: SectionedExport;
     apertureBySection: FlatPath[][];
     apertureHolesBySection: FlatPath[][];
+    /**
+     * The global keyline (from `params.keylineMm`), per section. When present it
+     * SUPERSEDES the raw aperture on the tray cut (the wider halo groove IS the
+     * face opening), matching the production cut PDF — so it must reach the pack.
+     */
+    keylineBySection: FlatPath[][];
     pushThroughKeylineBySection: FlatPath[][];
     pushThroughIslandsBySection: FlatPath[][];
     fixingsBySection: FlatPath[][];
@@ -117,6 +126,7 @@ export function buildDesignPackInput(
         sectionExport,
         apertureBySection,
         apertureHolesBySection,
+        keylineBySection,
         pushThroughKeylineBySection,
         pushThroughIslandsBySection,
         fixingsBySection,
@@ -138,6 +148,10 @@ export function buildDesignPackInput(
     const w = params.panelWidthMm;
     const h = params.panelHeightMm;
     const keyline = !!params.illumination?.keyline?.enabled;
+    // A global keyline actually emitted geometry this section-set (offset > 0,
+    // apertures present). Distinct from the `keyline` toggle: an enabled toggle
+    // with no aperture produces nothing to cut.
+    const hasGlobalKeyline = keylineBySection.some((a) => a.length > 0);
     const illuminated = keyline || backlightPieces.length > 0;
     const panelColor = params.panelColor ?? '#c8ccce';
     const acrylicName = (hex: string) => {
@@ -222,20 +236,20 @@ export function buildDesignPackInput(
             : null;
 
     // 1. The aluminium tray — always present; the carcass everything mounts
-    // to. Its drawing is the UNFOLDED flat blank (the developed cruciform
-    // with every ring cut through the face + the bend lines) — the real
-    // sheet-metal cut file, not the assembled face art. The counters of
-    // aperture letters (apertureHoles) are cut too — they leave an island of
-    // panel that the machine cuts first so it stays put; even-odd nesting
-    // renders each counter as a solid island inside its letter hole.
-    const holesBySection = sectionExport.sections.map((_s, i) => [
-        ...(apertureBySection[i] ?? []),
-        ...(apertureHolesBySection[i] ?? []),
-        ...(pushThroughKeylineBySection[i] ?? []),
-        ...(pushThroughIslandsBySection[i] ?? []),
-        ...(fixingsBySection[i] ?? []),
-        ...(cableHolesBySection[i] ?? []),
-    ]);
+    // to. Its drawing is the UNFOLDED flat blank (the developed cruciform with
+    // every ring cut through the face + the bend lines) — the real sheet-metal
+    // cut file, not the assembled face art. The face holes come from the shared
+    // composeTrayHoles authority (keyline supersedes aperture, counters excluded
+    // — see that helper), so the pack and the production ZIP never disagree.
+    const holesBySection = composeTrayHoles({
+        sectionCount: sectionExport.sections.length,
+        apertureBySection,
+        keylineBySection,
+        pushThroughKeylineBySection,
+        pushThroughIslandsBySection,
+        fixingsBySection,
+        cableHolesBySection,
+    });
     const trayCut = buildPanelDevelopmentSvg({
         sectionExport,
         holesBySection,
@@ -328,18 +342,70 @@ export function buildDesignPackInput(
         });
     }
 
-    // 3. Opal backing — the shared diffuser, cut as a single rectangle.
-    if (illuminated && (pushThroughPieces.length > 0 || backlightPieces.length > 0)) {
-        const lit = [...pushThroughPieces, ...backlightPieces];
-        // Rectangle = lit-area bounding box + a 40mm overlap margin.
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        for (const p of lit) for (const [x, y] of p.path.points) {
-            if (x < minX) minX = x; if (y < minY) minY = y;
-            if (x > maxX) maxX = x; if (y > maxY) maxY = y;
+    // 2b. Illuminated-acrylic INSERTS for the global-keyline aperture letters —
+    // the acrylic that presses into the keyline openings. The production cut PDF
+    // emits these on its insert page (summed with any push-through pieces:
+    // insertOuters = apertures + pushThroughPieces); without this section they
+    // had no pack counterpart and no cut file. This group covers the APERTURE
+    // letters, a set DISJOINT from the push-through group above, so both coexist
+    // whenever a sign has a global keyline AND push-through pieces (no double-up).
+    if (hasGlobalKeyline) {
+        const insertPieces = [
+            ...apertureBySection.flat(),
+            ...apertureHolesBySection.flat(),
+        ].map((path) => ({ path, color: '#f5f5f0' }));
+        if (insertPieces.length > 0) {
+            groups.push({
+                kind: 'pushthrough',
+                title: 'Illuminated acrylic inserts',
+                count: apertureBySection.flat().length,
+                specRows: [
+                    { label: 'Material', value: 'Opal / clear acrylic' },
+                    {
+                        label: 'Keyline shoulder',
+                        value: `${params.keylineMm ?? 0}mm`,
+                    },
+                ],
+                callouts: [
+                    'Cut the letter faces (and counters as separate pieces) from acrylic',
+                    'Press into the keyline openings from behind; light halos the shoulder',
+                ],
+                drawings: nestedOrFilled(
+                    insertPieces,
+                    'keyline-inserts',
+                    '#f5f5f0',
+                    'Illuminated acrylic inserts',
+                ),
+            });
         }
+    }
+
+    // 3. Opal backing — the shared diffuser, cut as a single rectangle. Any
+    // illuminated construction needs it: push-through, backlit, OR a global
+    // keyline halo (previously the keyline-only sign silently shipped none).
+    if (
+        illuminated &&
+        (pushThroughPieces.length > 0 ||
+            backlightPieces.length > 0 ||
+            hasGlobalKeyline)
+    ) {
+        const lit = [...pushThroughPieces, ...backlightPieces];
+        // Rectangle = lit-area bounding box + a 40mm overlap margin. The lit
+        // area spans the material pieces AND (for a keyline-only sign) the
+        // global keyline contours, so the diffuser covers the openings.
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        const eat = (pts: Array<[number, number]>) => {
+            for (const [x, y] of pts) {
+                if (x < minX) minX = x; if (y < minY) minY = y;
+                if (x > maxX) maxX = x; if (y > maxY) maxY = y;
+            }
+        };
+        for (const p of lit) eat(p.path.points);
+        for (const arr of keylineBySection) for (const p of arr) eat(p.points);
         const margin = 40;
         const rectW = Number.isFinite(minX) ? maxX - minX + margin * 2 : w;
         const rectH = Number.isFinite(minY) ? maxY - minY + margin * 2 : h;
+        const litCount = lit.length || keylineBySection.flat().length;
         const rect = buildRectSvg({ widthMm: rectW, heightMm: rectH, title: 'Opal backing' });
         groups.push({
             kind: 'opalBacking',
@@ -349,7 +415,7 @@ export function buildDesignPackInput(
                 { label: 'Diffuser', value: 'Opal acrylic backing' },
                 { label: 'Sheet size', value: `${round(rectW)} × ${round(rectH)}mm` },
                 { label: 'Illumination', value: keyline ? 'Keyline halo' : 'Backlit' },
-                { label: 'Lit pieces', value: `${lit.length} shape${lit.length === 1 ? '' : 's'}` },
+                { label: 'Lit pieces', value: `${litCount} shape${litCount === 1 ? '' : 's'}` },
             ],
             callouts: [
                 'Single opal rectangle behind the illuminated pieces',

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildKeyline, mergeKeyline } from './svg-import';
+import { buildKeyline, mergeKeyline, mergeKeylineOuters } from './svg-import';
 import type { FlatPath } from './types';
 
 /** A closed rectangle ring (points listed CCW; closing point added). */
@@ -272,5 +272,97 @@ describe('mergeKeyline — weld overlapping keyline cuts', () => {
     it('passes a single ring straight through', () => {
         const a = rect(0, 0, 50, 50);
         expect(mergeKeyline([a])).toEqual([a]);
+    });
+});
+
+/** Do any two of these closed rings' edges cross (a double-cut on the machine)? */
+function anyPairIntersects(paths: FlatPath[]): boolean {
+    const seg = (
+        a: [number, number],
+        b: [number, number],
+        c: [number, number],
+        d: [number, number],
+    ): boolean => {
+        const o = (
+            p: [number, number],
+            q: [number, number],
+            r: [number, number],
+        ) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
+        return (
+            o(a, b, c) !== o(a, b, d) && o(c, d, a) !== o(c, d, b)
+        );
+    };
+    for (let i = 0; i < paths.length; i++) {
+        for (let j = i + 1; j < paths.length; j++) {
+            const A = paths[i].points;
+            const B = paths[j].points;
+            for (let a = 0; a + 1 < A.length; a++) {
+                for (let b = 0; b + 1 < B.length; b++) {
+                    if (seg(A[a], A[a + 1], B[b], B[b + 1])) return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+describe('mergeKeylineOuters — winding-agnostic weld for push-through keylines', () => {
+    it('welds two overlapping same-winding rings into one contour', () => {
+        const a = rect(0, 0, 60, 60);
+        const b = rect(40, 40, 100, 100);
+        const out = mergeKeylineOuters([a, b]);
+        expect(out.length).toBe(1);
+        expect(out[0].closed).toBe(true);
+    });
+
+    it('REGRESSION: welds two overlapping OPPOSITE-winding rings (unions, does not subtract)', () => {
+        // This is exactly the case mergeKeyline gets wrong: sibling push-through
+        // keylines from independent buildKeyline calls can carry opposite
+        // winding. mergeKeyline would treat one as a hole and DIFFERENCE it
+        // (area ≈ 3600−400 = 3200); mergeKeylineOuters must UNION them.
+        const a = rect(0, 0, 60, 60, true);
+        const b = rect(40, 40, 100, 100, false); // opposite winding
+        const out = mergeKeylineOuters([a, b]);
+        expect(out.length).toBe(1);
+        // Union area = 3600 + 3600 − 400 overlap = 6800.
+        expect(area(out[0])).toBeCloseTo(6800, 0);
+    });
+
+    it('leaves non-overlapping rings as separate contours', () => {
+        const a = rect(0, 0, 30, 30);
+        const b = rect(100, 100, 130, 130);
+        const out = mergeKeylineOuters([a, b]);
+        expect(out.length).toBe(2);
+    });
+
+    it('passes a single ring straight through untouched', () => {
+        const a = rect(0, 0, 50, 50);
+        expect(mergeKeylineOuters([a])).toEqual([a]);
+    });
+
+    it('differences an explicit hole out of the welded outers', () => {
+        const a = rect(0, 0, 100, 100);
+        const b = rect(60, 0, 160, 100); // overlaps a → union area 16000
+        const counter = rect(30, 30, 50, 50); // 400, inside a
+        const out = mergeKeylineOuters([a, b], [counter]);
+        const areas = out.map(area).sort((x, y) => y - x);
+        expect(areas[0]).toBeCloseTo(16000, 0); // welded outer
+        expect(areas).toContain(
+            areas.find((v) => Math.abs(v - 400) < 1),
+        ); // the counter survives as a hole ring
+    });
+
+    it('produces a non-self-crossing result from overlapping siblings', () => {
+        // Three mutually-overlapping letters' keylines → the welded output must
+        // have no crossing edges (what would confuse the cutter).
+        const rings = [
+            rect(0, 0, 50, 50),
+            rect(30, 10, 80, 60),
+            rect(60, 0, 110, 50),
+        ];
+        const out = mergeKeylineOuters(rings);
+        expect(out.length).toBeGreaterThanOrEqual(1);
+        expect(anyPairIntersects(out)).toBe(false);
+        expect(out.every((p) => p.closed)).toBe(true);
     });
 });
