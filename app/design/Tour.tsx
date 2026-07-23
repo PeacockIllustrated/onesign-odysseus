@@ -37,6 +37,19 @@ const CARD_W = 320; // tooltip width (clamped to viewport)
 const GAP = 14; // gap between spotlight and tooltip
 
 /**
+ * Some anchors exist twice — once in the desktop dock, once in the mobile nav
+ * bar — with one hidden per breakpoint. Return the first VISIBLE match so the
+ * spotlight lands on the copy the visitor can actually see.
+ */
+function findVisible(selector: string): Element | null {
+    for (const el of Array.from(document.querySelectorAll(selector))) {
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) return el;
+    }
+    return null;
+}
+
+/**
  * A lightweight, dependency-free product tour. Spotlights real on-page elements
  * by selector and explains them one step at a time, so a first-time visitor is
  * walked across the studio (size → artwork → materials → 3D → send) instead of
@@ -75,7 +88,7 @@ export function Tour({
     useEffect(() => {
         if (!open || !step) return;
         onStepChange?.(index, step);
-        const el = document.querySelector(step.selector);
+        const el = findVisible(step.selector);
         if (el) {
             el.scrollIntoView({
                 behavior: 'smooth',
@@ -90,7 +103,7 @@ export function Tour({
     useEffect(() => {
         if (!open || !step) return;
         const measure = () => {
-            const el = document.querySelector(step.selector);
+            const el = findVisible(step.selector);
             if (el) {
                 const r = el.getBoundingClientRect();
                 // Treat a zero-size box (hidden pane) as "not found".
