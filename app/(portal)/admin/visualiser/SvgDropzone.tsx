@@ -1552,6 +1552,18 @@ function NumField({
     onChange: (n: number) => void;
     step: number;
 }) {
+    // Draft-and-commit (blur / Enter), matching ControlsPanel's NumberField:
+    // committing per keystroke turned select-all + retype into a 0 that the
+    // param clamps rejected, fighting the user mid-type.
+    const [draft, setDraft] = useState<string | null>(null);
+    const shown = draft ?? String(value);
+    const commit = () => {
+        if (draft !== null) {
+            const n = parseFloat(draft);
+            if (Number.isFinite(n)) onChange(n);
+        }
+        setDraft(null);
+    };
     return (
         <label className="block">
             <span className="text-[10px] text-neutral-500">{label}</span>
@@ -1559,10 +1571,13 @@ function NumField({
                 type="number"
                 inputMode="decimal"
                 step={step}
-                value={value}
-                onChange={(e) => {
-                    const n = parseFloat(e.target.value);
-                    onChange(Number.isNaN(n) ? 0 : n);
+                value={shown}
+                onFocus={() => setDraft(shown)}
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={commit}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur();
+                    else if (e.key === 'Escape') setDraft(null);
                 }}
                 className="mt-0.5 w-full rounded border border-neutral-300 px-1.5 py-1 text-xs focus:border-[var(--accent)] focus:outline-none"
             />

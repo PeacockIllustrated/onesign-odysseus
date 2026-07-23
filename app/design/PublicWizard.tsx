@@ -61,6 +61,7 @@ import { assembleDesignPayload } from './assemble';
 import { StudioStage } from '@/components/studio/StudioStage';
 import { DayNightSwitch } from '@/components/studio/StudioChrome';
 import { BuiltUpModal, type BuiltUpResult } from './BuiltUpModal';
+import { ShadowGapModal } from './ShadowGapModal';
 import { finishSpec } from '@/lib/visualiser/returns-finish';
 
 const ACCENT = '#4e7e8c';
@@ -241,6 +242,7 @@ export function PublicWizard({
     const [fold, setFold] = useState(1);
     const [unfoldKey, setUnfoldKey] = useState(0);
     const [builtUpOpen, setBuiltUpOpen] = useState(false);
+    const [shadowGapOpen, setShadowGapOpen] = useState(false);
     const [mounted, setMounted] = useState(false);
     const [reducedMotion, setReducedMotion] = useState(false);
 
@@ -416,6 +418,23 @@ export function PublicWizard({
         setSnap((s) =>
             STEPS[i]?.key === 'details' ? 'full' : s === 'peek' ? 'half' : s,
         );
+    };
+
+    // Edits from the in-scene dimension chips (shown via Display options →
+    // Dimensions) propagate straight to the active panel's params — same
+    // wiring as the staff tool. Shadow-gap interactions never land here on
+    // the public page (the chip defers to the explainer modal below).
+    const handleDimensionChange = (
+        field: 'width' | 'height' | 'return' | 'shadowGap',
+        valueMm: number,
+    ) => {
+        if (!Number.isFinite(valueMm) || valueMm < 0) return;
+        if (field === 'width' && valueMm > 0)
+            setParam('panelWidthMm', valueMm);
+        else if (field === 'height' && valueMm > 0)
+            setParam('panelHeightMm', valueMm);
+        else if (field === 'return') setParam('returnDepthMm', valueMm);
+        else if (field === 'shadowGap') setParam('shadowGapMm', valueMm);
     };
 
     // ── Illumination quick-controls (mirrors the staff keyline glow) ───────
@@ -675,10 +694,16 @@ export function PublicWizard({
                             showDimensions={showDims && !captureClean}
                             showStandoffLocators={showStuds}
                             shading={flatColours ? 'flat' : 'realistic'}
+                            onDimensionChange={handleDimensionChange}
+                            onShadowGapAdd={() => setShadowGapOpen(true)}
                         />
                     </div>
                 ) : (
-                    <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-white/50">
+                    <div
+                        className={`absolute inset-0 flex items-center justify-center px-6 text-center text-sm ${
+                            night ? 'text-white/50' : 'text-neutral-500'
+                        }`}
+                    >
                         Set valid panel dimensions to begin.
                     </div>
                 )}
@@ -688,18 +713,33 @@ export function PublicWizard({
                     className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-3 p-3 md:p-5"
                     style={revealStyle}
                 >
+                    {/* The 3D canvas paints white by day and near-black at
+                        night, so the heading must flip with it — white text
+                        was invisible in the day view. */}
                     <div className="pointer-events-auto">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-white/45">
+                        <p
+                            className={`text-[10px] font-semibold uppercase tracking-[0.3em] ${
+                                night ? 'text-white/45' : 'text-neutral-400'
+                            }`}
+                        >
                             Design your sign
                         </p>
-                        <h1 className="mt-0.5 text-base font-semibold tracking-tight text-white md:text-lg">
+                        <h1
+                            className={`mt-0.5 text-base font-semibold tracking-tight md:text-lg ${
+                                night ? 'text-white' : 'text-neutral-900'
+                            }`}
+                        >
                             {step.title}
                         </h1>
                         {onShowHelp && !reference && (
                             <button
                                 type="button"
                                 onClick={onShowHelp}
-                                className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-white/55 hover:text-white"
+                                className={`mt-1 inline-flex items-center gap-1 text-[11px] font-medium ${
+                                    night
+                                        ? 'text-white/55 hover:text-white'
+                                        : 'text-neutral-500 hover:text-neutral-700'
+                                }`}
                             >
                                 <HelpCircle size={12} aria-hidden /> Show me how
                             </button>
@@ -1066,7 +1106,11 @@ export function PublicWizard({
                         <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-[11px] font-semibold tabular-nums text-white/85 backdrop-blur-md">
                             {specLine}
                         </span>
-                        <span className="px-1 text-[10px] uppercase tracking-wide text-white/40">
+                        <span
+                            className={`px-1 text-[10px] uppercase tracking-wide ${
+                                night ? 'text-white/40' : 'text-neutral-400'
+                            }`}
+                        >
                             {params.materialLabel}
                         </span>
                     </div>
@@ -1153,6 +1197,23 @@ export function PublicWizard({
                 open={builtUpOpen}
                 onClose={() => setBuiltUpOpen(false)}
                 onConfirm={handleBuiltUp}
+            />
+            {/* Shadow-gap explainer — the canvas "+ Shadow gap" chip routes
+                here (via onShadowGapAdd) so a layman learns what the gap IS,
+                and when they'd want one above/below, before it appears on
+                their sign. Handles edit + remove for an existing gap too. */}
+            <ShadowGapModal
+                open={shadowGapOpen}
+                onClose={() => setShadowGapOpen(false)}
+                currentGapMm={params.shadowGapMm}
+                currentEdges={
+                    params.shadowGapEdges ?? { top: true, bottom: true }
+                }
+                onApply={(gapMm, edges) => {
+                    setParam('shadowGapMm', gapMm);
+                    setParam('shadowGapEdges', edges);
+                }}
+                onRemove={() => setParam('shadowGapMm', 0)}
             />
         </div>
     );
