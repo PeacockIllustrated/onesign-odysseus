@@ -257,6 +257,8 @@ interface VisualiserState {
             glowIntensity?: number;
             /** Extra metal face over the group's letters; null clears it. */
             extraFace?: { material: FaceMaterial; thicknessMm: number } | null;
+            /** Printed face vinyl over the group's letters; null clears it. */
+            faceVinyl?: { svgSource: string; wMm: number; hMm: number } | null;
         },
     ) => void;
     updateGroupProps: (
@@ -918,6 +920,16 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                         ? options.extraFace ?? undefined
                         : existing?.extraFace
                     : undefined;
+            // Printed face vinyl sits on any front-reading letter — face-stuck
+            // acrylic too, not only push-through / backlit.
+            const faceVinyl =
+                material === 'acrylic' ||
+                material === 'pushthrough' ||
+                material === 'backlight'
+                    ? options?.faceVinyl !== undefined
+                        ? options.faceVinyl ?? undefined
+                        : existing?.faceVinyl
+                    : undefined;
 
             const updated: MaterialGroup = {
                 id: existing?.id ?? nextGroupId(),
@@ -931,6 +943,7 @@ export const useVisualiser = create<VisualiserState>((set) => ({
                 printFullColor,
                 glowIntensity,
                 extraFace,
+                faceVinyl,
                 pathIndices: [...pending].sort((a, b) => a - b),
             };
 

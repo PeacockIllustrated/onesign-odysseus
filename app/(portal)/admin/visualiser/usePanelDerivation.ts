@@ -658,6 +658,120 @@ export function usePanelDerivation(
         };
     }, [vinylPrintInputs, faceRectMm]);
 
+    // --- Printed FACE VINYL ---------------------------------------------------
+    // A separate print SVG laminated on a letter group's faces. Mirrors the
+    // vinyl-print pipeline, but the source is the group's `faceVinyl.svgSource`
+    // (a second upload, same proportions as the letters) and the mask is the
+    // group's OWN letters — so the print lands exactly on the letters. The print
+    // is auto-aligned to the group's letter bounding box. All face-vinyl groups
+    // rasterise into one combined face image (each print is scoped to its own
+    // letters' area, so they don't bleed).
+    const faceVinylPieces = useMemo<MaterialPiece[]>(() => {
+        const out: MaterialPiece[] = [];
+        for (const g of params?.materialGroups ?? []) {
+            if (!g.faceVinyl?.svgSource) continue;
+            for (const i of g.pathIndices) {
+                const p = placedClipByIndex[i];
+                if (!p) continue;
+                const kind = effectiveMaterials[i]?.kind;
+                if (kind !== 'cut' && kind !== 'backlight' && kind !== 'pushthrough' && kind !== 'acrylic') continue;
+                const holes = holesByIndex[i];
+                out.push({
+                    pathIndex: i,
+                    path: p,
+                    holes: holes && holes.length > 0 ? holes : undefined,
+                    color: '#cfd6da',
+                });
+            }
+        }
+        return out;
+    }, [params?.materialGroups, placedClipByIndex, effectiveMaterials, holesByIndex]);
+
+    const faceVinylInputs = useMemo<{
+        layers: PlacedArtwork[];
+        mask: MaskShape[];
+    } | null>(() => {
+        if (!development || !faceRectMm) return null;
+        const placed: PlacedArtwork[] = [];
+        const mask: MaskShape[] = [];
+        for (const g of params?.materialGroups ?? []) {
+            const fv = g.faceVinyl;
+            if (!fv?.svgSource) continue;
+            let minX = Infinity;
+            let minY = Infinity;
+            let maxX = -Infinity;
+            let maxY = -Infinity;
+            const groupMasks: MaskShape[] = [];
+            for (const i of g.pathIndices) {
+                const p = placedClipByIndex[i];
+                if (!p) continue;
+                const kind = effectiveMaterials[i]?.kind;
+                if (kind !== 'cut' && kind !== 'backlight' && kind !== 'pushthrough' && kind !== 'acrylic') continue;
+                for (const [x, y] of p.points) {
+                    if (x < minX) minX = x;
+                    if (y < minY) minY = y;
+                    if (x > maxX) maxX = x;
+                    if (y > maxY) maxY = y;
+                }
+                groupMasks.push({
+                    outer: p.points.map(
+                        ([x, y]) => [x - faceRectMm.x, y - faceRectMm.y] as [number, number],
+                    ),
+                    holes: (holesByIndex[i] ?? []).map((h) =>
+                        h.points.map(
+                            ([x, y]) => [x - faceRectMm.x, y - faceRectMm.y] as [number, number],
+                        ),
+                    ),
+                });
+            }
+            if (!Number.isFinite(minX) || groupMasks.length === 0) continue;
+            let bbox: PlacedArtwork['viewBox'];
+            try {
+                bbox = importSvg(fv.svgSource).bbox;
+            } catch {
+                bbox = undefined;
+            }
+            placed.push({
+                svg: fv.svgSource,
+                viewBox: bbox,
+                xMm: minX - faceRectMm.x,
+                yMm: minY - faceRectMm.y,
+                wMm: maxX - minX,
+                hMm: maxY - minY,
+            });
+            mask.push(...groupMasks);
+        }
+        if (placed.length === 0) return null;
+        return { layers: placed, mask };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+        development,
+        faceRectMm,
+        placedClipByIndex,
+        effectiveMaterials,
+        holesByIndex,
+        JSON.stringify(params?.materialGroups),
+    ]);
+
+    const [faceVinylPrintDataUrl, setFaceVinylPrintDataUrl] = useState<string | null>(
+        null,
+    );
+    useEffect(() => {
+        let cancelled = false;
+        if (!faceVinylInputs || !faceRectMm) {
+            setFaceVinylPrintDataUrl(null);
+            return;
+        }
+        rasterizeFaceArtwork(faceVinylInputs.layers, faceRectMm.w, faceRectMm.h, {
+            mask: faceVinylInputs.mask,
+        }).then((url) => {
+            if (!cancelled) setFaceVinylPrintDataUrl(url);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [faceVinylInputs, faceRectMm]);
+
     const manualFixings = useMemo(() => {
         if (!development || !placementXf || reference.length === 0) return [];
         const r = fixingDiameter / 2;
@@ -969,6 +1083,7 @@ export function usePanelDerivation(
         standoffPieces,
         backlightPieces,
         extraFacePieces,
+        faceVinylPieces,
         reference,
         autoFixings,
         placementXf,
@@ -994,6 +1109,7 @@ export function usePanelDerivation(
         apertureHolesBySection,
         faceRectMm,
         vinylPrintDataUrl,
+        faceVinylPrintDataUrl,
         bundle,
         pdfData,
     };

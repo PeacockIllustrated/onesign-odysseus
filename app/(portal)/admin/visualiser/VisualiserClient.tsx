@@ -301,6 +301,7 @@ export function VisualiserClient({
         isComposite,
         faceRectMm,
         vinylPrintDataUrl,
+        faceVinylPrintDataUrl,
         placedClip,
         placedClipByIndex,
         groupByPath,
@@ -1109,6 +1110,7 @@ export function VisualiserClient({
                             backlightPieces={backlightPieces}
                             extraFacePieces={extraFacePieces}
                             vinylPrintDataUrl={vinylPrintDataUrl}
+                            faceVinylPrintDataUrl={faceVinylPrintDataUrl}
                             placedPathsByIndex={placedClipByIndex}
                             pathGroupColors={dispGroupColors}
                             pendingPaths={pendingPathsSet}

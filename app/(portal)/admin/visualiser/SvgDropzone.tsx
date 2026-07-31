@@ -168,6 +168,7 @@ function GroupEditControls({
     initialPrintFullColor,
     initialGlowIntensity,
     initialExtraFace,
+    initialFaceVinyl,
     pendingCount,
     isExistingGroup,
     panelColor,
@@ -184,6 +185,7 @@ function GroupEditControls({
     initialPrintFullColor: boolean;
     initialGlowIntensity: number;
     initialExtraFace: { material: FaceMaterial; thicknessMm: number } | null;
+    initialFaceVinyl: { svgSource: string; wMm: number; hMm: number } | null;
     pendingCount: number;
     isExistingGroup: boolean;
     panelColor: string;
@@ -198,6 +200,7 @@ function GroupEditControls({
             printFullColor?: boolean;
             glowIntensity?: number;
             extraFace?: { material: FaceMaterial; thicknessMm: number } | null;
+            faceVinyl?: { svgSource: string; wMm: number; hMm: number } | null;
         },
     ) => void;
     onCancel: () => void;
@@ -227,6 +230,11 @@ function GroupEditControls({
         material: FaceMaterial;
         thicknessMm: number;
     } | null>(initialExtraFace);
+    const [faceVinyl, setFaceVinyl] = useState<{
+        svgSource: string;
+        wMm: number;
+        hMm: number;
+    } | null>(initialFaceVinyl);
 
     // Smart colour default when the operator switches material — only
     // snap if the colour is still the previous material's default; if
@@ -254,6 +262,9 @@ function GroupEditControls({
     // push-through opal letters and backlit cuts. (Same surfacing in the staff
     // tool and the public studio: it lives in the shared editor.)
     const canFace = hasPushThrough || hasGlow;
+    // A printed face vinyl can sit on any letter face that reads from the
+    // front: face-stuck acrylic too, not just push-through / backlit.
+    const canVinylFace = material === 'acrylic' || hasPushThrough || hasGlow;
 
     const materialHelp: Record<Exclude<GroupMaterial, 'cut'>, string> = simplified
         ? {
@@ -627,6 +638,66 @@ function GroupEditControls({
                 </div>
             )}
 
+            {/* Printed face vinyl — a second SVG (the print art) of the same
+                proportions, clipped to these letters + laminated on the front.
+                Exported as a print + a letter-outline cut. */}
+            {canVinylFace && (
+                <div
+                    className="space-y-1 rounded-md border p-2"
+                    style={{ borderColor: ACCENT_TINT_BORDER }}
+                >
+                    <span className="block text-[11px] font-medium text-neutral-700">
+                        Printed face vinyl
+                    </span>
+                    {faceVinyl ? (
+                        <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] font-medium text-emerald-700">
+                                Print attached ({Math.round(faceVinyl.wMm)}×
+                                {Math.round(faceVinyl.hMm)})
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setFaceVinyl(null)}
+                                className="rounded border border-neutral-300 px-2 py-0.5 text-[10px] text-neutral-600 hover:bg-neutral-100"
+                            >
+                                Remove
+                            </button>
+                        </div>
+                    ) : (
+                        <label className="inline-flex cursor-pointer items-center gap-1.5">
+                            <input
+                                type="file"
+                                accept=".svg,image/svg+xml"
+                                className="hidden"
+                                onChange={async (e) => {
+                                    const f = e.target.files?.[0];
+                                    if (!f) return;
+                                    try {
+                                        const text = await f.text();
+                                        const b = importSvg(text).bbox;
+                                        setFaceVinyl({
+                                            svgSource: text,
+                                            wMm: b.w,
+                                            hMm: b.h,
+                                        });
+                                    } catch {
+                                        /* ignore an unreadable SVG */
+                                    }
+                                    e.target.value = '';
+                                }}
+                            />
+                            <span className="rounded-md border border-neutral-300 px-2 py-1 text-[10px] text-neutral-700 hover:bg-neutral-100">
+                                Upload print SVG…
+                            </span>
+                        </label>
+                    )}
+                    <p className="text-[10px] text-neutral-500">
+                        A same-proportion print SVG, auto-aligned to these letters
+                        and printed on their faces (print + cut on export).
+                    </p>
+                </div>
+            )}
+
             <div className="flex items-center gap-2 pt-1">
                 <button
                     type="button"
@@ -650,6 +721,7 @@ function GroupEditControls({
                                 ? glowIntensity
                                 : undefined,
                             extraFace: canFace ? extraFace : null,
+                            faceVinyl: canVinylFace ? faceVinyl : null,
                         })
                     }
                     disabled={pendingCount === 0}
@@ -976,6 +1048,7 @@ function ShapeMaterialsPanel({
                     }
                     initialGlowIntensity={editingExisting?.glowIntensity ?? 1}
                     initialExtraFace={editingExisting?.extraFace ?? null}
+                    initialFaceVinyl={editingExisting?.faceVinyl ?? null}
                     pendingCount={pendingPaths.length}
                     isExistingGroup={!!editingExisting}
                     panelColor={panelColor}
