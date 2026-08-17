@@ -27,6 +27,7 @@ import {
     Shapes,
     Store,
     X,
+    CalendarDays,
 } from 'lucide-react';
 import { useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
@@ -80,6 +81,7 @@ const adminNavGroups: NavGroup[] = [
             { label: 'Shop Floor', href: '/shop-floor', icon: Zap },
             { label: 'Flags', href: '/admin/flags', icon: AlertTriangle },
             { label: 'Deliveries', href: '/admin/deliveries', icon: Truck },
+            { label: 'Schedule', href: '/admin/schedule', icon: CalendarDays },
         ],
     },
     {
