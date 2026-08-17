@@ -1,0 +1,1028 @@
+/* ===========================================================================
+   Fitting schedule board.
+
+   Layout and interaction are carried over from the office prototype: weekdays
+   down the left, w/c across the top, each day split per van, monospaced data,
+   lowercase labels, hairline rules, 2px corners.
+
+   The palette is Onesign Odysseus (#4e7e8c steel teal), not the OneLaser
+   orange the prototype borrowed — this board lives inside the platform, next
+   to the sidebar and topbar, and has to read as part of it. Every token is
+   scoped to .osd-board so the board can carry a dark theme for the workshop TV
+   without touching the portal chrome around it.
+   =========================================================================== */
+
+.osd-board {
+    /* light — office desks (default inside the portal) */
+    --sb-bg: #f4f5f5;
+    --sb-panel: #ffffff;
+    --sb-panel2: #fafbfb;
+    --sb-sunk: #eef1f2;
+    --sb-line: #dde2e3;
+    --sb-line2: #c7d0d2;
+    --sb-text: #1a1f23;
+    --sb-muted: #5a6a6e;
+    --sb-faint: #8a9499;
+    --sb-steel: #1a1f23;
+    --sb-steel-ink: #ffffff;
+    --sb-accent: #4e7e8c;
+    --sb-accent-dim: rgba(78, 126, 140, 0.12);
+    --sb-accent-line: rgba(78, 126, 140, 0.4);
+    --sb-danger: #c13333;
+    --sb-danger-dim: rgba(193, 51, 51, 0.12);
+    --sb-shadow: 0 3px 10px rgba(26, 31, 35, 0.1);
+    --sb-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Roboto Mono', monospace;
+
+    /* How much of a PM's colour bleeds into its card. Tuned per theme so the
+       same hex reads as an identity in both without a second stored value —
+       enough tint to name the owner at a glance from across the room, not so
+       much that the card's own text stops being the thing you read. */
+    --sb-pm-fill: 22%;
+    --sb-pm-ink: 62%;
+
+    background: var(--sb-bg);
+    color: var(--sb-text);
+    font-size: 13px;
+    /* Fill the surface it is mounted in, so a short week doesn't leave the
+       host page's own background showing below the board. */
+    min-height: 100%;
+}
+
+.osd-board[data-theme='dark'] {
+    /* dark — the workshop TV, and desks that prefer it */
+    --sb-bg: #14181b;
+    --sb-panel: #1a1f23;
+    --sb-panel2: #171c1f;
+    --sb-sunk: #111518;
+    --sb-line: #262d31;
+    --sb-line2: #354045;
+    --sb-text: #e9eef0;
+    --sb-muted: #93a7ac;
+    --sb-faint: #66787d;
+    --sb-steel: #e8f0f3;
+    --sb-steel-ink: #14181b;
+    --sb-accent: #7fb3c2;
+    --sb-accent-dim: rgba(127, 179, 194, 0.16);
+    --sb-accent-line: rgba(127, 179, 194, 0.42);
+    --sb-danger: #e86a6a;
+    --sb-danger-dim: rgba(232, 106, 106, 0.16);
+    --sb-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+
+    --sb-pm-fill: 30%;
+    --sb-pm-ink: 78%;
+}
+
+.osd-board *,
+.osd-board *::before,
+.osd-board *::after {
+    box-sizing: border-box;
+}
+
+/* :where() keeps this reset at zero specificity, so a component class like
+   .sb-card or .sb-addbtn can set its own background and border without having
+   to out-specify the reset. */
+.osd-board :where(button) {
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    background: none;
+    color: inherit;
+}
+
+.osd-board :where(input, select, textarea) {
+    font-family: inherit;
+    width: 100%;
+    background: var(--sb-sunk);
+    border: 1px solid var(--sb-line2);
+    border-radius: 2px;
+    padding: 9px 11px;
+    color: var(--sb-text);
+    font-size: 13px;
+}
+.osd-board input[type='checkbox'] {
+    width: auto;
+    accent-color: var(--sb-accent);
+}
+.osd-board input:focus,
+.osd-board select:focus,
+.osd-board textarea:focus {
+    outline: none;
+    border-color: var(--sb-accent);
+    box-shadow: 0 0 0 3px var(--sb-accent-dim);
+}
+.osd-board textarea {
+    height: 74px;
+    resize: none;
+}
+
+/* ---------- header ---------- */
+.sb-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--sb-line);
+    background: var(--sb-panel);
+}
+.sb-seg {
+    display: flex;
+    border: 1px solid var(--sb-line2);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.sb-seg button {
+    padding: 8px 17px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: lowercase;
+    color: var(--sb-muted);
+    border-right: 1px solid var(--sb-line2);
+}
+.sb-seg button:last-child { border-right: none; }
+.sb-seg button:hover { background: var(--sb-sunk); color: var(--sb-text); }
+.sb-seg button.on {
+    background: var(--sb-steel);
+    color: var(--sb-steel-ink);
+    font-weight: 700;
+}
+.sb-navbtn {
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--sb-line2);
+    border-radius: 2px;
+    color: var(--sb-muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.sb-pill {
+    height: 34px;
+    padding: 0 13px;
+    border: 1px solid var(--sb-line2);
+    border-radius: 2px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: lowercase;
+    color: var(--sb-muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.sb-navbtn:hover,
+.sb-pill:hover { background: var(--sb-sunk); color: var(--sb-text); }
+.sb-pill.on {
+    background: var(--sb-steel);
+    color: var(--sb-steel-ink);
+    border-color: var(--sb-steel);
+    font-weight: 700;
+}
+.sb-title {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+.sb-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+.sb-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    align-items: center;
+    padding: 10px 16px;
+    font-size: 11px;
+    color: var(--sb-muted);
+    border-bottom: 1px solid var(--sb-line);
+    background: var(--sb-panel);
+}
+.sb-legend .l {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-weight: 600;
+}
+.sb-swatch { width: 10px; height: 10px; border-radius: 1px; }
+.sb-hint {
+    color: var(--sb-faint);
+    font-weight: 400;
+    font-size: 10px;
+    font-family: var(--sb-mono);
+}
+.sb-legend .end { margin-left: auto; }
+
+/* ---------- live-sync status ----------
+   A stale board that looks live is worse than the whiteboard it replaced, so
+   a dropped connection says so loudly rather than degrading in silence. */
+.sb-sync {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    font-family: var(--sb-mono);
+    letter-spacing: 0.06em;
+    text-transform: lowercase;
+    color: var(--sb-faint);
+}
+.sb-sync .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #3fbb86;
+}
+.sb-sync[data-state='connecting'] .dot { background: #d69713; }
+.sb-sync[data-state='down'] .dot { background: var(--sb-danger); }
+.sb-syncbanner {
+    padding: 9px 16px;
+    background: var(--sb-danger-dim);
+    border-bottom: 1px solid var(--sb-danger);
+    color: var(--sb-danger);
+    font-size: 12px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.sb-main { padding: 14px 16px 28px; }
+.sb-weekwrap { display: flex; gap: 14px; align-items: flex-start; }
+.sb-boardcol { flex: 1; min-width: 0; }
+
+/* ---------- grid ---------- */
+.sb-grid {
+    display: grid;
+    gap: 1px;
+    background: var(--sb-line);
+    border: 1px solid var(--sb-line);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.sb-hcell { background: var(--sb-panel); padding: 11px 8px; text-align: center; }
+.sb-hcell .van {
+    font-weight: 700;
+    text-transform: lowercase;
+    font-size: 15px;
+}
+.sb-hcell .crew {
+    font-size: 11px;
+    color: var(--sb-muted);
+    font-family: var(--sb-mono);
+    margin-top: 2px;
+}
+.sb-dcell { background: var(--sb-panel); padding: 10px 9px; position: relative; }
+.sb-dcell .dname {
+    font-weight: 600;
+    font-size: 13px;
+    text-transform: lowercase;
+}
+.sb-dcell .ddate {
+    font-size: 10px;
+    color: var(--sb-faint);
+    font-family: var(--sb-mono);
+    margin-top: 1px;
+}
+.sb-dcell.today { background: var(--sb-accent-dim); }
+.sb-dcell.today::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--sb-accent);
+}
+.sb-dcell.today .dname { color: var(--sb-accent); }
+.sb-dcell.wkend { background: var(--sb-sunk); }
+.sb-dcell.wkend .dname { color: var(--sb-faint); }
+
+.sb-crewbtn {
+    display: inline-block;
+    margin-top: 7px;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: lowercase;
+    letter-spacing: 0.1em;
+    color: var(--sb-faint);
+    border: 1px solid var(--sb-line2);
+    border-radius: 2px;
+    padding: 3px 7px;
+    font-family: var(--sb-mono);
+}
+.sb-crewbtn:hover { color: var(--sb-text); border-color: var(--sb-muted); }
+.sb-daytag {
+    display: inline-block;
+    margin-top: 7px;
+    font-size: 9px;
+    font-weight: 700;
+    background: var(--sb-accent-dim);
+    color: var(--sb-accent);
+    border: 1px solid var(--sb-accent-line);
+    border-radius: 2px;
+    padding: 2px 7px;
+    text-transform: lowercase;
+    letter-spacing: 0.08em;
+    font-family: var(--sb-mono);
+}
+.sb-holtag {
+    display: block;
+    margin-top: 5px;
+    font-size: 10px;
+    color: var(--sb-accent);
+    font-weight: 500;
+    font-family: var(--sb-mono);
+}
+
+.sb-cell {
+    background: var(--sb-panel2);
+    padding: 7px;
+    min-height: 108px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.sb-cell.wkend { background: var(--sb-sunk); }
+.sb-crewbadge {
+    font-size: 9px;
+    font-weight: 700;
+    border-radius: 2px;
+    padding: 3px 7px;
+    width: fit-content;
+    background: var(--sb-accent-dim);
+    color: var(--sb-accent);
+    border: 1px solid var(--sb-accent-line);
+    font-family: var(--sb-mono);
+    letter-spacing: 0.06em;
+}
+.sb-crewbadge.bad {
+    background: var(--sb-danger-dim);
+    color: var(--sb-danger);
+    border-color: var(--sb-danger);
+}
+
+.sb-cellsplit { display: flex; flex-direction: column; gap: 5px; flex: 1; }
+.sb-ampmcol { display: flex; flex-direction: column; gap: 5px; }
+.sb-ampmcol.hidden { display: none; }
+/* All-day work covers the cell like a sticky note over the whole square, but
+   AM/PM must come back during a drag so they stay droppable. */
+.osd-board.dragging .sb-ampmcol.hidden { display: flex; }
+.sb-dayrow { display: none; flex-direction: column; width: 100%; }
+.sb-dayrow.show { display: flex; }
+.sb-daydrop {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed var(--sb-line2);
+    border-radius: 2px;
+    color: var(--sb-faint);
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: lowercase;
+    letter-spacing: 0.1em;
+    padding: 7px 0;
+    font-family: var(--sb-mono);
+}
+.sb-slimadd { display: flex; gap: 5px; }
+.sb-slimadd button {
+    flex: 1;
+    border: 1px dashed var(--sb-line2);
+    color: var(--sb-faint);
+    font-size: 10px;
+    border-radius: 2px;
+    padding: 3px 0;
+    font-family: var(--sb-mono);
+}
+.sb-slimadd button:hover { color: var(--sb-text); border-color: var(--sb-muted); }
+.osd-board.dragging .sb-slimadd { display: none; }
+
+.sb-slot { display: flex; gap: 6px; }
+.sb-slotlabel {
+    flex-shrink: 0;
+    width: 26px;
+    text-align: center;
+    background: var(--sb-sunk);
+    border: 1px solid var(--sb-line);
+    color: var(--sb-faint);
+    font-weight: 700;
+    font-size: 9px;
+    padding: 3px 0;
+    border-radius: 2px;
+    height: fit-content;
+    text-transform: lowercase;
+    letter-spacing: 0.06em;
+    font-family: var(--sb-mono);
+}
+.sb-slotlabel.ooh { border-color: var(--sb-accent-line); color: var(--sb-accent); }
+.sb-slotjobs { flex: 1; min-width: 0; border-radius: 2px; }
+.sb-addbtn {
+    width: 100%;
+    border: 1px dashed var(--sb-line2);
+    color: var(--sb-faint);
+    font-size: 10px;
+    border-radius: 2px;
+    padding: 3px 0;
+    margin-top: 2px;
+    font-family: var(--sb-mono);
+}
+.sb-addbtn:hover { color: var(--sb-text); border-color: var(--sb-muted); }
+
+/* OOH sits below PM and stays hidden until it is used — evening and
+   after-close installs are the exception, not a permanent third row. */
+.sb-oohrow { display: none; }
+.sb-oohrow.show { display: flex; }
+.osd-board.dragging .sb-oohrow { display: flex; }
+
+/* ---------- drag & drop ---------- */
+.osd-board.dragging .sb-slotjobs,
+.osd-board.dragging .sb-vslot {
+    outline: 1px dashed var(--sb-line2);
+    outline-offset: 1px;
+    min-height: 22px;
+}
+.sb-drop.over {
+    outline: 1px solid var(--sb-accent) !important;
+    background: var(--sb-accent-dim);
+    border-radius: 2px;
+}
+.sb-card.dragsrc,
+.sb-chip.dragsrc { opacity: 0.3; }
+
+/* ---------- job card ----------
+   Colour is whose job it is — the project manager — never a status. The card
+   derives its fill from the PM's stored hex against the active theme's panel,
+   so a newly added PM gets a readable card in light and dark alike. */
+.sb-card {
+    width: 100%;
+    text-align: left;
+    border-radius: 2px;
+    border-left: 3px solid var(--sb-pm, var(--sb-line2));
+    background: color-mix(in srgb, var(--sb-pm, var(--sb-line2)) var(--sb-pm-fill), var(--sb-panel));
+    color: color-mix(in srgb, var(--sb-pm, var(--sb-text)) var(--sb-pm-ink), var(--sb-text));
+    padding: 7px 9px;
+    margin-bottom: 6px;
+    display: block;
+    transition: transform 0.08s, box-shadow 0.08s;
+}
+.sb-card:hover { transform: translateY(-1px); box-shadow: var(--sb-shadow); }
+.sb-card .top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 6px;
+}
+.sb-card .name {
+    font-weight: 700;
+    font-size: 12.5px;
+    line-height: 1.25;
+    color: var(--sb-text);
+}
+.sb-card .fitted {
+    flex-shrink: 0;
+    font-size: 9px;
+    font-weight: 800;
+    font-family: var(--sb-mono);
+}
+.sb-card .meta {
+    font-size: 10px;
+    opacity: 0.82;
+    font-weight: 500;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 8px;
+    font-family: var(--sb-mono);
+    margin-top: 2px;
+}
+.sb-card .extra {
+    font-size: 10px;
+    opacity: 0.75;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 1px;
+}
+/* Completion reads separately from colour, so PM identity survives on
+   finished work. */
+.sb-card.done { opacity: 0.62; }
+.sb-card.done .name { text-decoration: line-through; }
+.sb-card.allday { margin-bottom: 0; border-left-width: 4px; }
+.sb-card.allday + .sb-card.allday { margin-top: 5px; }
+.sb-alldaytag {
+    font-size: 8px;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    text-transform: lowercase;
+    opacity: 0.65;
+    display: block;
+    margin-bottom: 3px;
+    font-family: var(--sb-mono);
+}
+.sb-delmark {
+    font-size: 8px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: lowercase;
+    font-family: var(--sb-mono);
+    border: 1px solid currentColor;
+    border-radius: 2px;
+    padding: 0 4px;
+    opacity: 0.75;
+}
+.sb-chip {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border-radius: 2px;
+    border-left: 3px solid var(--sb-pm, var(--sb-line2));
+    background: color-mix(in srgb, var(--sb-pm, var(--sb-line2)) var(--sb-pm-fill), var(--sb-panel));
+    color: var(--sb-text);
+    padding: 3px 6px;
+    margin-bottom: 2px;
+    font-size: 10px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.sb-chip.done { opacity: 0.55; text-decoration: line-through; }
+
+/* ---------- holding panels ---------- */
+.sb-sidebar {
+    width: 252px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.sb-holding {
+    border: 1px solid var(--sb-line);
+    background: var(--sb-panel);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.sb-bhead {
+    padding: 11px 13px;
+    border-bottom: 1px solid var(--sb-line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.sb-bhead b {
+    font-size: 11px;
+    text-transform: lowercase;
+    letter-spacing: 0.14em;
+    font-weight: 700;
+    font-family: var(--sb-mono);
+    color: var(--sb-muted);
+}
+.sb-bhead .cnt {
+    background: var(--sb-accent);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    border-radius: 2px;
+    padding: 1px 7px;
+    font-family: var(--sb-mono);
+}
+.sb-backloglist {
+    padding: 10px;
+    min-height: 104px;
+    max-height: 38vh;
+    overflow-y: auto;
+}
+.sb-bempty {
+    text-align: center;
+    font-size: 10px;
+    color: var(--sb-faint);
+    padding: 22px 6px;
+    line-height: 1.5;
+}
+.sb-bactions { padding: 0 10px 10px; display: flex; gap: 6px; }
+.sb-bactions button {
+    flex: 1;
+    font-size: 10px;
+    font-weight: 700;
+    border: 1px solid var(--sb-line2);
+    border-radius: 2px;
+    padding: 6px 0;
+    color: var(--sb-muted);
+    font-family: var(--sb-mono);
+    letter-spacing: 0.04em;
+}
+.sb-bactions button:hover { color: var(--sb-text); border-color: var(--sb-muted); }
+.sb-bnote {
+    padding: 0 13px 11px;
+    font-size: 10px;
+    color: var(--sb-faint);
+    line-height: 1.45;
+}
+
+/* ---------- month view ---------- */
+.sb-mwrap { overflow-x: auto; }
+.sb-mgrid { min-width: 950px; }
+.sb-wchead { background: var(--sb-panel); padding: 8px 4px; text-align: center; }
+.sb-wchead .wc {
+    font-weight: 700;
+    font-size: 12px;
+    font-family: var(--sb-mono);
+}
+.sb-wchead .wc:hover { color: var(--sb-accent); }
+.sb-subvans {
+    display: grid;
+    grid-template-columns: repeat(var(--sb-vans, 3), 1fr);
+    gap: 1px;
+    margin-top: 4px;
+}
+.sb-subvans span {
+    font-size: 9px;
+    color: var(--sb-faint);
+    font-weight: 700;
+    text-transform: lowercase;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: var(--sb-mono);
+}
+.sb-mcell { padding: 2px; background: var(--sb-panel2); }
+.sb-mcell.out { background: var(--sb-sunk); }
+.sb-mcell .tri {
+    display: grid;
+    grid-template-columns: repeat(var(--sb-vans, 3), 1fr);
+    gap: 2px;
+    height: 100%;
+}
+.sb-vslot {
+    min-height: 38px;
+    background: var(--sb-sunk);
+    border-radius: 2px;
+    padding: 2px;
+}
+
+/* ---------- year view ---------- */
+.sb-ytotals {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: center;
+    margin-bottom: 14px;
+    font-size: 12px;
+    color: var(--sb-muted);
+}
+.sb-ytotals b { color: var(--sb-text); font-weight: 700; font-family: var(--sb-mono); }
+.sb-heatkey {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    color: var(--sb-faint);
+    font-family: var(--sb-mono);
+    text-transform: lowercase;
+    letter-spacing: 0.08em;
+}
+.sb-hk { width: 11px; height: 11px; border-radius: 1px; }
+.sb-ymgrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 12px;
+}
+.sb-ymonth {
+    border: 1px solid var(--sb-line);
+    background: var(--sb-panel);
+    border-radius: 3px;
+    padding: 13px;
+}
+.sb-ymonth h3 {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: lowercase;
+    letter-spacing: 0.16em;
+    margin-bottom: 10px;
+    color: var(--sb-muted);
+    font-family: var(--sb-mono);
+}
+.sb-yweek {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    margin-bottom: 4px;
+}
+.sb-yweek .wcl {
+    width: 62px;
+    text-align: left;
+    font-size: 10px;
+    color: var(--sb-faint);
+    font-weight: 600;
+    font-family: var(--sb-mono);
+}
+.sb-yweek:hover .wcl { color: var(--sb-accent); }
+.sb-yweek .cells {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(var(--sb-vans, 3), 1fr);
+    gap: 4px;
+}
+/* Heat runs through the brand accent rather than a second hue, so a busy week
+   never reads as a PM colour. */
+.sb-heat {
+    height: 19px;
+    border-radius: 1px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 800;
+    font-family: var(--sb-mono);
+}
+.sb-heat.h0 { background: var(--sb-sunk); color: transparent; }
+.sb-heat.h1 { background: color-mix(in srgb, var(--sb-accent) 22%, var(--sb-panel)); color: var(--sb-text); }
+.sb-heat.h2 { background: color-mix(in srgb, var(--sb-accent) 45%, var(--sb-panel)); color: var(--sb-text); }
+.sb-heat.h3 { background: color-mix(in srgb, var(--sb-accent) 72%, var(--sb-panel)); color: #fff; }
+.sb-heat.h4 { background: var(--sb-accent); color: #fff; }
+
+/* ---------- modal ---------- */
+.sb-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    background: rgba(12, 19, 21, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    backdrop-filter: blur(2px);
+}
+.osd-board[data-theme='dark'] .sb-overlay { background: rgba(6, 10, 11, 0.82); }
+.sb-modal {
+    width: 100%;
+    max-width: 560px;
+    max-height: 90vh;
+    overflow-y: auto;
+    background: var(--sb-panel);
+    border: 1px solid var(--sb-line2);
+    border-radius: 3px;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+}
+.sb-mhead {
+    padding: 14px 22px;
+    border-bottom: 1px solid var(--sb-line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 600;
+    font-size: 15px;
+    text-transform: lowercase;
+}
+.sb-pmchip {
+    font-size: 10px;
+    font-weight: 800;
+    padding: 3px 11px;
+    border-radius: 2px;
+    color: #fff;
+    font-family: var(--sb-mono);
+    text-transform: lowercase;
+    letter-spacing: 0.06em;
+}
+.sb-mbody {
+    padding: 22px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+.sb-field label {
+    display: block;
+    font-size: 9px;
+    text-transform: lowercase;
+    letter-spacing: 0.16em;
+    color: var(--sb-faint);
+    font-weight: 700;
+    margin-bottom: 5px;
+    font-family: var(--sb-mono);
+}
+.sb-field.full { grid-column: 1 / -1; }
+.sb-checkrow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.sb-maprow { display: flex; gap: 6px; }
+.sb-mapbtn {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    padding: 0 13px;
+    background: var(--sb-sunk);
+    border: 1px solid var(--sb-line2);
+    border-radius: 2px;
+    font-size: 11px;
+    font-weight: 700;
+    text-decoration: none;
+    font-family: var(--sb-mono);
+    white-space: nowrap;
+}
+.sb-mapbtn:hover { border-color: var(--sb-accent); color: var(--sb-accent); }
+.sb-btnrow { display: flex; gap: 7px; flex-wrap: wrap; }
+.sb-btnrow button {
+    flex: 1;
+    min-width: 74px;
+    padding: 9px 0;
+    border-radius: 2px;
+    font-weight: 700;
+    font-size: 11px;
+    background: var(--sb-sunk);
+    border: 1px solid var(--sb-line2);
+    color: var(--sb-muted);
+    text-transform: lowercase;
+    letter-spacing: 0.04em;
+}
+.sb-btnrow button:hover { color: var(--sb-text); border-color: var(--sb-muted); }
+.sb-btnrow button.on {
+    background: var(--sb-steel);
+    border-color: var(--sb-steel);
+    color: var(--sb-steel-ink);
+}
+/* A selected PM button wears its own colour, so the choice reads the same way
+   the card will. */
+.sb-btnrow.pms button.on {
+    background: var(--sb-pmbtn);
+    border-color: var(--sb-pmbtn);
+    color: #fff;
+}
+.sb-mfoot {
+    padding: 14px 22px;
+    border-top: 1px solid var(--sb-line);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.sb-del {
+    color: var(--sb-danger);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 9px 13px;
+    border-radius: 2px;
+    text-transform: lowercase;
+    letter-spacing: 0.04em;
+}
+.sb-del:hover { background: var(--sb-danger-dim); }
+.sb-grow { flex: 1; }
+.sb-btn {
+    padding: 9px 17px;
+    border-radius: 2px;
+    font-size: 12px;
+    font-weight: 700;
+    background: transparent;
+    border: 1px solid var(--sb-line2);
+    color: var(--sb-muted);
+    text-transform: lowercase;
+    letter-spacing: 0.05em;
+}
+.sb-btn:hover { background: var(--sb-sunk); color: var(--sb-text); }
+.sb-btn.primary {
+    background: var(--sb-accent);
+    color: #fff;
+    border-color: var(--sb-accent);
+}
+.sb-btn.primary:hover { filter: brightness(1.08); }
+.sb-btn.ghost { color: var(--sb-accent); border-color: var(--sb-accent-line); }
+.sb-btn.ghost:hover { background: var(--sb-accent-dim); }
+.sb-btn:disabled { opacity: 0.5; cursor: default; }
+.sb-note {
+    font-size: 11px;
+    color: var(--sb-faint);
+    margin-bottom: 13px;
+    line-height: 1.5;
+}
+.sb-error {
+    font-size: 11px;
+    color: var(--sb-danger);
+    font-weight: 600;
+}
+.sb-dimmed { opacity: 0.35; pointer-events: none; }
+
+/* ---------- day-crew editor ---------- */
+.sb-rosterhead {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: lowercase;
+    letter-spacing: 0.16em;
+    color: var(--sb-faint);
+    font-family: var(--sb-mono);
+    padding: 14px 0 5px;
+    border-bottom: 1px solid var(--sb-line2);
+}
+.sb-fitterrow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--sb-line);
+}
+.sb-fitterrow:last-child { border-bottom: none; }
+.sb-fname { width: 78px; font-weight: 600; font-size: 12px; }
+.sb-assignseg {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(var(--sb-segcols, 5), 1fr);
+    gap: 4px;
+}
+.sb-assignseg button {
+    padding: 6px 0;
+    border-radius: 2px;
+    font-size: 10px;
+    font-weight: 700;
+    background: var(--sb-sunk);
+    border: 1px solid var(--sb-line2);
+    color: var(--sb-faint);
+    text-transform: lowercase;
+    font-family: var(--sb-mono);
+}
+.sb-assignseg button:hover { border-color: var(--sb-muted); color: var(--sb-text); }
+.sb-assignseg button.on {
+    background: var(--sb-steel);
+    border-color: var(--sb-steel);
+    color: var(--sb-steel-ink);
+}
+.sb-assignseg button.on.hol {
+    background: var(--sb-accent);
+    border-color: var(--sb-accent);
+    color: #fff;
+}
+.sb-assignseg button.on.off {
+    background: var(--sb-muted);
+    border-color: var(--sb-muted);
+    color: var(--sb-panel);
+}
+.sb-vansum {
+    display: grid;
+    grid-template-columns: repeat(var(--sb-vans, 3), 1fr);
+    gap: 8px;
+    margin-top: 16px;
+}
+.sb-vansum .v {
+    background: var(--sb-sunk);
+    border: 1px solid var(--sb-line);
+    border-radius: 2px;
+    padding: 9px;
+    text-align: center;
+}
+.sb-vansum .v b {
+    display: block;
+    font-size: 10px;
+    text-transform: lowercase;
+    letter-spacing: 0.12em;
+    margin-bottom: 3px;
+    color: var(--sb-faint);
+    font-family: var(--sb-mono);
+}
+.sb-vansum .v span { font-size: 11px; color: var(--sb-muted); }
+.sb-vansum .v.warnv { border-color: var(--sb-accent); }
+.sb-vansum .v.warnv span { color: var(--sb-accent); }
+.sb-vansum .v.badv { border-color: var(--sb-danger); }
+.sb-vansum .v.badv span { color: var(--sb-danger); }
+
+/* ---------- TV mode ----------
+   1920×1080 read from 3–5 m: bigger type throughout, every edit affordance
+   gone. */
+.osd-board.tv { font-size: 15px; min-height: 100vh; }
+.osd-board.tv .sb-title { font-size: 22px; }
+.osd-board.tv .sb-seg button { font-size: 15px; padding: 10px 22px; }
+.osd-board.tv .sb-pill { font-size: 14px; }
+.osd-board.tv .sb-legend { font-size: 14px; }
+.osd-board.tv .sb-swatch { width: 13px; height: 13px; }
+.osd-board.tv .sb-hcell .van { font-size: 21px; }
+.osd-board.tv .sb-hcell .crew { font-size: 14px; }
+.osd-board.tv .sb-dcell .dname { font-size: 19px; }
+.osd-board.tv .sb-dcell .ddate { font-size: 13px; }
+.osd-board.tv .sb-card .name { font-size: 16px; }
+.osd-board.tv .sb-card .meta { font-size: 13px; }
+.osd-board.tv .sb-card .extra { font-size: 13px; }
+.osd-board.tv .sb-card .fitted { font-size: 12px; }
+.osd-board.tv .sb-alldaytag { font-size: 11px; }
+.osd-board.tv .sb-slotlabel { font-size: 12px; width: 32px; }
+.osd-board.tv .sb-chip { font-size: 12px; }
+.osd-board.tv .sb-daytag,
+.osd-board.tv .sb-crewbadge,
+.osd-board.tv .sb-holtag { font-size: 12px; }
+.osd-board.tv .sb-bhead b { font-size: 14px; }
+.osd-board.tv .sb-wchead .wc { font-size: 15px; }
+.osd-board.tv .sb-subvans span { font-size: 11px; }
+.osd-board.tv .sb-addbtn,
+.osd-board.tv .sb-slimadd,
+.osd-board.tv .sb-crewbtn,
+.osd-board.tv .sb-hint,
+.osd-board.tv .sb-bactions,
+.osd-board.tv .sb-bnote,
+.osd-board.tv .sb-daydrop { display: none; }
+
+@media (max-width: 1100px) {
+    .sb-weekwrap { flex-direction: column; }
+    .sb-sidebar { width: 100%; flex-direction: row; }
+    .sb-sidebar > * { flex: 1; }
+}
+@media (max-width: 640px) {
+    .sb-mbody { grid-template-columns: 1fr; }
+    .sb-sidebar { flex-direction: column; }
+}

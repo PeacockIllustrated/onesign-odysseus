@@ -85,6 +85,7 @@ onesign-odysseus/
 │   │   │   ├── purchase-orders/ # ★ NEW — PO generation (Phase 2)
 │   │   │   ├── quotes/        # Quote management
 │   │   │   ├── reports/       # Cross-org reporting
+│   │   │   ├── schedule/      # ★ NEW — Live fitting schedule (week/month/year board)
 │   │   │   └── subscriptions/ # Subscription management
 │   │   ├── assets/            # Client asset management
 │   │   ├── billing/           # Client billing view
@@ -97,6 +98,7 @@ onesign-odysseus/
 │   │   └── layout.tsx         # Portal layout (sidebar + topbar)
 │   │   # NOTE: the old (marketing) group (/growth + /architects wizards) has been
 │   │   # removed; only the legacy architect-leads / leads API endpoints remain.
+│   ├── fitting-board/         # ★ NEW — Workshop TV view of the schedule (read-only)
 │   ├── (print)/               # Print-specific layouts
 │   ├── approve/               # External tokenised artwork approval
 │   │   └── artwork/[token]/
@@ -127,6 +129,8 @@ onesign-odysseus/
 │   ├── planning/              # Scheduling / planning helpers
 │   ├── production/            # Production job + shop-floor actions
 │   ├── purchase-orders/       # Supplier PO actions
+│   ├── realtime/              # Shared useRealtimeStatus hook (live / connecting / down)
+│   ├── schedule/              # ★ NEW — Fitting schedule: crew resolution, date maths, actions
 │   ├── quoter/                # ★ Signage quoter engine (CORE — do not break)
 │   │   ├── engine/            # Calculation engine with tests (panel_letters_v1 + generic items)
 │   │   ├── actions.ts         # Server actions for quotes
@@ -222,6 +226,9 @@ Migration 031 is intentionally absent (numbering gap from an early draft that wa
 | 062 | survey photo size | Photo-first survey UX: per-photo real-world `sign_width_mm`/`sign_height_mm` (mm) alongside image pixel dims used to align the annotation overlay; no structured per-item measurement form |
 | 063 | `production_packs` | Block-based JSONB works-pack builder (à la `design_packs`) for detailed, on-brand internal build documents. Standalone in v1; soft `linked_quote_id`/`linked_artwork_job_id` seams (no FK) for a later wire-up |
 
+### Fitting schedule (074)
+| 074 | `project_managers`, `vans`, `fitters`, `default_crew`, `day_crew_overrides`, `fitting_jobs` | The wall whiteboard, made live. Vans are the stable board columns, fitters a separate roster with a standing pairing per van plus per-day overrides for holidays and swaps ("people move, vans don't"). `fitting_jobs` is an inheritance-chain citizen (`org_id`/`contact_id`/`site_id` + `quote_id`) with free-text fallbacks for urgent work that reaches the board before a quote exists (same pattern as `site_surveys`, 061). Ref `FIT-YYYY-NNNNNN`; soft-archive only — completed jobs stay on the board ticked. All six tables Realtime-published |
+
 ### Public studio launch hardening (073)
 | 073 | design_request notifications | SECURITY DEFINER trigger on `design_requests` INSERT drops a `notifications` row (kind `design_request`, added to the kind CHECK) so new public leads appear on the dashboard Needs Attention feed — same pattern as the Persimmon trigger in 056 |
 
@@ -250,6 +257,23 @@ Under the hood, production_jobs are still created at quote acceptance time (the 
 `/design` (`app/design/`) is the **public, customer-facing** version of the visualiser — a lead-gen front door to push aperture & projecting signs. It sits **outside** `(portal)` with its own light, Onesign-branded `layout.tsx` and **no auth at all** (anyone with the link can build a sign). It does NOT duplicate the engine: the studio is a guided four-step **wizard** (`app/design/PublicWizard.tsx` — Size → Artwork → Light → Your details) that mounts the SAME store, geometry derivation, `Scene3D` and the full `ControlsPanel` / `SvgDropzone` the staff tool uses, so customers keep **every** building capability staff have (apertures, push-through, vinyl, stand-off, illumination, projecting blade) — reskinned in the shared cinematic Studio language (`components/studio`: `StudioStage` + `DayNightSwitch`; full-bleed dark stage as the hero, a frosted glass dock, the marquee day/night switch). (`VisualiserClient` still carries a now-unused `variant='public'` branch from the previous shell — harmless, left in place.) A short reusable spotlight tour (`app/design/Tour.tsx`, re-anchored to the wizard's `data-tour="steps"` / `data-tour="daynight"` elements) orients first-time visitors, auto-runs once (localStorage), and is replayable via "Show me how". The final "Your details" step assembles the design (`app/design/assemble.ts`) and submits it — design + face-on thumbnail + contact details — via `submitDesignRequest` into `design_requests` (migration 060) through the **service-role admin client** — the same unauth-write-via-server-action pattern as the token flows in §3 (do NOT add `getUser()`/`requireAuth()` to `submitDesignRequest`; there is no session). Spam guard is a honeypot field + a best-effort in-memory rate limit (Turnstile/captcha is a future toggle). Staff triage at `/admin/design-requests` (super-admin), where "Open in visualiser" promotes a request into a real `visualiser_designs` row; each submission also drops a `design_request` row into `notifications` via a SECURITY DEFINER trigger (migration 073), so new leads surface live on the dashboard "Needs Attention" feed. The visualiser tab links to `/design` via the "Public design studio" button next to the Neon tool. Pricing is deferred: today it's an enquiry; the `quoted` status + the request row are the seam for the planned hands-off Stripe package checkout.
 
 **The `simplified` contract.** The wizard mounts the SAME shared components as the staff tool (`ControlsPanel`, `SvgDropzone`, `TraceImage`), so every control added to them ships to the public page the day it merges — unless it is gated behind the `simplified` prop. Treat `simplified` as a contract, not a skin: staff-only affordances (binder picker, links into `/admin/*`, production spec fields like material thickness / shadow gap / stud hardware, staff rail step numbering, shop vocabulary) MUST be `!simplified`-gated, and customer-facing copy for the remainder lives behind `simplified` ternaries. When adding a control to a shared visualiser component, decide explicitly which side of the gate it belongs on.
+
+### 2d. The fitting schedule is the last node of the work flow
+The canonical journey (quote → artwork → production → delivery → invoice) had no **fitting** step — the point where a van and two people turn up at a site and install the thing. That lived on a physical whiteboard in the office, which is why it was the last thing outside the system.
+
+`/admin/schedule` (migration 074) is that board: weekdays down the left, w/c across the top, each day split per van, with AM / PM / all-day / out-of-hours slots and two holding panels ("to be scheduled" / "to be delivered"). Week, month and year views; drag & drop via **dnd-kit** (never native HTML5 DnD — it is mouse-only and loses `dragend` when the board re-renders mid-drag); live via Supabase Realtime.
+
+Three things are load-bearing:
+
+- **Card colour is whose job it is** — the project manager — never a status. Completion reads separately (✓, strike-through, fade) so PM identity survives on finished work. `project_managers` stores one base hex and the board derives card fill / border / chip from it with `color-mix()` against the active theme, so a PM added next year needs no new CSS.
+- **People move, vans don't.** Vans are the stable columns; `default_crew` is the standing pairing and `day_crew_overrides` carries holidays and swaps for a single date. `lib/schedule/utils.ts` resolves a day by applying overrides over the standing pairing, and only rows that *differ* from it are persisted — so a day edited back to normal loses its "crew change" tag instead of carrying a no-op override forever.
+- **Jobs are a permanent record.** Completed work is never removed; even the delete action is a soft `archived_at`.
+
+**There is no ClarityGo importer, and there should not be one.** The original brief specified a CSV export/import de-duplicated on a quote-ref *string*, because it assumed a standalone app. Odysseus replaces ClarityGo — quotes are already here, so the join is `fitting_jobs.quote_id` and the "from a quote" picker lists accepted quotes that have no card yet.
+
+`/fitting-board` is the workshop TV view. Like `/backshop` (§2b) it sits **outside** `(portal)` with a plain `requireAuth()`, for the same two reasons: the sidebar is useless on a wall TV, and the portal layout's `getUserOrg()` would bounce org-less floor staff. It renders the *same* `ScheduleBoard` component in read-only tv mode, so the week view can't drift between office and workshop. View state (`?view=`/`?week=`/`?month=`/`?year=`) is a URL param because the server has to know which window of dates to load — and it makes the TV pointable at an exact view.
+
+The board carries the **Odysseus** palette (`#4e7e8c`), not the OneLaser orange the original prototype borrowed; what it does keep from that prototype is the typographic treatment — monospaced data, lowercase labels, hairline rules, 2px corners — which is palette-agnostic and reads well at TV distance.
 
 ### 3. Single-tenant internal platform — clients are records, not users
 
@@ -282,6 +306,7 @@ The `/admin/booking` module (287K of code) was experimental and is not part of O
 - **Acrylic nesting tool** (`/admin/nesting`, migration 064 — saved nests) — uploads an outlined-artwork SVG, splits it into cut pieces (letter counters stay welded as islands; an island inside a hole becomes a piece again), and packs them onto configurable sheets via a raster bottom-left-fill engine in a Web Worker: gap tolerance via full-gap dilation, rotation steps (15° default), optional nesting inside letter counters, multi-sheet overflow with an off-cut size suggestion. Grouped piece list hover-highlights related pieces on the canvas. Exports per-sheet SVG + DXF (R12) and a jsPDF summary — always from a frozen snapshot of the nested run. Engine is DOM-free and Vitest-covered (`lib/nesting/`).
 - **Public design studio** (`/design`, migration 060) — unauthenticated customer-facing visualiser with a guided spotlight tour; submissions land in the `/admin/design-requests` inbox. See §2c.
 - **Built-up letter returns tool** (`/admin/visualiser/returns`, migration 065) — reads an outlined-letters SVG (real-size calibration like the neon tool), measures each contour's perimeter and breaks the side-wall return strips into welded segments at sharp corners + the stock length, wrapping the outer edge AND every counter. Produces an annotated cut-sheet PDF (faces drawn, weld dots, per-letter strip/weld table, totals). "Send to nester" hands the faces + return rectangles to `/admin/nesting` as ONE linked nest (same brass), grouped `FACES` / `RETURNS`; the nest banners back to its job and the job lists where it was nested. Engine is DOM-free + Vitest-covered (`lib/visualiser/returns.ts`).
+- **Live fitting schedule** (`/admin/schedule` + `/fitting-board`, migration 074) — the whiteboard made live. Week / month / year views, AM / PM / all-day / OOH slots, two holding panels, per-day crews with understaffing warnings, holiday ranges, dnd-kit drag & drop with optimistic rollback, Supabase Realtime with a *fail-loudly* offline banner, and a read-only workshop TV route. Accepted quotes feed the board directly — no ClarityGo importer. See §2d
 - **Production job board** (`/admin/jobs`) with Kanban across real Onesign departments, shop-floor queue at `/shop-floor`
 - **Quote → production handoff** (`createJobFromQuote`) with item-level stage routing
 - **Artwork compliance module** with sub-items, per-sub-item sign-off, release-to-production flow rebuilding `stage_routing` from signed-off sub-items
