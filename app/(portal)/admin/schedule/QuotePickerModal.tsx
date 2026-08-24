@@ -75,7 +75,7 @@ export function QuotePickerModal({ lane, onClose, onSaved }: Props) {
         >
             <div className="sb-modal" style={{ maxWidth: 520 }}>
                 <div className="sb-mhead">
-                    add from an accepted quote
+                    Add from an accepted quote
                 </div>
                 <div style={{ padding: 20 }}>
                     <p className="sb-note">
@@ -87,11 +87,11 @@ export function QuotePickerModal({ lane, onClose, onSaved }: Props) {
                     <input
                         value={filter}
                         onChange={(e) => setFilter(e.target.value)}
-                        placeholder="search by quote number, client or project…"
+                        placeholder="Search by quote number, client or project…"
                     />
 
                     <div style={{ marginTop: 12, maxHeight: '46vh', overflowY: 'auto' }}>
-                        {quotes === null && <p className="sb-note">loading…</p>}
+                        {quotes === null && <p className="sb-note">Loading…</p>}
                         {quotes !== null && shown.length === 0 && (
                             <p className="sb-note">
                                 Nothing waiting — every accepted quote already has a card.
@@ -120,7 +120,7 @@ export function QuotePickerModal({ lane, onClose, onSaved }: Props) {
                                     disabled={pending}
                                     onClick={() => pull(q.id)}
                                 >
-                                    add
+                                    Add
                                 </button>
                             </div>
                         ))}
@@ -131,7 +131,7 @@ export function QuotePickerModal({ lane, onClose, onSaved }: Props) {
                 <div className="sb-mfoot">
                     <span className="sb-grow" />
                     <button className="sb-btn primary" onClick={onClose}>
-                        done
+                        Done
                     </button>
                 </div>
             </div>

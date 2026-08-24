@@ -68,7 +68,9 @@ export function WeekView({
         <div
             className="sb-grid"
             style={{
-                gridTemplateColumns: `${tv ? '160px' : '125px'} repeat(${vans.length}, 1fr)`,
+                // The day column carries the date, a crew-change tag and the
+                // crew button, so it needs more room than a date alone.
+                gridTemplateColumns: `${tv ? '11rem' : '9.5rem'} repeat(${vans.length}, 1fr)`,
             }}
         >
             <div className="sb-hcell" />
@@ -153,13 +155,13 @@ function DayRow({
             <div className={`sb-dcell ${isToday ? 'today' : ''} ${weekend ? 'wkend' : ''}`}>
                 <div className="dname">{dayName}</div>
                 <div className="ddate">{formatWC(date)}</div>
-                {override && <span className="sb-daytag">crew change</span>}
+                {override && <span className="sb-daytag">Crew change</span>}
                 {holidayNames.length > 0 && (
-                    <span className="sb-holtag">on holiday: {holidayNames.join(', ')}</span>
+                    <span className="sb-holtag">On holiday: {holidayNames.join(', ')}</span>
                 )}
                 {!readOnly && (
                     <button className="sb-crewbtn" onClick={() => onEditCrew(date)}>
-                        {override ? 'edit crews' : 'change crews'}
+                        {override ? 'Edit crews' : 'Change crews'}
                     </button>
                 )}
             </div>
@@ -177,10 +179,10 @@ function DayRow({
                     const warn = crewWarning(crew);
                     badge =
                         warn === 'empty' ? (
-                            <span className="sb-crewbadge bad">⚠ no crew</span>
+                            <span className="sb-crewbadge bad">No crew</span>
                         ) : warn === 'solo' ? (
                             <span className="sb-crewbadge">
-                                ⚠ {crewLabel(crew, fitters)} only
+                                {crewLabel(crew, fitters)} only
                             </span>
                         ) : (
                             <span className="sb-crewbadge">{crewLabel(crew, fitters)}</span>
@@ -208,7 +210,7 @@ function DayRow({
                                     />
                                 ))}
                                 {!hasDay && (
-                                    <div className="sb-daydrop">drop here for all day</div>
+                                    <div className="sb-daydrop">Drop here for all day</div>
                                 )}
                             </DropZone>
 
@@ -219,9 +221,7 @@ function DayRow({
                             >
                                 {(['AM', 'PM'] as const).map((slot) => (
                                     <div key={slot} className="sb-slot">
-                                        <span className="sb-slotlabel">
-                                            {slot.toLowerCase()}
-                                        </span>
+                                        <span className="sb-slotlabel">{slot}</span>
                                         <DropZone
                                             target={{
                                                 kind: 'cell',
@@ -251,7 +251,7 @@ function DayRow({
                                                         onAddJob(date, van.id, slot)
                                                     }
                                                 >
-                                                    + job
+                                                    + Add job
                                                 </button>
                                             )}
                                         </DropZone>
@@ -264,10 +264,10 @@ function DayRow({
                             {hasDay && !hasSlotJob && !readOnly && (
                                 <div className="sb-slimadd">
                                     <button onClick={() => onAddJob(date, van.id, 'AM')}>
-                                        + am job
+                                        + AM job
                                     </button>
                                     <button onClick={() => onAddJob(date, van.id, 'PM')}>
-                                        + pm job
+                                        + PM job
                                     </button>
                                 </div>
                             )}
@@ -278,7 +278,7 @@ function DayRow({
                                     cell.OOH.length ? 'show' : ''
                                 }`}
                             >
-                                <span className="sb-slotlabel ooh">ooh</span>
+                                <span className="sb-slotlabel ooh">OOH</span>
                                 <DropZone
                                     target={{ kind: 'cell', date, vanId: van.id, slot: 'OOH' }}
                                     className="sb-slotjobs"
@@ -297,7 +297,7 @@ function DayRow({
                                             className="sb-addbtn"
                                             onClick={() => onAddJob(date, van.id, 'OOH')}
                                         >
-                                            {cell.OOH.length ? '+ job' : '+ out of hours'}
+                                            {cell.OOH.length ? '+ Add job' : '+ Out of hours'}
                                         </button>
                                     )}
                                 </DropZone>

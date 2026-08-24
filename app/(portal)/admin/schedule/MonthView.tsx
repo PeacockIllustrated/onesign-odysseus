@@ -58,14 +58,12 @@ export function MonthView({
                 <div className="sb-hcell" style={{ display: 'flex', alignItems: 'flex-end' }}>
                     <span
                         style={{
-                            fontSize: 10,
-                            letterSpacing: '.15em',
-                            textTransform: 'lowercase',
-                            color: 'var(--sb-faint)',
-                            fontWeight: 700,
+                            fontSize: '0.75rem',
+                            color: 'var(--fg-subtle)',
+                            fontWeight: 600,
                         }}
                     >
-                        days
+                        Days
                     </span>
                 </div>
 

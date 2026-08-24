@@ -199,7 +199,7 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
         >
             <div className="sb-modal">
                 <div className="sb-mhead">
-                    <span>{d.id ? 'job details' : 'add job'}</span>
+                    <span>{d.id ? 'Job details' : 'Add job'}</span>
                     {pm && (
                         <span className="sb-pmchip" style={{ background: pm.colour }}>
                             {pm.name}
@@ -209,7 +209,7 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
 
                 <div className="sb-mbody">
                     <div className="sb-field full">
-                        <label>client</label>
+                        <label>Client</label>
                         <select
                             value={d.org_id ?? ''}
                             onChange={(e) => set('org_id', e.target.value || null)}
@@ -225,7 +225,7 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
 
                     <div className="sb-field full">
                         <label>
-                            {d.org_id ? 'job name (optional)' : 'customer / job name *'}
+                            {d.org_id ? 'Job name (optional)' : 'Customer / job name *'}
                         </label>
                         <input
                             value={d.customer_fallback}
@@ -235,7 +235,7 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
                     </div>
 
                     <div className="sb-field full">
-                        <label>project manager (sets the colour)</label>
+                        <label>Project manager (sets the card colour)</label>
                         <div className="sb-btnrow pms">
                             {pms.map((p) => (
                                 <button
@@ -251,7 +251,7 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
                     </div>
 
                     <div className="sb-field">
-                        <label>quote reference</label>
+                        <label>Quote reference</label>
                         <input
                             value={d.quote_ref}
                             onChange={(e) => set('quote_ref', e.target.value)}
@@ -266,21 +266,21 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
                                 checked={d.done}
                                 onChange={(e) => set('done', e.target.checked)}
                             />
-                            fitted / completed ✓
+                            Fitted / completed ✓
                         </label>
                     </div>
 
                     <div className="sb-field">
-                        <label>location</label>
+                        <label>Location</label>
                         <input
                             value={d.location}
                             onChange={(e) => set('location', e.target.value)}
-                            placeholder="town / site"
+                            placeholder="Town / site"
                         />
                     </div>
 
                     <div className="sb-field">
-                        <label>postcode</label>
+                        <label>Postcode</label>
                         <div className="sb-maprow">
                             <input
                                 value={d.postcode}
@@ -294,7 +294,7 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
                                     target="_blank"
                                     rel="noreferrer"
                                 >
-                                    map ↗
+                                    Map ↗
                                 </a>
                             )}
                         </div>
@@ -307,7 +307,7 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
                                 checked={inHolding}
                                 onChange={(e) => toggleHolding(e.target.checked)}
                             />
-                            no date yet — keep in a holding list
+                            No date yet — keep in a holding list
                         </label>
                         {inHolding && (
                             <div className="sb-btnrow" style={{ marginTop: 8 }}>
@@ -315,20 +315,20 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
                                     className={d.lane !== 'delivery' ? 'on' : ''}
                                     onClick={() => set('lane', 'scheduled')}
                                 >
-                                    to be scheduled
+                                    To be scheduled
                                 </button>
                                 <button
                                     className={d.lane === 'delivery' ? 'on' : ''}
                                     onClick={() => set('lane', 'delivery')}
                                 >
-                                    to be delivered
+                                    To be delivered
                                 </button>
                             </div>
                         )}
                     </div>
 
                     <div className={`sb-field ${inHolding ? 'sb-dimmed' : ''}`}>
-                        <label>van</label>
+                        <label>Van</label>
                         <select
                             value={d.van_id ?? ''}
                             onChange={(e) => set('van_id', e.target.value || null)}
@@ -342,7 +342,7 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
                     </div>
 
                     <div className={`sb-field ${inHolding ? 'sb-dimmed' : ''}`}>
-                        <label>crew override (optional)</label>
+                        <label>Crew override (optional)</label>
                         <input
                             value={d.crew_override}
                             onChange={(e) => set('crew_override', e.target.value)}
@@ -351,7 +351,7 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
                     </div>
 
                     <div className={`sb-field ${inHolding ? 'sb-dimmed' : ''}`}>
-                        <label>week commencing</label>
+                        <label>Week commencing</label>
                         <input
                             type="date"
                             value={monday ?? ''}
@@ -360,7 +360,7 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
                     </div>
 
                     <div className={`sb-field ${inHolding ? 'sb-dimmed' : ''}`}>
-                        <label>day</label>
+                        <label>Day</label>
                         <select
                             value={weekday}
                             onChange={(e) => setWeekday(Number(e.target.value))}
@@ -374,12 +374,12 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
                     </div>
 
                     <div className={`sb-field full ${inHolding ? 'sb-dimmed' : ''}`}>
-                        <label>time slot</label>
+                        <label>Time slot</label>
                         <div className="sb-btnrow">
-                            {slotButton('AM', 'morning')}
-                            {slotButton('PM', 'afternoon')}
-                            {slotButton('DAY', 'all day')}
-                            {slotButton('OOH', 'out of hours')}
+                            {slotButton('AM', 'Morning')}
+                            {slotButton('PM', 'Afternoon')}
+                            {slotButton('DAY', 'All day')}
+                            {slotButton('OOH', 'Out of hours')}
                         </div>
                     </div>
 
@@ -390,12 +390,12 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
                                 checked={d.delivery_required}
                                 onChange={(e) => set('delivery_required', e.target.checked)}
                             />
-                            materials to be delivered ahead of the fit
+                            Materials to be delivered ahead of the fit
                         </label>
                     </div>
 
                     <div className="sb-field full">
-                        <label>access / equipment</label>
+                        <label>Access / equipment</label>
                         <input
                             value={d.access_equipment}
                             onChange={(e) => set('access_equipment', e.target.value)}
@@ -404,7 +404,7 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
                     </div>
 
                     <div className="sb-field full">
-                        <label>notes</label>
+                        <label>Notes</label>
                         <textarea
                             value={d.notes}
                             onChange={(e) => set('notes', e.target.value)}
@@ -432,19 +432,19 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
                     {d.id &&
                         (confirmDelete ? (
                             <button className="sb-del" onClick={remove} disabled={pending}>
-                                confirm — archive this job
+                                Confirm — archive this job
                             </button>
                         ) : (
                             <button className="sb-del" onClick={() => setConfirmDelete(true)}>
-                                delete
+                                Delete
                             </button>
                         ))}
                     <span className="sb-grow" />
                     <button className="sb-btn" onClick={onClose}>
-                        cancel
+                        Cancel
                     </button>
                     <button className="sb-btn primary" onClick={save} disabled={pending}>
-                        {pending ? 'saving…' : d.id ? 'save changes' : 'add job'}
+                        {pending ? 'Saving…' : d.id ? 'Save changes' : 'Add job'}
                     </button>
                 </div>
             </div>

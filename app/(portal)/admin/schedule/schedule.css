@@ -1,75 +1,30 @@
 /* ===========================================================================
    Fitting schedule board.
 
-   Layout and interaction are carried over from the office prototype: weekdays
-   down the left, w/c across the top, each day split per van, monospaced data,
-   lowercase labels, hairline rules, 2px corners.
+   Styling is the platform's own: the tokens in app/globals.css (--card,
+   --card-border, --fg, --accent, --radius-*), Gilroy, Studio rounding, and the
+   shared .btn-* / .badge component classes. The board carries no palette or
+   theme of its own — it follows the app's light/dark toggle like every other
+   page, under the same "light panels on a dark stage" model.
 
-   The palette is Onesign Odysseus (#4e7e8c steel teal), not the OneLaser
-   orange the prototype borrowed — this board lives inside the platform, next
-   to the sidebar and topbar, and has to read as part of it. Every token is
-   scoped to .osd-board so the board can carry a dark theme for the workshop TV
-   without touching the portal chrome around it.
+   What is board-specific here is layout and interaction only: the day x van
+   grid, the AM / PM / all-day / out-of-hours slot mechanics, and the drag
+   states. Anything that could be a colour decision defers to a token.
    =========================================================================== */
 
 .osd-board {
-    /* light — office desks (default inside the portal) */
-    --sb-bg: #f4f5f5;
-    --sb-panel: #ffffff;
-    --sb-panel2: #fafbfb;
-    --sb-sunk: #eef1f2;
-    --sb-line: #dde2e3;
-    --sb-line2: #c7d0d2;
-    --sb-text: #1a1f23;
-    --sb-muted: #5a6a6e;
-    --sb-faint: #8a9499;
-    --sb-steel: #1a1f23;
-    --sb-steel-ink: #ffffff;
-    --sb-accent: #4e7e8c;
-    --sb-accent-dim: rgba(78, 126, 140, 0.12);
-    --sb-accent-line: rgba(78, 126, 140, 0.4);
-    --sb-danger: #c13333;
-    --sb-danger-dim: rgba(193, 51, 51, 0.12);
-    --sb-shadow: 0 3px 10px rgba(26, 31, 35, 0.1);
-    --sb-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Roboto Mono', monospace;
+    /* How much of a project manager's colour tints its card. Panels are light
+       in both themes, so one value reads correctly everywhere. */
+    --sb-pm-fill: 12%;
 
-    /* How much of a PM's colour bleeds into its card. Tuned per theme so the
-       same hex reads as an identity in both without a second stored value —
-       enough tint to name the owner at a glance from across the room, not so
-       much that the card's own text stops being the thing you read. */
-    --sb-pm-fill: 22%;
-    --sb-pm-ink: 62%;
+    /* Accent tints for things sitting ON a panel.
+       --accent-light is NOT usable here: it flips dark in .dark while panels
+       stay light, so a tag using it would go dark-on-light in dark mode.
+       Mixing against --card (white in both themes) keeps these stable. */
+    --sb-tint: color-mix(in srgb, var(--accent) 11%, var(--card));
+    --sb-tint-strong: color-mix(in srgb, var(--accent) 20%, var(--card));
 
-    background: var(--sb-bg);
-    color: var(--sb-text);
-    font-size: 13px;
-    /* Fill the surface it is mounted in, so a short week doesn't leave the
-       host page's own background showing below the board. */
-    min-height: 100%;
-}
-
-.osd-board[data-theme='dark'] {
-    /* dark — the workshop TV, and desks that prefer it */
-    --sb-bg: #14181b;
-    --sb-panel: #1a1f23;
-    --sb-panel2: #171c1f;
-    --sb-sunk: #111518;
-    --sb-line: #262d31;
-    --sb-line2: #354045;
-    --sb-text: #e9eef0;
-    --sb-muted: #93a7ac;
-    --sb-faint: #66787d;
-    --sb-steel: #e8f0f3;
-    --sb-steel-ink: #14181b;
-    --sb-accent: #7fb3c2;
-    --sb-accent-dim: rgba(127, 179, 194, 0.16);
-    --sb-accent-line: rgba(127, 179, 194, 0.42);
-    --sb-danger: #e86a6a;
-    --sb-danger-dim: rgba(232, 106, 106, 0.16);
-    --sb-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
-
-    --sb-pm-fill: 30%;
-    --sb-pm-ink: 78%;
+    color: var(--fg);
 }
 
 .osd-board *,
@@ -78,9 +33,8 @@
     box-sizing: border-box;
 }
 
-/* :where() keeps this reset at zero specificity, so a component class like
-   .sb-card or .sb-addbtn can set its own background and border without having
-   to out-specify the reset. */
+/* :where() keeps these resets at zero specificity so a component class can set
+   its own background and border without having to out-specify them. */
 .osd-board :where(button) {
     font-family: inherit;
     cursor: pointer;
@@ -92,26 +46,24 @@
 .osd-board :where(input, select, textarea) {
     font-family: inherit;
     width: 100%;
-    background: var(--sb-sunk);
-    border: 1px solid var(--sb-line2);
-    border-radius: 2px;
-    padding: 9px 11px;
-    color: var(--sb-text);
-    font-size: 13px;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-sm);
+    padding: 0.5rem 0.75rem;
+    color: var(--fg);
+    font-size: 0.875rem;
 }
-.osd-board input[type='checkbox'] {
+.osd-board :where(input[type='checkbox']) {
     width: auto;
-    accent-color: var(--sb-accent);
+    accent-color: var(--accent);
 }
-.osd-board input:focus,
-.osd-board select:focus,
-.osd-board textarea:focus {
+.osd-board :where(input, select, textarea):focus {
     outline: none;
-    border-color: var(--sb-accent);
-    box-shadow: 0 0 0 3px var(--sb-accent-dim);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--sb-tint-strong);
 }
-.osd-board textarea {
-    height: 74px;
+.osd-board :where(textarea) {
+    height: 5rem;
     resize: none;
 }
 
@@ -120,529 +72,693 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 12px;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--sb-line);
-    background: var(--sb-panel);
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
 }
+
 .sb-seg {
-    display: flex;
-    border: 1px solid var(--sb-line2);
-    border-radius: 2px;
-    overflow: hidden;
+    display: inline-flex;
+    background: var(--surface-2);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-md);
+    padding: 2px;
+    gap: 2px;
 }
 .sb-seg button {
-    padding: 8px 17px;
-    font-size: 12px;
+    padding: 0.375rem 0.875rem;
+    font-size: 0.8125rem;
     font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: lowercase;
-    color: var(--sb-muted);
-    border-right: 1px solid var(--sb-line2);
+    color: var(--fg-muted);
+    border-radius: calc(var(--radius-md) - 3px);
+    transition: all 150ms ease;
 }
-.sb-seg button:last-child { border-right: none; }
-.sb-seg button:hover { background: var(--sb-sunk); color: var(--sb-text); }
+.sb-seg button:hover {
+    color: var(--fg);
+}
 .sb-seg button.on {
-    background: var(--sb-steel);
-    color: var(--sb-steel-ink);
-    font-weight: 700;
+    background: var(--card);
+    color: var(--accent-active);
+    box-shadow: 0 1px 2px rgb(15 28 33 / 0.06);
 }
+
 .sb-navbtn {
-    width: 34px;
-    height: 34px;
-    border: 1px solid var(--sb-line2);
-    border-radius: 2px;
-    color: var(--sb-muted);
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-md);
+    background: var(--card);
+    color: var(--fg-muted);
+    transition: all 150ms ease;
 }
+.sb-navbtn:hover {
+    background: var(--surface-2);
+    color: var(--accent-active);
+    border-color: var(--accent-glow);
+}
+
+/* Same geometry as .btn-secondary, a size down — this row carries a lot of
+   controls and full-size buttons crowd the title out. */
 .sb-pill {
-    height: 34px;
-    padding: 0 13px;
-    border: 1px solid var(--sb-line2);
-    border-radius: 2px;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: lowercase;
-    color: var(--sb-muted);
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-}
-.sb-navbtn:hover,
-.sb-pill:hover { background: var(--sb-sunk); color: var(--sb-text); }
-.sb-pill.on {
-    background: var(--sb-steel);
-    color: var(--sb-steel-ink);
-    border-color: var(--sb-steel);
-    font-weight: 700;
-}
-.sb-title {
-    font-size: 16px;
+    gap: 0.375rem;
+    height: 2.25rem;
+    padding: 0 0.75rem;
+    font-size: 0.8125rem;
     font-weight: 600;
-    letter-spacing: -0.01em;
+    background: var(--card);
+    color: var(--fg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-md);
+    transition: all 150ms ease;
 }
-.sb-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.sb-pill:hover {
+    background: var(--surface-2);
+    border-color: var(--accent-glow);
+    color: var(--accent-active);
+}
+.sb-pill.on {
+    background: var(--sb-tint-strong);
+    border-color: var(--accent-glow);
+    color: var(--accent-active);
+}
 
+.sb-title {
+    font-family: var(--font-heading);
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--fg);
+}
+.osd-board.tv .sb-title,
+.osd-board.tv .sb-bar {
+    color: var(--bg-fg);
+}
+.sb-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+/* ---------- legend ---------- */
 .sb-legend {
     display: flex;
     flex-wrap: wrap;
-    gap: 18px;
     align-items: center;
-    padding: 10px 16px;
-    font-size: 11px;
-    color: var(--sb-muted);
-    border-bottom: 1px solid var(--sb-line);
-    background: var(--sb-panel);
+    gap: 0.25rem 1rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.75rem;
+    color: var(--fg-muted);
+}
+.osd-board.tv .sb-legend {
+    color: var(--bg-fg-muted);
 }
 .sb-legend .l {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 7px;
+    gap: 0.375rem;
     font-weight: 600;
 }
-.sb-swatch { width: 10px; height: 10px; border-radius: 1px; }
-.sb-hint {
-    color: var(--sb-faint);
-    font-weight: 400;
-    font-size: 10px;
-    font-family: var(--sb-mono);
+.sb-swatch {
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 3px;
 }
-.sb-legend .end { margin-left: auto; }
+.sb-hint {
+    color: var(--fg-subtle);
+    font-weight: 400;
+}
 
 /* ---------- live-sync status ----------
    A stale board that looks live is worse than the whiteboard it replaced, so
-   a dropped connection says so loudly rather than degrading in silence. */
+   a dropped connection says so rather than degrading in silence. */
 .sb-sync {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    font-size: 10px;
-    font-family: var(--sb-mono);
-    letter-spacing: 0.06em;
-    text-transform: lowercase;
-    color: var(--sb-faint);
+    gap: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--fg-muted);
+}
+.osd-board.tv .sb-sync {
+    color: var(--bg-fg-muted);
 }
 .sb-sync .dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: #3fbb86;
+    width: 0.4375rem;
+    height: 0.4375rem;
+    border-radius: 9999px;
+    background: #16a34a;
 }
-.sb-sync[data-state='connecting'] .dot { background: #d69713; }
-.sb-sync[data-state='down'] .dot { background: var(--sb-danger); }
+.sb-sync[data-state='connecting'] .dot {
+    background: #d97706;
+}
+.sb-sync[data-state='down'] .dot {
+    background: #dc2626;
+}
+
 .sb-syncbanner {
-    padding: 9px 16px;
-    background: var(--sb-danger-dim);
-    border-bottom: 1px solid var(--sb-danger);
-    color: var(--sb-danger);
-    font-size: 12px;
-    font-weight: 700;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0.5rem;
+    padding: 0.625rem 0.875rem;
+    margin-bottom: 0.75rem;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: var(--radius-md);
+    color: #b91c1c;
+    font-size: 0.8125rem;
+    font-weight: 600;
 }
 
-.sb-main { padding: 14px 16px 28px; }
-.sb-weekwrap { display: flex; gap: 14px; align-items: flex-start; }
-.sb-boardcol { flex: 1; min-width: 0; }
+/* ---------- board layout ---------- */
+.sb-weekwrap {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+}
+.sb-boardcol {
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+}
 
-/* ---------- grid ---------- */
 .sb-grid {
     display: grid;
     gap: 1px;
-    background: var(--sb-line);
-    border: 1px solid var(--sb-line);
-    border-radius: 3px;
+    background: var(--card-border);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-lg);
     overflow: hidden;
+    min-width: 46rem;
 }
-.sb-hcell { background: var(--sb-panel); padding: 11px 8px; text-align: center; }
+
+/* ---------- column + day headers ---------- */
+.sb-hcell {
+    background: var(--surface-2);
+    padding: 0.75rem 0.5rem;
+    text-align: center;
+}
 .sb-hcell .van {
+    font-family: var(--font-heading);
+    font-size: 0.9375rem;
     font-weight: 700;
-    text-transform: lowercase;
-    font-size: 15px;
+    letter-spacing: -0.01em;
+    color: var(--fg);
 }
 .sb-hcell .crew {
-    font-size: 11px;
-    color: var(--sb-muted);
-    font-family: var(--sb-mono);
-    margin-top: 2px;
+    font-size: 0.75rem;
+    color: var(--fg-muted);
+    margin-top: 0.125rem;
 }
-.sb-dcell { background: var(--sb-panel); padding: 10px 9px; position: relative; }
+
+.sb-dcell {
+    background: var(--surface-2);
+    padding: 0.75rem;
+    position: relative;
+}
 .sb-dcell .dname {
-    font-weight: 600;
-    font-size: 13px;
-    text-transform: lowercase;
+    font-family: var(--font-heading);
+    font-weight: 700;
+    font-size: 0.875rem;
+    letter-spacing: -0.01em;
+    color: var(--fg);
 }
 .sb-dcell .ddate {
-    font-size: 10px;
-    color: var(--sb-faint);
-    font-family: var(--sb-mono);
-    margin-top: 1px;
+    font-size: 0.75rem;
+    color: var(--fg-muted);
+    margin-top: 0.0625rem;
 }
-.sb-dcell.today { background: var(--sb-accent-dim); }
+.sb-dcell.today {
+    background: var(--sb-tint);
+}
 .sb-dcell.today::before {
     content: '';
     position: absolute;
     left: 0;
     top: 0;
     bottom: 0;
-    width: 2px;
-    background: var(--sb-accent);
+    width: 3px;
+    background: var(--accent);
 }
-.sb-dcell.today .dname { color: var(--sb-accent); }
-.sb-dcell.wkend { background: var(--sb-sunk); }
-.sb-dcell.wkend .dname { color: var(--sb-faint); }
+.sb-dcell.today .dname {
+    color: var(--accent-active);
+}
+.sb-dcell.wkend .dname,
+.sb-dcell.wkend .ddate {
+    color: var(--fg-subtle);
+}
 
 .sb-crewbtn {
-    display: inline-block;
-    margin-top: 7px;
-    font-size: 9px;
-    font-weight: 700;
-    text-transform: lowercase;
-    letter-spacing: 0.1em;
-    color: var(--sb-faint);
-    border: 1px solid var(--sb-line2);
-    border-radius: 2px;
-    padding: 3px 7px;
-    font-family: var(--sb-mono);
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--fg-muted);
+    border: 1px solid var(--card-border);
+    background: var(--card);
+    border-radius: var(--radius-sm);
+    padding: 0.1875rem 0.5rem;
+    transition: all 150ms ease;
 }
-.sb-crewbtn:hover { color: var(--sb-text); border-color: var(--sb-muted); }
-.sb-daytag {
-    display: inline-block;
-    margin-top: 7px;
-    font-size: 9px;
-    font-weight: 700;
-    background: var(--sb-accent-dim);
-    color: var(--sb-accent);
-    border: 1px solid var(--sb-accent-line);
-    border-radius: 2px;
-    padding: 2px 7px;
-    text-transform: lowercase;
-    letter-spacing: 0.08em;
-    font-family: var(--sb-mono);
+.sb-crewbtn:hover {
+    color: var(--accent-active);
+    border-color: var(--accent-glow);
+}
+
+/* Same shape as the global .badge, so a board tag reads like a tag anywhere
+   else in the app. */
+.sb-daytag,
+.sb-crewbadge {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+    margin-top: 0.5rem;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    background: var(--sb-tint-strong);
+    color: var(--accent-active);
+    border: 1px solid var(--accent-glow);
+}
+.sb-crewbadge {
+    margin-top: 0;
+    width: fit-content;
+}
+.sb-crewbadge.bad {
+    background: #fef2f2;
+    color: #b91c1c;
+    border-color: #fecaca;
 }
 .sb-holtag {
     display: block;
-    margin-top: 5px;
-    font-size: 10px;
-    color: var(--sb-accent);
-    font-weight: 500;
-    font-family: var(--sb-mono);
+    margin-top: 0.375rem;
+    font-size: 0.75rem;
+    color: var(--fg-muted);
 }
 
+/* ---------- cells ---------- */
 .sb-cell {
-    background: var(--sb-panel2);
-    padding: 7px;
-    min-height: 108px;
+    background: var(--card);
+    padding: 0.5rem;
+    min-height: 6.5rem;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 0.375rem;
 }
-.sb-cell.wkend { background: var(--sb-sunk); }
-.sb-crewbadge {
-    font-size: 9px;
-    font-weight: 700;
-    border-radius: 2px;
-    padding: 3px 7px;
-    width: fit-content;
-    background: var(--sb-accent-dim);
-    color: var(--sb-accent);
-    border: 1px solid var(--sb-accent-line);
-    font-family: var(--sb-mono);
-    letter-spacing: 0.06em;
-}
-.sb-crewbadge.bad {
-    background: var(--sb-danger-dim);
-    color: var(--sb-danger);
-    border-color: var(--sb-danger);
+.sb-cell.wkend {
+    background: var(--surface-2);
 }
 
-.sb-cellsplit { display: flex; flex-direction: column; gap: 5px; flex: 1; }
-.sb-ampmcol { display: flex; flex-direction: column; gap: 5px; }
-.sb-ampmcol.hidden { display: none; }
-/* All-day work covers the cell like a sticky note over the whole square, but
-   AM/PM must come back during a drag so they stay droppable. */
-.osd-board.dragging .sb-ampmcol.hidden { display: flex; }
-.sb-dayrow { display: none; flex-direction: column; width: 100%; }
-.sb-dayrow.show { display: flex; }
-.sb-daydrop {
+.sb-cellsplit {
     display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    flex: 1;
+}
+.sb-ampmcol {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+.sb-ampmcol.hidden {
+    display: none;
+}
+/* All-day work covers the cell like a note over the whole square, but AM/PM
+   must come back during a drag so they stay droppable. */
+.osd-board.dragging .sb-ampmcol.hidden {
+    display: flex;
+}
+
+.sb-dayrow {
+    display: none;
+    flex-direction: column;
+    width: 100%;
+}
+.sb-dayrow.show {
+    display: flex;
+}
+.sb-daydrop {
+    display: none;
     align-items: center;
     justify-content: center;
-    border: 1px dashed var(--sb-line2);
-    border-radius: 2px;
-    color: var(--sb-faint);
-    font-size: 9px;
-    font-weight: 700;
-    text-transform: lowercase;
-    letter-spacing: 0.1em;
-    padding: 7px 0;
-    font-family: var(--sb-mono);
+    border: 1px dashed var(--card-border);
+    border-radius: var(--radius-sm);
+    color: var(--fg-subtle);
+    font-size: 0.75rem;
+    padding: 0.5rem 0;
 }
-.sb-slimadd { display: flex; gap: 5px; }
-.sb-slimadd button {
-    flex: 1;
-    border: 1px dashed var(--sb-line2);
-    color: var(--sb-faint);
-    font-size: 10px;
-    border-radius: 2px;
-    padding: 3px 0;
-    font-family: var(--sb-mono);
+.osd-board.dragging .sb-daydrop {
+    display: flex;
 }
-.sb-slimadd button:hover { color: var(--sb-text); border-color: var(--sb-muted); }
-.osd-board.dragging .sb-slimadd { display: none; }
 
-.sb-slot { display: flex; gap: 6px; }
+.sb-slot {
+    display: flex;
+    gap: 0.375rem;
+    align-items: flex-start;
+}
 .sb-slotlabel {
     flex-shrink: 0;
-    width: 26px;
+    width: 1.75rem;
     text-align: center;
-    background: var(--sb-sunk);
-    border: 1px solid var(--sb-line);
-    color: var(--sb-faint);
+    color: var(--fg-subtle);
     font-weight: 700;
-    font-size: 9px;
-    padding: 3px 0;
-    border-radius: 2px;
-    height: fit-content;
-    text-transform: lowercase;
-    letter-spacing: 0.06em;
-    font-family: var(--sb-mono);
+    font-size: 0.6875rem;
+    line-height: 1.25rem;
+    letter-spacing: 0.02em;
 }
-.sb-slotlabel.ooh { border-color: var(--sb-accent-line); color: var(--sb-accent); }
-.sb-slotjobs { flex: 1; min-width: 0; border-radius: 2px; }
+.sb-slotlabel.ooh {
+    color: var(--accent);
+}
+.sb-slotjobs {
+    flex: 1;
+    min-width: 0;
+    border-radius: var(--radius-sm);
+    min-height: 1.25rem;
+}
+
+/* The add affordance stays quiet until the cell is hovered — an empty board
+   was previously a wall of dashed boxes, which is the opposite of readable at
+   a glance. It reappears whole on keyboard focus so it stays reachable. */
 .sb-addbtn {
     width: 100%;
-    border: 1px dashed var(--sb-line2);
-    color: var(--sb-faint);
-    font-size: 10px;
-    border-radius: 2px;
-    padding: 3px 0;
-    margin-top: 2px;
-    font-family: var(--sb-mono);
+    text-align: left;
+    padding: 0.1875rem 0.375rem;
+    border-radius: var(--radius-sm);
+    color: var(--fg-subtle);
+    font-size: 0.75rem;
+    font-weight: 600;
+    opacity: 0;
+    transition: opacity 120ms ease, background-color 120ms ease;
 }
-.sb-addbtn:hover { color: var(--sb-text); border-color: var(--sb-muted); }
+.sb-cell:hover .sb-addbtn,
+.sb-addbtn:focus-visible {
+    opacity: 1;
+}
+.sb-addbtn:hover {
+    background: var(--surface-2);
+    color: var(--accent-active);
+}
+.osd-board.dragging .sb-addbtn {
+    display: none;
+}
 
-/* OOH sits below PM and stays hidden until it is used — evening and
+.sb-slimadd {
+    display: flex;
+    gap: 0.375rem;
+    opacity: 0;
+    transition: opacity 120ms ease;
+}
+.sb-cell:hover .sb-slimadd {
+    opacity: 1;
+}
+.sb-slimadd button {
+    flex: 1;
+    color: var(--fg-subtle);
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: var(--radius-sm);
+    padding: 0.1875rem 0;
+}
+.sb-slimadd button:hover {
+    background: var(--surface-2);
+    color: var(--accent-active);
+}
+.osd-board.dragging .sb-slimadd {
+    display: none;
+}
+
+/* Out of hours sits below PM and stays hidden until used — evening and
    after-close installs are the exception, not a permanent third row. */
-.sb-oohrow { display: none; }
-.sb-oohrow.show { display: flex; }
-.osd-board.dragging .sb-oohrow { display: flex; }
+.sb-oohrow {
+    display: none;
+}
+.sb-oohrow.show {
+    display: flex;
+}
+.osd-board.dragging .sb-oohrow {
+    display: flex;
+}
 
 /* ---------- drag & drop ---------- */
 .osd-board.dragging .sb-slotjobs,
 .osd-board.dragging .sb-vslot {
-    outline: 1px dashed var(--sb-line2);
+    outline: 1px dashed var(--card-border);
     outline-offset: 1px;
-    min-height: 22px;
 }
 .sb-drop.over {
-    outline: 1px solid var(--sb-accent) !important;
-    background: var(--sb-accent-dim);
-    border-radius: 2px;
+    outline: 2px solid var(--accent) !important;
+    background: var(--sb-tint);
+    border-radius: var(--radius-sm);
 }
 .sb-card.dragsrc,
-.sb-chip.dragsrc { opacity: 0.3; }
+.sb-chip.dragsrc {
+    opacity: 0.35;
+}
 
 /* ---------- job card ----------
    Colour is whose job it is — the project manager — never a status. The card
-   derives its fill from the PM's stored hex against the active theme's panel,
-   so a newly added PM gets a readable card in light and dark alike. */
+   derives its tint from the PM's stored hex against the panel colour, which
+   is light in both themes, so one rule covers the whole app. */
 .sb-card {
+    display: block;
     width: 100%;
     text-align: left;
-    border-radius: 2px;
-    border-left: 3px solid var(--sb-pm, var(--sb-line2));
-    background: color-mix(in srgb, var(--sb-pm, var(--sb-line2)) var(--sb-pm-fill), var(--sb-panel));
-    color: color-mix(in srgb, var(--sb-pm, var(--sb-text)) var(--sb-pm-ink), var(--sb-text));
-    padding: 7px 9px;
-    margin-bottom: 6px;
-    display: block;
-    transition: transform 0.08s, box-shadow 0.08s;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--card-border);
+    border-left: 3px solid var(--sb-pm, var(--card-border));
+    background: color-mix(in srgb, var(--sb-pm, var(--card)) var(--sb-pm-fill), var(--card));
+    padding: 0.4375rem 0.5rem;
+    margin-bottom: 0.25rem;
+    transition: box-shadow 120ms ease, transform 120ms ease;
 }
-.sb-card:hover { transform: translateY(-1px); box-shadow: var(--sb-shadow); }
+.sb-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgb(15 28 33 / 0.1);
+}
 .sb-card .top {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    gap: 6px;
+    gap: 0.375rem;
 }
 .sb-card .name {
     font-weight: 700;
-    font-size: 12.5px;
-    line-height: 1.25;
-    color: var(--sb-text);
+    font-size: 0.8125rem;
+    line-height: 1.3;
+    color: var(--fg);
 }
 .sb-card .fitted {
     flex-shrink: 0;
-    font-size: 9px;
-    font-weight: 800;
-    font-family: var(--sb-mono);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: #15803d;
 }
 .sb-card .meta {
-    font-size: 10px;
-    opacity: 0.82;
-    font-weight: 500;
+    font-size: 0.75rem;
+    color: var(--fg-muted);
     display: flex;
     flex-wrap: wrap;
-    gap: 0 8px;
-    font-family: var(--sb-mono);
-    margin-top: 2px;
+    gap: 0 0.5rem;
+    margin-top: 0.0625rem;
 }
 .sb-card .extra {
-    font-size: 10px;
-    opacity: 0.75;
+    font-size: 0.75rem;
+    color: var(--fg-subtle);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    margin-top: 1px;
+    margin-top: 0.0625rem;
 }
 /* Completion reads separately from colour, so PM identity survives on
    finished work. */
-.sb-card.done { opacity: 0.62; }
-.sb-card.done .name { text-decoration: line-through; }
-.sb-card.allday { margin-bottom: 0; border-left-width: 4px; }
-.sb-card.allday + .sb-card.allday { margin-top: 5px; }
+.sb-card.done {
+    opacity: 0.6;
+}
+.sb-card.done .name {
+    text-decoration: line-through;
+}
+.sb-card.allday {
+    margin-bottom: 0;
+    border-left-width: 4px;
+}
+.sb-card.allday + .sb-card.allday {
+    margin-top: 0.25rem;
+}
 .sb-alldaytag {
-    font-size: 8px;
-    font-weight: 800;
-    letter-spacing: 0.16em;
-    text-transform: lowercase;
-    opacity: 0.65;
     display: block;
-    margin-bottom: 3px;
-    font-family: var(--sb-mono);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: var(--fg-subtle);
+    margin-bottom: 0.125rem;
 }
 .sb-delmark {
-    font-size: 8px;
-    font-weight: 800;
-    letter-spacing: 0.1em;
-    text-transform: lowercase;
-    font-family: var(--sb-mono);
-    border: 1px solid currentColor;
-    border-radius: 2px;
-    padding: 0 4px;
-    opacity: 0.75;
+    flex-shrink: 0;
+    font-size: 0.625rem;
+    font-weight: 700;
+    color: var(--fg-muted);
+    background: var(--surface-2);
+    border: 1px solid var(--card-border);
+    border-radius: 9999px;
+    padding: 0 0.375rem;
 }
+
 .sb-chip {
     display: block;
     width: 100%;
     text-align: left;
-    border-radius: 2px;
-    border-left: 3px solid var(--sb-pm, var(--sb-line2));
-    background: color-mix(in srgb, var(--sb-pm, var(--sb-line2)) var(--sb-pm-fill), var(--sb-panel));
-    color: var(--sb-text);
-    padding: 3px 6px;
-    margin-bottom: 2px;
-    font-size: 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--card-border);
+    border-left: 3px solid var(--sb-pm, var(--card-border));
+    background: color-mix(in srgb, var(--sb-pm, var(--card)) var(--sb-pm-fill), var(--card));
+    color: var(--fg);
+    padding: 0.1875rem 0.375rem;
+    margin-bottom: 0.125rem;
+    font-size: 0.75rem;
     font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
-.sb-chip.done { opacity: 0.55; text-decoration: line-through; }
+.sb-chip.done {
+    opacity: 0.6;
+    text-decoration: line-through;
+}
 
 /* ---------- holding panels ---------- */
 .sb-sidebar {
-    width: 252px;
+    width: 16rem;
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 0.75rem;
 }
 .sb-holding {
-    border: 1px solid var(--sb-line);
-    background: var(--sb-panel);
-    border-radius: 3px;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-lg);
     overflow: hidden;
+    box-shadow: 0 1px 2px 0 rgb(15 28 33 / 0.04);
 }
 .sb-bhead {
-    padding: 11px 13px;
-    border-bottom: 1px solid var(--sb-line);
+    padding: 0.75rem 0.875rem;
+    border-bottom: 1px solid var(--card-border);
     display: flex;
     align-items: center;
     justify-content: space-between;
 }
 .sb-bhead b {
-    font-size: 11px;
-    text-transform: lowercase;
-    letter-spacing: 0.14em;
+    font-family: var(--font-heading);
+    font-size: 0.8125rem;
     font-weight: 700;
-    font-family: var(--sb-mono);
-    color: var(--sb-muted);
+    letter-spacing: -0.01em;
+    color: var(--fg);
 }
 .sb-bhead .cnt {
-    background: var(--sb-accent);
-    color: #fff;
-    font-size: 10px;
-    font-weight: 800;
-    border-radius: 2px;
-    padding: 1px 7px;
-    font-family: var(--sb-mono);
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    background: var(--surface-2);
+    color: var(--fg-muted);
+    border: 1px solid var(--card-border);
+}
+.sb-bhead .cnt.live {
+    background: var(--accent);
+    color: var(--accent-fg);
+    border-color: var(--accent);
 }
 .sb-backloglist {
-    padding: 10px;
-    min-height: 104px;
+    padding: 0.625rem;
+    min-height: 5rem;
     max-height: 38vh;
     overflow-y: auto;
 }
 .sb-bempty {
     text-align: center;
-    font-size: 10px;
-    color: var(--sb-faint);
-    padding: 22px 6px;
+    font-size: 0.75rem;
+    color: var(--fg-subtle);
+    padding: 1.25rem 0.5rem;
     line-height: 1.5;
 }
-.sb-bactions { padding: 0 10px 10px; display: flex; gap: 6px; }
+.sb-bactions {
+    padding: 0 0.625rem 0.625rem;
+    display: flex;
+    gap: 0.375rem;
+}
 .sb-bactions button {
     flex: 1;
-    font-size: 10px;
-    font-weight: 700;
-    border: 1px solid var(--sb-line2);
-    border-radius: 2px;
-    padding: 6px 0;
-    color: var(--sb-muted);
-    font-family: var(--sb-mono);
-    letter-spacing: 0.04em;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid var(--card-border);
+    background: var(--card);
+    border-radius: var(--radius-sm);
+    padding: 0.375rem 0;
+    color: var(--fg-muted);
+    transition: all 150ms ease;
 }
-.sb-bactions button:hover { color: var(--sb-text); border-color: var(--sb-muted); }
+.sb-bactions button:hover {
+    color: var(--accent-active);
+    border-color: var(--accent-glow);
+    background: var(--surface-2);
+}
 .sb-bnote {
-    padding: 0 13px 11px;
-    font-size: 10px;
-    color: var(--sb-faint);
+    padding: 0 0.875rem 0.75rem;
+    font-size: 0.75rem;
+    color: var(--fg-subtle);
     line-height: 1.45;
 }
 
 /* ---------- month view ---------- */
-.sb-mwrap { overflow-x: auto; }
-.sb-mgrid { min-width: 950px; }
-.sb-wchead { background: var(--sb-panel); padding: 8px 4px; text-align: center; }
-.sb-wchead .wc {
-    font-weight: 700;
-    font-size: 12px;
-    font-family: var(--sb-mono);
+.sb-mwrap {
+    overflow-x: auto;
 }
-.sb-wchead .wc:hover { color: var(--sb-accent); }
+.sb-mgrid {
+    min-width: 60rem;
+}
+.sb-wchead {
+    background: var(--surface-2);
+    padding: 0.5rem 0.25rem;
+    text-align: center;
+}
+.sb-wchead .wc {
+    font-family: var(--font-heading);
+    font-weight: 700;
+    font-size: 0.8125rem;
+    color: var(--fg);
+}
+.sb-wchead .wc:hover {
+    color: var(--accent-active);
+}
 .sb-subvans {
     display: grid;
     grid-template-columns: repeat(var(--sb-vans, 3), 1fr);
     gap: 1px;
-    margin-top: 4px;
+    margin-top: 0.25rem;
 }
 .sb-subvans span {
-    font-size: 9px;
-    color: var(--sb-faint);
-    font-weight: 700;
-    text-transform: lowercase;
+    font-size: 0.6875rem;
+    color: var(--fg-subtle);
+    font-weight: 600;
     overflow: hidden;
     text-overflow: ellipsis;
-    font-family: var(--sb-mono);
 }
-.sb-mcell { padding: 2px; background: var(--sb-panel2); }
-.sb-mcell.out { background: var(--sb-sunk); }
+.sb-mcell {
+    padding: 0.125rem;
+    background: var(--card);
+}
+.sb-mcell.out {
+    background: var(--surface-2);
+}
 .sb-mcell .tri {
     display: grid;
     grid-template-columns: repeat(var(--sb-vans, 3), 1fr);
@@ -650,9 +766,8 @@
     height: 100%;
 }
 .sb-vslot {
-    min-height: 38px;
-    background: var(--sb-sunk);
-    border-radius: 2px;
+    min-height: 2.25rem;
+    border-radius: var(--radius-sm);
     padding: 2px;
 }
 
@@ -660,369 +775,453 @@
 .sb-ytotals {
     display: flex;
     flex-wrap: wrap;
-    gap: 20px;
+    gap: 0.5rem 1.25rem;
     align-items: center;
-    margin-bottom: 14px;
-    font-size: 12px;
-    color: var(--sb-muted);
+    margin-bottom: 0.875rem;
+    font-size: 0.8125rem;
+    color: var(--fg-muted);
 }
-.sb-ytotals b { color: var(--sb-text); font-weight: 700; font-family: var(--sb-mono); }
+.osd-board.tv .sb-ytotals {
+    color: var(--bg-fg-muted);
+}
+.sb-ytotals b {
+    color: var(--fg);
+    font-weight: 700;
+}
+.osd-board.tv .sb-ytotals b {
+    color: var(--bg-fg);
+}
 .sb-heatkey {
     margin-left: auto;
     display: flex;
     align-items: center;
-    gap: 5px;
-    font-size: 10px;
-    color: var(--sb-faint);
-    font-family: var(--sb-mono);
-    text-transform: lowercase;
-    letter-spacing: 0.08em;
+    gap: 0.3125rem;
+    font-size: 0.75rem;
+    color: var(--fg-subtle);
 }
-.sb-hk { width: 11px; height: 11px; border-radius: 1px; }
+.sb-hk {
+    width: 0.6875rem;
+    height: 0.6875rem;
+    border-radius: 3px;
+}
 .sb-ymgrid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+    gap: 0.75rem;
 }
 .sb-ymonth {
-    border: 1px solid var(--sb-line);
-    background: var(--sb-panel);
-    border-radius: 3px;
-    padding: 13px;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-lg);
+    padding: 0.875rem;
+    box-shadow: 0 1px 2px 0 rgb(15 28 33 / 0.04);
 }
 .sb-ymonth h3 {
-    font-size: 11px;
+    font-family: var(--font-heading);
+    font-size: 0.8125rem;
     font-weight: 700;
-    text-transform: lowercase;
-    letter-spacing: 0.16em;
-    margin-bottom: 10px;
-    color: var(--sb-muted);
-    font-family: var(--sb-mono);
+    letter-spacing: -0.01em;
+    margin-bottom: 0.625rem;
+    color: var(--fg);
 }
 .sb-yweek {
     display: flex;
     align-items: center;
-    gap: 9px;
+    gap: 0.5rem;
     width: 100%;
-    margin-bottom: 4px;
+    margin-bottom: 0.25rem;
+    border-radius: var(--radius-sm);
 }
 .sb-yweek .wcl {
-    width: 62px;
+    width: 4rem;
     text-align: left;
-    font-size: 10px;
-    color: var(--sb-faint);
+    font-size: 0.75rem;
+    color: var(--fg-muted);
     font-weight: 600;
-    font-family: var(--sb-mono);
 }
-.sb-yweek:hover .wcl { color: var(--sb-accent); }
+.sb-yweek:hover .wcl {
+    color: var(--accent-active);
+}
 .sb-yweek .cells {
     flex: 1;
     display: grid;
     grid-template-columns: repeat(var(--sb-vans, 3), 1fr);
-    gap: 4px;
+    gap: 0.25rem;
 }
 /* Heat runs through the brand accent rather than a second hue, so a busy week
-   never reads as a PM colour. */
+   never reads as a project manager's colour. */
 .sb-heat {
-    height: 19px;
-    border-radius: 1px;
+    height: 1.25rem;
+    border-radius: var(--radius-sm);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 9px;
-    font-weight: 800;
-    font-family: var(--sb-mono);
+    font-size: 0.6875rem;
+    font-weight: 700;
 }
-.sb-heat.h0 { background: var(--sb-sunk); color: transparent; }
-.sb-heat.h1 { background: color-mix(in srgb, var(--sb-accent) 22%, var(--sb-panel)); color: var(--sb-text); }
-.sb-heat.h2 { background: color-mix(in srgb, var(--sb-accent) 45%, var(--sb-panel)); color: var(--sb-text); }
-.sb-heat.h3 { background: color-mix(in srgb, var(--sb-accent) 72%, var(--sb-panel)); color: #fff; }
-.sb-heat.h4 { background: var(--sb-accent); color: #fff; }
+.sb-heat.h0 {
+    background: var(--surface-2);
+    color: transparent;
+}
+.sb-heat.h1 {
+    background: color-mix(in srgb, var(--accent) 20%, var(--card));
+    color: var(--fg);
+}
+.sb-heat.h2 {
+    background: color-mix(in srgb, var(--accent) 42%, var(--card));
+    color: var(--fg);
+}
+.sb-heat.h3 {
+    background: color-mix(in srgb, var(--accent) 70%, var(--card));
+    color: #fff;
+}
+.sb-heat.h4 {
+    background: var(--accent);
+    color: var(--accent-fg);
+}
 
 /* ---------- modal ---------- */
 .sb-overlay {
     position: fixed;
     inset: 0;
     z-index: 60;
-    background: rgba(12, 19, 21, 0.55);
+    background: rgb(15 28 33 / 0.5);
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 18px;
+    padding: 1rem;
     backdrop-filter: blur(2px);
 }
-.osd-board[data-theme='dark'] .sb-overlay { background: rgba(6, 10, 11, 0.82); }
 .sb-modal {
     width: 100%;
-    max-width: 560px;
+    max-width: 36rem;
     max-height: 90vh;
     overflow-y: auto;
-    background: var(--sb-panel);
-    border: 1px solid var(--sb-line2);
-    border-radius: 3px;
-    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 20px 50px rgb(15 28 33 / 0.25);
 }
 .sb-mhead {
-    padding: 14px 22px;
-    border-bottom: 1px solid var(--sb-line);
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--card-border);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    font-weight: 600;
-    font-size: 15px;
-    text-transform: lowercase;
+    font-family: var(--font-heading);
+    font-weight: 700;
+    font-size: 1rem;
+    letter-spacing: -0.02em;
+    color: var(--fg);
 }
 .sb-pmchip {
-    font-size: 10px;
-    font-weight: 800;
-    padding: 3px 11px;
-    border-radius: 2px;
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    padding: 0.125rem 0.625rem;
+    border-radius: 9999px;
     color: #fff;
-    font-family: var(--sb-mono);
-    text-transform: lowercase;
-    letter-spacing: 0.06em;
 }
 .sb-mbody {
-    padding: 22px;
+    padding: 1.25rem;
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 14px;
+    gap: 0.875rem;
 }
 .sb-field label {
     display: block;
-    font-size: 9px;
-    text-transform: lowercase;
-    letter-spacing: 0.16em;
-    color: var(--sb-faint);
-    font-weight: 700;
-    margin-bottom: 5px;
-    font-family: var(--sb-mono);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--fg-muted);
+    margin-bottom: 0.3125rem;
 }
-.sb-field.full { grid-column: 1 / -1; }
+.sb-field.full {
+    grid-column: 1 / -1;
+}
 .sb-checkrow {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 12px;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
     font-weight: 600;
+    color: var(--fg);
     cursor: pointer;
 }
-.sb-maprow { display: flex; gap: 6px; }
+.sb-maprow {
+    display: flex;
+    gap: 0.375rem;
+}
 .sb-mapbtn {
     flex-shrink: 0;
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    padding: 0 13px;
-    background: var(--sb-sunk);
-    border: 1px solid var(--sb-line2);
-    border-radius: 2px;
-    font-size: 11px;
-    font-weight: 700;
+    padding: 0 0.875rem;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-sm);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--fg-muted);
     text-decoration: none;
-    font-family: var(--sb-mono);
     white-space: nowrap;
 }
-.sb-mapbtn:hover { border-color: var(--sb-accent); color: var(--sb-accent); }
-.sb-btnrow { display: flex; gap: 7px; flex-wrap: wrap; }
+.sb-mapbtn:hover {
+    border-color: var(--accent-glow);
+    color: var(--accent-active);
+}
+
+.sb-btnrow {
+    display: flex;
+    gap: 0.375rem;
+    flex-wrap: wrap;
+}
 .sb-btnrow button {
     flex: 1;
-    min-width: 74px;
-    padding: 9px 0;
-    border-radius: 2px;
-    font-weight: 700;
-    font-size: 11px;
-    background: var(--sb-sunk);
-    border: 1px solid var(--sb-line2);
-    color: var(--sb-muted);
-    text-transform: lowercase;
-    letter-spacing: 0.04em;
+    min-width: 4.5rem;
+    padding: 0.5rem 0;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+    font-size: 0.8125rem;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    color: var(--fg-muted);
+    transition: all 150ms ease;
 }
-.sb-btnrow button:hover { color: var(--sb-text); border-color: var(--sb-muted); }
+.sb-btnrow button:hover {
+    color: var(--fg);
+    border-color: var(--accent-glow);
+}
 .sb-btnrow button.on {
-    background: var(--sb-steel);
-    border-color: var(--sb-steel);
-    color: var(--sb-steel-ink);
+    background: var(--sb-tint-strong);
+    border-color: var(--accent-glow);
+    color: var(--accent-active);
 }
-/* A selected PM button wears its own colour, so the choice reads the same way
-   the card will. */
+/* A selected PM button wears its own colour, so the choice reads the way the
+   card will. */
 .sb-btnrow.pms button.on {
     background: var(--sb-pmbtn);
     border-color: var(--sb-pmbtn);
     color: #fff;
 }
+
 .sb-mfoot {
-    padding: 14px 22px;
-    border-top: 1px solid var(--sb-line);
+    padding: 1rem 1.25rem;
+    border-top: 1px solid var(--card-border);
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0.5rem;
 }
-.sb-del {
-    color: var(--sb-danger);
-    font-size: 12px;
-    font-weight: 700;
-    padding: 9px 13px;
-    border-radius: 2px;
-    text-transform: lowercase;
-    letter-spacing: 0.04em;
+.sb-grow {
+    flex: 1;
 }
-.sb-del:hover { background: var(--sb-danger-dim); }
-.sb-grow { flex: 1; }
-.sb-btn {
-    padding: 9px 17px;
-    border-radius: 2px;
-    font-size: 12px;
-    font-weight: 700;
-    background: transparent;
-    border: 1px solid var(--sb-line2);
-    color: var(--sb-muted);
-    text-transform: lowercase;
-    letter-spacing: 0.05em;
-}
-.sb-btn:hover { background: var(--sb-sunk); color: var(--sb-text); }
-.sb-btn.primary {
-    background: var(--sb-accent);
-    color: #fff;
-    border-color: var(--sb-accent);
-}
-.sb-btn.primary:hover { filter: brightness(1.08); }
-.sb-btn.ghost { color: var(--sb-accent); border-color: var(--sb-accent-line); }
-.sb-btn.ghost:hover { background: var(--sb-accent-dim); }
-.sb-btn:disabled { opacity: 0.5; cursor: default; }
 .sb-note {
-    font-size: 11px;
-    color: var(--sb-faint);
-    margin-bottom: 13px;
+    font-size: 0.8125rem;
+    color: var(--fg-muted);
+    margin-bottom: 0.875rem;
     line-height: 1.5;
 }
 .sb-error {
-    font-size: 11px;
-    color: var(--sb-danger);
+    font-size: 0.8125rem;
+    color: #b91c1c;
     font-weight: 600;
 }
-.sb-dimmed { opacity: 0.35; pointer-events: none; }
+.sb-dimmed {
+    opacity: 0.4;
+    pointer-events: none;
+}
 
 /* ---------- day-crew editor ---------- */
 .sb-rosterhead {
-    font-size: 9px;
+    font-family: var(--font-heading);
+    font-size: 0.8125rem;
     font-weight: 700;
-    text-transform: lowercase;
-    letter-spacing: 0.16em;
-    color: var(--sb-faint);
-    font-family: var(--sb-mono);
-    padding: 14px 0 5px;
-    border-bottom: 1px solid var(--sb-line2);
+    letter-spacing: -0.01em;
+    color: var(--fg);
+    padding: 1rem 0 0.375rem;
+    border-bottom: 1px solid var(--card-border);
+}
+.sb-rosterhead:first-of-type {
+    padding-top: 0;
 }
 .sb-fitterrow {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 8px 0;
-    border-bottom: 1px solid var(--sb-line);
+    gap: 0.625rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--card-border);
 }
-.sb-fitterrow:last-child { border-bottom: none; }
-.sb-fname { width: 78px; font-weight: 600; font-size: 12px; }
+.sb-fitterrow:last-child {
+    border-bottom: none;
+}
+.sb-fname {
+    width: 5rem;
+    font-weight: 600;
+    font-size: 0.8125rem;
+    color: var(--fg);
+}
 .sb-assignseg {
     flex: 1;
     display: grid;
     grid-template-columns: repeat(var(--sb-segcols, 5), 1fr);
-    gap: 4px;
+    gap: 0.25rem;
 }
 .sb-assignseg button {
-    padding: 6px 0;
-    border-radius: 2px;
-    font-size: 10px;
-    font-weight: 700;
-    background: var(--sb-sunk);
-    border: 1px solid var(--sb-line2);
-    color: var(--sb-faint);
-    text-transform: lowercase;
-    font-family: var(--sb-mono);
+    padding: 0.375rem 0;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    color: var(--fg-muted);
+    transition: all 150ms ease;
 }
-.sb-assignseg button:hover { border-color: var(--sb-muted); color: var(--sb-text); }
+.sb-assignseg button:hover {
+    border-color: var(--accent-glow);
+    color: var(--fg);
+}
 .sb-assignseg button.on {
-    background: var(--sb-steel);
-    border-color: var(--sb-steel);
-    color: var(--sb-steel-ink);
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-fg);
 }
 .sb-assignseg button.on.hol {
-    background: var(--sb-accent);
-    border-color: var(--sb-accent);
-    color: #fff;
+    background: var(--accent-active);
+    border-color: var(--accent-active);
 }
 .sb-assignseg button.on.off {
-    background: var(--sb-muted);
-    border-color: var(--sb-muted);
-    color: var(--sb-panel);
+    background: var(--fg-muted);
+    border-color: var(--fg-muted);
+    color: #fff;
 }
+
 .sb-vansum {
     display: grid;
     grid-template-columns: repeat(var(--sb-vans, 3), 1fr);
-    gap: 8px;
-    margin-top: 16px;
+    gap: 0.5rem;
+    margin-top: 1rem;
 }
 .sb-vansum .v {
-    background: var(--sb-sunk);
-    border: 1px solid var(--sb-line);
-    border-radius: 2px;
-    padding: 9px;
+    background: var(--surface-2);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-md);
+    padding: 0.625rem;
     text-align: center;
 }
 .sb-vansum .v b {
     display: block;
-    font-size: 10px;
-    text-transform: lowercase;
-    letter-spacing: 0.12em;
-    margin-bottom: 3px;
-    color: var(--sb-faint);
-    font-family: var(--sb-mono);
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin-bottom: 0.1875rem;
+    color: var(--fg);
 }
-.sb-vansum .v span { font-size: 11px; color: var(--sb-muted); }
-.sb-vansum .v.warnv { border-color: var(--sb-accent); }
-.sb-vansum .v.warnv span { color: var(--sb-accent); }
-.sb-vansum .v.badv { border-color: var(--sb-danger); }
-.sb-vansum .v.badv span { color: var(--sb-danger); }
+.sb-vansum .v span {
+    font-size: 0.75rem;
+    color: var(--fg-muted);
+}
+.sb-vansum .v.warnv {
+    border-color: #fbbf24;
+    background: #fffbeb;
+}
+.sb-vansum .v.warnv span {
+    color: #b45309;
+}
+.sb-vansum .v.badv {
+    border-color: #fecaca;
+    background: #fef2f2;
+}
+.sb-vansum .v.badv span {
+    color: #b91c1c;
+}
 
 /* ---------- TV mode ----------
-   1920×1080 read from 3–5 m: bigger type throughout, every edit affordance
-   gone. */
-.osd-board.tv { font-size: 15px; min-height: 100vh; }
-.osd-board.tv .sb-title { font-size: 22px; }
-.osd-board.tv .sb-seg button { font-size: 15px; padding: 10px 22px; }
-.osd-board.tv .sb-pill { font-size: 14px; }
-.osd-board.tv .sb-legend { font-size: 14px; }
-.osd-board.tv .sb-swatch { width: 13px; height: 13px; }
-.osd-board.tv .sb-hcell .van { font-size: 21px; }
-.osd-board.tv .sb-hcell .crew { font-size: 14px; }
-.osd-board.tv .sb-dcell .dname { font-size: 19px; }
-.osd-board.tv .sb-dcell .ddate { font-size: 13px; }
-.osd-board.tv .sb-card .name { font-size: 16px; }
-.osd-board.tv .sb-card .meta { font-size: 13px; }
-.osd-board.tv .sb-card .extra { font-size: 13px; }
-.osd-board.tv .sb-card .fitted { font-size: 12px; }
-.osd-board.tv .sb-alldaytag { font-size: 11px; }
-.osd-board.tv .sb-slotlabel { font-size: 12px; width: 32px; }
-.osd-board.tv .sb-chip { font-size: 12px; }
+   1920x1080 read from 3-5 m: bigger type throughout, every edit affordance
+   gone. The dark stage comes from the app's own .dark tokens, applied by the
+   /fitting-board route. */
+.osd-board.tv {
+    font-size: 1rem;
+    min-height: 100vh;
+    padding: 1.25rem 1.5rem;
+}
+.osd-board.tv .sb-title {
+    font-size: 1.5rem;
+}
+.osd-board.tv .sb-seg button,
+.osd-board.tv .sb-pill {
+    font-size: 0.9375rem;
+}
+.osd-board.tv .sb-legend {
+    font-size: 0.9375rem;
+}
+.osd-board.tv .sb-swatch {
+    width: 0.8125rem;
+    height: 0.8125rem;
+}
+.osd-board.tv .sb-hcell .van {
+    font-size: 1.25rem;
+}
+.osd-board.tv .sb-hcell .crew {
+    font-size: 0.9375rem;
+}
+.osd-board.tv .sb-dcell .dname {
+    font-size: 1.125rem;
+}
+.osd-board.tv .sb-dcell .ddate {
+    font-size: 0.875rem;
+}
+.osd-board.tv .sb-card .name {
+    font-size: 1.0625rem;
+}
+.osd-board.tv .sb-card .meta,
+.osd-board.tv .sb-card .extra {
+    font-size: 0.875rem;
+}
+.osd-board.tv .sb-card .fitted,
+.osd-board.tv .sb-alldaytag {
+    font-size: 0.8125rem;
+}
+.osd-board.tv .sb-slotlabel {
+    font-size: 0.8125rem;
+    width: 2rem;
+}
+.osd-board.tv .sb-chip {
+    font-size: 0.8125rem;
+}
 .osd-board.tv .sb-daytag,
 .osd-board.tv .sb-crewbadge,
-.osd-board.tv .sb-holtag { font-size: 12px; }
-.osd-board.tv .sb-bhead b { font-size: 14px; }
-.osd-board.tv .sb-wchead .wc { font-size: 15px; }
-.osd-board.tv .sb-subvans span { font-size: 11px; }
+.osd-board.tv .sb-holtag {
+    font-size: 0.875rem;
+}
+.osd-board.tv .sb-bhead b {
+    font-size: 1rem;
+}
 .osd-board.tv .sb-addbtn,
 .osd-board.tv .sb-slimadd,
 .osd-board.tv .sb-crewbtn,
 .osd-board.tv .sb-hint,
 .osd-board.tv .sb-bactions,
 .osd-board.tv .sb-bnote,
-.osd-board.tv .sb-daydrop { display: none; }
+.osd-board.tv .sb-daydrop {
+    display: none;
+}
 
 @media (max-width: 1100px) {
-    .sb-weekwrap { flex-direction: column; }
-    .sb-sidebar { width: 100%; flex-direction: row; }
-    .sb-sidebar > * { flex: 1; }
+    .sb-weekwrap {
+        flex-direction: column;
+    }
+    .sb-sidebar {
+        width: 100%;
+        flex-direction: row;
+    }
+    .sb-sidebar > * {
+        flex: 1;
+    }
 }
 @media (max-width: 640px) {
-    .sb-mbody { grid-template-columns: 1fr; }
-    .sb-sidebar { flex-direction: column; }
+    .sb-mbody {
+        grid-template-columns: 1fr;
+    }
+    .sb-sidebar {
+        flex-direction: column;
+    }
 }
