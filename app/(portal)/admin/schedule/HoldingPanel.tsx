@@ -40,7 +40,7 @@ export function HoldingPanel({
         <section className="sb-holding">
             <div className="sb-bhead">
                 <b>{title}</b>
-                <span className="cnt">{jobs.length}</span>
+                <span className={`cnt ${jobs.length > 0 ? 'live' : ''}`}>{jobs.length}</span>
             </div>
 
             <DropZone target={{ kind: 'holding', lane }} className="sb-backloglist">
@@ -58,8 +58,8 @@ export function HoldingPanel({
 
             {!readOnly && (
                 <div className="sb-bactions">
-                    <button onClick={() => onAdd(lane)}>+ add job</button>
-                    {onPullQuote && <button onClick={onPullQuote}>from a quote</button>}
+                    <button onClick={() => onAdd(lane)}>+ Add job</button>
+                    {onPullQuote && <button onClick={onPullQuote}>From a quote</button>}
                 </div>
             )}
             <div className="sb-bnote">{note}</div>

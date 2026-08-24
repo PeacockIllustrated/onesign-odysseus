@@ -16,9 +16,7 @@ import {
     AlertTriangle,
     ChevronLeft,
     ChevronRight,
-    Moon,
     Monitor,
-    Sun,
     Users,
 } from 'lucide-react';
 import { useRealtimeStatus } from '@/lib/realtime/useRealtimeStatus';
@@ -51,7 +49,6 @@ import './schedule.css';
 
 type View = 'week' | 'month' | 'year';
 
-const THEME_KEY = 'odysseus-schedule-theme';
 const WEEKENDS_KEY = 'odysseus-schedule-weekends';
 
 interface Props {
@@ -85,7 +82,6 @@ export function ScheduleBoard({
 }: Props) {
     const router = useRouter();
     const [showWeekends, setShowWeekends] = useState(false);
-    const [theme, setTheme] = useState<'light' | 'dark'>(tv ? 'dark' : 'light');
     const [tvMode, setTvMode] = useState(tv);
 
     // Optimistic overlay: a drag applies here immediately and is reconciled by
@@ -109,18 +105,13 @@ export function ScheduleBoard({
 
     const readOnly = tvMode;
 
-    // Preferences are per device: dark for the workshop, light for the office.
+    // Light/dark is the app's, set on <html> by the topbar toggle — the board
+    // has no theme of its own. Only the weekend column preference is local.
     useEffect(() => {
         if (typeof window === 'undefined' || tv) return;
-        const savedTheme = window.localStorage.getItem(THEME_KEY);
-        if (savedTheme === 'light' || savedTheme === 'dark') setTheme(savedTheme);
         setShowWeekends(window.localStorage.getItem(WEEKENDS_KEY) === '1');
     }, [tv]);
 
-    function changeTheme(next: 'light' | 'dark') {
-        setTheme(next);
-        if (typeof window !== 'undefined') window.localStorage.setItem(THEME_KEY, next);
-    }
     function changeWeekends(next: boolean) {
         setShowWeekends(next);
         if (typeof window !== 'undefined')
@@ -286,11 +277,11 @@ export function ScheduleBoard({
         : null;
 
     return (
-        <div className={`osd-board ${tvMode ? 'tv' : ''}`} data-theme={theme}>
+        <div className={`osd-board ${tvMode ? 'tv' : ''}`}>
             {syncStatus === 'down' && (
                 <div className="sb-syncbanner">
                     <AlertTriangle size={15} />
-                    not syncing — this board may be out of date. Reconnecting…
+                    Not syncing — this board may be out of date. Reconnecting…
                 </div>
             )}
             {moveError && (
@@ -308,7 +299,7 @@ export function ScheduleBoard({
                             className={v === view ? 'on' : ''}
                             onClick={() => go({ view: v })}
                         >
-                            {v}
+                            {v[0].toUpperCase() + v.slice(1)}
                         </button>
                     ))}
                 </div>
@@ -317,7 +308,7 @@ export function ScheduleBoard({
                     <ChevronLeft size={16} />
                 </button>
                 <button className="sb-pill" onClick={goToday}>
-                    today
+                    Today
                 </button>
                 <button className="sb-navbtn" onClick={() => navigate(1)} aria-label="Next">
                     <ChevronRight size={16} />
@@ -328,34 +319,27 @@ export function ScheduleBoard({
                 <div className="sb-right">
                     <span className="sb-sync" data-state={syncStatus === 'live' ? 'live' : syncStatus === 'down' ? 'down' : 'connecting'}>
                         <span className="dot" />
-                        {syncStatus === 'live' ? 'live' : syncStatus === 'down' ? 'offline' : 'connecting'}
+                        {syncStatus === 'live' ? 'Live' : syncStatus === 'down' ? 'Offline' : 'Connecting'}
                     </span>
                     {view !== 'year' && (
                         <button
                             className={`sb-pill ${showWeekends ? 'on' : ''}`}
                             onClick={() => changeWeekends(!showWeekends)}
                         >
-                            weekends
+                            Weekends
                         </button>
                     )}
                     {!readOnly && (
                         <button className="sb-pill" onClick={() => setRosterOpen(true)}>
-                            <Users size={13} /> vans &amp; fitters
+                            <Users size={14} /> Vans &amp; fitters
                         </button>
                     )}
-                    <button
-                        className="sb-pill"
-                        onClick={() => changeTheme(theme === 'dark' ? 'light' : 'dark')}
-                    >
-                        {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
-                        {theme === 'dark' ? 'light' : 'dark'}
-                    </button>
                     {!tv && (
                         <button
                             className={`sb-pill ${tvMode ? 'on' : ''}`}
                             onClick={() => setTvMode((v) => !v)}
                         >
-                            <Monitor size={13} /> {tvMode ? 'exit tv mode' : 'tv mode'}
+                            <Monitor size={14} /> {tvMode ? 'Exit TV mode' : 'TV mode'}
                         </button>
                     )}
                 </div>
@@ -373,7 +357,7 @@ export function ScheduleBoard({
                 </span>
                 {view === 'week' && !readOnly && (
                     <span className="sb-hint">
-                        drag cards between days, vans, am/pm — or into a holding list
+                        Drag cards between days, vans and slots, or into a holding list
                     </span>
                 )}
             </div>
@@ -413,7 +397,7 @@ export function ScheduleBoard({
                             <aside className="sb-sidebar">
                                 <HoldingPanel
                                     lane="scheduled"
-                                    title="to be scheduled"
+                                    title="To be scheduled"
                                     jobs={toSchedule}
                                     empty="Nothing waiting — drag a job here to unschedule it"
                                     note="Accepted quotes land here, then drag them onto the board once dates are confirmed."
@@ -427,7 +411,7 @@ export function ScheduleBoard({
                                 />
                                 <HoldingPanel
                                     lane="delivery"
-                                    title="to be delivered"
+                                    title="To be delivered"
                                     jobs={toDeliver}
                                     empty="Nothing to deliver — drag a job here when it only needs dropping to site"
                                     note="Items going to site without a fitting team. Drag onto the board if a van ends up running it."

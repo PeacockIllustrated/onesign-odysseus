@@ -273,7 +273,12 @@ Three things are load-bearing:
 
 `/fitting-board` is the workshop TV view. Like `/backshop` (§2b) it sits **outside** `(portal)` with a plain `requireAuth()`, for the same two reasons: the sidebar is useless on a wall TV, and the portal layout's `getUserOrg()` would bounce org-less floor staff. It renders the *same* `ScheduleBoard` component in read-only tv mode, so the week view can't drift between office and workshop. View state (`?view=`/`?week=`/`?month=`/`?year=`) is a URL param because the server has to know which window of dates to load — and it makes the TV pointable at an exact view.
 
-The board carries the **Odysseus** palette (`#4e7e8c`), not the OneLaser orange the original prototype borrowed; what it does keep from that prototype is the typographic treatment — monospaced data, lowercase labels, hairline rules, 2px corners — which is palette-agnostic and reads well at TV distance.
+**The board is styled with the platform's own design system — it borrows nothing from the prototype's look.** The supplied prototype was built in OneLaser's visual language (near-black teal ground, hot orange accent, monospaced data, lowercase micro-labels, 2px corners). None of that survives: it produced a board that read as a wireframe next to the rest of the portal. `app/(portal)/admin/schedule/schedule.css` consumes the tokens in `app/globals.css` (`--card`, `--card-border`, `--fg`/`--fg-muted`/`--fg-subtle`, `--surface-2`, `--accent`, `--radius-*`), Gilroy, Studio rounding and the shared `PageHeader` / `.btn-*` / `.badge` components. What the prototype contributed is **layout and interaction only** — the day × van grid, the slot mechanics, the holding panels.
+
+Two traps worth knowing before touching the stylesheet:
+
+- **`--accent-light` is not usable as a background on a panel.** The theme model is "light dock on a dark stage": panels (`--card`, `--surface-2`) stay light in both themes, but `--accent-light` flips *dark* under `.dark`. A tag using it goes dark-on-light in dark mode. Mix against `--card` instead — the board defines `--sb-tint` / `--sb-tint-strong` for exactly this.
+- **The board has no theme of its own.** Light/dark is the app's, set on `<html>` by the topbar `ThemeToggle`. `/fitting-board` applies `dark` on its own wrapper because a wall TV has no topbar and a bright panel in a workshop is glare.
 
 ### 3. Single-tenant internal platform — clients are records, not users
 
@@ -355,6 +360,7 @@ Features left empty (skip): 20
 
 - All new tables use RLS with org-scoped policies matching the existing pattern
 - Auto-generated references follow the `OSD-YYYY-NNNNNN` pattern for quotes, `AWC-YYYY-NNNNNN` for artwork jobs, `PO-YYYY-NNNNNN` for purchase orders, `INV-YYYY-NNNNNN` for invoices
+- **Style from the design system, never a bespoke palette.** `app/globals.css` owns the tokens (`--card` / `--card-border` / `--fg` / `--fg-muted` / `--fg-subtle` / `--surface-2` / `--accent` / `--radius-sm|md|lg`) plus `.btn-primary` / `.btn-secondary` / `.btn-danger` / `.card-base` / `.badge`, and `app/(portal)/components/ui` owns `PageHeader`. A new admin surface uses those. If a design brief arrives carrying another company's visual language (as the fitting-schedule brief did), take its **layout and interaction** and drop its palette and typography — a page that doesn't look like the rest of the portal reads as unfinished, whatever the brief said. Remember the theme model: panels stay light in both themes, only the backdrop and chrome flip
 - Server actions in `lib/` directories, not inline in page files
 - Supabase client via `lib/supabase-server.ts` (server components) or `lib/supabase.ts` (client components)
 - Use `lib/supabase-admin.ts` (service role) only for operations that bypass RLS, and always gate on `requireSuperAdminOrError()` from `lib/auth.ts`

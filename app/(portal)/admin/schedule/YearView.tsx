@@ -44,11 +44,11 @@ export function YearView({ year, jobs, vans, onJumpWeek }: Props) {
                     </span>
                 ))}
                 <span className="sb-heatkey">
-                    quiet
+                    Quiet
                     {[0, 1, 2, 3, 4].map((h) => (
                         <span key={h} className={`sb-hk sb-heat h${h}`} />
                     ))}
-                    busy
+                    Busy
                 </span>
             </div>
 

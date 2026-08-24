@@ -1,10 +1,12 @@
 import { redirect } from 'next/navigation';
 import { isSuperAdmin } from '@/lib/auth';
+import { PageHeader } from '@/app/(portal)/components/ui';
 import { getScheduleBoard, getScheduleClientOptions } from '@/lib/schedule/queries';
 import { resolveScheduleWindow } from '@/lib/schedule/window';
 import { ScheduleBoard } from './ScheduleBoard';
 
 export const metadata = { title: 'Schedule · Onesign Odysseus' };
+export const dynamic = 'force-dynamic';
 
 interface PageProps {
     searchParams: Promise<{
@@ -25,7 +27,11 @@ export default async function SchedulePage({ searchParams }: PageProps) {
     ]);
 
     return (
-        <div className="-m-4 md:-m-6">
+        <div>
+            <PageHeader
+                title="Schedule"
+                description="Fitting work by van and day. Drag a card to move it; drop it in a holding list to unschedule."
+            />
             <ScheduleBoard
                 data={data}
                 clients={clients}

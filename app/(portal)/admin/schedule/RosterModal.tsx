@@ -56,10 +56,10 @@ export function RosterModal({ vans, fitters, defaultCrew, onClose, onSaved }: Pr
             }}
         >
             <div className="sb-modal">
-                <div className="sb-mhead">vans &amp; fitters</div>
+                <div className="sb-mhead">Vans &amp; fitters</div>
 
                 <div style={{ padding: 20 }}>
-                    <div className="sb-rosterhead">vans</div>
+                    <div className="sb-rosterhead">Vans</div>
                     {vans.map((v) => (
                         <div key={v.id} className="sb-fitterrow">
                             <input
@@ -85,7 +85,7 @@ export function RosterModal({ vans, fitters, defaultCrew, onClose, onSaved }: Pr
                                     )
                                 }
                             >
-                                {v.is_active ? 'retire' : 'restore'}
+                                {v.is_active ? 'Retire' : 'Restore'}
                             </button>
                         </div>
                     ))}
@@ -93,7 +93,7 @@ export function RosterModal({ vans, fitters, defaultCrew, onClose, onSaved }: Pr
                         <input
                             value={newVan}
                             onChange={(e) => setNewVan(e.target.value)}
-                            placeholder="add a van…"
+                            placeholder="Add a van…"
                         />
                         <button
                             className="sb-btn"
@@ -110,11 +110,11 @@ export function RosterModal({ vans, fitters, defaultCrew, onClose, onSaved }: Pr
                                 )
                             }
                         >
-                            add
+                            Add
                         </button>
                     </div>
 
-                    <div className="sb-rosterhead">roster</div>
+                    <div className="sb-rosterhead">Roster</div>
                     <p className="sb-note" style={{ marginTop: 8 }}>
                         People move, vans don&rsquo;t. A fitter&rsquo;s standing van applies
                         every day; use &ldquo;change crews&rdquo; on the board for a one-off
@@ -136,7 +136,7 @@ export function RosterModal({ vans, fitters, defaultCrew, onClose, onSaved }: Pr
                                     )
                                 }
                             >
-                                <option value="">no standing van</option>
+                                <option value="">No standing van</option>
                                 {vans.map((v) => (
                                     <option key={v.id} value={v.id}>
                                         {v.name}
@@ -157,8 +157,8 @@ export function RosterModal({ vans, fitters, defaultCrew, onClose, onSaved }: Pr
                                     )
                                 }
                             >
-                                <option value="crew">fitting crew</option>
-                                <option value="additional">additional</option>
+                                <option value="crew">Fitting crew</option>
+                                <option value="additional">Additional</option>
                             </select>
                             <button
                                 className="sb-btn"
@@ -174,7 +174,7 @@ export function RosterModal({ vans, fitters, defaultCrew, onClose, onSaved }: Pr
                                     )
                                 }
                             >
-                                {f.is_active ? 'deactivate' : 'restore'}
+                                {f.is_active ? 'Deactivate' : 'Restore'}
                             </button>
                         </div>
                     ))}
@@ -182,7 +182,7 @@ export function RosterModal({ vans, fitters, defaultCrew, onClose, onSaved }: Pr
                         <input
                             value={newFitter}
                             onChange={(e) => setNewFitter(e.target.value)}
-                            placeholder="add someone…"
+                            placeholder="Add someone…"
                         />
                         <select
                             value={newFitterGroup}
@@ -190,8 +190,8 @@ export function RosterModal({ vans, fitters, defaultCrew, onClose, onSaved }: Pr
                                 setNewFitterGroup(e.target.value as 'crew' | 'additional')
                             }
                         >
-                            <option value="crew">fitting crew</option>
-                            <option value="additional">additional</option>
+                            <option value="crew">Fitting crew</option>
+                            <option value="additional">Additional</option>
                         </select>
                         <button
                             className="sb-btn"
@@ -209,13 +209,13 @@ export function RosterModal({ vans, fitters, defaultCrew, onClose, onSaved }: Pr
                                 )
                             }
                         >
-                            add
+                            Add
                         </button>
                     </div>
 
                     {/* Booking a fortnight one day at a time is exactly the admin
                         the whiteboard forced, so the range expands server-side. */}
-                    <div className="sb-rosterhead">book holiday</div>
+                    <div className="sb-rosterhead">Book holiday</div>
                     <div className="sb-fitterrow">
                         <select
                             value={holFitter}
@@ -257,7 +257,7 @@ export function RosterModal({ vans, fitters, defaultCrew, onClose, onSaved }: Pr
                                         return;
                                     }
                                     setHolNote(
-                                        `booked ${res.data.days} working day${
+                                        `Booked ${res.data.days} working day${
                                             res.data.days === 1 ? '' : 's'
                                         }`
                                     );
@@ -265,7 +265,7 @@ export function RosterModal({ vans, fitters, defaultCrew, onClose, onSaved }: Pr
                                 });
                             }}
                         >
-                            book
+                            Book
                         </button>
                     </div>
                     <p className="sb-note" style={{ marginTop: 8 }}>
@@ -284,7 +284,7 @@ export function RosterModal({ vans, fitters, defaultCrew, onClose, onSaved }: Pr
                 <div className="sb-mfoot">
                     <span className="sb-grow" />
                     <button className="sb-btn primary" onClick={onClose}>
-                        done
+                        Done
                     </button>
                 </div>
             </div>

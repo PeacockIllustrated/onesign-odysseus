@@ -123,13 +123,13 @@ export function DayCrewModal({
                         className={p?.kind === 'holiday' ? 'on hol' : ''}
                         onClick={() => set(f.id, { kind: 'holiday' })}
                     >
-                        holiday
+                        Holiday
                     </button>
                     <button
                         className={p?.kind === 'off' ? 'on off' : ''}
                         onClick={() => set(f.id, { kind: 'off' })}
                     >
-                        off / shop
+                        Off / shop
                     </button>
                 </div>
             </div>
@@ -145,7 +145,7 @@ export function DayCrewModal({
         >
             <div className="sb-modal">
                 <div className="sb-mhead">
-                    crews for {DAY_NAMES[dayIndex(date)].toLowerCase()} {formatLong(date)}
+                    Crews for {DAY_NAMES[dayIndex(date)]} {formatLong(date)}
                 </div>
 
                 <div style={{ padding: 20 }}>
@@ -155,15 +155,15 @@ export function DayCrewModal({
                         missed.
                     </p>
 
-                    <div className="sb-rosterhead">fitting crew</div>
+                    <div className="sb-rosterhead">Fitting crew</div>
                     {crewGroup.map(row)}
 
-                    <div className="sb-rosterhead">additional bodies</div>
+                    <div className="sb-rosterhead">Additional bodies</div>
                     {extras.length > 0 ? (
                         extras.map(row)
                     ) : (
                         <p className="sb-note" style={{ margin: '6px 0 0' }}>
-                            Nobody listed — add people in &ldquo;vans &amp; fitters&rdquo;.
+                            Nobody listed — add people in &ldquo;Vans &amp; fitters&rdquo;.
                         </p>
                     )}
 
@@ -183,8 +183,7 @@ export function DayCrewModal({
                                 >
                                     <b>{v.name}</b>
                                     <span>
-                                        {crew.length ? crew.join(' & ') : '⚠ nobody assigned'}
-                                        {warn === 'solo' ? ' ⚠' : ''}
+                                        {crew.length ? crew.join(' & ') : 'Nobody assigned'}
                                     </span>
                                 </div>
                             );
@@ -203,15 +202,15 @@ export function DayCrewModal({
                 <div className="sb-mfoot">
                     {initial.override && (
                         <button className="sb-btn ghost" onClick={reset} disabled={pending}>
-                            reset to default crews
+                            Reset to default crews
                         </button>
                     )}
                     <span className="sb-grow" />
                     <button className="sb-btn" onClick={onClose}>
-                        cancel
+                        Cancel
                     </button>
                     <button className="sb-btn primary" onClick={save} disabled={pending}>
-                        {pending ? 'saving…' : 'save this day'}
+                        {pending ? 'Saving…' : 'Save this day'}
                     </button>
                 </div>
             </div>
