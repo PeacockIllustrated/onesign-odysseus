@@ -98,7 +98,8 @@ onesign-odysseus/
 │   │   └── layout.tsx         # Portal layout (sidebar + topbar)
 │   │   # NOTE: the old (marketing) group (/growth + /architects wizards) has been
 │   │   # removed; only the legacy architect-leads / leads API endpoints remain.
-│   ├── fitting-board/         # ★ NEW — Workshop TV view of the schedule (read-only)
+│   ├── schedule/tv/           # ★ NEW — Workshop TV view of the schedule (read-only)
+│   ├── fitting-board/         # Legacy redirect → /schedule/tv
 │   ├── (print)/               # Print-specific layouts
 │   ├── approve/               # External tokenised artwork approval
 │   │   └── artwork/[token]/
@@ -271,7 +272,9 @@ Three things are load-bearing:
 
 **There is no ClarityGo importer, and there should not be one.** The original brief specified a CSV export/import de-duplicated on a quote-ref *string*, because it assumed a standalone app. Odysseus replaces ClarityGo — quotes are already here, so the join is `fitting_jobs.quote_id` and the "from a quote" picker lists accepted quotes that have no card yet.
 
-`/fitting-board` is the workshop TV view. Like `/backshop` (§2b) it sits **outside** `(portal)` with a plain `requireAuth()`, for the same two reasons: the sidebar is useless on a wall TV, and the portal layout's `getUserOrg()` would bounce org-less floor staff. It renders the *same* `ScheduleBoard` component in read-only tv mode, so the week view can't drift between office and workshop. View state (`?view=`/`?week=`/`?month=`/`?year=`) is a URL param because the server has to know which window of dates to load — and it makes the TV pointable at an exact view.
+`/schedule/tv` is the workshop TV view (`/fitting-board` redirects to it). Like `/backshop` (§2b) it sits **outside** `(portal)` with a plain `requireAuth()`, and that placement is the whole point rather than a preference: anything nested under `(portal)` — `/admin/schedule/tv` included — inherits the portal layout, so the sidebar and topbar come with it however the board itself is styled. The two reasons are the same as backshop's: that chrome is useless on a wall TV, and the portal layout's org gate is the wrong question to ask of floor staff.
+
+It renders the *same* `ScheduleBoard` component in read-only tv mode, so the week view can't drift between office and workshop. View state (`?view=`/`?week=`/`?month=`/`?year=`) is a URL param because the server has to know which window of dates to load — and it makes the TV pointable at an exact view. The office board's "TV view" button opens `/schedule/tv` carrying the week currently on screen; there is deliberately no in-place TV toggle, because hiding the board's own controls leaves the portal chrome behind and that is not what a wall TV wants.
 
 **The board is styled with the platform's own design system — it borrows nothing from the prototype's look.** The supplied prototype was built in OneLaser's visual language (near-black teal ground, hot orange accent, monospaced data, lowercase micro-labels, 2px corners). None of that survives: it produced a board that read as a wireframe next to the rest of the portal. `app/(portal)/admin/schedule/schedule.css` consumes the tokens in `app/globals.css` (`--card`, `--card-border`, `--fg`/`--fg-muted`/`--fg-subtle`, `--surface-2`, `--accent`, `--radius-*`), Gilroy, Studio rounding and the shared `PageHeader` / `.btn-*` / `.badge` components. What the prototype contributed is **layout and interaction only** — the day × van grid, the slot mechanics, the holding panels.
 

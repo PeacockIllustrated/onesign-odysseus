@@ -1,35 +1,19 @@
-import { getScheduleBoard } from '@/lib/schedule/queries';
-import { resolveScheduleWindow } from '@/lib/schedule/window';
-import { ScheduleBoard } from '../(portal)/admin/schedule/ScheduleBoard';
-
-interface PageProps {
-    searchParams: Promise<{
-        view?: string;
-        week?: string;
-        month?: string;
-        year?: string;
-    }>;
-}
+import { redirect } from 'next/navigation';
 
 /**
- * The board as the workshop sees it. Same component as the office desk view,
- * mounted read-only with larger type — one implementation, so a change to the
- * week view can't drift between the two surfaces.
+ * The workshop TV board moved to /schedule/tv, which says what it is and sits
+ * next to the schedule it shows. This redirect keeps any kiosk browser or
+ * bookmark already pointed at the old URL working, query string intact.
  */
-export default async function FittingBoardPage({ searchParams }: PageProps) {
-    const win = resolveScheduleWindow(await searchParams);
-    const data = await getScheduleBoard(win.from, win.to);
-
-    return (
-        <ScheduleBoard
-            data={data}
-            clients={[]}
-            view={win.view}
-            monday={win.monday}
-            month={win.month}
-            year={win.year}
-            basePath="/fitting-board"
-            tv
-        />
-    );
+export default async function FittingBoardRedirect({
+    searchParams,
+}: {
+    searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(await searchParams)) {
+        if (typeof value === 'string') params.set(key, value);
+    }
+    const qs = params.toString();
+    redirect(qs ? `/schedule/tv?${qs}` : '/schedule/tv');
 }

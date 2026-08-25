@@ -82,7 +82,6 @@ export function ScheduleBoard({
 }: Props) {
     const router = useRouter();
     const [showWeekends, setShowWeekends] = useState(false);
-    const [tvMode, setTvMode] = useState(tv);
 
     // Optimistic overlay: a drag applies here immediately and is reconciled by
     // the server refresh, or rolled back if the move is rejected.
@@ -103,7 +102,7 @@ export function ScheduleBoard({
     const [rosterOpen, setRosterOpen] = useState(false);
     const [quoteLane, setQuoteLane] = useState<Lane | null>(null);
 
-    const readOnly = tvMode;
+    const readOnly = tv;
 
     // Light/dark is the app's, set on <html> by the topbar toggle — the board
     // has no theme of its own. Only the weekend column preference is local.
@@ -277,7 +276,7 @@ export function ScheduleBoard({
         : null;
 
     return (
-        <div className={`osd-board ${tvMode ? 'tv' : ''}`}>
+        <div className={`osd-board ${tv ? 'tv' : ''}`}>
             {syncStatus === 'down' && (
                 <div className="sb-syncbanner">
                     <AlertTriangle size={15} />
@@ -335,12 +334,22 @@ export function ScheduleBoard({
                         </button>
                     )}
                     {!tv && (
-                        <button
-                            className={`sb-pill ${tvMode ? 'on' : ''}`}
-                            onClick={() => setTvMode((v) => !v)}
+                        // A separate page, not an in-place toggle: hiding the
+                        // board's own controls still leaves the portal sidebar
+                        // and topbar, which is not what a wall TV wants.
+                        <a
+                            className="sb-pill"
+                            href={`/schedule/tv?${new URLSearchParams({
+                                view,
+                                week: monday,
+                                year: String(year),
+                                month: String(month.m),
+                            }).toString()}`}
+                            target="_blank"
+                            rel="noreferrer"
                         >
-                            <Monitor size={14} /> {tvMode ? 'Exit TV mode' : 'TV mode'}
-                        </button>
+                            <Monitor size={14} /> TV view
+                        </a>
                     )}
                 </div>
             </div>
@@ -385,7 +394,7 @@ export function ScheduleBoard({
                                     overrides={data.overrides}
                                     showWeekends={showWeekends}
                                     readOnly={readOnly}
-                                    tv={tvMode}
+                                    tv={tv}
                                     onOpenJob={openJob}
                                     onAddJob={(date, vanId, slot) =>
                                         openDraft(blankDraft(date, vanId, slot))
