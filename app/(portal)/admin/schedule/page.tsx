@@ -1,7 +1,11 @@
 import { redirect } from 'next/navigation';
 import { isSuperAdmin } from '@/lib/auth';
 import { PageHeader } from '@/app/(portal)/components/ui';
-import { getScheduleBoard, getScheduleClientOptions } from '@/lib/schedule/queries';
+import {
+    getScheduleBoard,
+    getScheduleClientOptions,
+    getScheduleDeliveries,
+} from '@/lib/schedule/queries';
 import { resolveScheduleWindow } from '@/lib/schedule/window';
 import { ScheduleBoard } from './ScheduleBoard';
 
@@ -21,9 +25,10 @@ export default async function SchedulePage({ searchParams }: PageProps) {
     if (!(await isSuperAdmin())) redirect('/admin');
 
     const win = resolveScheduleWindow(await searchParams);
-    const [data, clients] = await Promise.all([
+    const [data, clients, deliveries] = await Promise.all([
         getScheduleBoard(win.from, win.to),
         getScheduleClientOptions(),
+        getScheduleDeliveries(win.from, win.to),
     ]);
 
     return (
@@ -35,6 +40,7 @@ export default async function SchedulePage({ searchParams }: PageProps) {
             <ScheduleBoard
                 data={data}
                 clients={clients}
+                deliveries={deliveries}
                 view={win.view}
                 monday={win.monday}
                 month={win.month}

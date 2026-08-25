@@ -1,6 +1,9 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { Truck } from 'lucide-react';
+import type { PlanningDelivery } from '@/lib/planning/utils';
+import { deliveriesByDate, deliveryLabel, groupByDriver } from '@/lib/schedule/deliveries';
 import type {
     DayCrewOverrideRow,
     DefaultCrewRow,
@@ -35,9 +38,13 @@ interface Props {
     showWeekends: boolean;
     readOnly: boolean;
     tv: boolean;
+    /** Read-only delivery runs, shown alongside the vans when switched on. */
+    deliveries: PlanningDelivery[];
+    showDeliveries: boolean;
     onOpenJob: (id: string) => void;
     onAddJob: (date: string, vanId: string, slot: Slot) => void;
     onEditCrew: (date: string) => void;
+    onOpenDayRoute: (date: string) => void;
 }
 
 export function WeekView({
@@ -51,9 +58,12 @@ export function WeekView({
     showWeekends,
     readOnly,
     tv,
+    deliveries,
+    showDeliveries,
     onOpenJob,
     onAddJob,
     onEditCrew,
+    onOpenDayRoute,
 }: Props) {
     const days = visibleWeekDays(monday, jobs, showWeekends);
     const today = toISO(new Date());
@@ -63,6 +73,7 @@ export function WeekView({
     // The column header shows each van's standing pairing; per-day changes
     // surface on the day row and in the affected cell rather than up here.
     const standingCrew = resolveDay(monday, vans, fitters, defaultCrew, []);
+    const deliveryDays = deliveriesByDate(deliveries);
 
     return (
         <div
@@ -70,7 +81,9 @@ export function WeekView({
             style={{
                 // The day column carries the date, a crew-change tag and the
                 // crew button, so it needs more room than a date alone.
-                gridTemplateColumns: `${tv ? '11rem' : '9.5rem'} repeat(${vans.length}, 1fr)`,
+                gridTemplateColumns: `${tv ? '11rem' : '9.5rem'} repeat(${vans.length}, 1fr)${
+                    showDeliveries ? ' 13rem' : ''
+                }`,
             }}
         >
             <div className="sb-hcell" />
@@ -82,6 +95,12 @@ export function WeekView({
                     </div>
                 </div>
             ))}
+            {showDeliveries && (
+                <div className="sb-hcell">
+                    <div className="van">Deliveries</div>
+                    <div className="crew">drivers</div>
+                </div>
+            )}
 
             {days.map((date) => {
                 const di = dayIndex(date);
@@ -108,6 +127,8 @@ export function WeekView({
                         onOpenJob={onOpenJob}
                         onAddJob={onAddJob}
                         onEditCrew={onEditCrew}
+                        deliveries={showDeliveries ? (deliveryDays.get(date) ?? []) : null}
+                        onOpenDayRoute={onOpenDayRoute}
                     />
                 );
             })}
@@ -131,6 +152,9 @@ interface DayRowProps {
     onOpenJob: (id: string) => void;
     onAddJob: (date: string, vanId: string, slot: Slot) => void;
     onEditCrew: (date: string) => void;
+    /** null when the deliveries column is switched off. */
+    deliveries: PlanningDelivery[] | null;
+    onOpenDayRoute: (date: string) => void;
 }
 
 function DayRow({
@@ -149,6 +173,8 @@ function DayRow({
     onOpenJob,
     onAddJob,
     onEditCrew,
+    deliveries,
+    onOpenDayRoute,
 }: DayRowProps) {
     return (
         <>
@@ -306,6 +332,32 @@ function DayRow({
                     </div>
                 );
             })}
+
+            {deliveries && (
+                <div className={`sb-cell sb-delcell ${weekend ? 'wkend' : ''}`}>
+                    {deliveries.length === 0 ? (
+                        <p className="sb-delempty">—</p>
+                    ) : (
+                        <button
+                            className="sb-delbtn"
+                            onClick={() => onOpenDayRoute(date)}
+                            title="See each driver's round in the order it should be driven"
+                        >
+                            {groupByDriver(deliveries).map((round) => (
+                                <span key={round.driverId ?? 'unassigned'} className="sb-delround">
+                                    <span className="who">
+                                        <Truck size={11} /> {round.driverName}
+                                    </span>
+                                    <span className="stops">
+                                        {round.stops.map((s) => deliveryLabel(s)).join(', ')}
+                                    </span>
+                                </span>
+                            ))}
+                            <span className="sb-delcta">Plan route →</span>
+                        </button>
+                    )}
+                </div>
+            )}
         </>
     );
 }

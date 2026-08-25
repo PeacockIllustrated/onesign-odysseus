@@ -1,4 +1,4 @@
-import { getScheduleBoard } from '@/lib/schedule/queries';
+import { getScheduleBoard, getScheduleDeliveries } from '@/lib/schedule/queries';
 import { resolveScheduleWindow } from '@/lib/schedule/window';
 import { ScheduleBoard } from '@/app/(portal)/admin/schedule/ScheduleBoard';
 
@@ -18,12 +18,16 @@ interface PageProps {
  */
 export default async function ScheduleTvPage({ searchParams }: PageProps) {
     const win = resolveScheduleWindow(await searchParams);
-    const data = await getScheduleBoard(win.from, win.to);
+    const [data, deliveries] = await Promise.all([
+        getScheduleBoard(win.from, win.to),
+        getScheduleDeliveries(win.from, win.to),
+    ]);
 
     return (
         <ScheduleBoard
             data={data}
             clients={[]}
+            deliveries={deliveries}
             view={win.view}
             monday={win.monday}
             month={win.month}

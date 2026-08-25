@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase-admin';
+import type { PlanningDelivery } from '@/lib/planning/utils';
 import type {
     DayCrewOverrideRow,
     DefaultCrewRow,
@@ -173,4 +174,67 @@ export async function getSchedulableQuotes(): Promise<
         customer_name: string | null;
         project_name: string | null;
     }>).filter((q) => !taken.has(q.id));
+}
+
+
+/**
+ * Deliveries falling inside the board's window, shaped like the delivery
+ * planner's own rows so both surfaces agree on what a stop is.
+ *
+ * The board renders these read-only: a delivery belongs to the Deliveries
+ * module, and the point here is seeing the whole day — vans out fitting and
+ * drivers out dropping — rather than editing it from two places. Completed and
+ * failed runs are left out; the board is about what is still to happen.
+ */
+export async function getScheduleDeliveries(
+    from: string,
+    to: string
+): Promise<PlanningDelivery[]> {
+    const supabase = createAdminClient();
+    const { data } = await supabase
+        .from('deliveries')
+        .select(
+            `id, delivery_number, scheduled_date, status, driver_id, driver_name,
+             site_id, org_sites ( name, latitude, longitude ), orgs ( name )`
+        )
+        .gte('scheduled_date', from)
+        .lte('scheduled_date', to)
+        .in('status', ['scheduled', 'in_transit'])
+        .order('scheduled_date');
+
+    interface Site {
+        name: string | null;
+        latitude: number | null;
+        longitude: number | null;
+    }
+    interface Row {
+        id: string;
+        delivery_number: string;
+        scheduled_date: string;
+        status: string;
+        driver_id: string | null;
+        driver_name: string | null;
+        // PostgREST types an embedded row as an array; at runtime a
+        // to-one relationship arrives as a plain object. Take either.
+        org_sites: Site | Site[] | null;
+        orgs: { name: string | null } | { name: string | null }[] | null;
+    }
+    const one = <T,>(v: T | T[] | null): T | null =>
+        Array.isArray(v) ? (v[0] ?? null) : v;
+
+    return ((data ?? []) as unknown as Row[]).map((r) => {
+        const site = one(r.org_sites);
+        return {
+            id: r.id,
+            scheduled_date: r.scheduled_date,
+            driver_id: r.driver_id,
+            driver_name: r.driver_name,
+            delivery_number: r.delivery_number,
+            site_name: site?.name ?? null,
+            site_lat: site?.latitude ?? null,
+            site_lng: site?.longitude ?? null,
+            org_name: one(r.orgs)?.name ?? null,
+            status: r.status,
+        };
+    });
 }

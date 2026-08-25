@@ -17,8 +17,10 @@ import {
     ChevronLeft,
     ChevronRight,
     Monitor,
+    Truck,
     Users,
 } from 'lucide-react';
+import type { PlanningDelivery } from '@/lib/planning/utils';
 import { useRealtimeStatus } from '@/lib/realtime/useRealtimeStatus';
 import { moveFittingJob } from '@/lib/schedule/actions';
 import type {
@@ -44,16 +46,24 @@ import { JobModal, blankDraft, draftFromJob, type Draft } from './JobModal';
 import { DayCrewModal } from './DayCrewModal';
 import { RosterModal } from './RosterModal';
 import { QuotePickerModal } from './QuotePickerModal';
+import { DayRouteModal } from './DayRouteModal';
 import { parseDropTarget } from './DropZone';
 import './schedule.css';
 
 type View = 'week' | 'month' | 'year';
 
 const WEEKENDS_KEY = 'odysseus-schedule-weekends';
+const DELIVERIES_KEY = 'odysseus-schedule-deliveries';
 
 interface Props {
     data: ScheduleBoardData;
     clients: Array<{ id: string; name: string }>;
+    /**
+     * Deliveries falling in the same window, rendered read-only beside the
+     * vans. They belong to the Deliveries module; the board shows them so the
+     * office can see the whole day on one surface.
+     */
+    deliveries: PlanningDelivery[];
     /**
      * View state lives in the URL rather than in component state: the server
      * has to know which window of dates to load, and a month or year view
@@ -73,6 +83,7 @@ interface Props {
 export function ScheduleBoard({
     data,
     clients,
+    deliveries,
     view,
     monday,
     month,
@@ -82,6 +93,8 @@ export function ScheduleBoard({
 }: Props) {
     const router = useRouter();
     const [showWeekends, setShowWeekends] = useState(false);
+    const [showDeliveries, setShowDeliveries] = useState(false);
+    const [routeDate, setRouteDate] = useState<string | null>(null);
 
     // Optimistic overlay: a drag applies here immediately and is reconciled by
     // the server refresh, or rolled back if the move is rejected.
@@ -109,7 +122,15 @@ export function ScheduleBoard({
     useEffect(() => {
         if (typeof window === 'undefined' || tv) return;
         setShowWeekends(window.localStorage.getItem(WEEKENDS_KEY) === '1');
+        setShowDeliveries(window.localStorage.getItem(DELIVERIES_KEY) === '1');
     }, [tv]);
+
+    function changeDeliveries(next: boolean) {
+        setShowDeliveries(next);
+        if (typeof window !== 'undefined') {
+            window.localStorage.setItem(DELIVERIES_KEY, next ? '1' : '0');
+        }
+    }
 
     function changeWeekends(next: boolean) {
         setShowWeekends(next);
@@ -328,6 +349,15 @@ export function ScheduleBoard({
                             Weekends
                         </button>
                     )}
+                    {view === 'week' && (
+                        <button
+                            className={`sb-pill ${showDeliveries ? 'on' : ''}`}
+                            onClick={() => changeDeliveries(!showDeliveries)}
+                            title="Show delivery runs beside the vans"
+                        >
+                            <Truck size={14} /> Deliveries
+                        </button>
+                    )}
                     {!readOnly && (
                         <button className="sb-pill" onClick={() => setRosterOpen(true)}>
                             <Users size={14} /> Vans &amp; fitters
@@ -400,6 +430,9 @@ export function ScheduleBoard({
                                         openDraft(blankDraft(date, vanId, slot))
                                     }
                                     onEditCrew={(date) => setCrewDate(date)}
+                                    deliveries={deliveries}
+                                    showDeliveries={showDeliveries}
+                                    onOpenDayRoute={(date) => setRouteDate(date)}
                                 />
                             </div>
 
@@ -507,6 +540,14 @@ export function ScheduleBoard({
                     defaultCrew={data.defaultCrew}
                     onClose={() => setRosterOpen(false)}
                     onSaved={refresh}
+                />
+            )}
+
+            {routeDate && (
+                <DayRouteModal
+                    date={routeDate}
+                    deliveries={deliveries.filter((d) => d.scheduled_date === routeDate)}
+                    onClose={() => setRouteDate(null)}
                 />
             )}
 
