@@ -3,13 +3,15 @@ import { requireAuth } from '@/lib/auth';
 export const metadata = { title: 'Fitting board · Onesign Odysseus' };
 
 /**
- * Workshop TV layout for the fitting schedule.
+ * Workshop TV layout for the fitting schedule (/schedule/tv).
  *
- * Lives OUTSIDE the (portal) route group for the same two reasons as
- * /backshop: the portal sidebar and topbar are useless on a wall-mounted TV,
- * and the portal layout's getUserOrg() bounces any user without org membership
- * to /login?error=no_org — which would lock out the very floor staff the board
- * is for. Here we only require a session.
+ * Lives OUTSIDE the (portal) route group on purpose, and it is the ONLY way
+ * to get a board with no chrome: a page nested under (portal) — including
+ * /admin/schedule/tv — inherits the portal layout, so the sidebar and topbar
+ * come with it however the board itself is styled. Same reasoning as
+ * /backshop: that chrome is useless on a wall-mounted TV, and the portal
+ * layout's org gate is the wrong question to ask of floor staff. Here we only
+ * require a session.
  *
  * The TV always runs the dark stage: there is no topbar toggle out here, and a
  * bright wall panel in a workshop is glare. `dark` is the app's own theme
@@ -20,7 +22,7 @@ export const metadata = { title: 'Fitting board · Onesign Odysseus' };
  * affordance and disables drag), so a stray press on the TV remote can't move
  * a job.
  */
-export default async function FittingBoardLayout({
+export default async function ScheduleTvLayout({
     children,
 }: {
     children: React.ReactNode;
