@@ -3,16 +3,17 @@
 import { useState } from 'react';
 import { User, LogOut, ChevronDown, Settings, Menu } from 'lucide-react';
 import Link from 'next/link';
-import type { Org } from '@/lib/supabase';
 import { useSidebar } from './SidebarContext';
 import { ThemeToggle } from './ThemeToggle';
 
 interface TopbarProps {
-    org: Org;
+    /** The client whose context the user is in, or the operator for staff
+        who aren't scoped to one. Only ever displayed. */
+    orgName: string;
     isAdmin?: boolean;
 }
 
-export function Topbar({ org, isAdmin }: TopbarProps) {
+export function Topbar({ orgName, isAdmin }: TopbarProps) {
     const [menuOpen, setMenuOpen] = useState(false);
     const { openMobile } = useSidebar();
 
@@ -35,7 +36,7 @@ export function Topbar({ org, isAdmin }: TopbarProps) {
                 >
                     <Menu size={20} />
                 </button>
-                <span className="text-sm font-medium text-neutral-900 truncate max-w-[160px] sm:max-w-none dark:text-[var(--bg-fg)]">{org.name}</span>
+                <span className="text-sm font-medium text-neutral-900 truncate max-w-[160px] sm:max-w-none dark:text-[var(--bg-fg)]">{orgName}</span>
                 <span className="badge text-xs hidden sm:inline-flex dark:bg-white/5 dark:text-[var(--bg-fg-muted)] dark:border-white/10">{isAdmin ? 'admin' : 'client portal'}</span>
             </div>
 
