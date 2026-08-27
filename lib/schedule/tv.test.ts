@@ -30,6 +30,7 @@ function job(p: Partial<FittingJobView> & { id: string }): FittingJobView {
         pm_id: null,
         van_id: p.van_id ?? 'van-a',
         scheduled_date: p.scheduled_date ?? '2026-03-02',
+        end_date: p.end_date ?? null,
         lane: 'scheduled',
         slot: (p.slot ?? 'AM') as Slot,
         sort_order: p.sort_order ?? 0,

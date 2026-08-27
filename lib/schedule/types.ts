@@ -20,7 +20,14 @@ export interface Van {
     id: string;
     name: string;
     sort_order: number;
+    /** The board shows a van only while it is active. */
     is_active: boolean;
+    /**
+     * The spare/hired van the board switches on for the weeks it is out.
+     * Shared DB state rather than a device preference, so the workshop TV
+     * shows the extra column the moment the office turns it on.
+     */
+    is_additional: boolean;
 }
 
 export interface Fitter {
@@ -105,6 +112,11 @@ export interface FittingJob {
     van_id: string | null;
     /** null = unscheduled, sitting in the `lane` holding panel. */
     scheduled_date: string | null;
+    /**
+     * Last day of a multi-day fit, inclusive. null = a single-day job on
+     * `scheduled_date`, which is the common case — not a missing value.
+     */
+    end_date: string | null;
     lane: Lane;
     slot: Slot;
     sort_order: number;
@@ -148,6 +160,12 @@ export interface ScheduleBoardData {
     pms: ProjectManager[];
     defaultCrew: DefaultCrewRow[];
     overrides: DayCrewOverrideRow[];
+    /**
+     * The spare van and whether it is currently a board column. null when no
+     * additional van has been set up. Carried separately from `vans` because
+     * that list holds only what is on the board right now.
+     */
+    additionalVan: { id: string; name: string; is_active: boolean } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -191,6 +209,7 @@ export const SaveFittingJobSchema = z
         // wide, and a paragraph here would push the rest of the day off the
         // board. Long-form detail belongs in `notes`.
         summary: z.string().max(160).nullable().optional(),
+        end_date: isoDate.nullable().optional(),
         notes: z.string().max(4000).nullable().optional(),
     })
     .refine(
@@ -203,7 +222,13 @@ export const SaveFittingJobSchema = z
     .refine((v) => v.scheduled_date == null || !!v.van_id, {
         message: 'a scheduled job needs a van',
         path: ['van_id'],
-    });
+    })
+    // Mirrors the DB CHECK, so a bad span is refused with a readable message
+    // rather than a constraint violation from Postgres.
+    .refine(
+        (v) => !v.end_date || !v.scheduled_date || v.end_date >= v.scheduled_date,
+        { message: 'the last day cannot be before the first', path: ['end_date'] }
+    );
 export type SaveFittingJobInput = z.infer<typeof SaveFittingJobSchema>;
 
 /** Drag & drop onto the board, or into a holding panel. */

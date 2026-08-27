@@ -66,19 +66,25 @@ export async function getScheduleBoard(
         pmsRes,
         defaultCrewRes,
         overridesRes,
+        additionalVanRes,
     ] = await Promise.all([
+        // Overlap, not containment: a fit running Friday to Monday belongs on
+        // BOTH weeks' boards, and a plain `scheduled_date >= from` drops it
+        // from the second one — the week where it is actually happening.
         supabase
             .from('fitting_jobs')
             .select(JOB_SELECT)
             .is('archived_at', null)
-            .gte('scheduled_date', from)
-            .lte('scheduled_date', to),
+            .lte('scheduled_date', to)
+            .or(`end_date.gte.${from},and(end_date.is.null,scheduled_date.gte.${from})`),
         supabase
             .from('fitting_jobs')
             .select(JOB_SELECT)
             .is('archived_at', null)
             .is('scheduled_date', null),
-        supabase.from('vans').select('*').order('sort_order'),
+        // Only vans currently on the road are board columns. The additional
+        // van sits inactive until the toolbar switches it on.
+        supabase.from('vans').select('*').eq('is_active', true).order('sort_order'),
         supabase.from('fitters').select('*').order('roster_group').order('sort_order'),
         supabase.from('project_managers').select('*').order('sort_order'),
         supabase.from('default_crew').select('*'),
@@ -87,6 +93,15 @@ export async function getScheduleBoard(
             .select('*')
             .gte('date', from)
             .lte('date', to),
+        // Fetched whatever its state, so the toolbar can offer the switch even
+        // while the van is off and therefore absent from `vans` above.
+        supabase
+            .from('vans')
+            .select('id, name, is_active')
+            .eq('is_additional', true)
+            .order('sort_order')
+            .limit(1)
+            .maybeSingle(),
     ]);
 
     const rows = [
@@ -101,6 +116,9 @@ export async function getScheduleBoard(
         pms: (pmsRes.data ?? []) as ProjectManager[],
         defaultCrew: (defaultCrewRes.data ?? []) as DefaultCrewRow[],
         overrides: (overridesRes.data ?? []) as DayCrewOverrideRow[],
+        additionalVan:
+            (additionalVanRes.data as { id: string; name: string; is_active: boolean } | null) ??
+            null,
     };
 }
 

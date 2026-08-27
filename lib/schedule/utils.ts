@@ -65,6 +65,28 @@ export function addDaysISO(iso: string, n: number): string {
     return toISO(addDays(fromISO(iso), n));
 }
 
+/**
+ * Whole days from `a` to `b`, negative when b is earlier.
+ *
+ * Counted by walking local-midnight dates rather than dividing a millisecond
+ * difference: across a DST boundary a day is 23 or 25 hours, and the division
+ * silently loses or gains one.
+ */
+export function daysBetweenISO(a: string, b: string): number {
+    const start = fromISO(a);
+    const end = fromISO(b);
+    const dir = end >= start ? 1 : -1;
+    let n = 0;
+    let cur = a;
+    while (cur !== b) {
+        cur = addDaysISO(cur, dir);
+        n += dir;
+        // A malformed date would otherwise loop forever.
+        if (Math.abs(n) > 3660) return 0;
+    }
+    return n;
+}
+
 /** Monday of the week containing `d`. Weeks run Monday-first throughout. */
 export function mondayOf(d: Date): Date {
     const x = new Date(d);
@@ -283,6 +305,33 @@ export function diffFromDefault(
 
 export const SLOT_ORDER: Slot[] = ['DAY', 'AM', 'PM', 'OOH'];
 
+/**
+ * Tick a weekday on or off a job's span, keeping the result contiguous.
+ *
+ * The office ticks days on a week, but a job is a range with a first and last
+ * day — "Monday and Friday but not Tuesday" is two jobs, not one with a hole.
+ * So the ticks drive the two ends and everything between comes along, which
+ * is why the days inside a span render ticked and read-only.
+ *
+ * Rules, in the order a person would expect them:
+ *  - a day outside the span extends the nearer end to reach it,
+ *  - an end of a multi-day span pulls that end in by one,
+ *  - a day inside a span truncates it there, so Mon–Wed then Tue gives Mon–Tue,
+ *  - the only day of a single-day job does nothing: a job is always somewhere.
+ */
+export function toggleSpanDay(
+    start: number,
+    end: number,
+    day: number
+): { start: number; end: number } {
+    if (day < start) return { start: day, end };
+    if (day > end) return { start, end: day };
+    if (start === end) return { start, end };
+    if (day === start) return { start: start + 1, end };
+    if (day === end) return { start, end: end - 1 };
+    return { start, end: day };
+}
+
 /** Live board jobs — archived work never renders. */
 export function liveJobs(jobs: FittingJobView[]): FittingJobView[] {
     return jobs.filter((j) => j.archived_at == null);
@@ -302,7 +351,53 @@ export function holdingJobs(jobs: FittingJobView[], lane: 'scheduled' | 'deliver
 const bySortThenCreated = (a: FittingJobView, b: FittingJobView) =>
     a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at);
 
-/** Jobs in one day × van cell, split by slot. */
+/**
+ * The last day a job occupies. A single-day job ends the day it starts, so
+ * `end_date` being null is not a missing value — it is the common case.
+ */
+export function jobEndDate(job: FittingJobView): string | null {
+    if (job.scheduled_date == null) return null;
+    const end = job.end_date;
+    // Defend against a row where end_date drifted before the start: render it
+    // as a single day rather than as nothing at all.
+    if (!end || end < job.scheduled_date) return job.scheduled_date;
+    return end;
+}
+
+/** Does a multi-day job cover this date? */
+export function jobCoversDate(job: FittingJobView, date: string): boolean {
+    if (job.scheduled_date == null) return false;
+    const end = jobEndDate(job);
+    return job.scheduled_date <= date && end != null && date <= end;
+}
+
+/** True when the job runs across more than one day. */
+export function isMultiDay(job: FittingJobView): boolean {
+    const end = jobEndDate(job);
+    return end != null && job.scheduled_date != null && end > job.scheduled_date;
+}
+
+/** Every date a job occupies, inclusive. Empty for an unscheduled job. */
+export function jobDates(job: FittingJobView): string[] {
+    if (job.scheduled_date == null) return [];
+    const end = jobEndDate(job)!;
+    const out: string[] = [];
+    // Walk rather than diff: date arithmetic through the local-midnight helpers
+    // is the only thing in here that survives a DST boundary intact.
+    for (let d = job.scheduled_date; d <= end; d = addDaysISO(d, 1)) {
+        out.push(d);
+        // A corrupt row with a wild end_date must not spin forever.
+        if (out.length > 366) break;
+    }
+    return out;
+}
+
+/**
+ * Jobs in one day × van cell, split by slot.
+ *
+ * A multi-day job appears in the cell for every day it spans, which is what
+ * makes it read as one job running Monday to Wednesday rather than three.
+ */
 export function cellJobs(
     jobs: FittingJobView[],
     date: string,
@@ -311,7 +406,7 @@ export function cellJobs(
     const out: Record<Slot, FittingJobView[]> = { AM: [], PM: [], DAY: [], OOH: [] };
     for (const j of jobs) {
         if (j.archived_at != null) continue;
-        if (j.scheduled_date !== date || j.van_id !== vanId) continue;
+        if (j.van_id !== vanId || !jobCoversDate(j, date)) continue;
         out[j.slot].push(j);
     }
     for (const slot of SLOT_ORDER) out[slot].sort(bySortThenCreated);
@@ -329,10 +424,14 @@ export function indexByDateAndVan(
     const map = new Map<string, FittingJobView[]>();
     for (const j of jobs) {
         if (j.archived_at != null || j.scheduled_date == null || j.van_id == null) continue;
-        const key = `${j.scheduled_date}|${j.van_id}`;
-        const arr = map.get(key);
-        if (arr) arr.push(j);
-        else map.set(key, [j]);
+        // A multi-day job is indexed under each of its days, so the month and
+        // year views count it on every day it actually occupies a van.
+        for (const date of jobDates(j)) {
+            const key = `${date}|${j.van_id}`;
+            const arr = map.get(key);
+            if (arr) arr.push(j);
+            else map.set(key, [j]);
+        }
     }
     for (const arr of map.values()) arr.sort(bySortThenCreated);
     return map;
@@ -380,6 +479,20 @@ export function jobMeta(job: FittingJobView): string[] {
         .filter(Boolean)
         .join(', ');
     return [ref, where].filter((x): x is string => !!x);
+}
+
+/**
+ * "Mon–Wed" for a job that runs across days, null for a single-day one.
+ *
+ * Shown on every card of the span rather than only the first, because each day
+ * a card appears the reader is asking the same question — is this all of it,
+ * or part of something longer?
+ */
+export function jobSpanLabel(job: FittingJobView): string | null {
+    if (!isMultiDay(job) || job.scheduled_date == null) return null;
+    const end = jobEndDate(job);
+    if (end == null) return null;
+    return `${DAY_SHORT[dayIndex(job.scheduled_date)]}–${DAY_SHORT[dayIndex(end)]}`;
 }
 
 /** The card's third line: crew override and access note. */

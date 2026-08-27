@@ -1429,3 +1429,53 @@
     color: var(--fg);
     font-weight: 700;
 }
+
+/* Weekday ticks for a job's span. A checkbox per day, contiguous by
+   construction — see toggleSpanDay for why the days between two ticks come
+   along rather than leaving a hole. */
+.sb-dayrowpick {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+}
+.sb-daypick {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.625rem;
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-sm);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--fg-muted);
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.sb-daypick:hover {
+    border-color: var(--accent);
+}
+.sb-daypick.on {
+    background: var(--sb-tint);
+    border-color: var(--accent);
+    color: var(--fg);
+}
+.sb-daypick input {
+    width: auto;
+    margin: 0;
+}
+
+/* "Mon–Wed" on a card that runs across days, so each day's copy of it says
+   whether it is the whole job or part of a longer one. */
+.sb-spantag {
+    display: inline-block;
+    align-self: flex-start;
+    margin-bottom: 0.125rem;
+    padding: 0.0625rem 0.3125rem;
+    border-radius: var(--radius-sm);
+    background: var(--sb-tint-strong);
+    color: var(--fg);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
