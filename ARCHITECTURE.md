@@ -114,6 +114,10 @@ CLAUDE.md carries the authoritative per-migration ledger (001–067; `031` inten
 - `external_orders` (055) — unified inbox for orders from external Onesign apps (Persimmon / Mapleleaf / lynx shop); acknowledge-then-convert, never auto-converted
 - `artwork_production_approvals` (057) — 64-hex token behind the unauth `/production-sign-off/[token]` surface (Chris / John tick each sub-item before release)
 
+### External reads — tables Odysseus does NOT own
+- `psp_orders` / `psp_order_items` (Persimmon) — read via the service role and normalised into the external-orders inbox (`lib/external-orders/adapters/persimmon.ts`)
+- `qr_codes` / `qr_scan_events` / `organizations` (**Onesign Lynx**) — read-only backing for the QR Links overview at `/admin/qr-links` (`lib/qr-links/`). No migration: Lynx owns these tables and Odysseus never writes to them. The connection is a dedicated Lynx Supabase project (`LYNX_SUPABASE_URL` + `LYNX_SUPABASE_SERVICE_ROLE_KEY`) or, unset, a fallback to the Odysseus service role for a shared project; unconfigured renders a "not connected" state. Lynx's `organizations` are a separate tenancy from the Odysseus `orgs` table — do not join them. See CLAUDE.md §2e
+
 ### Site surveys & production packs (061–063)
 - `site_surveys`, `survey_items`, `survey_photos` (061–062, ref `SVY-YYYY-NNNNNN`) — digitised on-site measure-up; sits upstream of a quote (nullable org/site/contact). Photo-first UX with per-photo real-world sizes + annotation overlay
 - `production_packs` (063) — block-based JSONB internal works-pack builder (à la `design_packs`); standalone in v1 with soft links to wire up later
