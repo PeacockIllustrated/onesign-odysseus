@@ -24,6 +24,7 @@ import {
     toISO,
     visibleWeekDays,
 } from '@/lib/schedule/utils';
+import { bankHolidayMap } from '@/lib/schedule/holidays';
 import { JobCard } from './JobCard';
 import { DropZone } from './DropZone';
 
@@ -74,6 +75,9 @@ export function WeekView({
     // surface on the day row and in the affected cell rather than up here.
     const standingCrew = resolveDay(monday, vans, fitters, defaultCrew, []);
     const deliveryDays = deliveriesByDate(deliveries);
+    // A week can straddle New Year, so cover both years it might touch.
+    const year = Number(monday.slice(0, 4));
+    const holidays = bankHolidayMap(year, year + 1);
 
     return (
         <div
@@ -115,6 +119,7 @@ export function WeekView({
                         date={date}
                         dayName={DAY_NAMES[di]}
                         weekend={di >= 5}
+                        bankHoliday={holidays.get(date) ?? null}
                         isToday={date === today}
                         override={day.override}
                         holidayNames={holidayNames}
@@ -140,6 +145,8 @@ interface DayRowProps {
     date: string;
     dayName: string;
     weekend: boolean;
+    /** Name of the bank holiday falling on this day, or null. */
+    bankHoliday: string | null;
     isToday: boolean;
     override: boolean;
     holidayNames: string[];
@@ -161,6 +168,7 @@ function DayRow({
     date,
     dayName,
     weekend,
+    bankHoliday,
     isToday,
     override,
     holidayNames,
@@ -178,9 +186,16 @@ function DayRow({
 }: DayRowProps) {
     return (
         <>
-            <div className={`sb-dcell ${isToday ? 'today' : ''} ${weekend ? 'wkend' : ''}`}>
+            <div
+                className={`sb-dcell ${isToday ? 'today' : ''} ${weekend ? 'wkend' : ''} ${
+                    bankHoliday ? 'bankhol' : ''
+                }`}
+            >
                 <div className="dname">{dayName}</div>
                 <div className="ddate">{formatWC(date)}</div>
+                {/* Nobody is fitting on a bank holiday, so the day says so
+                    before somebody books work onto it. */}
+                {bankHoliday && <span className="sb-bhtag">{bankHoliday}</span>}
                 {override && <span className="sb-daytag">Crew change</span>}
                 {holidayNames.length > 0 && (
                     <span className="sb-holtag">On holiday: {holidayNames.join(', ')}</span>
@@ -216,7 +231,12 @@ function DayRow({
                 }
 
                 return (
-                    <div key={van.id} className={`sb-cell ${weekend ? 'wkend' : ''}`}>
+                    <div
+                        key={van.id}
+                        className={`sb-cell ${weekend ? 'wkend' : ''} ${
+                            bankHoliday ? 'bankhol' : ''
+                        }`}
+                    >
                         {badge}
                         <div className="sb-cellsplit">
                             {/* All-day work sits across the full width of the cell,

@@ -20,6 +20,7 @@ import {
     addDaysISO,
     toISO,
 } from '@/lib/schedule/utils';
+import { bankHolidayMap } from '@/lib/schedule/holidays';
 import { archiveFittingJob, saveFittingJob } from '@/lib/schedule/actions';
 
 /** Slot names as the office says them, not the enum. */
@@ -184,6 +185,24 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
                 span > 0 ? addDaysISO(nextMonday, startIdx + span) : null,
         }));
     }
+
+    /**
+     * Bank holidays inside the chosen span. A warning rather than a block:
+     * emergency call-outs and out-of-hours work do happen on them, and the
+     * board's job is to make sure it was a decision rather than an oversight.
+     */
+    const holidayHits = (() => {
+        if (!monday) return [] as Array<{ day: string; name: string }>;
+        const year = Number(monday.slice(0, 4));
+        const map = bankHolidayMap(year, year + 1);
+        const hits: Array<{ day: string; name: string }> = [];
+        for (let i = startIdx; i <= endIdx; i++) {
+            const date = addDaysISO(monday, i);
+            const name = map.get(date);
+            if (name) hits.push({ day: DAY_NAMES[i], name });
+        }
+        return hits;
+    })();
 
     /** Ticking a weekday moves an end of the span — see toggleSpanDay. */
     function toggleDay(idx: number) {
@@ -485,6 +504,17 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
                                 Runs {DAY_NAMES[startIdx]} to {DAY_NAMES[endIdx]} —{' '}
                                 {endIdx - startIdx + 1} days. It shows on the board every
                                 one of those days.
+                            </p>
+                        )}
+                        {!inHolding && holidayHits.length > 0 && (
+                            <p className="sb-bhwarn">
+                                {holidayHits.length === 1
+                                    ? `${holidayHits[0].day} is ${holidayHits[0].name}.`
+                                    : `Covers ${holidayHits.length} bank holidays: ${holidayHits
+                                          .map((h) => `${h.day} (${h.name})`)
+                                          .join(', ')}.`}{' '}
+                                Fine if that&rsquo;s intended — just checking it isn&rsquo;t
+                                a slip.
                             </p>
                         )}
                     </div>

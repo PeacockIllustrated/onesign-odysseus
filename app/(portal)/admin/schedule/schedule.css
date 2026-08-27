@@ -1479,3 +1479,38 @@
     font-weight: 700;
     letter-spacing: 0.02em;
 }
+
+/* --- bank holidays ------------------------------------------------------ */
+
+/* A day nobody is fitting on. Tinted rather than blocked out: out-of-hours and
+   emergency work does happen on them, and a board that refuses to show the day
+   is worse than one that flags it. */
+.sb-dcell.bankhol,
+.sb-cell.bankhol,
+.sb-mcell.bankhol {
+    background: color-mix(in srgb, var(--accent) 7%, var(--card));
+}
+
+.sb-bhtag {
+    display: inline-block;
+    margin-top: 0.25rem;
+    padding: 0.0625rem 0.3125rem;
+    border-radius: var(--radius-sm);
+    background: var(--sb-tint-strong);
+    color: var(--fg);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    line-height: 1.3;
+}
+
+/* Sits with the day ticks in the modal, in the same voice as .sb-note but
+   marked out — it is a question, not a caption. */
+.sb-bhwarn {
+    margin: 0.5rem 0 0;
+    padding: 0.4375rem 0.625rem;
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, #d69713 16%, var(--card));
+    color: var(--fg);
+    font-size: 0.75rem;
+    line-height: 1.4;
+}

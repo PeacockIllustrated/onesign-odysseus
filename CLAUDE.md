@@ -132,7 +132,7 @@ onesign-odysseus/
 │   ├── production/            # Production job + shop-floor actions
 │   ├── purchase-orders/       # Supplier PO actions
 │   ├── realtime/              # Shared useRealtimeStatus hook (live / connecting / down)
-│   ├── schedule/              # ★ NEW — Fitting schedule: crew resolution, date maths, actions
+│   ├── schedule/              # ★ NEW — Fitting schedule: crew resolution, date maths, UK bank holidays, actions
 │   ├── qr-links/              # ★ NEW — Lynx QR link reads + ported scan analytics
 │   ├── quoter/                # ★ Signage quoter engine (CORE — do not break)
 │   │   ├── engine/            # Calculation engine with tests (panel_letters_v1 + generic items)
@@ -275,6 +275,7 @@ Three things are load-bearing:
 - **Jobs are a permanent record.** Completed work is never removed; even the delete action is a soft `archived_at`.
 - **A job can run over days, but not with holes in it.** `end_date` (migration 076) is inclusive and NULL for the common single-day case. The modal ticks weekdays, and `toggleSpanDay` keeps the result contiguous: the days between two ticks come along and render ticked, because "Monday and Friday but not Tuesday" is two jobs, not one with a gap. The board query matches on **overlap**, not containment — a Friday-to-Monday fit belongs on both weeks' boards, and `scheduled_date >= from` drops it from the second.
 - **The extra van is shared state, not a preference.** `vans.is_additional` marks the spare; the toolbar flips its `is_active`. That lives in the database rather than localStorage precisely so the TV agrees — a fourth column that only the office could see would be worse than none. Switching it off keeps any jobs on it (they reappear when it comes back) and the board says how many.
+- **Bank holidays are computed, not listed.** `lib/schedule/holidays.ts` derives the England & Wales dates from the rules — including Easter, and the substitute-day rule that pushes Boxing Day to the Tuesday when Christmas falls on a Saturday. A hard-coded table would need topping up every couple of years, and the year it ran out the board would silently stop warning anybody, which is worse than never having warned them. The board tints the day and names the holiday; the modal flags a span that covers one. It **warns rather than blocks**: out-of-hours and emergency call-outs do happen on bank holidays, and the board's job is to make sure it was a decision. One-off royal holidays no rule predicts go in `EXTRA_HOLIDAYS`.
 - **A card says who and what.** The customer name is the header; `summary` (migration 075) sits under it a size smaller, carrying the job itself — "fascia + 2 projecting signs". It is a different field from `notes` on purpose: notes is long-form, stays in the modal, and would wrap a card into uselessness. Clamped to two lines so one wordy job can't push the rest of the day off the board.
 
 Clicking a slot on the board opens the modal with the day, van and time already filled from where you clicked, and every one of them still editable. That prefill has always been there (`blankDraft(date, vanId, slot)`); what it lacked was any sign of itself, because the date and van fields sit well down a long form. The `.sb-placement` line under the modal header names the placement so nobody re-enters what the click already captured.

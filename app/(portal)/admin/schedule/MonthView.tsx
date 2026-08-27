@@ -10,6 +10,7 @@ import {
     mondaysTouchingMonth,
     visibleMonthDayIndices,
 } from '@/lib/schedule/utils';
+import { bankHolidayMap } from '@/lib/schedule/holidays';
 import { JobCard } from './JobCard';
 import { DropZone } from './DropZone';
 
@@ -45,6 +46,8 @@ export function MonthView({
     const rows = visibleMonthDayIndices(mondays, jobs, showWeekends);
     const pmById = new Map(pms.map((p) => [p.id, p]));
     const index = indexByDateAndVan(jobs);
+    // A month grid shows the weeks either side of it, so cover both years.
+    const holidays = bankHolidayMap(year, year + 1);
 
     return (
         <div className="sb-mwrap">
@@ -89,6 +92,7 @@ export function MonthView({
                         vans={vans}
                         index={index}
                         pmById={pmById}
+                        holidays={holidays}
                         readOnly={readOnly}
                         onOpenJob={onOpenJob}
                     />
@@ -105,6 +109,8 @@ interface RowProps {
     vans: Van[];
     index: Map<string, FittingJobView[]>;
     pmById: Map<string, ProjectManager>;
+    /** ISO date → bank holiday name, for the whole grid. */
+    holidays: Map<string, string>;
     readOnly: boolean;
     onOpenJob: (id: string) => void;
 }
@@ -116,6 +122,7 @@ function MonthRow({
     vans,
     index,
     pmById,
+    holidays,
     readOnly,
     onOpenJob,
 }: RowProps) {
@@ -132,8 +139,15 @@ function MonthRow({
                 // Days that spill outside the month still take drops — a week
                 // straddling the boundary is one week to the office.
                 const inMonth = fromISO(date).getMonth() === month;
+                const holiday = holidays.get(date) ?? null;
                 return (
-                    <div key={m} className={`sb-mcell ${inMonth ? '' : 'out'}`}>
+                    <div
+                        key={m}
+                        className={`sb-mcell ${inMonth ? '' : 'out'} ${
+                            holiday ? 'bankhol' : ''
+                        }`}
+                        title={holiday ?? undefined}
+                    >
                         <div className="tri">
                             {vans.map((van) => (
                                 <DropZone
