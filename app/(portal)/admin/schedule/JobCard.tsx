@@ -3,6 +3,7 @@
 import { useDraggable } from '@dnd-kit/core';
 import type { FittingJobView, ProjectManager } from '@/lib/schedule/types';
 import { jobCustomer, jobExtra, jobMeta } from '@/lib/schedule/utils';
+import { useTvDisplay } from './TvDisplayContext';
 
 interface Props {
     job: FittingJobView;
@@ -20,6 +21,11 @@ export function JobCard({ job, pm, compact, allDay, readOnly, onOpen }: Props) {
         id: job.id,
         disabled: readOnly,
     });
+
+    // On the workshop TV a packed board collapses every card to its title and
+    // rotates the detail through them one at a time. Off everywhere else.
+    const { condensed, spotlightId } = useTvDisplay();
+    const open = spotlightId === job.id;
 
     const customer = jobCustomer(job);
     // The PM's hex drives the card's fill, border and text via color-mix in
@@ -46,6 +52,7 @@ export function JobCard({ job, pm, compact, allDay, readOnly, onOpen }: Props) {
 
     const meta = jobMeta(job);
     const extra = jobExtra(job);
+    const hasDetail = meta.length > 0 || Boolean(extra);
 
     return (
         <button
@@ -57,7 +64,8 @@ export function JobCard({ job, pm, compact, allDay, readOnly, onOpen }: Props) {
             onClick={() => onOpen(job.id)}
             className={`sb-card ${job.done ? 'done' : ''} ${allDay ? 'allday' : ''} ${
                 isDragging ? 'dragsrc' : ''
-            }`}
+            } ${condensed ? 'condensed' : ''} ${condensed && open ? 'open' : ''}`}
+            aria-expanded={condensed && hasDetail ? open : undefined}
         >
             {allDay && <span className="sb-alldaytag">all day</span>}
             <div className="top">
@@ -69,14 +77,23 @@ export function JobCard({ job, pm, compact, allDay, readOnly, onOpen }: Props) {
                     </span>
                 )}
             </div>
-            {meta.length > 0 && (
-                <div className="meta">
-                    {meta.map((m) => (
-                        <span key={m}>{m}</span>
-                    ))}
+            {/* Condensed cards keep the detail mounted and animate its height,
+                so the spotlight opening reads as one card unfolding rather than
+                the whole column jumping as content appears and disappears. */}
+            {hasDetail && (
+                <div className="sb-cardbody">
+                    <div className="sb-cardbodyinner">
+                        {meta.length > 0 && (
+                            <div className="meta">
+                                {meta.map((m) => (
+                                    <span key={m}>{m}</span>
+                                ))}
+                            </div>
+                        )}
+                        {extra && <div className="extra">{extra}</div>}
+                    </div>
                 </div>
             )}
-            {extra && <div className="extra">{extra}</div>}
         </button>
     );
 }

@@ -1,0 +1,230 @@
+/* ===========================================================================
+   Workshop TV board (/schedule/tv).
+
+   Layered on top of schedule.css, which still owns the grid, the cards and
+   every colour. Nothing here introduces a palette — the tokens are the app's,
+   as everywhere else (CLAUDE.md conventions).
+
+   What this file does own is the three things a wall screen needs and a desk
+   does not: no chrome, no scrollbar, and a density fine enough to read from
+   across a workshop without wasting the panel on padding.
+   =========================================================================== */
+
+.osd-board.tvb {
+    /* One knob for the whole board's density. The previous TV styling scaled
+       everything UP, which looked right on a monitor at arm's length and far
+       too big on the wall panel — fewer jobs fitted, so the board scrolled,
+       which on a TV means the bottom of the week is simply invisible.
+       Everything below is in `em`, so this is the only number to tune. */
+    font-size: calc(1rem * var(--tv-density, 0.78));
+
+    /* The board owns exactly one screen. Nothing here ever scrolls: content
+       that does not fit is scaled, and past a floor, condensed. */
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5em;
+    padding: 0.75em 1em 1em;
+    min-height: 0;
+}
+
+/* --- the only chrome ---------------------------------------------------- */
+
+.osd-board.tvb .tvb-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 0.6em;
+    flex: 0 0 auto;
+}
+
+/* Chevrons are a legend for the remote's D-pad, not controls — there is no
+   pointer on a TV, so anything that looks pressable is a lie. */
+.osd-board.tvb .tvb-arrow {
+    color: var(--fg-subtle);
+    flex: 0 0 auto;
+    align-self: center;
+}
+
+.osd-board.tvb .tvb-views {
+    display: flex;
+    align-items: baseline;
+    gap: 1.1em;
+    font-size: 1.05em;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.osd-board.tvb .tvb-views span {
+    color: var(--fg-subtle);
+    font-weight: 500;
+    transition: color 180ms ease, opacity 180ms ease;
+    opacity: 0.55;
+}
+
+.osd-board.tvb .tvb-views span.on {
+    color: var(--accent);
+    font-weight: 700;
+    opacity: 1;
+}
+
+.osd-board.tvb .tvb-period {
+    color: var(--fg-muted);
+    font-size: 1.05em;
+    margin-left: 0.4em;
+}
+
+/* A board that has stopped updating must say so — it looks authoritative
+   whether or not it is right. Same reasoning as the office banner, but this is
+   the only interruption the TV is allowed. */
+.osd-board.tvb .tvb-offline {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5em;
+    flex: 0 0 auto;
+    padding: 0.4em 0.75em;
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, #d64545 22%, var(--card));
+    color: var(--fg);
+    font-size: 0.95em;
+    font-weight: 600;
+}
+
+/* --- fitting one screen -------------------------------------------------- */
+
+.osd-board.tvb .tvb-stage {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* Scaled from the top-left so the board grows down and right into whatever
+   room is left, rather than drifting off-centre as the scale changes. Width is
+   held at 100% because the grid is already fluid — only height overflows. */
+/* Width is set inline from the current scale (see TvBoard) so the scaled
+   result lands back at the stage's own width — a uniformly scaled board would
+   otherwise leave the right of the panel empty. */
+.osd-board.tvb .tvb-fit {
+    transform-origin: top left;
+    will-change: transform;
+    transition: transform 220ms ease, width 220ms ease;
+}
+
+/* --- chrome the wall does not need --------------------------------------- */
+
+.osd-board.tvb .sb-bar,
+.osd-board.tvb .sb-legend,
+.osd-board.tvb .sb-sidebar,
+.osd-board.tvb .sb-syncbanner,
+.osd-board.tvb .sb-hint,
+.osd-board.tvb .sb-addbtn,
+.osd-board.tvb .sb-slimadd,
+.osd-board.tvb .sb-crewbtn,
+.osd-board.tvb .sb-bactions,
+.osd-board.tvb .sb-bnote,
+.osd-board.tvb .sb-daydrop,
+.osd-board.tvb .sb-delcta {
+    display: none !important;
+}
+
+.osd-board.tvb .sb-main,
+.osd-board.tvb .sb-weekwrap,
+.osd-board.tvb .sb-boardcol {
+    display: block;
+    min-height: 0;
+    overflow: visible;
+}
+
+/* --- density ------------------------------------------------------------- */
+
+/* Everything in em so --tv-density moves the whole board at once. These
+   replace the older rem-based .tv sizes, which were absolute and so ignored
+   the knob entirely. */
+.osd-board.tvb .sb-hcell .van {
+    font-size: 1.05em;
+}
+.osd-board.tvb .sb-hcell .crew {
+    font-size: 0.8em;
+}
+.osd-board.tvb .sb-dcell .dname {
+    font-size: 0.95em;
+}
+.osd-board.tvb .sb-dcell .ddate {
+    font-size: 0.75em;
+}
+.osd-board.tvb .sb-card .name {
+    font-size: 0.9em;
+}
+.osd-board.tvb .sb-card .meta,
+.osd-board.tvb .sb-card .extra {
+    font-size: 0.78em;
+}
+.osd-board.tvb .sb-card .fitted,
+.osd-board.tvb .sb-alldaytag {
+    font-size: 0.72em;
+}
+.osd-board.tvb .sb-slotlabel {
+    font-size: 0.7em;
+    width: 1.9em;
+}
+.osd-board.tvb .sb-chip {
+    font-size: 0.75em;
+}
+.osd-board.tvb .sb-daytag,
+.osd-board.tvb .sb-crewbadge,
+.osd-board.tvb .sb-holtag {
+    font-size: 0.72em;
+}
+.osd-board.tvb .sb-ytotals,
+.osd-board.tvb .sb-ytotals b {
+    font-size: 0.8em;
+}
+
+/* --- condensed cards + spotlight ----------------------------------------- */
+
+/* A packed board collapses each card to its title line. The detail stays in
+   the DOM and its container animates from 0fr to 1fr, so the spotlight reads
+   as one card unfolding in place — a display:none swap would jump the whole
+   column and there would be nothing to watch. */
+.osd-board.tvb .sb-card .sb-cardbody {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows 420ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.osd-board.tvb .sb-card .sb-cardbodyinner {
+    min-height: 0;
+    overflow: hidden;
+}
+
+.osd-board.tvb .sb-card.condensed .sb-cardbody {
+    grid-template-rows: 0fr;
+}
+
+.osd-board.tvb .sb-card.condensed.open .sb-cardbody {
+    grid-template-rows: 1fr;
+}
+
+/* The open card lifts slightly so the eye finds it without hunting — the
+   rotation is only useful if you can tell which one just moved. */
+.osd-board.tvb .sb-card.condensed {
+    transition: box-shadow 420ms ease, border-color 420ms ease;
+}
+
+.osd-board.tvb .sb-card.condensed.open {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+    border-color: var(--accent);
+}
+
+/* Respect a reduced-motion preference even on a kiosk: the rotation still
+   cycles and still reveals each card, it just cuts instead of sliding. */
+@media (prefers-reduced-motion: reduce) {
+    .osd-board.tvb .tvb-fit,
+    .osd-board.tvb .sb-card .sb-cardbody,
+    .osd-board.tvb .sb-card.condensed {
+        transition: none;
+    }
+}
