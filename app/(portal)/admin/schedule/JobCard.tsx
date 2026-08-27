@@ -52,7 +52,8 @@ export function JobCard({ job, pm, compact, allDay, readOnly, onOpen }: Props) {
 
     const meta = jobMeta(job);
     const extra = jobExtra(job);
-    const hasDetail = meta.length > 0 || Boolean(extra);
+    const summary = job.summary?.trim();
+    const hasDetail = Boolean(summary) || meta.length > 0 || Boolean(extra);
 
     return (
         <button
@@ -83,6 +84,10 @@ export function JobCard({ job, pm, compact, allDay, readOnly, onOpen }: Props) {
             {hasDetail && (
                 <div className="sb-cardbody">
                     <div className="sb-cardbodyinner">
+                        {/* First in the body, so on the TV the spotlight opens
+                            onto what the job actually is before the reference
+                            and the postcode. */}
+                        {summary && <div className="summary">{summary}</div>}
                         {meta.length > 0 && (
                             <div className="meta">
                                 {meta.map((m) => (

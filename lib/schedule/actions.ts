@@ -100,6 +100,7 @@ export async function saveFittingJob(
         delivery_required: v.delivery_required ?? false,
         crew_override: v.crew_override?.trim() || null,
         access_equipment: v.access_equipment?.trim() || null,
+        summary: v.summary?.trim() || null,
         notes: v.notes?.trim() || null,
         updated_by: user?.id ?? null,
     };
