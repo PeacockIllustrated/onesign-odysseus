@@ -10,6 +10,7 @@ import {
     MONTH_NAMES,
     addDaysISO,
     formatLong,
+    holdingJobs,
     mondayOfISO,
     toISO,
 } from '@/lib/schedule/utils';
@@ -26,6 +27,7 @@ import {
 import { WeekView } from '@/app/(portal)/admin/schedule/WeekView';
 import { MonthView } from '@/app/(portal)/admin/schedule/MonthView';
 import { YearView } from '@/app/(portal)/admin/schedule/YearView';
+import { HoldingPanel } from '@/app/(portal)/admin/schedule/HoldingPanel';
 import { TvDisplayProvider } from '@/app/(portal)/admin/schedule/TvDisplayContext';
 import '@/app/(portal)/admin/schedule/schedule.css';
 import './tv.css';
@@ -292,6 +294,9 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
 
     // --- label -------------------------------------------------------------
 
+    const toSchedule = useMemo(() => holdingJobs(data.jobs, 'scheduled'), [data.jobs]);
+    const toDeliver = useMemo(() => holdingJobs(data.jobs, 'delivery'), [data.jobs]);
+
     const period =
         view === 'week'
             ? `w/c ${formatLong(monday)}`
@@ -308,20 +313,33 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
                 </div>
             )}
 
-            {/* The only chrome: which zoom level you are on, and which period.
-                The chevrons are not buttons — they label what left and right on
-                the remote will do. */}
+            {/* Chrome is one line: who owns the colours on the left, where you
+                are on the right. The chevrons are not buttons — they label what
+                left and right on the remote will do. */}
             <header className="tvb-head">
-                <ChevronLeft className="tvb-arrow" size={20} aria-hidden />
-                <div className="tvb-views" role="status" aria-live="polite">
-                    {TV_VIEWS.map((v) => (
-                        <span key={v} className={v === view ? 'on' : ''}>
-                            {v}
+                {/* Card colour is whose job it is (CLAUDE.md §2d), which is
+                    unreadable on a wall without the key that decodes it. */}
+                <div className="tvb-key">
+                    {data.pms.map((p) => (
+                        <span key={p.id} className="k">
+                            <span className="sw" style={{ background: p.colour }} />
+                            {p.name}
                         </span>
                     ))}
                 </div>
-                <ChevronRight className="tvb-arrow" size={20} aria-hidden />
-                <span className="tvb-period">{period}</span>
+
+                <div className="tvb-where">
+                    <ChevronLeft className="tvb-arrow" size={20} aria-hidden />
+                    <div className="tvb-views" role="status" aria-live="polite">
+                        {TV_VIEWS.map((v) => (
+                            <span key={v} className={v === view ? 'on' : ''}>
+                                {v}
+                            </span>
+                        ))}
+                    </div>
+                    <ChevronRight className="tvb-arrow" size={20} aria-hidden />
+                    <span className="tvb-period">{period}</span>
+                </div>
             </header>
 
             <div className="tvb-stage" ref={stageRef}>
@@ -386,6 +404,35 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
                     </TvDisplayProvider>
                 </div>
             </div>
+
+            {/* What is waiting to be booked in, and what is going out without a
+                fitting team. The office board keeps these in a side rail; on a
+                wall the width is worth more than the height, so they run along
+                the bottom in a fixed band the grid above is sized around. */}
+            <footer className="tvb-holding">
+                <HoldingPanel
+                    lane="scheduled"
+                    title="To be scheduled"
+                    jobs={toSchedule}
+                    empty="Nothing waiting"
+                    note=""
+                    pms={data.pms}
+                    readOnly
+                    onOpenJob={noop}
+                    onAdd={noop}
+                />
+                <HoldingPanel
+                    lane="delivery"
+                    title="To be delivered"
+                    jobs={toDeliver}
+                    empty="Nothing to deliver"
+                    note=""
+                    pms={data.pms}
+                    readOnly
+                    onOpenJob={noop}
+                    onAdd={noop}
+                />
+            </footer>
         </div>
     );
 }

@@ -24,6 +24,12 @@ import {
     visibleMonthDayIndices,
     visibleWeekDays,
     weekLoad,
+    jobEndDate,
+    jobCoversDate,
+    isMultiDay,
+    jobDates,
+    daysBetweenISO,
+    toggleSpanDay,
 } from './utils';
 import type {
     DayCrewOverrideRow,
@@ -36,9 +42,9 @@ import type {
 // --- fixtures --------------------------------------------------------------
 
 const VANS: Van[] = [
-    { id: 'v1', name: 'Van 1', sort_order: 1, is_active: true },
-    { id: 'v2', name: 'Van 2', sort_order: 2, is_active: true },
-    { id: 'v3', name: 'Van 3', sort_order: 3, is_active: true },
+    { id: 'v1', name: 'Van 1', sort_order: 1, is_active: true, is_additional: false },
+    { id: 'v2', name: 'Van 2', sort_order: 2, is_active: true, is_additional: false },
+    { id: 'v3', name: 'Van 3', sort_order: 3, is_active: true, is_additional: false },
 ];
 
 const FITTERS: Fitter[] = [
@@ -73,7 +79,7 @@ function job(over: Partial<FittingJobView> = {}): FittingJobView {
         latitude: null, longitude: null,
         pm_id: 'pm-adam',
         van_id: 'v1',
-        scheduled_date: '2026-08-17',
+        scheduled_date: '2026-08-17', end_date: null,
         lane: 'scheduled', slot: 'AM', sort_order: 0,
         done: false, done_at: null,
         delivery_required: false, delivery_id: null,
@@ -462,5 +468,120 @@ describe('job display helpers', () => {
         expect(mapUrl(job({ location: 'Durham', postcode: 'DH1 3EX' })))
             .toBe('https://www.google.com/maps/search/?api=1&query=Durham%2C%20DH1%203EX');
         expect(mapUrl(job({ location: null, postcode: null }))).toBeNull();
+    });
+});
+
+// --- multi-day jobs --------------------------------------------------------
+
+describe('multi-day spans', () => {
+    it('treats a null end_date as a single day, not a missing value', () => {
+        const j = job({ scheduled_date: '2026-08-17', end_date: null });
+        expect(jobEndDate(j)).toBe('2026-08-17');
+        expect(isMultiDay(j)).toBe(false);
+        expect(jobDates(j)).toEqual(['2026-08-17']);
+    });
+
+    it('expands a span to every day it occupies, inclusive', () => {
+        const j = job({ scheduled_date: '2026-08-17', end_date: '2026-08-19' });
+        expect(isMultiDay(j)).toBe(true);
+        expect(jobDates(j)).toEqual(['2026-08-17', '2026-08-18', '2026-08-19']);
+    });
+
+    it('covers every day between the ends and nothing outside them', () => {
+        const j = job({ scheduled_date: '2026-08-17', end_date: '2026-08-19' });
+        expect(jobCoversDate(j, '2026-08-16')).toBe(false);
+        expect(jobCoversDate(j, '2026-08-17')).toBe(true);
+        expect(jobCoversDate(j, '2026-08-18')).toBe(true);
+        expect(jobCoversDate(j, '2026-08-19')).toBe(true);
+        expect(jobCoversDate(j, '2026-08-20')).toBe(false);
+    });
+
+    it('renders a row whose end drifted before its start as a single day', () => {
+        const j = job({ scheduled_date: '2026-08-17', end_date: '2026-08-10' });
+        expect(jobEndDate(j)).toBe('2026-08-17');
+        expect(jobDates(j)).toEqual(['2026-08-17']);
+    });
+
+    it('has no dates at all while unscheduled', () => {
+        const j = job({ scheduled_date: null, van_id: null, end_date: null });
+        expect(jobDates(j)).toEqual([]);
+        expect(jobCoversDate(j, '2026-08-17')).toBe(false);
+    });
+
+    it('puts a spanning job in the cell for each of its days', () => {
+        const jobs = [job({ scheduled_date: '2026-08-17', end_date: '2026-08-19', van_id: 'v1', slot: 'DAY' })];
+        expect(cellJobs(jobs, '2026-08-17', 'v1').DAY).toHaveLength(1);
+        expect(cellJobs(jobs, '2026-08-18', 'v1').DAY).toHaveLength(1);
+        expect(cellJobs(jobs, '2026-08-19', 'v1').DAY).toHaveLength(1);
+        expect(cellJobs(jobs, '2026-08-20', 'v1').DAY).toHaveLength(0);
+    });
+
+    it('keeps a spanning job to its own van', () => {
+        const jobs = [job({ scheduled_date: '2026-08-17', end_date: '2026-08-19', van_id: 'v1' })];
+        expect(cellJobs(jobs, '2026-08-18', 'v2').AM).toHaveLength(0);
+    });
+
+    it('indexes a spanning job under every day for the month and year views', () => {
+        const j = job({ scheduled_date: '2026-08-17', end_date: '2026-08-19', van_id: 'v1' });
+        const index = indexByDateAndVan([j]);
+        expect(index.get('2026-08-17|v1')).toHaveLength(1);
+        expect(index.get('2026-08-18|v1')).toHaveLength(1);
+        expect(index.get('2026-08-19|v1')).toHaveLength(1);
+        expect(index.get('2026-08-20|v1')).toBeUndefined();
+    });
+
+    it('counts a spanning job on every day of the week load', () => {
+        const j = job({ scheduled_date: '2026-08-17', end_date: '2026-08-19', van_id: 'v1', done: false });
+        expect(weekLoad(indexByDateAndVan([j]), '2026-08-17', 'v1')).toBe(3);
+    });
+});
+
+describe('daysBetweenISO', () => {
+    it('counts forwards and backwards', () => {
+        expect(daysBetweenISO('2026-08-17', '2026-08-20')).toBe(3);
+        expect(daysBetweenISO('2026-08-20', '2026-08-17')).toBe(-3);
+        expect(daysBetweenISO('2026-08-17', '2026-08-17')).toBe(0);
+    });
+
+    it('survives a DST boundary, where a day is not 24 hours', () => {
+        // UK clocks go back on 25 Oct 2026 — a millisecond division across
+        // this gives 7.04 days and floors to the wrong answer.
+        expect(daysBetweenISO('2026-10-22', '2026-10-29')).toBe(7);
+        expect(daysBetweenISO('2026-03-26', '2026-04-02')).toBe(7);
+    });
+
+    it('spans a year without drifting', () => {
+        expect(daysBetweenISO('2026-01-01', '2027-01-01')).toBe(365);
+    });
+});
+
+describe('toggleSpanDay', () => {
+    it('extends the span to reach a day outside it', () => {
+        expect(toggleSpanDay(2, 2, 0)).toEqual({ start: 0, end: 2 });
+        expect(toggleSpanDay(2, 2, 4)).toEqual({ start: 2, end: 4 });
+    });
+
+    it('pulls an end of a multi-day span in by one', () => {
+        expect(toggleSpanDay(1, 3, 1)).toEqual({ start: 2, end: 3 });
+        expect(toggleSpanDay(1, 3, 3)).toEqual({ start: 1, end: 2 });
+    });
+
+    it('truncates at a day inside the span', () => {
+        expect(toggleSpanDay(0, 4, 2)).toEqual({ start: 0, end: 2 });
+    });
+
+    it('refuses to leave a job on no day at all', () => {
+        expect(toggleSpanDay(2, 2, 2)).toEqual({ start: 2, end: 2 });
+    });
+
+    it('always returns a span that is still contiguous and ordered', () => {
+        for (let start = 0; start <= 6; start++) {
+            for (let end = start; end <= 6; end++) {
+                for (let day = 0; day <= 6; day++) {
+                    const r = toggleSpanDay(start, end, day);
+                    expect(r.end).toBeGreaterThanOrEqual(r.start);
+                }
+            }
+        }
     });
 });

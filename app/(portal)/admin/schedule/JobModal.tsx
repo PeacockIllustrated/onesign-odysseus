@@ -13,6 +13,8 @@ import {
     DAY_NAMES,
     dayIndex,
     formatWC,
+    daysBetweenISO,
+    toggleSpanDay,
     mapUrl,
     mondayOfISO,
     addDaysISO,
@@ -39,6 +41,7 @@ interface Draft {
     pm_id: string | null;
     van_id: string | null;
     scheduled_date: string | null;
+    end_date: string | null;
     lane: Lane;
     slot: Slot;
     done: boolean;
@@ -60,6 +63,7 @@ export function draftFromJob(job: FittingJobView): Draft {
         pm_id: job.pm_id,
         van_id: job.van_id,
         scheduled_date: job.scheduled_date,
+        end_date: job.end_date,
         lane: job.lane,
         slot: job.slot,
         done: job.done,
@@ -86,6 +90,7 @@ export function blankDraft(
         pm_id: null,
         van_id,
         scheduled_date,
+        end_date: null,
         lane,
         slot,
         done: false,
@@ -134,7 +139,8 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
     function toggleHolding(checked: boolean) {
         if (checked) {
             if (d.scheduled_date) setLastDate(d.scheduled_date);
-            set('scheduled_date', null);
+            // A job with no date has no span either.
+            setD((prev) => ({ ...prev, scheduled_date: null, end_date: null }));
         } else {
             setD((prev) => ({
                 ...prev,
@@ -148,13 +154,41 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
     const monday = d.scheduled_date ? mondayOfISO(d.scheduled_date) : null;
     const weekday = d.scheduled_date ? dayIndex(d.scheduled_date) : 0;
 
+    /** Days the job runs, as indices into the week: [0]=Monday. */
+    const startIdx = weekday;
+    const endIdx =
+        d.scheduled_date && d.end_date && d.end_date > d.scheduled_date
+            ? startIdx + daysBetweenISO(d.scheduled_date, d.end_date)
+            : startIdx;
+
+    /** Write a span back as the two dates the record actually stores. */
+    function setSpan(from: number, to: number) {
+        if (!monday) return;
+        const start = addDaysISO(monday, from);
+        setD((prev) => ({
+            ...prev,
+            scheduled_date: start,
+            // A single-day job stores null rather than repeating its own start.
+            end_date: to > from ? addDaysISO(monday, to) : null,
+        }));
+    }
+
     function setMonday(value: string) {
         if (!value) return;
-        set('scheduled_date', addDaysISO(mondayOfISO(value), weekday));
+        const nextMonday = mondayOfISO(value);
+        const span = endIdx - startIdx;
+        setD((prev) => ({
+            ...prev,
+            scheduled_date: addDaysISO(nextMonday, startIdx),
+            end_date:
+                span > 0 ? addDaysISO(nextMonday, startIdx + span) : null,
+        }));
     }
-    function setWeekday(idx: number) {
-        if (!monday) return;
-        set('scheduled_date', addDaysISO(monday, idx));
+
+    /** Ticking a weekday moves an end of the span — see toggleSpanDay. */
+    function toggleDay(idx: number) {
+        const next = toggleSpanDay(startIdx, endIdx, idx);
+        setSpan(next.start, next.end);
     }
 
     function save() {
@@ -169,6 +203,7 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
             pm_id: d.pm_id,
             van_id: d.scheduled_date ? d.van_id : null,
             scheduled_date: d.scheduled_date,
+            end_date: d.end_date,
             lane: d.lane,
             slot: d.slot,
             done: d.done,
@@ -333,11 +368,11 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
                     </div>
 
                     <div className="sb-field">
-                        <label>Location</label>
+                        <label>Address</label>
                         <input
                             value={d.location}
                             onChange={(e) => set('location', e.target.value)}
-                            placeholder="Town / site"
+                            placeholder="Street / town"
                         />
                     </div>
 
@@ -421,18 +456,37 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
                         />
                     </div>
 
-                    <div className={`sb-field ${inHolding ? 'sb-dimmed' : ''}`}>
-                        <label>Day</label>
-                        <select
-                            value={weekday}
-                            onChange={(e) => setWeekday(Number(e.target.value))}
-                        >
-                            {DAY_NAMES.map((name, i) => (
-                                <option key={name} value={i}>
-                                    {name}
-                                </option>
-                            ))}
-                        </select>
+                    <div className={`sb-field full ${inHolding ? 'sb-dimmed' : ''}`}>
+                        <label>Days</label>
+                        {/* Tick more than one for a fit that runs over several
+                            days. The span is contiguous, so the days between
+                            two ticks come along and show as ticked — a job
+                            with a hole in the middle is two jobs. */}
+                        <div className="sb-dayrowpick">
+                            {DAY_NAMES.map((name, i) => {
+                                const on = i >= startIdx && i <= endIdx;
+                                return (
+                                    <label
+                                        key={name}
+                                        className={`sb-daypick ${on ? 'on' : ''}`}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={on}
+                                            onChange={() => toggleDay(i)}
+                                        />
+                                        <span>{name.slice(0, 3)}</span>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                        {endIdx > startIdx && (
+                            <p className="sb-note">
+                                Runs {DAY_NAMES[startIdx]} to {DAY_NAMES[endIdx]} —{' '}
+                                {endIdx - startIdx + 1} days. It shows on the board every
+                                one of those days.
+                            </p>
+                        )}
                     </div>
 
                     <div className={`sb-field full ${inHolding ? 'sb-dimmed' : ''}`}>

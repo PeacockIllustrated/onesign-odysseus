@@ -19,10 +19,11 @@ import {
     Monitor,
     Truck,
     Users,
+    Plus,
 } from 'lucide-react';
 import type { PlanningDelivery } from '@/lib/planning/utils';
 import { useRealtimeStatus } from '@/lib/realtime/useRealtimeStatus';
-import { moveFittingJob } from '@/lib/schedule/actions';
+import { moveFittingJob, setAdditionalVanActive } from '@/lib/schedule/actions';
 import type {
     FittingJobView,
     Lane,
@@ -92,6 +93,8 @@ export function ScheduleBoard({
     const [showWeekends, setShowWeekends] = useState(false);
     const [showDeliveries, setShowDeliveries] = useState(false);
     const [routeDate, setRouteDate] = useState<string | null>(null);
+    const [vanError, setVanError] = useState<string | null>(null);
+
 
     // Optimistic overlay: a drag applies here immediately and is reconciled by
     // the server refresh, or rolled back if the move is rejected.
@@ -134,6 +137,36 @@ export function ScheduleBoard({
     }
 
     const refresh = useCallback(() => router.refresh(), [router]);
+
+    const extraVan = data.additionalVan;
+
+    /**
+     * The extra van is shared state, not a device preference — switching it on
+     * here puts the column on the workshop TV too, over the same Realtime
+     * channel as everything else.
+     */
+    function toggleAdditionalVan() {
+        if (!extraVan) return;
+        setVanError(null);
+        const turningOff = extraVan.is_active;
+        startTransition(async () => {
+            const res = await setAdditionalVanActive(!extraVan.is_active);
+            if (!res.ok) {
+                setVanError(res.error);
+                return;
+            }
+            if (turningOff && res.data.strandedJobs > 0) {
+                // Jobs on the van are kept, not reassigned — say so rather
+                // than letting work vanish off the board without explanation.
+                setVanError(
+                    `${extraVan.name} is off. ${res.data.strandedJobs} job${
+                        res.data.strandedJobs === 1 ? '' : 's'
+                    } stayed on it and will reappear when you switch it back on.`
+                );
+            }
+            refresh();
+        });
+    }
 
     // Any change to a job, a crew or the roster redraws every open board.
     const syncStatus = useRealtimeStatus({
@@ -305,6 +338,12 @@ export function ScheduleBoard({
                     {moveError}
                 </div>
             )}
+            {vanError && (
+                <div className="sb-syncbanner">
+                    <AlertTriangle size={15} />
+                    {vanError}
+                </div>
+            )}
 
             <div className="sb-bar">
                 <div className="sb-seg">
@@ -342,6 +381,15 @@ export function ScheduleBoard({
                             onClick={() => changeWeekends(!showWeekends)}
                         >
                             Weekends
+                        </button>
+                    )}
+                    {extraVan && (
+                        <button
+                            className={`sb-pill ${extraVan.is_active ? 'on' : ''}`}
+                            onClick={toggleAdditionalVan}
+                            title={`Show ${extraVan.name} as an extra column on every board, including the workshop TV`}
+                        >
+                            <Plus size={14} /> {extraVan.name}
                         </button>
                     )}
                     {view === 'week' && (

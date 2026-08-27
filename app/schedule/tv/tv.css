@@ -34,10 +34,44 @@
 
 .osd-board.tvb .tvb-head {
     display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5em;
+    flex: 0 0 auto;
+}
+
+/* The PM key. Wraps rather than scrolls — a name pushed off the edge of a wall
+   screen is a colour nobody can decode. */
+.osd-board.tvb .tvb-key {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4em 1em;
+    min-width: 0;
+    font-size: 0.95em;
+    color: var(--bg-fg-muted);
+}
+.osd-board.tvb .tvb-key .k {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    white-space: nowrap;
+}
+.osd-board.tvb .tvb-key .sw {
+    width: 0.85em;
+    height: 0.85em;
+    border-radius: 999px;
+    flex: 0 0 auto;
+}
+
+/* Where you are, held to the right edge so the key can take the room it needs
+   on the left without the two colliding mid-line. */
+.osd-board.tvb .tvb-where {
+    display: flex;
     align-items: baseline;
-    justify-content: center;
     gap: 0.6em;
     flex: 0 0 auto;
+    margin-left: auto;
 }
 
 /* Chevrons are a legend for the remote's D-pad, not controls — there is no
@@ -230,4 +264,51 @@
     .osd-board.tvb .sb-card.condensed {
         transition: none;
     }
+}
+
+/* --- holding band ------------------------------------------------------- */
+
+/* A fixed share of the screen, so the grid above is measured against what is
+   actually left rather than overlapping this. 20vh is the brief; the panels
+   scroll their own overflow rather than growing, because the band must not
+   move the board it sits under. */
+.osd-board.tvb .tvb-holding {
+    flex: 0 0 20vh;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75em;
+    padding-top: 0.5em;
+}
+
+.osd-board.tvb .tvb-holding .sb-holding {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.osd-board.tvb .tvb-holding .sb-backloglist {
+    flex: 1 1 auto;
+    min-height: 0;
+    /* The one place on the TV that may scroll: a backlog has no natural
+       length, and clipping it silently would hide work. It is not driven by a
+       remote, so what shows is the top of the list — the oldest waiting job. */
+    overflow-y: auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 0.4em;
+}
+
+/* Cards here sit side by side rather than stacked: the band is wide and
+   shallow, so a column would show two jobs and hide the rest. */
+.osd-board.tvb .tvb-holding .sb-card {
+    flex: 0 1 auto;
+    min-width: 12em;
+    max-width: 20em;
+}
+
+.osd-board.tvb .tvb-holding .sb-bhead b {
+    font-size: 0.95em;
 }

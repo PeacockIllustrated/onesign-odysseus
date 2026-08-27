@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase-admin';
 import { getUser, requireSuperAdminOrError } from '@/lib/auth';
 import { ok, okVoid, err, type Result } from '@/lib/result';
 import { getSchedulableQuotes } from './queries';
-import { diffFromDefault, expandHolidayRange } from './utils';
+import { addDaysISO, daysBetweenISO, diffFromDefault, expandHolidayRange } from './utils';
 import {
     HolidayRangeSchema,
     MoveFittingJobSchema,
@@ -94,6 +94,12 @@ export async function saveFittingJob(
         pm_id: v.pm_id ?? null,
         van_id: v.scheduled_date == null ? null : (v.van_id ?? null),
         scheduled_date: v.scheduled_date ?? null,
+        // An unscheduled job cannot span anything; a single-day one stores
+        // null rather than repeating its own start date.
+        end_date:
+            v.scheduled_date == null || !v.end_date || v.end_date <= v.scheduled_date
+                ? null
+                : v.end_date,
         lane: v.lane ?? 'scheduled',
         slot: v.slot ?? 'AM',
         done: v.done ?? false,
@@ -147,6 +153,23 @@ export async function moveFittingJob(
         scheduled_date: v.scheduled_date,
         updated_by: user?.id ?? null,
     };
+
+    // Dragging a multi-day job moves the whole span, not just its first day —
+    // grabbing a three-day fit and dropping it on Wednesday should give you
+    // Wednesday to Friday, not silently shorten it to one day.
+    const { data: before } = await createAdminClient()
+        .from('fitting_jobs')
+        .select('scheduled_date, end_date')
+        .eq('id', v.id)
+        .maybeSingle();
+
+    if (v.scheduled_date == null) {
+        // Into a holding panel: there is no span without a date.
+        patch.end_date = null;
+    } else if (before?.scheduled_date && before?.end_date) {
+        const span = daysBetweenISO(before.scheduled_date as string, before.end_date as string);
+        patch.end_date = span > 0 ? addDaysISO(v.scheduled_date, span) : null;
+    }
     if (v.slot) patch.slot = v.slot;
     // Dropping into a holding panel sets its lane; dropping onto the board
     // leaves the lane alone so it returns to the same panel next time.
@@ -160,6 +183,57 @@ export async function moveFittingJob(
 
     revalidateBoard();
     return okVoid();
+}
+
+/**
+ * Switch the additional van on or off as a board column.
+ *
+ * Stored on the van row rather than in a device preference, so every open
+ * board and the workshop TV agree — the same reason crews live in the
+ * database and not in localStorage (CLAUDE.md §2d).
+ *
+ * Turning it off leaves any jobs already on it alone: they keep their van_id
+ * and reappear the moment it is switched back on, rather than being silently
+ * reassigned or lost. The action says so when it happens.
+ */
+export async function setAdditionalVanActive(
+    active: boolean
+): Promise<Result<{ strandedJobs: number }>> {
+    const gate = await requireSuperAdminOrError();
+    if (!gate.ok) return err(gate.error);
+
+    const supabase = createAdminClient();
+
+    const { data: van, error: findError } = await supabase
+        .from('vans')
+        .select('id')
+        .eq('is_additional', true)
+        .order('sort_order')
+        .limit(1)
+        .maybeSingle();
+    if (findError) return err(findError.message);
+    if (!van) return err('No additional van is set up.');
+
+    const { error } = await supabase
+        .from('vans')
+        .update({ is_active: active })
+        .eq('id', van.id);
+    if (error) return err(error.message);
+
+    // Count what is about to disappear from view, so the board can warn rather
+    // than quietly hiding work.
+    let strandedJobs = 0;
+    if (!active) {
+        const { count } = await supabase
+            .from('fitting_jobs')
+            .select('id', { count: 'exact', head: true })
+            .eq('van_id', van.id)
+            .is('archived_at', null);
+        strandedJobs = count ?? 0;
+    }
+
+    revalidateBoard();
+    return ok({ strandedJobs });
 }
 
 /** Tick a job as fitted. Completed work stays on the board as a record. */
