@@ -116,6 +116,11 @@ export interface FittingJob {
 
     crew_override: string | null;
     access_equipment: string | null;
+    /**
+     * One line of "what is this job", rendered on the card under the customer
+     * name. Distinct from `notes`, which is long-form and stays in the modal.
+     */
+    summary: string | null;
     notes: string | null;
     archived_at: string | null;
 
@@ -182,6 +187,10 @@ export const SaveFittingJobSchema = z
 
         crew_override: z.string().max(200).nullable().optional(),
         access_equipment: z.string().max(500).nullable().optional(),
+        // Capped short on purpose: this renders on a card roughly two inches
+        // wide, and a paragraph here would push the rest of the day off the
+        // board. Long-form detail belongs in `notes`.
+        summary: z.string().max(160).nullable().optional(),
         notes: z.string().max(4000).nullable().optional(),
     })
     .refine(

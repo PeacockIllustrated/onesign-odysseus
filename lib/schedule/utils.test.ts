@@ -77,7 +77,7 @@ function job(over: Partial<FittingJobView> = {}): FittingJobView {
         lane: 'scheduled', slot: 'AM', sort_order: 0,
         done: false, done_at: null,
         delivery_required: false, delivery_id: null,
-        crew_override: null, access_equipment: null, notes: null,
+        crew_override: null, access_equipment: null, summary: null, notes: null,
         archived_at: null,
         created_by: null, updated_by: null,
         created_at: `2026-08-01T00:00:${String(jobSeq).padStart(2, '0')}Z`,

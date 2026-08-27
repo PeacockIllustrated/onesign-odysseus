@@ -563,6 +563,27 @@
     font-weight: 700;
     color: #15803d;
 }
+/* The job in one line, under the customer name. Sized below .name (0.8125rem)
+   so the name still reads as the card's header from across the office, but
+   kept at full ink rather than muted — it is content, not metadata. */
+.sb-card .summary {
+    font-size: 0.75rem;
+    line-height: 1.35;
+    /* Full ink, unlike .meta below it: the summary is what the job IS, and at
+       the same size and colour as the reference and postcode the two blend
+       into one grey block. Weight rather than size carries the difference, so
+       the name still wins as the card's header. */
+    color: var(--fg);
+    font-weight: 500;
+    margin-top: 0.125rem;
+    /* Two lines then ellipsis: a long summary must not push the next job off
+       the day. The modal caps input at 160 chars, this catches the rest. */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
 .sb-card .meta {
     font-size: 0.75rem;
     color: var(--fg-muted);
@@ -1174,6 +1195,7 @@
 .osd-board.tv .sb-card .name {
     font-size: 1.0625rem;
 }
+.osd-board.tv .sb-card .summary,
 .osd-board.tv .sb-card .meta,
 .osd-board.tv .sb-card .extra {
     font-size: 0.875rem;
@@ -1391,4 +1413,19 @@
     margin-top: 0.5rem;
     font-size: 0.75rem;
     color: #b45309;
+}
+
+/* Where a board click placed the job. Sits between the modal header and the
+   form so the prefill is visible without scrolling to the date fields. */
+.sb-placement {
+    margin: 0;
+    padding: 0.625rem 1rem;
+    background: var(--sb-tint);
+    border-bottom: 1px solid var(--card-border);
+    color: var(--fg-muted);
+    font-size: 0.8125rem;
+}
+.sb-placement b {
+    color: var(--fg);
+    font-weight: 700;
 }

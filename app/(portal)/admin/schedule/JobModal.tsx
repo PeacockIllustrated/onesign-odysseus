@@ -9,8 +9,24 @@ import type {
     Slot,
     Van,
 } from '@/lib/schedule/types';
-import { DAY_NAMES, dayIndex, mapUrl, mondayOfISO, addDaysISO, toISO } from '@/lib/schedule/utils';
+import {
+    DAY_NAMES,
+    dayIndex,
+    formatWC,
+    mapUrl,
+    mondayOfISO,
+    addDaysISO,
+    toISO,
+} from '@/lib/schedule/utils';
 import { archiveFittingJob, saveFittingJob } from '@/lib/schedule/actions';
+
+/** Slot names as the office says them, not the enum. */
+const SLOT_LABEL: Record<Slot, string> = {
+    AM: 'Morning',
+    PM: 'Afternoon',
+    DAY: 'All day',
+    OOH: 'Out of hours',
+};
 
 /** The modal's working copy — everything is a string until it is saved. */
 interface Draft {
@@ -29,6 +45,7 @@ interface Draft {
     delivery_required: boolean;
     crew_override: string;
     access_equipment: string;
+    summary: string;
     notes: string;
 }
 
@@ -49,6 +66,7 @@ export function draftFromJob(job: FittingJobView): Draft {
         delivery_required: job.delivery_required,
         crew_override: job.crew_override ?? '',
         access_equipment: job.access_equipment ?? '',
+        summary: job.summary ?? '',
         notes: job.notes ?? '',
     };
 }
@@ -74,6 +92,7 @@ export function blankDraft(
         delivery_required: false,
         crew_override: '',
         access_equipment: '',
+        summary: '',
         notes: '',
     };
 }
@@ -156,6 +175,7 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
             delivery_required: d.delivery_required,
             crew_override: d.crew_override.trim() || null,
             access_equipment: d.access_equipment.trim() || null,
+            summary: d.summary.trim() || null,
             notes: d.notes.trim() || null,
         };
         startTransition(async () => {
@@ -179,6 +199,22 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
             onSaved();
         });
     }
+
+    /**
+     * Where a click on the board put this job. Only shown while creating: on
+     * an existing job the fields below are the record, not a prefill, and a
+     * banner would just repeat them.
+     */
+    const placement =
+        !d.id && d.scheduled_date
+            ? [
+                  `${DAY_NAMES[dayIndex(d.scheduled_date)]} ${formatWC(d.scheduled_date)}`,
+                  vans.find((v) => v.id === d.van_id)?.name,
+                  SLOT_LABEL[d.slot],
+              ]
+                  .filter(Boolean)
+                  .join(' · ')
+            : null;
 
     const slotButton = (value: Slot, label: string) => (
         <button
@@ -207,6 +243,18 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
                     )}
                 </div>
 
+                {/* Clicking a slot on the board fills the day, van and time in
+                    for you. Those fields sit well down a long form, so say so
+                    up here — otherwise the prefill is invisible and people
+                    re-enter what the click already captured. Everything named
+                    is editable below. */}
+                {placement && (
+                    <p className="sb-placement">
+                        Adding to <b>{placement}</b>
+                        <span> — change it below if that&rsquo;s not right</span>
+                    </p>
+                )}
+
                 <div className="sb-mbody">
                     <div className="sb-field full">
                         <label>Client</label>
@@ -232,6 +280,20 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
                             onChange={(e) => set('customer_fallback', e.target.value)}
                             placeholder="e.g. Vertu Motors Arena"
                         />
+                    </div>
+
+                    <div className="sb-field full">
+                        <label>Summary (shown on the card)</label>
+                        <input
+                            value={d.summary}
+                            onChange={(e) => set('summary', e.target.value)}
+                            maxLength={160}
+                            placeholder="e.g. Fascia + 2 projecting signs, scaffold up"
+                        />
+                        <p className="sb-note">
+                            One line describing the work. Sits under the name on the board;
+                            longer detail belongs in Notes.
+                        </p>
                     </div>
 
                     <div className="sb-field full">
@@ -376,10 +438,10 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
                     <div className={`sb-field full ${inHolding ? 'sb-dimmed' : ''}`}>
                         <label>Time slot</label>
                         <div className="sb-btnrow">
-                            {slotButton('AM', 'Morning')}
-                            {slotButton('PM', 'Afternoon')}
-                            {slotButton('DAY', 'All day')}
-                            {slotButton('OOH', 'Out of hours')}
+                            {slotButton('AM', SLOT_LABEL.AM)}
+                            {slotButton('PM', SLOT_LABEL.PM)}
+                            {slotButton('DAY', SLOT_LABEL.DAY)}
+                            {slotButton('OOH', SLOT_LABEL.OOH)}
                         </div>
                     </div>
 

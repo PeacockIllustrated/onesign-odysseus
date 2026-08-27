@@ -229,7 +229,8 @@ Migration 031 is intentionally absent (numbering gap from an early draft that wa
 | 062 | survey photo size | Photo-first survey UX: per-photo real-world `sign_width_mm`/`sign_height_mm` (mm) alongside image pixel dims used to align the annotation overlay; no structured per-item measurement form |
 | 063 | `production_packs` | Block-based JSONB works-pack builder (à la `design_packs`) for detailed, on-brand internal build documents. Standalone in v1; soft `linked_quote_id`/`linked_artwork_job_id` seams (no FK) for a later wire-up |
 
-### Fitting schedule (074)
+### Fitting schedule (074–075)
+| 075 | fitting job summary | `fitting_jobs.summary` — one line of "what is this job", rendered on the card under the customer name in a smaller font. Deliberately separate from `notes`, which is long-form and never reaches the card |
 | 074 | `project_managers`, `vans`, `fitters`, `default_crew`, `day_crew_overrides`, `fitting_jobs` | The wall whiteboard, made live. Vans are the stable board columns, fitters a separate roster with a standing pairing per van plus per-day overrides for holidays and swaps ("people move, vans don't"). `fitting_jobs` is an inheritance-chain citizen (`org_id`/`contact_id`/`site_id` + `quote_id`) with free-text fallbacks for urgent work that reaches the board before a quote exists (same pattern as `site_surveys`, 061). Ref `FIT-YYYY-NNNNNN`; soft-archive only — completed jobs stay on the board ticked. All six tables Realtime-published |
 
 ### Public studio launch hardening (073)
@@ -271,6 +272,9 @@ Three things are load-bearing:
 - **Card colour is whose job it is** — the project manager — never a status. Completion reads separately (✓, strike-through, fade) so PM identity survives on finished work. `project_managers` stores one base hex and the board derives card fill / border / chip from it with `color-mix()` against the active theme, so a PM added next year needs no new CSS.
 - **People move, vans don't.** Vans are the stable columns; `default_crew` is the standing pairing and `day_crew_overrides` carries holidays and swaps for a single date. `lib/schedule/utils.ts` resolves a day by applying overrides over the standing pairing, and only rows that *differ* from it are persisted — so a day edited back to normal loses its "crew change" tag instead of carrying a no-op override forever.
 - **Jobs are a permanent record.** Completed work is never removed; even the delete action is a soft `archived_at`.
+- **A card says who and what.** The customer name is the header; `summary` (migration 075) sits under it a size smaller, carrying the job itself — "fascia + 2 projecting signs". It is a different field from `notes` on purpose: notes is long-form, stays in the modal, and would wrap a card into uselessness. Clamped to two lines so one wordy job can't push the rest of the day off the board.
+
+Clicking a slot on the board opens the modal with the day, van and time already filled from where you clicked, and every one of them still editable. That prefill has always been there (`blankDraft(date, vanId, slot)`); what it lacked was any sign of itself, because the date and van fields sit well down a long form. The `.sb-placement` line under the modal header names the placement so nobody re-enters what the click already captured.
 
 **There is no ClarityGo importer, and there should not be one.** The original brief specified a CSV export/import de-duplicated on a quote-ref *string*, because it assumed a standalone app. Odysseus replaces ClarityGo — quotes are already here, so the join is `fitting_jobs.quote_id` and the "from a quote" picker lists accepted quotes that have no card yet.
 

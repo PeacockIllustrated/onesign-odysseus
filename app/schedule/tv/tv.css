@@ -158,6 +158,9 @@
 .osd-board.tvb .sb-card .name {
     font-size: 0.9em;
 }
+.osd-board.tvb .sb-card .summary {
+    font-size: 0.8em;
+}
 .osd-board.tvb .sb-card .meta,
 .osd-board.tvb .sb-card .extra {
     font-size: 0.78em;
