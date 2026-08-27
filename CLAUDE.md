@@ -323,14 +323,16 @@ Three things are load-bearing:
 - **No new tables, and no migration.** `qr_codes` / `qr_scan_events` /
   `organizations` belong to Lynx. Odysseus holds nothing of its own here, which
   is why this shipped without touching `supabase/migrations/`.
-- **The connection tolerates both deployment shapes.** `lib/qr-links/client.ts`
-  uses a dedicated Lynx project when `LYNX_SUPABASE_URL` +
-  `LYNX_SUPABASE_SERVICE_ROLE_KEY` are set, and otherwise falls back to the
-  Odysseus service role for a shared project — the same read-a-table-we-don't-own
-  pattern as the Persimmon adapter. Unconfigured is a clean no-op that renders a
-  "not connected" state, like Higgsfield. Service role is required either way
-  because Lynx's RLS scopes rows to *its* org members, and Onesign staff are not
-  rows in that tenancy; every action is `requireSuperAdminOrError()`-gated first.
+- **Lynx SHARES the Odysseus Supabase project** — confirmed against the live
+  database: `qr_codes`, `qr_scan_events` and `organizations` sit in the same
+  project as `fitting_jobs` and `quotes`, alongside Persimmon's `psp_orders`.
+  So the live path is the FALLBACK one and no `LYNX_*` variables need setting.
+  `lib/qr-links/client.ts` still supports a dedicated project
+  (`LYNX_SUPABASE_URL` + `LYNX_SUPABASE_SERVICE_ROLE_KEY`) in case Lynx is ever
+  split out, and unconfigured is a clean no-op rendering "not connected", like
+  Higgsfield. Service role is required either way because Lynx's RLS scopes
+  rows to *its* org members and Onesign staff are not rows in that tenancy;
+  every action is `requireSuperAdminOrError()`-gated first.
 - **The aggregation is a deliberate port, not a re-derivation.**
   `lib/qr-links/analytics.ts` reproduces the maths in Lynx's own
   `/api/qr/[id]/analytics` route so a number here matches the number the client
