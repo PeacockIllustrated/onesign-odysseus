@@ -83,6 +83,7 @@ onesign-odysseus/
 │   │   │   ├── orgs/          # Org/client management
 │   │   │   ├── pricing/       # Rate card administration
 │   │   │   ├── purchase-orders/ # ★ NEW — PO generation (Phase 2)
+│   │   │   ├── qr-links/       # ★ NEW — read-only QR/NFC overview from Onesign Lynx
 │   │   │   ├── quotes/        # Quote management
 │   │   │   ├── reports/       # Cross-org reporting
 │   │   │   ├── schedule/      # ★ NEW — Live fitting schedule (week/month/year board)
@@ -132,6 +133,7 @@ onesign-odysseus/
 │   ├── purchase-orders/       # Supplier PO actions
 │   ├── realtime/              # Shared useRealtimeStatus hook (live / connecting / down)
 │   ├── schedule/              # ★ NEW — Fitting schedule: crew resolution, date maths, actions
+│   ├── qr-links/              # ★ NEW — Lynx QR link reads + ported scan analytics
 │   ├── quoter/                # ★ Signage quoter engine (CORE — do not break)
 │   │   ├── engine/            # Calculation engine with tests (panel_letters_v1 + generic items)
 │   │   ├── actions.ts         # Server actions for quotes
@@ -283,6 +285,53 @@ Two traps worth knowing before touching the stylesheet:
 - **`--accent-light` is not usable as a background on a panel.** The theme model is "light dock on a dark stage": panels (`--card`, `--surface-2`) stay light in both themes, but `--accent-light` flips *dark* under `.dark`. A tag using it goes dark-on-light in dark mode. Mix against `--card` instead — the board defines `--sb-tint` / `--sb-tint-strong` for exactly this.
 - **The board has no theme of its own.** Light/dark is the app's, set on `<html>` by the topbar `ThemeToggle`. `/fitting-board` applies `dark` on its own wrapper because a wall TV has no topbar and a bright panel in a workshop is glare.
 
+### 2e. QR Links is a read-only window onto Lynx, not a second editor
+
+`/admin/qr-links` shows the managed QR / NFC codes **Onesign Lynx** (`onesign-qr`)
+runs, with Lynx's own scan analytics, so the office can answer "is that code on
+the Persimmon site actually getting scanned?" without a second login.
+
+It reads and never writes. Creating a code, restyling it, repointing its
+destination or pausing it all stay in Lynx — that is the app that prints the
+codes and serves the `/r/<slug>` redirect, and splitting the write path across
+two apps is how a printed code ends up pointing somewhere nobody intended. The
+page header links out to Lynx for exactly that reason.
+
+Three things are load-bearing:
+
+- **No new tables, and no migration.** `qr_codes` / `qr_scan_events` /
+  `organizations` belong to Lynx. Odysseus holds nothing of its own here, which
+  is why this shipped without touching `supabase/migrations/`.
+- **The connection tolerates both deployment shapes.** `lib/qr-links/client.ts`
+  uses a dedicated Lynx project when `LYNX_SUPABASE_URL` +
+  `LYNX_SUPABASE_SERVICE_ROLE_KEY` are set, and otherwise falls back to the
+  Odysseus service role for a shared project — the same read-a-table-we-don't-own
+  pattern as the Persimmon adapter. Unconfigured is a clean no-op that renders a
+  "not connected" state, like Higgsfield. Service role is required either way
+  because Lynx's RLS scopes rows to *its* org members, and Onesign staff are not
+  rows in that tenancy; every action is `requireSuperAdminOrError()`-gated first.
+- **The aggregation is a deliberate port, not a re-derivation.**
+  `lib/qr-links/analytics.ts` reproduces the maths in Lynx's own
+  `/api/qr/[id]/analytics` route so a number here matches the number the client
+  sees in Lynx. If Lynx changes how it counts, change it here too — the Vitest
+  suite is the contract. Two things differ on purpose: Lynx *refuses* analytics
+  when a link has `analytics_enabled = false` where we still show the lifetime
+  counter behind a banner (staff should see the history that exists), and
+  `total_scans` is the lifetime column while every other figure is windowed —
+  the stat card says so.
+
+**Lynx's `organizations` are not Odysseus `orgs`.** They are separate tenancies
+that happen to share a word; a link's client is whoever holds it in Lynx. Do not
+try to join the two — resolve the Lynx org name for display and leave it there.
+
+The visuals are Lynx's (stat cards → scans over time → countries + devices →
+OS + browsers → referrers → recent scans), **the palette and typography are
+Odysseus's** — the same rule the fitting-schedule brief was held to. Charts are
+hand-rolled SVG in `charts.tsx` rather than a charting dependency: three shapes
+is the whole requirement, the portal carries no chart library today, and drawing
+them here means every colour is a `var(--…)` token that follows the theme toggle
+for free.
+
 ### 3. Single-tenant internal platform — clients are records, not users
 
 Onesign Odysseus is used **only by Onesign & Digital staff** to run the internal production pipeline. It is not a customer-facing portal. The businesses Onesign does work for never log in here — they interact with Onesign via email, the tokenised artwork sign-off links at `/sign-off/[token]` (legacy `/approve/artwork/[token]` redirects), and proof-of-delivery links at `/delivery/[token]`. An additional internal-but-unauth surface at `/production-sign-off/[token]` lets the production approvers (Chris / John) tick each sub-item off before release to fabrication, using the same token-as-gate pattern.
@@ -315,6 +364,7 @@ The `/admin/booking` module (287K of code) was experimental and is not part of O
 - **Public design studio** (`/design`, migration 060) — unauthenticated customer-facing visualiser with a guided spotlight tour; submissions land in the `/admin/design-requests` inbox. See §2c.
 - **Built-up letter returns tool** (`/admin/visualiser/returns`, migration 065) — reads an outlined-letters SVG (real-size calibration like the neon tool), measures each contour's perimeter and breaks the side-wall return strips into welded segments at sharp corners + the stock length, wrapping the outer edge AND every counter. Produces an annotated cut-sheet PDF (faces drawn, weld dots, per-letter strip/weld table, totals). "Send to nester" hands the faces + return rectangles to `/admin/nesting` as ONE linked nest (same brass), grouped `FACES` / `RETURNS`; the nest banners back to its job and the job lists where it was nested. Engine is DOM-free + Vitest-covered (`lib/visualiser/returns.ts`).
 - **Live fitting schedule** (`/admin/schedule` + `/fitting-board`, migration 074) — the whiteboard made live. Week / month / year views, AM / PM / all-day / OOH slots, two holding panels, per-day crews with understaffing warnings, holiday ranges, dnd-kit drag & drop with optimistic rollback, Supabase Realtime with a *fail-loudly* offline banner, and a read-only workshop TV route. Accepted quotes feed the board directly — no ClarityGo importer. See §2d
+- **QR Links overview** (`/admin/qr-links`) — read-only window onto Onesign Lynx's managed QR/NFC codes: platform roll-up, per-link scan analytics ported field-for-field from Lynx, dependency-free SVG charts in the portal's own palette. No migration — Lynx owns the tables. See §2e
 - **Production job board** (`/admin/jobs`) with Kanban across real Onesign departments, shop-floor queue at `/shop-floor`
 - **Quote → production handoff** (`createJobFromQuote`) with item-level stage routing
 - **Artwork compliance module** with sub-items, per-sub-item sign-off, release-to-production flow rebuilding `stage_routing` from signed-off sub-items
@@ -364,7 +414,7 @@ Features left empty (skip): 20
 - All new tables use RLS with org-scoped policies matching the existing pattern
 - Auto-generated references follow the `OSD-YYYY-NNNNNN` pattern for quotes, `AWC-YYYY-NNNNNN` for artwork jobs, `PO-YYYY-NNNNNN` for purchase orders, `INV-YYYY-NNNNNN` for invoices
 - **Style from the design system, never a bespoke palette.** `app/globals.css` owns the tokens (`--card` / `--card-border` / `--fg` / `--fg-muted` / `--fg-subtle` / `--surface-2` / `--accent` / `--radius-sm|md|lg`) plus `.btn-primary` / `.btn-secondary` / `.btn-danger` / `.card-base` / `.badge`, and `app/(portal)/components/ui` owns `PageHeader`. A new admin surface uses those. If a design brief arrives carrying another company's visual language (as the fitting-schedule brief did), take its **layout and interaction** and drop its palette and typography — a page that doesn't look like the rest of the portal reads as unfinished, whatever the brief said. Remember the theme model: panels stay light in both themes, only the backdrop and chrome flip
-- **Sidebar nav is three accordion groups**, agreed with the office: **Operations** (what we're doing — surveys, quotes, job board, shop floor, flags, deliveries, schedule, maintenance, reports), **Design & development** (what we're making — the Studio tools plus artwork, packs, approvals, design requests) and **Financials** (what it's worth — invoices, POs, pricing, clients, external orders). A new admin surface joins one of the three rather than starting a fourth; groups are defined in `app/(portal)/components/Sidebar.tsx`
+- **Sidebar nav is three accordion groups**, agreed with the office: **Operations** (what we're doing — surveys, quotes, job board, shop floor, flags, deliveries, schedule, maintenance, QR links, reports), **Design & development** (what we're making — the Studio tools plus artwork, packs, approvals, design requests) and **Financials** (what it's worth — invoices, POs, pricing, clients, external orders). A new admin surface joins one of the three rather than starting a fourth; groups are defined in `app/(portal)/components/Sidebar.tsx`
 - Server actions in `lib/` directories, not inline in page files
 - Supabase client via `lib/supabase-server.ts` (server components) or `lib/supabase.ts` (client components)
 - Use `lib/supabase-admin.ts` (service role) only for operations that bypass RLS, and always gate on `requireSuperAdminOrError()` from `lib/auth.ts`

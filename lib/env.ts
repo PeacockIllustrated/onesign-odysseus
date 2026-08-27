@@ -45,6 +45,18 @@ const ServerEnvSchema = PublicEnvSchema.extend({
      */
     HIGGSFIELD_MODEL_PREVIEW: z.string().min(1).optional(),
     HIGGSFIELD_MODEL_FINAL: z.string().min(1).optional(),
+    /**
+     * Onesign Lynx (onesign-qr) connection for the read-only QR Links overview
+     * at /admin/qr-links. Set BOTH when Lynx runs on its own Supabase project;
+     * leave both unset when it shares the Odysseus project and the page falls
+     * back to the Odysseus service role (see lib/qr-links/client.ts). Either
+     * way it is optional: unconfigured renders a "not connected" state rather
+     * than failing the build, same deferred-integration pattern as Higgsfield.
+     */
+    LYNX_SUPABASE_URL: z.string().url('LYNX_SUPABASE_URL must be a valid URL').optional(),
+    LYNX_SUPABASE_SERVICE_ROLE_KEY: z.string().min(40).optional(),
+    /** Host the printed /r/<slug> codes redirect through. Defaults to the live Lynx host. */
+    LYNX_REDIRECT_BASE_URL: z.string().url('LYNX_REDIRECT_BASE_URL must be a valid URL').optional(),
 });
 
 function parseEnv(): z.infer<typeof ServerEnvSchema> {

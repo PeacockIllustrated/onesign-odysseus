@@ -29,6 +29,7 @@ import {
     X,
     CalendarDays,
     ChevronDown,
+    QrCode,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
@@ -78,6 +79,7 @@ const adminNavGroups: NavGroup[] = [
             { label: 'Deliveries', href: '/admin/deliveries', icon: Truck },
             { label: 'Schedule', href: '/admin/schedule', icon: CalendarDays },
             { label: 'Maintenance', href: '/admin/maintenance', icon: Wrench },
+            { label: 'QR Links', href: '/admin/qr-links', icon: QrCode },
             { label: 'Reports', href: '/admin/reports', icon: FileText },
         ],
     },
