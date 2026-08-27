@@ -1,6 +1,15 @@
 import { getScheduleBoard, getScheduleDeliveries } from '@/lib/schedule/queries';
 import { resolveScheduleWindow } from '@/lib/schedule/window';
-import { ScheduleBoard } from '@/app/(portal)/admin/schedule/ScheduleBoard';
+import { TvBoard } from './TvBoard';
+
+/**
+ * Never serve the wall a cached board. The page reads searchParams so Next
+ * renders it dynamically anyway, but a TV left running for weeks is exactly
+ * where a stale cache would go unnoticed — the office page says the same
+ * thing for the same reason.
+ */
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 interface PageProps {
     searchParams: Promise<{
@@ -12,9 +21,9 @@ interface PageProps {
 }
 
 /**
- * The board as the workshop sees it. Same component as the office desk view,
- * mounted read-only with larger type — one implementation, so a change to the
- * week view can't drift between the two surfaces.
+ * The board as the workshop sees it: no chrome, one screen, driven by the TV
+ * remote. `TvBoard` renders the same WeekView / MonthView / YearView the office
+ * board does, so the grid itself cannot drift between the two surfaces.
  */
 export default async function ScheduleTvPage({ searchParams }: PageProps) {
     const win = resolveScheduleWindow(await searchParams);
@@ -24,16 +33,13 @@ export default async function ScheduleTvPage({ searchParams }: PageProps) {
     ]);
 
     return (
-        <ScheduleBoard
+        <TvBoard
             data={data}
-            clients={[]}
             deliveries={deliveries}
             view={win.view}
             monday={win.monday}
             month={win.month}
             year={win.year}
-            basePath="/schedule/tv"
-            tv
         />
     );
 }

@@ -74,10 +74,8 @@ interface Props {
     monday: string;
     month: { y: number; m: number };
     year: number;
-    /** Where navigation pushes to — /admin/schedule, or the TV route. */
+    /** Where navigation pushes to. */
     basePath: string;
-    /** The workshop TV: read-only, larger type, dark by default. */
-    tv?: boolean;
 }
 
 export function ScheduleBoard({
@@ -89,7 +87,6 @@ export function ScheduleBoard({
     month,
     year,
     basePath,
-    tv = false,
 }: Props) {
     const router = useRouter();
     const [showWeekends, setShowWeekends] = useState(false);
@@ -115,15 +112,13 @@ export function ScheduleBoard({
     const [rosterOpen, setRosterOpen] = useState(false);
     const [quoteLane, setQuoteLane] = useState<Lane | null>(null);
 
-    const readOnly = tv;
-
     // Light/dark is the app's, set on <html> by the topbar toggle — the board
     // has no theme of its own. Only the weekend column preference is local.
     useEffect(() => {
-        if (typeof window === 'undefined' || tv) return;
+        if (typeof window === 'undefined') return;
         setShowWeekends(window.localStorage.getItem(WEEKENDS_KEY) === '1');
         setShowDeliveries(window.localStorage.getItem(DELIVERIES_KEY) === '1');
-    }, [tv]);
+    }, []);
 
     function changeDeliveries(next: boolean) {
         setShowDeliveries(next);
@@ -290,14 +285,14 @@ export function ScheduleBoard({
     const toDeliver = holdingJobs(jobs, 'delivery');
     const openJob = (id: string) => {
         const job = jobs.find((j) => j.id === id);
-        if (job && !readOnly) openDraft(draftFromJob(job));
+        if (job) openDraft(draftFromJob(job));
     };
     const editingJob = jobDraft?.id
         ? jobs.find((j) => j.id === jobDraft.id) ?? null
         : null;
 
     return (
-        <div className={`osd-board ${tv ? 'tv' : ''}`}>
+        <div className="osd-board">
             {syncStatus === 'down' && (
                 <div className="sb-syncbanner">
                     <AlertTriangle size={15} />
@@ -358,29 +353,25 @@ export function ScheduleBoard({
                             <Truck size={14} /> Deliveries
                         </button>
                     )}
-                    {!readOnly && (
-                        <button className="sb-pill" onClick={() => setRosterOpen(true)}>
-                            <Users size={14} /> Vans &amp; fitters
-                        </button>
-                    )}
-                    {!tv && (
-                        // A separate page, not an in-place toggle: hiding the
-                        // board's own controls still leaves the portal sidebar
-                        // and topbar, which is not what a wall TV wants.
-                        <a
-                            className="sb-pill"
-                            href={`/schedule/tv?${new URLSearchParams({
-                                view,
-                                week: monday,
-                                year: String(year),
-                                month: String(month.m),
-                            }).toString()}`}
-                            target="_blank"
-                            rel="noreferrer"
-                        >
-                            <Monitor size={14} /> TV view
-                        </a>
-                    )}
+                    <button className="sb-pill" onClick={() => setRosterOpen(true)}>
+                        <Users size={14} /> Vans &amp; fitters
+                    </button>
+                    {/* A separate page, not an in-place toggle: hiding the
+                        board's own controls still leaves the portal sidebar
+                        and topbar, which is not what a wall TV wants. */}
+                    <a
+                        className="sb-pill"
+                        href={`/schedule/tv?${new URLSearchParams({
+                            view,
+                            week: monday,
+                            year: String(year),
+                            month: String(month.m),
+                        }).toString()}`}
+                        target="_blank"
+                        rel="noreferrer"
+                    >
+                        <Monitor size={14} /> TV view
+                    </a>
                 </div>
             </div>
 
@@ -394,7 +385,7 @@ export function ScheduleBoard({
                 <span className="l" style={{ fontWeight: 400 }}>
                     ✓ = fitted (jobs stay on as a record)
                 </span>
-                {view === 'week' && !readOnly && (
+                {view === 'week' && (
                     <span className="sb-hint">
                         Drag cards between days, vans and slots, or into a holding list
                     </span>
@@ -423,8 +414,8 @@ export function ScheduleBoard({
                                     defaultCrew={data.defaultCrew}
                                     overrides={data.overrides}
                                     showWeekends={showWeekends}
-                                    readOnly={readOnly}
-                                    tv={tv}
+                                    readOnly={false}
+                                    tv={false}
                                     onOpenJob={openJob}
                                     onAddJob={(date, vanId, slot) =>
                                         openDraft(blankDraft(date, vanId, slot))
@@ -444,7 +435,7 @@ export function ScheduleBoard({
                                     empty="Nothing waiting — drag a job here to unschedule it"
                                     note="Accepted quotes land here, then drag them onto the board once dates are confirmed."
                                     pms={data.pms}
-                                    readOnly={readOnly}
+                                    readOnly={false}
                                     onOpenJob={openJob}
                                     onAdd={(lane) =>
                                         openDraft(blankDraft(null, null, 'AM', lane))
@@ -458,7 +449,7 @@ export function ScheduleBoard({
                                     empty="Nothing to deliver — drag a job here when it only needs dropping to site"
                                     note="Items going to site without a fitting team. Drag onto the board if a van ends up running it."
                                     pms={data.pms}
-                                    readOnly={readOnly}
+                                    readOnly={false}
                                     onOpenJob={openJob}
                                     onAdd={(lane) =>
                                         openDraft(blankDraft(null, null, 'AM', lane))
@@ -476,7 +467,7 @@ export function ScheduleBoard({
                             vans={data.vans}
                             pms={data.pms}
                             showWeekends={showWeekends}
-                            readOnly={readOnly}
+                            readOnly={false}
                             onOpenJob={openJob}
                             onJumpWeek={jumpWeek}
                         />

@@ -29,7 +29,10 @@ export default async function ScheduleTvLayout({
 }) {
     await requireAuth();
     return (
-        <div className="dark min-h-screen bg-[var(--bg)] text-[var(--bg-fg)]">
+        // `overflow-hidden` here as well as on the board itself: the board
+        // guarantees its own content fits, but a stray margin escaping to the
+        // document would still put a scrollbar on the wall.
+        <div className="dark h-screen overflow-hidden bg-[var(--bg)] text-[var(--bg-fg)]">
             {children}
         </div>
     );
