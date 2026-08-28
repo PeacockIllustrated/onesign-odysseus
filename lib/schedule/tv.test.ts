@@ -2,51 +2,11 @@ import { describe, it, expect } from 'vitest';
 import {
     cycleView,
     keyToTvAction,
-    spotlightSequence,
-    nextSpotlight,
     fitScale,
-    needsCondensing,
-    MIN_FIT_SCALE,
     MAX_FIT_SCALE,
     TV_VIEWS,
     type TvView,
 } from './tv';
-import type { FittingJobView, Slot } from './types';
-
-function job(p: Partial<FittingJobView> & { id: string }): FittingJobView {
-    return {
-        job_ref: p.id,
-        org_id: null,
-        contact_id: null,
-        site_id: null,
-        quote_id: null,
-        production_job_id: null,
-        customer_fallback: p.id,
-        quote_ref: null,
-        location: null,
-        postcode: null,
-        latitude: null,
-        longitude: null,
-        pm_id: null,
-        van_id: p.van_id ?? 'van-a',
-        scheduled_date: p.scheduled_date ?? '2026-03-02',
-        end_date: p.end_date ?? null,
-        lane: 'scheduled',
-        slot: (p.slot ?? 'AM') as Slot,
-        sort_order: p.sort_order ?? 0,
-        done: false,
-        done_at: null,
-        delivery_required: false,
-        archived_at: p.archived_at ?? null,
-        org_name: null,
-        site_name: null,
-        site_postcode: null,
-        contact_name: null,
-        quote_number: null,
-        updated_by_name: null,
-        ...p,
-    } as FittingJobView;
-}
 
 describe('cycleView', () => {
     it('walks right through week → month → year', () => {
@@ -90,64 +50,6 @@ describe('keyToTvAction', () => {
     });
 });
 
-describe('spotlightSequence', () => {
-    const vans = ['van-a', 'van-b'];
-
-    it('reads day, then van across, then slot down', () => {
-        const jobs = [
-            job({ id: 'tue-b-pm', scheduled_date: '2026-03-03', van_id: 'van-b', slot: 'PM' }),
-            job({ id: 'mon-a-pm', scheduled_date: '2026-03-02', van_id: 'van-a', slot: 'PM' }),
-            job({ id: 'mon-a-day', scheduled_date: '2026-03-02', van_id: 'van-a', slot: 'DAY' }),
-            job({ id: 'mon-b-am', scheduled_date: '2026-03-02', van_id: 'van-b', slot: 'AM' }),
-        ];
-        expect(spotlightSequence(jobs, vans)).toEqual([
-            'mon-a-day',
-            'mon-a-pm',
-            'mon-b-am',
-            'tue-b-pm',
-        ]);
-    });
-
-    it('skips archived and unscheduled jobs', () => {
-        const jobs = [
-            job({ id: 'live' }),
-            job({ id: 'archived', archived_at: '2026-03-01T00:00:00Z' }),
-            job({ id: 'holding', scheduled_date: null, van_id: null }),
-        ];
-        expect(spotlightSequence(jobs, vans)).toEqual(['live']);
-    });
-
-    it('is stable for jobs that tie on every ordering key but id', () => {
-        const jobs = [job({ id: 'b' }), job({ id: 'a' })];
-        expect(spotlightSequence(jobs, vans)).toEqual(['a', 'b']);
-        expect(spotlightSequence(jobs.slice().reverse(), vans)).toEqual(['a', 'b']);
-    });
-
-    it('puts jobs on an unknown van last rather than dropping them', () => {
-        const jobs = [job({ id: 'ghost', van_id: 'van-z' }), job({ id: 'known', van_id: 'van-a' })];
-        expect(spotlightSequence(jobs, vans)).toEqual(['known', 'ghost']);
-    });
-});
-
-describe('nextSpotlight', () => {
-    it('starts at the first job', () => {
-        expect(nextSpotlight(['a', 'b'], null)).toBe('a');
-    });
-
-    it('advances and wraps', () => {
-        expect(nextSpotlight(['a', 'b', 'c'], 'b')).toBe('c');
-        expect(nextSpotlight(['a', 'b', 'c'], 'c')).toBe('a');
-    });
-
-    it('restarts when the current job has left the board', () => {
-        expect(nextSpotlight(['a', 'b'], 'gone')).toBe('a');
-    });
-
-    it('drops the spotlight when nothing is left to show', () => {
-        expect(nextSpotlight([], 'a')).toBeNull();
-    });
-});
-
 describe('fitScale', () => {
     it('shrinks to fit', () => {
         expect(fitScale(1000, 500)).toBe(0.5);
@@ -167,20 +69,17 @@ describe('fitScale', () => {
     });
 });
 
-describe('needsCondensing', () => {
-    it('condenses only once shrinking would go below the legibility floor', () => {
-        expect(needsCondensing(1000, 900)).toBe(false);
-        expect(needsCondensing(1000, 300)).toBe(true);
-    });
-
-    it('treats the floor itself as still legible', () => {
-        expect(needsCondensing(1000, 1000 * MIN_FIT_SCALE)).toBe(false);
-    });
-
-    it('keeps fitting past the floor rather than clipping the board', () => {
-        // The floor gates condensing, never the scale — a board scaled to 0.3
-        // still shows Friday, and a clipped one does not.
+describe('fitting past the old legibility floor', () => {
+    it('keeps shrinking instead of hiding anything', () => {
+        // The board used to stop here and collapse cards to one line, rotating
+        // the detail through them. It now just gets smaller, because a small
+        // board that shows Friday beats a big one that does not.
         expect(fitScale(3000, 900)).toBeCloseTo(0.3);
-        expect(fitScale(3000, 900)).toBeLessThan(MIN_FIT_SCALE);
+        expect(fitScale(6000, 900)).toBeCloseTo(0.15);
+    });
+
+    it('has no lower bound at all', () => {
+        expect(fitScale(100000, 900)).toBeGreaterThan(0);
+        expect(fitScale(100000, 900)).toBeLessThan(0.01);
     });
 });
