@@ -18,8 +18,8 @@
        Everything below is in `em`, so this is the only number to tune. */
     font-size: calc(1rem * var(--tv-density, 0.78));
 
-    /* The board owns exactly one screen. Nothing here ever scrolls: content
-       that does not fit is scaled, and past a floor, condensed. */
+    /* The board owns exactly one screen. Nothing here ever scrolls and nothing
+       is hidden: content that does not fit is scaled down until it does. */
     height: 100vh;
     height: 100dvh;
     overflow: hidden;
@@ -220,95 +220,173 @@
     font-size: 0.8em;
 }
 
-/* --- condensed cards + spotlight ----------------------------------------- */
+/* --- holding bands ------------------------------------------------------ */
 
-/* A packed board collapses each card to its title line. The detail stays in
-   the DOM and its container animates from 0fr to 1fr, so the spotlight reads
-   as one card unfolding in place — a display:none swap would jump the whole
-   column and there would be nothing to watch. */
-.osd-board.tvb .sb-card .sb-cardbody {
-    display: grid;
-    grid-template-rows: 1fr;
-    transition: grid-template-rows 420ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.osd-board.tvb .sb-card .sb-cardbodyinner {
-    min-height: 0;
-    overflow: hidden;
-}
-
-.osd-board.tvb .sb-card.condensed .sb-cardbody {
-    grid-template-rows: 0fr;
-}
-
-.osd-board.tvb .sb-card.condensed.open .sb-cardbody {
-    grid-template-rows: 1fr;
-}
-
-/* The open card lifts slightly so the eye finds it without hunting — the
-   rotation is only useful if you can tell which one just moved. */
-.osd-board.tvb .sb-card.condensed {
-    transition: box-shadow 420ms ease, border-color 420ms ease;
-}
-
-.osd-board.tvb .sb-card.condensed.open {
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
-    border-color: var(--accent);
-}
-
-/* Respect a reduced-motion preference even on a kiosk: the rotation still
-   cycles and still reveals each card, it just cuts instead of sliding. */
-@media (prefers-reduced-motion: reduce) {
-    .osd-board.tvb .tvb-fit,
-    .osd-board.tvb .sb-card .sb-cardbody,
-    .osd-board.tvb .sb-card.condensed {
-        transition: none;
-    }
-}
-
-/* --- holding band ------------------------------------------------------- */
-
-/* A fixed share of the screen, so the grid above is measured against what is
-   actually left rather than overlapping this. 20vh is the brief; the panels
-   scroll their own overflow rather than growing, because the band must not
-   move the board it sits under. */
+/* Two shallow bands under the grid. Height is fixed so the grid above is
+   measured against what is actually left, and small so it takes as little of
+   the week's room as it can — one row of cards at the same scale as the grid,
+   not the tall panels the office board uses down its side rail. */
 .osd-board.tvb .tvb-holding {
-    flex: 0 0 20vh;
+    /* Fixed, so the grid above is measured against what is actually left and
+       the card scale below can never feed back into it. Sized to hold a whole
+       card rather than a clipped one: the point of the rebuild is that nothing
+       on this board is hidden, and a band that slices the postcode off the
+       bottom of every card fails that in miniature. The cost is ~17px of grid
+       at 1080p, which is nothing against the week. */
+    flex: 0 0 7em;
     min-height: 0;
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0.75em;
-    padding-top: 0.5em;
+    padding-top: 0.25em;
 }
 
-.osd-board.tvb .tvb-holding .sb-holding {
+.osd-board.tvb .tvb-band {
     display: flex;
-    flex-direction: column;
-    min-height: 0;
+    align-items: center;
+    gap: 0.75em;
+    min-width: 0;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-md);
+    padding: 0.4em 0.6em;
+}
+
+.osd-board.tvb .tvb-bandhead {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    font-family: var(--font-heading);
+    font-size: 0.8em;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--fg-muted);
+    white-space: nowrap;
+}
+.osd-board.tvb .tvb-bandhead .n {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.6em;
+    padding: 0 0.4em;
+    border-radius: 999px;
+    background: var(--surface-2);
+    border: 1px solid var(--card-border);
+    font-size: 0.85em;
+    color: var(--fg);
+}
+.osd-board.tvb .tvb-bandempty {
+    font-size: 0.8em;
+    color: var(--fg-subtle);
+}
+
+/* --- the carousel ------------------------------------------------------- */
+
+/* The band is a fixed width with an unbounded list in it. Rather than clip the
+   overflow behind a scrollbar no one on a wall can reach, the row drifts so the
+   whole list comes round. A list that already fits does not move at all —
+   `data-moving` is set by the component after it measures. */
+.osd-board.tvb .tvb-marquee {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    /* Fades both edges so cards enter and leave rather than being sliced off
+       against the border. */
+    -webkit-mask-image: linear-gradient(
+        to right,
+        transparent 0,
+        #000 1.5em,
+        #000 calc(100% - 1.5em),
+        transparent 100%
+    );
+    mask-image: linear-gradient(
+        to right,
+        transparent 0,
+        #000 1.5em,
+        #000 calc(100% - 1.5em),
+        transparent 100%
+    );
+}
+
+.osd-board.tvb .tvb-marquee-track {
+    display: flex;
+    width: max-content;
+}
+
+.osd-board.tvb .tvb-marquee[data-moving='true'] .tvb-marquee-track {
+    animation-name: tvb-drift;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+    /* Duration comes from the component: a constant px/sec, so a long list
+       does not race past faster than a short one. */
+}
+
+.osd-board.tvb .tvb-marquee-run {
+    display: flex;
+    align-items: stretch;
+    gap: 0.5em;
+    flex: 0 0 auto;
+}
+
+/* Cards carry the grid's own scale — a waiting job should look like the job it
+   becomes once it is placed, and on a packed board an unscaled band would show
+   the work nobody has booked yet larger than the work that is booked.
+   Never scaled ABOVE natural size: this is the secondary band, and a quiet week
+   blowing it up would steal the eye from the week itself. */
+.osd-board.tvb .tvb-marquee .sb-card {
+    font-size: calc(1em * min(var(--tvb-cardscale, 1), 1));
+    /* Wide enough that the summary sits on one line: a narrower card wraps it
+       and the last detail row falls out of the band. */
+    width: 17em;
+    flex: 0 0 auto;
+    margin-bottom: 0;
+}
+
+/* One line each in the band. Every field a card carries is still present — the
+   customer, what the job is, its reference and where — just held to a single
+   row apiece so the whole card fits the band instead of being sliced off at
+   the bottom. The office board is where you go for the full text. */
+.osd-board.tvb .tvb-marquee .sb-card .summary,
+.osd-board.tvb .tvb-marquee .sb-card .extra {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.osd-board.tvb .tvb-marquee .sb-card .meta {
+    flex-wrap: nowrap;
     overflow: hidden;
 }
-
-.osd-board.tvb .tvb-holding .sb-backloglist {
-    flex: 1 1 auto;
-    min-height: 0;
-    /* The one place on the TV that may scroll: a backlog has no natural
-       length, and clipping it silently would hide work. It is not driven by a
-       remote, so what shows is the top of the list — the oldest waiting job. */
-    overflow-y: auto;
-    display: flex;
-    flex-wrap: wrap;
-    align-content: flex-start;
-    gap: 0.4em;
+.osd-board.tvb .tvb-marquee .sb-card .meta span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-/* Cards here sit side by side rather than stacked: the band is wide and
-   shallow, so a column would show two jobs and hide the rest. */
-.osd-board.tvb .tvb-holding .sb-card {
-    flex: 0 1 auto;
-    min-width: 12em;
-    max-width: 20em;
+.osd-board.tvb .tvb-marquee-run {
+    align-items: flex-start;
 }
 
-.osd-board.tvb .tvb-holding .sb-bhead b {
-    font-size: 0.95em;
+@keyframes tvb-drift {
+    from {
+        transform: translateX(0);
+    }
+    to {
+        /* The track is two runs plus one gap, so one full cycle — the point
+           where the duplicate lands exactly where the original began — is half
+           the track plus half the gap. Anything else leaves a visible jump. */
+        transform: translateX(calc(-50% - (var(--tvb-gap, 32px) / 2)));
+    }
+}
+
+/* A kiosk still has to show everything, and stopping the drift would hide the
+   end of the list — so the motion stays. What reduced motion gets is the
+   board's own transitions off, and a slower, steadier pass. */
+@media (prefers-reduced-motion: reduce) {
+    .osd-board.tvb .tvb-fit {
+        transition: none;
+    }
+    .osd-board.tvb .tvb-marquee[data-moving='true'] .tvb-marquee-track {
+        animation-duration: 90s;
+    }
 }

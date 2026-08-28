@@ -3,7 +3,6 @@
 import { useDraggable } from '@dnd-kit/core';
 import type { FittingJobView, ProjectManager } from '@/lib/schedule/types';
 import { jobCustomer, jobExtra, jobMeta, jobSpanLabel } from '@/lib/schedule/utils';
-import { useTvDisplay } from './TvDisplayContext';
 
 interface Props {
     job: FittingJobView;
@@ -21,11 +20,6 @@ export function JobCard({ job, pm, compact, allDay, readOnly, onOpen }: Props) {
         id: job.id,
         disabled: readOnly,
     });
-
-    // On the workshop TV a packed board collapses every card to its title and
-    // rotates the detail through them one at a time. Off everywhere else.
-    const { condensed, spotlightId } = useTvDisplay();
-    const open = spotlightId === job.id;
 
     const customer = jobCustomer(job);
     // The PM's hex drives the card's fill, border and text via color-mix in
@@ -66,8 +60,7 @@ export function JobCard({ job, pm, compact, allDay, readOnly, onOpen }: Props) {
             onClick={() => onOpen(job.id)}
             className={`sb-card ${job.done ? 'done' : ''} ${allDay ? 'allday' : ''} ${
                 isDragging ? 'dragsrc' : ''
-            } ${condensed ? 'condensed' : ''} ${condensed && open ? 'open' : ''}`}
-            aria-expanded={condensed && hasDetail ? open : undefined}
+            }`}
         >
             {allDay && <span className="sb-alldaytag">all day</span>}
             {span && <span className="sb-spantag">{span}</span>}
@@ -80,25 +73,19 @@ export function JobCard({ job, pm, compact, allDay, readOnly, onOpen }: Props) {
                     </span>
                 )}
             </div>
-            {/* Condensed cards keep the detail mounted and animate its height,
-                so the spotlight opening reads as one card unfolding rather than
-                the whole column jumping as content appears and disappears. */}
             {hasDetail && (
                 <div className="sb-cardbody">
-                    <div className="sb-cardbodyinner">
-                        {/* First in the body, so on the TV the spotlight opens
-                            onto what the job actually is before the reference
-                            and the postcode. */}
-                        {summary && <div className="summary">{summary}</div>}
-                        {meta.length > 0 && (
-                            <div className="meta">
-                                {meta.map((m) => (
-                                    <span key={m}>{m}</span>
-                                ))}
-                            </div>
-                        )}
-                        {extra && <div className="extra">{extra}</div>}
-                    </div>
+                    {/* What the job actually is, before the reference and the
+                        postcode — it is the line people read first. */}
+                    {summary && <div className="summary">{summary}</div>}
+                    {meta.length > 0 && (
+                        <div className="meta">
+                            {meta.map((m) => (
+                                <span key={m}>{m}</span>
+                            ))}
+                        </div>
+                    )}
+                    {extra && <div className="extra">{extra}</div>}
                 </div>
             )}
         </button>

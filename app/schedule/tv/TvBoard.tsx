@@ -5,7 +5,11 @@ import { useRouter } from 'next/navigation';
 import { AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { PlanningDelivery } from '@/lib/planning/utils';
 import { useRealtimeStatus } from '@/lib/realtime/useRealtimeStatus';
-import type { ScheduleBoardData } from '@/lib/schedule/types';
+import type {
+    FittingJobView,
+    ProjectManager,
+    ScheduleBoardData,
+} from '@/lib/schedule/types';
 import {
     MONTH_NAMES,
     addDaysISO,
@@ -14,21 +18,12 @@ import {
     mondayOfISO,
     toISO,
 } from '@/lib/schedule/utils';
-import {
-    TV_VIEWS,
-    cycleView,
-    fitScale,
-    keyToTvAction,
-    needsCondensing,
-    nextSpotlight,
-    spotlightSequence,
-    type TvView,
-} from '@/lib/schedule/tv';
+import { TV_VIEWS, cycleView, fitScale, keyToTvAction, type TvView } from '@/lib/schedule/tv';
 import { WeekView } from '@/app/(portal)/admin/schedule/WeekView';
 import { MonthView } from '@/app/(portal)/admin/schedule/MonthView';
 import { YearView } from '@/app/(portal)/admin/schedule/YearView';
-import { HoldingPanel } from '@/app/(portal)/admin/schedule/HoldingPanel';
-import { TvDisplayProvider } from '@/app/(portal)/admin/schedule/TvDisplayContext';
+import { JobCard } from '@/app/(portal)/admin/schedule/JobCard';
+import { Marquee } from './Marquee';
 import '@/app/(portal)/admin/schedule/schedule.css';
 import './tv.css';
 
@@ -51,10 +46,10 @@ import './tv.css';
  *
  *  - **Remote control.** Left/right steps week → month → year; up/down steps
  *    the period. There is nothing to click.
- *  - **One page, never scrolled.** The grid is measured and scaled to the
- *    viewport. If fitting it whole would push it below legibility, cards
- *    condense to one line and a spotlight rotates their detail into view
- *    instead of shrinking further.
+ *  - **One page, never scrolled, nothing hidden.** The grid is measured and
+ *    scaled to the viewport, however far down that goes. Everything on the
+ *    board is on the board at all times — no rotation, no collapsing, nothing
+ *    you have to wait for.
  *  - **Never silently stale.** Realtime pushes redraw it, a slow interval
  *    catches anything the socket missed, and a dropped connection says so.
  */
@@ -67,9 +62,6 @@ interface Props {
     month: { y: number; m: number };
     year: number;
 }
-
-/** How long each spotlighted card stays open before the rotation moves on. */
-const SPOTLIGHT_MS = 4500;
 
 /**
  * Safety-net refresh. Realtime is the fast path; this catches a socket that
@@ -177,23 +169,6 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
     const stageRef = useRef<HTMLDivElement>(null);
     const fitRef = useRef<HTMLDivElement>(null);
     const [scale, setScale] = useState(1);
-    const [condensed, setCondensed] = useState(false);
-
-    /**
-     * Whatever changes the board's shape. When this changes the measurement
-     * starts again from an open board, because the "would it fit?" question can
-     * only be asked of a board with every card open.
-     */
-    const shapeKey = `${view}|${monday}|${month.y}-${month.m}|${year}|${data.jobs.length}|${data.vans.length}|${deliveries.length}`;
-
-    // Mirrors of the state for the measure callback, which runs outside React's
-    // render and would otherwise close over a stale value.
-    const condensedRef = useRef(condensed);
-    useEffect(() => {
-        condensedRef.current = condensed;
-    }, [condensed]);
-    const shapeRef = useRef<string | null>(null);
-    const fullHeightRef = useRef(0);
 
     // `offsetHeight` reports the PRE-transform layout height, so the board's
     // natural size can be read while a scale is already applied — no reset pass,
@@ -215,25 +190,10 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
                 const natural = fit.offsetHeight;
                 if (available <= 0 || natural <= 0) return;
 
-                // New content: forget the old board and open the cards so the
-                // next pass measures a full-height board. One frame at full
-                // size, which is not visible.
-                if (shapeRef.current !== shapeKey) {
-                    shapeRef.current = shapeKey;
-                    fullHeightRef.current = 0;
-                    setCondensed(false);
-                    return;
-                }
-
-                // Only an open board tells us the full height; while condensed
-                // we keep the last one, which is what stops the decision
-                // oscillating (see needsCondensing).
-                if (!condensedRef.current) fullHeightRef.current = natural;
-                const full = fullHeightRef.current || natural;
-
-                setCondensed(needsCondensing(full, available));
-                // Scale from what is actually rendered right now, not from the
-                // full height — and never clip, however small that lands.
+                // Never clip, however small that lands: on a screen nobody can
+                // scroll, a board scaled down still shows every job, where a
+                // clipped one silently hides Friday.
+                //
                 // Deadband: the width compensation below feeds back into the
                 // measured height, so ignore sub-percent wobble rather than
                 // letting the two chase each other across frames.
@@ -250,47 +210,7 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
             cancelAnimationFrame(frame);
             ro.disconnect();
         };
-    }, [shapeKey, condensed]);
-
-    // --- spotlight rotation ------------------------------------------------
-
-    const sequence = useMemo(
-        () => spotlightSequence(data.jobs, data.vans.map((v) => v.id)),
-        [data.jobs, data.vans]
-    );
-
-    const [spotlightRaw, setSpotlightRaw] = useState<string | null>(null);
-
-    // Only the week view shows full cards, so it is the only one with detail to
-    // reveal; month and year are already one-line chips.
-    const rotating = condensed && view === 'week' && sequence.length > 1;
-
-    // Read through a ref so a realtime refresh — which rebuilds the sequence
-    // array — doesn't restart the timer and cut the current card's turn short.
-    const sequenceRef = useRef(sequence);
-    useEffect(() => {
-        sequenceRef.current = sequence;
-    }, [sequence]);
-
-    useEffect(() => {
-        if (!rotating) return;
-        // Nothing opens for the first interval, which gives a board that has
-        // just been resized or refreshed a moment to settle before it starts
-        // animating.
-        const id = setInterval(() => {
-            setSpotlightRaw((cur) => nextSpotlight(sequenceRef.current, cur));
-        }, SPOTLIGHT_MS);
-        return () => clearInterval(id);
-    }, [rotating]);
-
-    // Derived rather than reset in an effect: when the board stops being packed
-    // the spotlight simply stops applying, with no extra render to clear it.
-    const spotlightId = rotating ? spotlightRaw : null;
-
-    const display = useMemo(
-        () => ({ condensed: rotating, spotlightId }),
-        [rotating, spotlightId]
-    );
+    }, []);
 
     // --- label -------------------------------------------------------------
 
@@ -357,7 +277,6 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
                         width: `${100 / scale}%`,
                     }}
                 >
-                    <TvDisplayProvider value={display}>
                         {view === 'week' && (
                             <WeekView
                                 monday={monday}
@@ -401,39 +320,77 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
                                 onJumpWeek={noop}
                             />
                         )}
-                    </TvDisplayProvider>
                 </div>
             </div>
 
             {/* What is waiting to be booked in, and what is going out without a
                 fitting team. The office board keeps these in a side rail; on a
                 wall the width is worth more than the height, so they run along
-                the bottom in a fixed band the grid above is sized around. */}
-            <footer className="tvb-holding">
-                <HoldingPanel
-                    lane="scheduled"
-                    title="To be scheduled"
-                    jobs={toSchedule}
-                    empty="Nothing waiting"
-                    note=""
-                    pms={data.pms}
-                    readOnly
-                    onOpenJob={noop}
-                    onAdd={noop}
-                />
-                <HoldingPanel
-                    lane="delivery"
-                    title="To be delivered"
-                    jobs={toDeliver}
-                    empty="Nothing to deliver"
-                    note=""
-                    pms={data.pms}
-                    readOnly
-                    onOpenJob={noop}
-                    onAdd={noop}
-                />
+                the bottom as two shallow bands.
+
+                Each band is one row at the same card scale as the grid above —
+                a taller band would take the room the week needs. A list longer
+                than the row drifts past instead of being clipped behind a
+                scrollbar nobody on a wall can reach, so everything waiting
+                comes round. */}
+            <footer
+                className="tvb-holding"
+                // The grid is scaled to fit; the band is not, so without this a
+                // packed week ends up with waiting jobs rendered LARGER than the
+                // booked ones above them. Handing the band the same factor keeps
+                // a card the same size wherever it sits. Its height stays fixed,
+                // so this can't feed back into the measurement that produced it.
+                style={{ ['--tvb-cardscale' as string]: scale }}
+            >
+                <TvHoldingBand title="To be scheduled" empty="Nothing waiting" jobs={toSchedule} pms={data.pms} />
+                <TvHoldingBand title="To be delivered" empty="Nothing to deliver" jobs={toDeliver} pms={data.pms} />
             </footer>
         </div>
+    );
+}
+
+/**
+ * One holding list as a moving band.
+ *
+ * Cards are the same component and the same scale as the grid's, so a job
+ * waiting to be scheduled looks like the job it becomes once it is placed.
+ */
+function TvHoldingBand({
+    title,
+    empty,
+    jobs,
+    pms,
+}: {
+    title: string;
+    empty: string;
+    jobs: FittingJobView[];
+    pms: ProjectManager[];
+}) {
+    const pmById = new Map(pms.map((p) => [p.id, p]));
+
+    return (
+        <section className="tvb-band">
+            <h2 className="tvb-bandhead">
+                {title}
+                <span className="n">{jobs.length}</span>
+            </h2>
+
+            {jobs.length === 0 ? (
+                <p className="tvb-bandempty">{empty}</p>
+            ) : (
+                <Marquee>
+                    {jobs.map((job) => (
+                        <JobCard
+                            key={job.id}
+                            job={job}
+                            pm={job.pm_id ? (pmById.get(job.pm_id) ?? null) : null}
+                            readOnly
+                            onOpen={noop}
+                        />
+                    ))}
+                </Marquee>
+            )}
+        </section>
     );
 }
 
