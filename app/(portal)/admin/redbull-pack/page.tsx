@@ -50,7 +50,7 @@ export default async function RedbullPackPage() {
             </header>
 
             <p className="mb-6 text-sm text-[var(--bg-fg-muted)]">
-                Editing a row here changes what redbull.onesignanddigital.com shows within
+                Editing a row here changes what redbull.onesignanddigital.co.uk shows within
                 about 30 seconds — there is no separate publish step for row edits.
             </p>
 
