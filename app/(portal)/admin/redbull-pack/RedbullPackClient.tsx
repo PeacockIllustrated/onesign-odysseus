@@ -201,26 +201,38 @@ export function RedbullPackClient({ pack, states }: Props) {
         <>
             {/* Pack status ---------------------------------------------------- */}
             <Card className="mb-4">
-                <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+                <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+                    {/* Client and venue are in the branded header above, so this
+                        card carries the numbers and the controls only. */}
                     <div>
-                        <div className="text-sm font-semibold text-neutral-900">
-                            {pack.client} · {pack.venue}
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
+                            Rows
                         </div>
-                        <div className="text-xs text-neutral-500">
-                            Revision {pack.revision}
-                            {pack.updated ? ` · issued ${pack.updated}` : ''} · {counts.total} rows
+                        <div className="text-lg font-semibold text-neutral-900 tabular-nums">
+                            {counts.total}
                         </div>
                     </div>
 
-                    <div className="text-sm">
-                        <span className="text-neutral-500">Outstanding: </span>
-                        <span
-                            className={`font-semibold ${
+                    <div>
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
+                            Outstanding
+                        </div>
+                        <div
+                            className={`text-lg font-semibold tabular-nums ${
                                 counts.outstanding > 0 ? 'text-orange-700' : 'text-neutral-400'
                             }`}
                         >
                             {counts.outstanding}
-                        </span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
+                            Issued
+                        </div>
+                        <div className="text-lg font-semibold text-neutral-900 tabular-nums">
+                            {pack.updated ?? '—'}
+                        </div>
                     </div>
 
                     <div className="ml-auto flex items-center gap-3">
