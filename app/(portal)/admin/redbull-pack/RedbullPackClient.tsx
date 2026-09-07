@@ -36,15 +36,21 @@ const SITE_URL = 'https://redbull.onesignanddigital.com';
  * The artwork parts stack inside their own cell rather than wrapping the row,
  * which is what made the first version unreadable.
  */
-const GRID_BASE = 'grid gap-x-3 items-start';
+/**
+ * Below `sm` a row stacks into a labelled block; from `sm` up the columns take
+ * over. The `sm:` prefix is baked into each literal on purpose — Tailwind scans
+ * source text, so a template-built `sm:${COLS}` would never appear in the file
+ * and the class would never be generated.
+ */
+const GRID_BASE = 'grid grid-cols-2 gap-x-3 gap-y-2 sm:gap-y-0 items-start';
 
 /**
  * Only Executive Box Branding names its rows ("A  Cyclone"); the other
  * fifteen panels would carry an empty column down the page, so the Name
  * column is dropped on panels that do not use it.
  */
-const COLS_WITH_NAME = 'grid-cols-[72px_minmax(0,0.8fr)_132px_minmax(0,2.2fr)_70px]';
-const COLS_NO_NAME = 'grid-cols-[72px_132px_minmax(0,1fr)_70px]';
+const COLS_WITH_NAME = 'sm:grid-cols-[72px_minmax(0,0.8fr)_132px_minmax(0,2.2fr)_70px]';
+const COLS_NO_NAME = 'sm:grid-cols-[72px_132px_minmax(0,1fr)_70px]';
 
 /**
  * On the Job Schedule sheet the "ref" is the item name — "Signage Behind
@@ -52,9 +58,9 @@ const COLS_NO_NAME = 'grid-cols-[72px_132px_minmax(0,1fr)_70px]';
  * taken from the data rather than from the sheet, because Executive Box
  * Branding is on that same sheet and does use short refs.
  */
-const COLS_LONG_REF = 'grid-cols-[minmax(0,1.15fr)_132px_minmax(0,1.35fr)_70px]';
+const COLS_LONG_REF = 'sm:grid-cols-[minmax(0,1.15fr)_132px_minmax(0,1.35fr)_70px]';
 const COLS_LONG_REF_WITH_NAME =
-    'grid-cols-[minmax(0,0.9fr)_minmax(0,0.8fr)_132px_minmax(0,1.4fr)_70px]';
+    'sm:grid-cols-[minmax(0,0.9fr)_minmax(0,0.8fr)_132px_minmax(0,1.4fr)_70px]';
 
 interface PanelShape {
     showName: boolean;
@@ -72,7 +78,7 @@ const gridFor = ({ showName, longRefs }: PanelShape) => {
  * on hover is affordance enough.
  */
 const FIELD =
-    'min-w-0 px-2 py-1 rounded bg-transparent border border-transparent text-sm ' +
+    'min-w-0 px-2 py-2 sm:py-1 rounded bg-transparent border border-transparent text-sm ' +
     'hover:border-neutral-200 hover:bg-white ' +
     'focus:outline-none focus:bg-white focus:border-[#4e7e8c] focus:ring-1 focus:ring-[#4e7e8c]/30 ' +
     'disabled:opacity-60 transition-colors';
@@ -338,7 +344,7 @@ export function RedbullPackClient({ pack, states }: Props) {
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Find a ref, size, sponsor…"
-                    className="flex-1 min-w-[200px] max-w-sm px-3 py-1.5 rounded border border-neutral-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]/40"
+                    className="w-full sm:flex-1 sm:w-auto sm:min-w-[200px] sm:max-w-sm px-3 py-2 sm:py-1.5 rounded border border-neutral-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]/40"
                 />
             </div>
 
@@ -378,10 +384,10 @@ export function RedbullPackClient({ pack, states }: Props) {
                                         </span>
                                     </div>
 
-                                    <div className="overflow-x-auto">
-                                        <div className="min-w-[720px]">
+                                    <div className="sm:overflow-x-auto">
+                                        <div className="sm:min-w-[720px]">
                                             <div
-                                                className={`${gridFor(panelShape(panel))} px-2 pb-1.5 mb-1 border-b border-neutral-200 text-[10px] font-semibold uppercase tracking-wider text-neutral-400`}
+                                                className={`hidden sm:grid ${gridFor(panelShape(panel))} px-2 pb-1.5 mb-1 border-b border-neutral-200 text-[10px] font-semibold uppercase tracking-wider text-neutral-400`}
                                             >
                                                 <div>{panelShape(panel).longRefs ? 'Item' : 'Ref'}</div>
                                                 {panelShape(panel).showName && <div>Name</div>}
@@ -429,6 +435,32 @@ export function RedbullPackClient({ pack, states }: Props) {
 
 // -----------------------------------------------------------------------------
 
+/**
+ * Wraps one field. On a phone it is a labelled block, because the column header
+ * is hidden there; from `sm` up it becomes `display: contents` so the input is
+ * a direct grid item and the columns line up as before. A hidden label is not a
+ * grid item, so this contributes exactly one cell on desktop.
+ */
+function Cell({
+    label,
+    span,
+    children,
+}: {
+    label: string;
+    /** Full width on a phone. Ignored from `sm` up, where the grid takes over. */
+    span?: boolean;
+    children: React.ReactNode;
+}) {
+    return (
+        <div className={`${span ? 'col-span-2' : ''} sm:contents`}>
+            <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wider text-neutral-400 sm:hidden">
+                {label}
+            </span>
+            {children}
+        </div>
+    );
+}
+
 interface RowEditorProps {
     row: PackRow;
     draft: Draft;
@@ -472,43 +504,50 @@ function RowEditor({
 
     return (
         <div
-            className={`group ${gridFor(shape)} px-2 py-1.5 rounded border-l-2 transition-colors ${
+            className={`group ${gridFor(shape)} px-2 py-3 sm:py-1.5 rounded border-b border-neutral-100 sm:border-b-0 border-l-2 transition-colors ${
                 dirty
                     ? 'border-l-[#4e7e8c] bg-[#e8f0f3]/50'
                     : 'border-l-transparent hover:bg-neutral-50/70'
             }`}
         >
-            <input
-                value={draft.code}
-                onChange={(e) => onChange({ code: e.target.value })}
-                disabled={disabled}
-                aria-label="Ref"
-                className={`${FIELD} w-full font-semibold`}
-            />
+            <Cell label={shape.longRefs ? 'Item' : 'Ref'} span={shape.longRefs}>
+                <input
+                    value={draft.code}
+                    onChange={(e) => onChange({ code: e.target.value })}
+                    disabled={disabled}
+                    aria-label={shape.longRefs ? 'Item' : 'Ref'}
+                    className={`${FIELD} w-full font-semibold`}
+                />
+            </Cell>
 
             {shape.showName && (
-                <input
-                    value={draft.name}
-                    onChange={(e) => onChange({ name: e.target.value })}
-                    disabled={disabled}
-                    aria-label="Name"
-                    className={`${FIELD} w-full`}
-                />
+                <Cell label="Name" span>
+                    <input
+                        value={draft.name}
+                        onChange={(e) => onChange({ name: e.target.value })}
+                        disabled={disabled}
+                        aria-label="Name"
+                        className={`${FIELD} w-full`}
+                    />
+                </Cell>
             )}
 
-            <input
-                value={draft.size}
-                onChange={(e) => onChange({ size: e.target.value })}
-                disabled={disabled}
-                aria-label="Size"
-                className={`${FIELD} w-full tabular-nums`}
-            />
+            <Cell label="Size">
+                <input
+                    value={draft.size}
+                    onChange={(e) => onChange({ size: e.target.value })}
+                    disabled={disabled}
+                    aria-label="Size"
+                    className={`${FIELD} w-full tabular-nums`}
+                />
+            </Cell>
 
             {/* The field the pack is edited through. Parts stack, so a two-part
                 value never pushes the row out of alignment. */}
+            <Cell label="Artwork" span>
             <div className="space-y-1">
                 {draft.artwork.map((part, i) => (
-                    <div key={i} className="flex items-center gap-1.5">
+                    <div key={i} className="flex flex-wrap items-center gap-1.5 sm:flex-nowrap">
                         <span
                             aria-hidden="true"
                             title={part.state}
@@ -524,28 +563,33 @@ function RowEditor({
                             placeholder="Label"
                             className={`${FIELD} flex-1`}
                         />
-                        <select
-                            value={part.state}
-                            onChange={(e) => setPart(i, { state: e.target.value })}
-                            disabled={disabled}
-                            aria-label={`Artwork ${i + 1} state`}
-                            className={`${FIELD} w-32 shrink-0 text-xs text-neutral-600`}
-                        >
-                            {states.map((st) => (
-                                <option key={st.key} value={st.key}>
-                                    {st.label}
-                                </option>
-                            ))}
-                        </select>
-                        <button
-                            type="button"
-                            onClick={() => removePart(i)}
-                            disabled={disabled}
-                            aria-label={`Remove artwork part ${i + 1}`}
-                            className="shrink-0 p-1 text-neutral-300 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-red-600 disabled:opacity-50 transition-opacity"
-                        >
-                            <X className="w-3.5 h-3.5" />
-                        </button>
+                        {/* basis-full drops the state and the remove control onto
+                            their own line on a phone, so the label keeps the width
+                            it needs. From sm up they sit inline as before. */}
+                        <div className="flex basis-full items-center gap-1.5 pl-3 sm:basis-auto sm:shrink-0 sm:pl-0">
+                            <select
+                                value={part.state}
+                                onChange={(e) => setPart(i, { state: e.target.value })}
+                                disabled={disabled}
+                                aria-label={`Artwork ${i + 1} state`}
+                                className={`${FIELD} flex-1 sm:flex-none sm:w-32 text-xs text-neutral-600`}
+                            >
+                                {states.map((st) => (
+                                    <option key={st.key} value={st.key}>
+                                        {st.label}
+                                    </option>
+                                ))}
+                            </select>
+                            <button
+                                type="button"
+                                onClick={() => removePart(i)}
+                                disabled={disabled}
+                                aria-label={`Remove artwork part ${i + 1}`}
+                                className="shrink-0 p-1.5 sm:p-1 text-neutral-400 sm:text-neutral-300 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 hover:text-red-600 disabled:opacity-50 transition-opacity"
+                            >
+                                <X className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
                     </div>
                 ))}
 
@@ -560,7 +604,7 @@ function RowEditor({
                         type="button"
                         onClick={addPart}
                         disabled={disabled}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] text-neutral-400 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-neutral-700 hover:bg-neutral-100 disabled:opacity-50 transition-opacity"
+                        className="inline-flex items-center gap-1 px-2 py-1.5 sm:py-0.5 rounded text-[11px] text-neutral-500 sm:text-neutral-400 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 hover:text-neutral-700 hover:bg-neutral-100 disabled:opacity-50 transition-opacity"
                     >
                         <Plus className="w-3 h-3" />
                         {draft.artwork.length === 0 ? 'Add artwork' : 'Add part'}
@@ -569,8 +613,9 @@ function RowEditor({
 
                 {error && <p className="text-xs text-red-700">{error}</p>}
             </div>
+            </Cell>
 
-            <div className="flex items-center justify-end gap-1 pt-0.5">
+            <div className="col-span-2 sm:col-auto flex items-center justify-end gap-1 pt-0.5">
                 {saved && !dirty && (
                     <span title="Saved" className="text-green-600">
                         <Check className="w-4 h-4" />
