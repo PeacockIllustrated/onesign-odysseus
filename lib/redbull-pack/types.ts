@@ -120,7 +120,12 @@ export type SetPublishedInput = z.infer<typeof SetPublishedSchema>;
 
 /** Rows whose artwork is still waiting on the client. */
 export function isOutstanding(row: PackRow): boolean {
-    return row.artwork.some((p) => p.state === 'pending');
+    return hasState(row, 'pending');
+}
+
+/** Rows carrying a part in the given state. */
+export function hasState(row: PackRow, state: string): boolean {
+    return row.artwork.some((p) => p.state === state);
 }
 
 /** How the site will render this value: "Sponsor / To confirm". */
@@ -129,16 +134,22 @@ export function formatArtwork(parts: ArtworkPart[]): string {
     return parts.map((p) => p.label).join(' / ');
 }
 
-export function countRows(pack: JobPack): { total: number; outstanding: number } {
+export function countRows(pack: JobPack): {
+    total: number;
+    outstanding: number;
+    unquoted: number;
+} {
     let total = 0;
     let outstanding = 0;
+    let unquoted = 0;
     for (const sheet of pack.sheets) {
         for (const panel of sheet.panels) {
             for (const row of panel.rows) {
                 total++;
                 if (isOutstanding(row)) outstanding++;
+                if (hasState(row, 'unquoted')) unquoted++;
             }
         }
     }
-    return { total, outstanding };
+    return { total, outstanding, unquoted };
 }

@@ -11,6 +11,7 @@ import {
 import {
     countRows,
     formatArtwork,
+    hasState,
     isOutstanding,
     type ArtworkPart,
     type JobPack,
@@ -25,7 +26,7 @@ interface Props {
     states: PackState[];
 }
 
-type Filter = 'all' | 'outstanding';
+type Filter = 'all' | 'outstanding' | 'unquoted';
 
 const SITE_URL = 'https://redbull.onesignanddigital.com';
 
@@ -44,8 +45,26 @@ const GRID_BASE = 'grid gap-x-3 items-start';
  */
 const COLS_WITH_NAME = 'grid-cols-[72px_minmax(0,0.8fr)_132px_minmax(0,2.2fr)_70px]';
 const COLS_NO_NAME = 'grid-cols-[72px_132px_minmax(0,1fr)_70px]';
-const gridFor = (showName: boolean) =>
-    `${GRID_BASE} ${showName ? COLS_WITH_NAME : COLS_NO_NAME}`;
+
+/**
+ * On the Job Schedule sheet the "ref" is the item name — "Signage Behind
+ * Coaches Platform", not "G1" — so a 72px column truncates it. The width is
+ * taken from the data rather than from the sheet, because Executive Box
+ * Branding is on that same sheet and does use short refs.
+ */
+const COLS_LONG_REF = 'grid-cols-[minmax(0,1.15fr)_132px_minmax(0,1.35fr)_70px]';
+const COLS_LONG_REF_WITH_NAME =
+    'grid-cols-[minmax(0,0.9fr)_minmax(0,0.8fr)_132px_minmax(0,1.4fr)_70px]';
+
+interface PanelShape {
+    showName: boolean;
+    longRefs: boolean;
+}
+
+const gridFor = ({ showName, longRefs }: PanelShape) => {
+    if (longRefs) return `${GRID_BASE} ${showName ? COLS_LONG_REF_WITH_NAME : COLS_LONG_REF}`;
+    return `${GRID_BASE} ${showName ? COLS_WITH_NAME : COLS_NO_NAME}`;
+};
 
 /**
  * Fields read as text until you touch them. Fifteen rows of four permanently
@@ -67,9 +86,12 @@ const STATE_SWATCH: Record<string, string> = {
     unquoted: 'bg-blue-400',
 };
 
-/** Does any row on this panel carry a name? */
-function panelUsesNames(panel: PackPanel): boolean {
-    return panel.rows.some((r) => (r.name ?? '').trim().length > 0);
+/** How wide the ref and name columns need to be for this panel. */
+function panelShape(panel: PackPanel): PanelShape {
+    return {
+        showName: panel.rows.some((r) => (r.name ?? '').trim().length > 0),
+        longRefs: panel.rows.some((r) => r.code.trim().length > 8),
+    };
 }
 
 interface Draft {
@@ -185,6 +207,7 @@ export function RedbullPackClient({ pack, states }: Props) {
 
     const matches = (row: PackRow, panel: PackPanel, sheet: PackSheet): boolean => {
         if (filter === 'outstanding' && !isOutstanding(row)) return false;
+        if (filter === 'unquoted' && !hasState(row, 'unquoted')) return false;
         const q = query.trim().toLowerCase();
         if (!q) return true;
         return (
@@ -283,10 +306,11 @@ export function RedbullPackClient({ pack, states }: Props) {
                 <div className="inline-flex rounded border border-neutral-200 bg-white overflow-hidden text-xs">
                     {(
                         [
-                            ['all', `All ${counts.total}`],
-                            ['outstanding', `Outstanding ${counts.outstanding}`],
-                        ] as [Filter, string][]
-                    ).map(([value, label]) => (
+                            ['all', 'All', counts.total],
+                            ['outstanding', 'Outstanding', counts.outstanding],
+                            ['unquoted', 'Unquoted', counts.unquoted],
+                        ] as [Filter, string, number][]
+                    ).map(([value, label, count]) => (
                         <button
                             key={value}
                             type="button"
@@ -297,7 +321,14 @@ export function RedbullPackClient({ pack, states }: Props) {
                                     : 'text-neutral-600 hover:bg-neutral-50'
                             }`}
                         >
-                            {label}
+                            {label}{' '}
+                            <span
+                                className={
+                                    filter === value ? 'text-white/60' : 'text-neutral-400'
+                                }
+                            >
+                                {count}
+                            </span>
                         </button>
                     ))}
                 </div>
@@ -350,10 +381,10 @@ export function RedbullPackClient({ pack, states }: Props) {
                                     <div className="overflow-x-auto">
                                         <div className="min-w-[720px]">
                                             <div
-                                                className={`${gridFor(panelUsesNames(panel))} px-2 pb-1.5 mb-1 border-b border-neutral-200 text-[10px] font-semibold uppercase tracking-wider text-neutral-400`}
+                                                className={`${gridFor(panelShape(panel))} px-2 pb-1.5 mb-1 border-b border-neutral-200 text-[10px] font-semibold uppercase tracking-wider text-neutral-400`}
                                             >
-                                                <div>Ref</div>
-                                                {panelUsesNames(panel) && <div>Name</div>}
+                                                <div>{panelShape(panel).longRefs ? 'Item' : 'Ref'}</div>
+                                                {panelShape(panel).showName && <div>Name</div>}
                                                 <div>Size</div>
                                                 <div>Artwork</div>
                                                 <div />
@@ -369,7 +400,7 @@ export function RedbullPackClient({ pack, states }: Props) {
                                                     error={rowError[row.id]}
                                                     states={states}
                                                     defaultState={defaultState}
-                                                    showName={panelUsesNames(panel)}
+                                                    shape={panelShape(panel)}
                                                     disabled={isPending}
                                                     onChange={(next) => setDraft(row, next)}
                                                     onSave={() => save(row)}
@@ -406,7 +437,7 @@ interface RowEditorProps {
     error?: string;
     states: PackState[];
     defaultState: string;
-    showName: boolean;
+    shape: PanelShape;
     disabled: boolean;
     onChange: (next: Partial<Draft>) => void;
     onSave: () => void;
@@ -421,7 +452,7 @@ function RowEditor({
     error,
     states,
     defaultState,
-    showName,
+    shape,
     disabled,
     onChange,
     onSave,
@@ -441,7 +472,7 @@ function RowEditor({
 
     return (
         <div
-            className={`group ${gridFor(showName)} px-2 py-1.5 rounded border-l-2 transition-colors ${
+            className={`group ${gridFor(shape)} px-2 py-1.5 rounded border-l-2 transition-colors ${
                 dirty
                     ? 'border-l-[#4e7e8c] bg-[#e8f0f3]/50'
                     : 'border-l-transparent hover:bg-neutral-50/70'
@@ -455,7 +486,7 @@ function RowEditor({
                 className={`${FIELD} w-full font-semibold`}
             />
 
-            {showName && (
+            {shape.showName && (
                 <input
                     value={draft.name}
                     onChange={(e) => onChange({ name: e.target.value })}

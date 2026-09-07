@@ -18,7 +18,7 @@ vi.mock('@/lib/auth', () => ({
 
 import { updateRow, setPackPublished } from './actions';
 import { getUser } from '@/lib/auth';
-import { isOutstanding, formatArtwork, countRows, type JobPack } from './types';
+import { isOutstanding, formatArtwork, hasState, countRows, type JobPack } from './types';
 
 const ROW = {
     id: 'r-1',
@@ -161,13 +161,50 @@ describe('pack helpers', () => {
                 {
                     panels: [
                         { rows: [ROW, { ...ROW, artwork: [{ label: 'x', state: 'pending' }] }] },
-                        { rows: [{ ...ROW, artwork: [] }] },
+                        {
+                            rows: [
+                                { ...ROW, artwork: [] },
+                                { ...ROW, artwork: [{ label: 'Unquoted', state: 'unquoted' }] },
+                            ],
+                        },
                     ],
                 },
                 { panels: [] },
             ],
         } as unknown as JobPack;
 
-        expect(countRows(pack)).toEqual({ total: 3, outstanding: 1 });
+        expect(countRows(pack)).toEqual({ total: 4, outstanding: 1, unquoted: 1 });
+    });
+
+    it('counts a row once however many parts share a state', () => {
+        const pack = {
+            sheets: [
+                {
+                    panels: [
+                        {
+                            rows: [
+                                {
+                                    ...ROW,
+                                    artwork: [
+                                        { label: 'a', state: 'unquoted' },
+                                        { label: 'b', state: 'unquoted' },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        } as unknown as JobPack;
+
+        expect(countRows(pack)).toEqual({ total: 1, outstanding: 0, unquoted: 1 });
+    });
+
+    it('hasState picks out the state the filter tabs run on', () => {
+        expect(hasState(ROW, 'spec')).toBe(true);
+        expect(hasState(ROW, 'unquoted')).toBe(false);
+        expect(
+            hasState({ ...ROW, artwork: [{ label: 'Unquoted', state: 'unquoted' }] }, 'unquoted')
+        ).toBe(true);
     });
 });
