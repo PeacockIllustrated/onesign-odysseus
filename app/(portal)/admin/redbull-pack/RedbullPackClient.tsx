@@ -28,7 +28,7 @@ interface Props {
 
 type Filter = 'all' | 'outstanding' | 'unquoted';
 
-const SITE_URL = 'https://redbull.onesignanddigital.com';
+const SITE_URL = 'https://redbull.onesignanddigital.co.uk';
 
 /**
  * One column template, used by the header and every row, so the four columns

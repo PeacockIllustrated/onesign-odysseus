@@ -3,7 +3,7 @@ import { z } from 'zod';
 /**
  * The Newcastle Red Bulls job pack (redbull_* tables).
  *
- * The pack is served to redbull.onesignanddigital.com by the `redbull-job-pack`
+ * The pack is served to redbull.onesignanddigital.co.uk by the `redbull-job-pack`
  * edge function, which calls `redbull_job_pack(slug)`. This editor writes the
  * rows that function reads, so a change here is live on the client-facing site
  * within the endpoint's 30-second cache.
