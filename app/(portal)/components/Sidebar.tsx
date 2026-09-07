@@ -30,6 +30,7 @@ import {
     CalendarDays,
     ChevronDown,
     QrCode,
+    BookOpenText,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
@@ -80,6 +81,7 @@ const adminNavGroups: NavGroup[] = [
             { label: 'Schedule', href: '/admin/schedule', icon: CalendarDays },
             { label: 'Maintenance', href: '/admin/maintenance', icon: Wrench },
             { label: 'QR Links', href: '/admin/qr-links', icon: QrCode },
+            { label: 'Red Bull Pack', href: '/admin/redbull-pack', icon: BookOpenText },
             { label: 'Reports', href: '/admin/reports', icon: FileText },
         ],
     },
