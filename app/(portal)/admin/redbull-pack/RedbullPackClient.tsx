@@ -10,6 +10,7 @@ import {
 } from '@/lib/redbull-pack/actions';
 import {
     countRows,
+    formatArtwork,
     isOutstanding,
     type ArtworkPart,
     type JobPack,
@@ -28,6 +29,35 @@ type Filter = 'all' | 'outstanding';
 
 const SITE_URL = 'https://redbull.onesignanddigital.com';
 
+/**
+ * One column template, used by the header and every row, so the four columns
+ * line up down the whole panel however many artwork parts a row carries.
+ * The artwork parts stack inside their own cell rather than wrapping the row,
+ * which is what made the first version unreadable.
+ */
+const GRID_BASE = 'grid gap-x-3 items-start';
+
+/**
+ * Only Executive Box Branding names its rows ("A  Cyclone"); the other
+ * fifteen panels would carry an empty column down the page, so the Name
+ * column is dropped on panels that do not use it.
+ */
+const COLS_WITH_NAME = 'grid-cols-[72px_minmax(0,0.8fr)_132px_minmax(0,2.2fr)_70px]';
+const COLS_NO_NAME = 'grid-cols-[72px_132px_minmax(0,1fr)_70px]';
+const gridFor = (showName: boolean) =>
+    `${GRID_BASE} ${showName ? COLS_WITH_NAME : COLS_NO_NAME}`;
+
+/**
+ * Fields read as text until you touch them. Fifteen rows of four permanently
+ * outlined inputs is 60 boxes competing for attention; the outline appearing
+ * on hover is affordance enough.
+ */
+const FIELD =
+    'min-w-0 px-2 py-1 rounded bg-transparent border border-transparent text-sm ' +
+    'hover:border-neutral-200 hover:bg-white ' +
+    'focus:outline-none focus:bg-white focus:border-[#4e7e8c] focus:ring-1 focus:ring-[#4e7e8c]/30 ' +
+    'disabled:opacity-60 transition-colors';
+
 /** The colour the client-facing site renders each state in. */
 const STATE_SWATCH: Record<string, string> = {
     spec: 'bg-blue-600',
@@ -36,6 +66,11 @@ const STATE_SWATCH: Record<string, string> = {
     quote: 'bg-blue-600',
     unquoted: 'bg-blue-400',
 };
+
+/** Does any row on this panel carry a name? */
+function panelUsesNames(panel: PackPanel): boolean {
+    return panel.rows.some((r) => (r.name ?? '').trim().length > 0);
+}
 
 interface Draft {
     code: string;
@@ -300,23 +335,36 @@ export function RedbullPackClient({ pack, states }: Props) {
                                         </span>
                                     </div>
 
-                                    <div className="divide-y divide-neutral-100">
-                                        {rows.map((row) => (
-                                            <RowEditor
-                                                key={row.id}
-                                                row={row}
-                                                draft={draftFor(row)}
-                                                dirty={isDirty(row)}
-                                                saved={row.id in savedAt}
-                                                error={rowError[row.id]}
-                                                states={states}
-                                                defaultState={defaultState}
-                                                disabled={isPending}
-                                                onChange={(next) => setDraft(row, next)}
-                                                onSave={() => save(row)}
-                                                onRevert={() => revert(row)}
-                                            />
-                                        ))}
+                                    <div className="overflow-x-auto">
+                                        <div className="min-w-[720px]">
+                                            <div
+                                                className={`${gridFor(panelUsesNames(panel))} px-2 pb-1.5 mb-1 border-b border-neutral-200 text-[10px] font-semibold uppercase tracking-wider text-neutral-400`}
+                                            >
+                                                <div>Ref</div>
+                                                {panelUsesNames(panel) && <div>Name</div>}
+                                                <div>Size</div>
+                                                <div>Artwork</div>
+                                                <div />
+                                            </div>
+
+                                            {rows.map((row) => (
+                                                <RowEditor
+                                                    key={row.id}
+                                                    row={row}
+                                                    draft={draftFor(row)}
+                                                    dirty={isDirty(row)}
+                                                    saved={row.id in savedAt}
+                                                    error={rowError[row.id]}
+                                                    states={states}
+                                                    defaultState={defaultState}
+                                                    showName={panelUsesNames(panel)}
+                                                    disabled={isPending}
+                                                    onChange={(next) => setDraft(row, next)}
+                                                    onSave={() => save(row)}
+                                                    onRevert={() => revert(row)}
+                                                />
+                                            ))}
+                                        </div>
                                     </div>
                                 </Card>
                             ))}
@@ -346,6 +394,7 @@ interface RowEditorProps {
     error?: string;
     states: PackState[];
     defaultState: string;
+    showName: boolean;
     disabled: boolean;
     onChange: (next: Partial<Draft>) => void;
     onSave: () => void;
@@ -360,14 +409,14 @@ function RowEditor({
     error,
     states,
     defaultState,
+    showName,
     disabled,
     onChange,
     onSave,
     onRevert,
 }: RowEditorProps) {
     const setPart = (index: number, next: Partial<ArtworkPart>) => {
-        const artwork = draft.artwork.map((p, i) => (i === index ? { ...p, ...next } : p));
-        onChange({ artwork });
+        onChange({ artwork: draft.artwork.map((p, i) => (i === index ? { ...p, ...next } : p)) });
     };
 
     const addPart = () => {
@@ -378,124 +427,134 @@ function RowEditor({
         onChange({ artwork: draft.artwork.filter((_, i) => i !== index) });
     };
 
-    const field =
-        'px-2 py-1 rounded border border-neutral-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#4e7e8c]/40 disabled:bg-neutral-50';
-
     return (
-        <div className="py-2.5">
-            <div className="flex flex-wrap items-start gap-2">
-                <input
-                    value={draft.code}
-                    onChange={(e) => onChange({ code: e.target.value })}
-                    disabled={disabled}
-                    aria-label="Ref"
-                    className={`${field} w-24 font-semibold`}
-                />
+        <div
+            className={`group ${gridFor(showName)} px-2 py-1.5 rounded border-l-2 transition-colors ${
+                dirty
+                    ? 'border-l-[#4e7e8c] bg-[#e8f0f3]/50'
+                    : 'border-l-transparent hover:bg-neutral-50/70'
+            }`}
+        >
+            <input
+                value={draft.code}
+                onChange={(e) => onChange({ code: e.target.value })}
+                disabled={disabled}
+                aria-label="Ref"
+                className={`${FIELD} w-full font-semibold`}
+            />
+
+            {showName && (
                 <input
                     value={draft.name}
                     onChange={(e) => onChange({ name: e.target.value })}
                     disabled={disabled}
                     aria-label="Name"
-                    placeholder="—"
-                    className={`${field} w-40`}
+                    className={`${FIELD} w-full`}
                 />
-                <input
-                    value={draft.size}
-                    onChange={(e) => onChange({ size: e.target.value })}
-                    disabled={disabled}
-                    aria-label="Size"
-                    placeholder="e.g. 14100 × 850"
-                    className={`${field} w-44`}
-                />
+            )}
 
-                {/* Artwork — the field the pack is edited through */}
-                <div className="flex flex-wrap items-center gap-1.5">
-                    {draft.artwork.map((part, i) => (
-                        <span key={i} className="inline-flex items-center gap-1">
-                            {i > 0 && <span className="text-neutral-300 px-0.5">/</span>}
-                            <span
-                                aria-hidden="true"
-                                className={`w-2 h-2 rounded-full ${
-                                    STATE_SWATCH[part.state] ?? 'bg-neutral-300'
-                                }`}
-                            />
-                            <input
-                                value={part.label}
-                                onChange={(e) => setPart(i, { label: e.target.value })}
-                                disabled={disabled}
-                                aria-label={`Artwork ${i + 1} label`}
-                                placeholder="Label"
-                                className={`${field} w-40`}
-                            />
-                            <select
-                                value={part.state}
-                                onChange={(e) => setPart(i, { state: e.target.value })}
-                                disabled={disabled}
-                                aria-label={`Artwork ${i + 1} state`}
-                                className={`${field} w-32`}
-                            >
-                                {states.map((s) => (
-                                    <option key={s.key} value={s.key}>
-                                        {s.label}
-                                    </option>
-                                ))}
-                            </select>
-                            <button
-                                type="button"
-                                onClick={() => removePart(i)}
-                                disabled={disabled}
-                                aria-label={`Remove artwork part ${i + 1}`}
-                                className="p-1 text-neutral-400 hover:text-red-600 disabled:opacity-50"
-                            >
-                                <X className="w-3.5 h-3.5" />
-                            </button>
-                        </span>
-                    ))}
+            <input
+                value={draft.size}
+                onChange={(e) => onChange({ size: e.target.value })}
+                disabled={disabled}
+                aria-label="Size"
+                className={`${FIELD} w-full tabular-nums`}
+            />
 
-                    {draft.artwork.length < 4 && (
+            {/* The field the pack is edited through. Parts stack, so a two-part
+                value never pushes the row out of alignment. */}
+            <div className="space-y-1">
+                {draft.artwork.map((part, i) => (
+                    <div key={i} className="flex items-center gap-1.5">
+                        <span
+                            aria-hidden="true"
+                            title={part.state}
+                            className={`shrink-0 w-1.5 h-5 rounded-sm ${
+                                STATE_SWATCH[part.state] ?? 'bg-neutral-300'
+                            }`}
+                        />
+                        <input
+                            value={part.label}
+                            onChange={(e) => setPart(i, { label: e.target.value })}
+                            disabled={disabled}
+                            aria-label={`Artwork ${i + 1} label`}
+                            placeholder="Label"
+                            className={`${FIELD} flex-1`}
+                        />
+                        <select
+                            value={part.state}
+                            onChange={(e) => setPart(i, { state: e.target.value })}
+                            disabled={disabled}
+                            aria-label={`Artwork ${i + 1} state`}
+                            className={`${FIELD} w-32 shrink-0 text-xs text-neutral-600`}
+                        >
+                            {states.map((st) => (
+                                <option key={st.key} value={st.key}>
+                                    {st.label}
+                                </option>
+                            ))}
+                        </select>
                         <button
                             type="button"
-                            onClick={addPart}
+                            onClick={() => removePart(i)}
                             disabled={disabled}
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded border border-dashed border-neutral-300 text-xs text-neutral-500 hover:border-neutral-400 hover:text-neutral-700 disabled:opacity-50"
+                            aria-label={`Remove artwork part ${i + 1}`}
+                            className="shrink-0 p-1 text-neutral-300 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-red-600 disabled:opacity-50 transition-opacity"
                         >
-                            <Plus className="w-3 h-3" />
-                            {draft.artwork.length === 0 ? 'Artwork' : 'Part'}
+                            <X className="w-3.5 h-3.5" />
                         </button>
-                    )}
-                </div>
+                    </div>
+                ))}
 
-                <div className="ml-auto flex items-center gap-1.5">
-                    {saved && !dirty && (
-                        <span className="text-xs text-green-700 inline-flex items-center gap-1">
-                            <Check className="w-3.5 h-3.5" /> Saved
-                        </span>
-                    )}
-                    {dirty && (
-                        <>
-                            <button
-                                type="button"
-                                onClick={onRevert}
-                                disabled={disabled}
-                                className="p-1.5 text-neutral-400 hover:text-neutral-700 disabled:opacity-50"
-                                aria-label={`Discard changes to ${row.code}`}
-                            >
-                                <RotateCcw className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                                type="button"
-                                onClick={onSave}
-                                disabled={disabled}
-                                className="px-3 py-1.5 rounded bg-[#4e7e8c] text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#3a5f6a] disabled:opacity-50"
-                            >
-                                Save
-                            </button>
-                        </>
-                    )}
-                </div>
+                {draft.artwork.length > 1 && (
+                    <p className="pl-3 text-[11px] text-neutral-400">
+                        Reads as <span className="text-neutral-600">{formatArtwork(draft.artwork)}</span>
+                    </p>
+                )}
+
+                {draft.artwork.length < 4 && (
+                    <button
+                        type="button"
+                        onClick={addPart}
+                        disabled={disabled}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] text-neutral-400 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-neutral-700 hover:bg-neutral-100 disabled:opacity-50 transition-opacity"
+                    >
+                        <Plus className="w-3 h-3" />
+                        {draft.artwork.length === 0 ? 'Add artwork' : 'Add part'}
+                    </button>
+                )}
+
+                {error && <p className="text-xs text-red-700">{error}</p>}
             </div>
 
-            {error && <p className="mt-1.5 text-xs text-red-700">{error}</p>}
+            <div className="flex items-center justify-end gap-1 pt-0.5">
+                {saved && !dirty && (
+                    <span title="Saved" className="text-green-600">
+                        <Check className="w-4 h-4" />
+                    </span>
+                )}
+                {dirty && (
+                    <>
+                        <button
+                            type="button"
+                            onClick={onRevert}
+                            disabled={disabled}
+                            className="p-1 text-neutral-400 hover:text-neutral-700 disabled:opacity-50"
+                            aria-label={`Discard changes to ${row.code}`}
+                        >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onSave}
+                            disabled={disabled}
+                            className="px-2.5 py-1 rounded bg-[#4e7e8c] text-white text-[11px] font-semibold uppercase tracking-wider hover:bg-[#3a5f6a] disabled:opacity-50"
+                        >
+                            Save
+                        </button>
+                    </>
+                )}
+            </div>
         </div>
     );
 }
