@@ -19,10 +19,20 @@ import { z } from 'zod';
  */
 export const DEFAULT_PACK_SLUG = 'nrb';
 
-/** One part of a row's artwork value, e.g. "Sponsor" or "To confirm". */
+/**
+ * One part of a row's artwork value, e.g. "Sponsor" or "To confirm".
+ *
+ * `image` is a path in the `redbull-artwork` bucket; `span` is [from, to] as
+ * fractions along the board, for the long runs where an artwork covers part of
+ * the board and the rest stays navy. Both are set from the client-facing site
+ * and the seed tool, not from here — but they must survive an edit made here,
+ * which is why they are on the schema at all. Zod strips what it does not know.
+ */
 export interface ArtworkPart {
     label: string;
     state: string;
+    image?: string;
+    span?: [number, number];
 }
 
 export interface PackRow {
@@ -96,6 +106,12 @@ export interface PackState {
 export const ArtworkPartSchema = z.object({
     label: z.string().trim().min(1, 'artwork label cannot be empty').max(120),
     state: z.string().trim().min(1, 'artwork state is required').max(40),
+    // Carried through, not editable here. Without these two the parse silently
+    // drops them and saving a row from this screen wipes its artwork file.
+    image: z.string().trim().max(300).optional(),
+    span: z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)])
+        .refine(([from, to]) => from < to, 'span must run forwards')
+        .optional(),
 });
 
 export const UpdateRowSchema = z.object({
@@ -103,8 +119,8 @@ export const UpdateRowSchema = z.object({
     name: z.string().trim().max(120).nullable().optional(),
     size: z.string().trim().max(200).nullable().optional(),
     // The printed sheet renders one or two parts ("Sponsor / To confirm").
-    // Four is headroom, not an invitation.
-    artwork: z.array(ArtworkPartSchema).max(4, 'at most four artwork parts').optional(),
+    // Six matches what the database allows, so the two cannot disagree.
+    artwork: z.array(ArtworkPartSchema).max(6, 'at most six artwork parts').optional(),
 });
 export type UpdateRowInput = z.infer<typeof UpdateRowSchema>;
 

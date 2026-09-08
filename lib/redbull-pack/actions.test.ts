@@ -72,6 +72,45 @@ describe('updateRow', () => {
         });
     });
 
+    it('keeps the artwork image and span it does not edit', async () => {
+        // These are set from the client-facing site and the seed tool. Zod
+        // strips what it does not declare, so without them on the schema a save
+        // from this screen quietly wiped the board's artwork file.
+        const res = await updateRow('r-1', {
+            artwork: [
+                { label: 'SOCIALS', state: 'spec', image: 'nrb/west-side/C/0.jpg' },
+                {
+                    label: 'GAP GROUP',
+                    state: 'pending',
+                    image: 'nrb/west-side/C/1.jpg',
+                    span: [0.5, 1],
+                },
+            ],
+        });
+
+        expect(res.ok).toBe(true);
+        expect(mockBag.current.calls.update[0]).toMatchObject({
+            artwork: [
+                { label: 'SOCIALS', state: 'spec', image: 'nrb/west-side/C/0.jpg' },
+                {
+                    label: 'GAP GROUP',
+                    state: 'pending',
+                    image: 'nrb/west-side/C/1.jpg',
+                    span: [0.5, 1],
+                },
+            ],
+        });
+    });
+
+    it('rejects a span that runs backwards', async () => {
+        const res = await updateRow('r-1', {
+            artwork: [{ label: 'X', state: 'spec', span: [0.8, 0.2] }],
+        });
+        expect(res.ok).toBe(false);
+        if (!res.ok) expect(res.error).toContain('forwards');
+        expect(mockBag.current.calls.update).toHaveLength(0);
+    });
+
     it('rejects a state that is not in redbull_states', async () => {
         const res = await updateRow('r-1', {
             artwork: [{ label: 'Sponsor', state: 'invented' }],
@@ -91,13 +130,13 @@ describe('updateRow', () => {
 
     it('caps the number of artwork parts', async () => {
         const res = await updateRow('r-1', {
-            artwork: Array.from({ length: 5 }, (_, i) => ({
+            artwork: Array.from({ length: 7 }, (_, i) => ({
                 label: `p${i}`,
                 state: 'spec',
             })),
         });
         expect(res.ok).toBe(false);
-        if (!res.ok) expect(res.error).toContain('at most four');
+        if (!res.ok) expect(res.error).toContain('at most six');
     });
 
     it('turns a blank name or size into null rather than an empty string', async () => {
