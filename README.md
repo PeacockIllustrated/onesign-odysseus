@@ -28,6 +28,7 @@ npm run dev                    # http://localhost:3000
 | `npm test` | Run the Vitest suite once |
 | `npm run test:watch` | Vitest in watch mode |
 | `npm run lint` | ESLint |
+| `npm run staff:admins` | Create/repair the Onesign staff super-admin accounts (needs `SUPABASE_SERVICE_ROLE_KEY`; `-- --dry-run` to preview) |
 
 Type-check with `npx tsc --noEmit` — it must be clean before pushing.
 
