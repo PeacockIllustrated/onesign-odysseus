@@ -5,34 +5,53 @@
  * nobody is standing at it to scroll. So the rules that keep it usable live
  * here, DOM-free and testable, rather than tangled into the component:
  *
- *   - which view a left/right press lands on,
+ *   - what each button on the remote does,
+ *   - which week a view change lands on, and vice versa,
  *   - how far the board is scaled to fit the panel it is shown on.
  *
  * The board component owns measurement (only the DOM knows how tall the grid
  * actually is); everything it decides *from* that measurement is here.
  */
 
+import { addDaysISO, mondayOfISO } from './utils';
+
 export type TvView = 'week' | 'month' | 'year';
 
-/** Left/right cycles the zoom level; up/down steps the period within it. */
-export type TvAction = 'view-prev' | 'view-next' | 'period-prev' | 'period-next' | 'today';
-
-/** Ordered so left/right walks week → month → year and wraps. */
-export const TV_VIEWS: TvView[] = ['week', 'month', 'year'];
+/**
+ * What a press on the remote does.
+ *
+ * Left/right step the period, because scanning forward a week at a time is
+ * what the wall is actually used for — a fitter wants to know what is on next
+ * Tuesday, and that should be one press in the obvious direction. Down swaps
+ * between the two useful zoom levels, and up switches the spare van's column.
+ */
+export type TvAction =
+    | 'period-prev'
+    | 'period-next'
+    | 'view-cycle'
+    | 'toggle-van'
+    | 'today';
 
 /**
- * Step between views, wrapping at both ends.
+ * The views the remote cycles between.
  *
- * Wrapping matters on a remote: there is no "jump to year" button, so a user
- * holding one direction must be able to reach every view without knowing which
- * way is shorter.
+ * Week and month only: a week already shows each day in full, so there is
+ * nothing a day view would add, and a year of heat squares answers a planning
+ * question nobody is asking from the workshop floor. `year` is still a valid
+ * `?view=` — the office "TV view" button carries whatever is on screen — it
+ * is simply not somewhere the D-pad can strand you.
  */
-export function cycleView(current: TvView, dir: -1 | 1): TvView {
-    const i = TV_VIEWS.indexOf(current);
-    // An unrecognised view (a hand-typed ?view=) restarts at week rather than
-    // returning something off the end of the list.
-    if (i === -1) return 'week';
-    return TV_VIEWS[(i + dir + TV_VIEWS.length) % TV_VIEWS.length];
+export const TV_CYCLE_VIEWS: TvView[] = ['week', 'month'];
+
+/**
+ * The view a down-press lands on.
+ *
+ * Week and month alternate. Arriving from `year` (only reachable via the URL)
+ * drops back to the week, which is both the useful end of the range and the
+ * way out of a view the remote can't otherwise leave.
+ */
+export function nextTvView(current: TvView): TvView {
+    return current === 'week' ? 'month' : 'week';
 }
 
 /**
@@ -46,21 +65,51 @@ export function cycleView(current: TvView, dir: -1 | 1): TvView {
 export function keyToTvAction(key: string): TvAction | null {
     switch (key) {
         case 'ArrowLeft':
-            return 'view-prev';
+            return 'period-prev';
         case 'ArrowRight':
-            return 'view-next';
-        case 'ArrowUp':
+            return 'period-next';
+        // Channel +/- keep stepping the period, so the two most obvious pairs
+        // on the remote do the same, most-wanted thing.
         case 'PageUp':
             return 'period-prev';
-        case 'ArrowDown':
         case 'PageDown':
             return 'period-next';
+        case 'ArrowDown':
+            return 'view-cycle';
+        case 'ArrowUp':
+            return 'toggle-van';
         case 'Home':
         case 'Enter':
             return 'today';
         default:
             return null;
     }
+}
+
+/**
+ * The month a week belongs to — the one holding its Thursday.
+ *
+ * A week straddling the turn of a month belongs to whichever month has most of
+ * it, which is the ISO rule and also the intuitive one: pressing down on the
+ * week of 29 June should not open July.
+ */
+export function monthOfWeek(monday: string): { y: number; m: number } {
+    const thursday = addDaysISO(monday, 3);
+    return { y: Number(thursday.slice(0, 4)), m: Number(thursday.slice(5, 7)) - 1 };
+}
+
+/**
+ * The month's first week — where a month view hands back to a week.
+ *
+ * Anchored on the 4th, not the 1st: the week containing the 4th always has its
+ * Thursday inside the month, so it is the first week `monthOfWeek` agrees
+ * belongs here. Anchoring on the 1st breaks when the month opens on a Friday
+ * — the week of 1 August 2026 is mostly July, so pressing down then up would
+ * bounce the board into the previous month.
+ */
+export function weekOfMonthStart(y: number, m: number): string {
+    const mm = String(m + 1).padStart(2, '0');
+    return mondayOfISO(`${y}-${mm}-04`);
 }
 
 /**

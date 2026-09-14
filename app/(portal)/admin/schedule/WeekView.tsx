@@ -85,7 +85,13 @@ export function WeekView({
             style={{
                 // The day column carries the date, a crew-change tag and the
                 // crew button, so it needs more room than a date alone.
-                gridTemplateColumns: `${tv ? '11rem' : '9.5rem'} repeat(${vans.length}, 1fr)${
+                //
+                // On the TV it is sized in `em` so it tracks the board's
+                // density knob instead of ignoring it, and narrower: the crew
+                // button is hidden out there, so the column only has to hold a
+                // day name — and every millimetre it gives back goes to the
+                // van columns, which is where the jobs are.
+                gridTemplateColumns: `${tv ? '9.5em' : '9.5rem'} repeat(${vans.length}, 1fr)${
                     showDeliveries ? ' 13rem' : ''
                 }`,
             }}

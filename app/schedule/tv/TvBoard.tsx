@@ -1,10 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
+import {
+    AlertTriangle,
+    ChevronDown,
+    ChevronLeft,
+    ChevronRight,
+    ChevronUp,
+} from 'lucide-react';
 import type { PlanningDelivery } from '@/lib/planning/utils';
 import { useRealtimeStatus } from '@/lib/realtime/useRealtimeStatus';
+import { setAdditionalVanActive } from '@/lib/schedule/actions';
 import type {
     FittingJobView,
     ProjectManager,
@@ -12,13 +19,21 @@ import type {
 } from '@/lib/schedule/types';
 import {
     MONTH_NAMES,
+    activePms,
     addDaysISO,
     formatLong,
     holdingJobs,
     mondayOfISO,
     toISO,
 } from '@/lib/schedule/utils';
-import { TV_VIEWS, cycleView, fitScale, keyToTvAction, type TvView } from '@/lib/schedule/tv';
+import {
+    fitScale,
+    keyToTvAction,
+    monthOfWeek,
+    nextTvView,
+    weekOfMonthStart,
+    type TvView,
+} from '@/lib/schedule/tv';
 import { WeekView } from '@/app/(portal)/admin/schedule/WeekView';
 import { MonthView } from '@/app/(portal)/admin/schedule/MonthView';
 import { YearView } from '@/app/(portal)/admin/schedule/YearView';
@@ -42,14 +57,19 @@ import './tv.css';
  * CLAUDE.md §2d. What changed is the chrome around them, which was never the
  * part that had to agree.
  *
- * Three behaviours make it work unattended:
+ * Four behaviours make it work unattended:
  *
- *  - **Remote control.** Left/right steps week → month → year; up/down steps
- *    the period. There is nothing to click.
+ *  - **Remote control.** Left/right step the week — scanning ahead is what the
+ *    wall is for. Down swaps week and month; up switches the spare van's
+ *    column on and off. Every one of those four arrows is labelled in the
+ *    header, on the same line as the logo, so the key costs no height.
  *  - **One page, never scrolled, nothing hidden.** The grid is measured and
  *    scaled to the viewport, however far down that goes. Everything on the
  *    board is on the board at all times — no rotation, no collapsing, nothing
  *    you have to wait for.
+ *  - **It comes home on its own.** Someone who scans four weeks ahead and
+ *    walks away would otherwise leave the wall showing a week that is not
+ *    this one, which is worse than showing nothing.
  *  - **Never silently stale.** Realtime pushes redraw it, a slow interval
  *    catches anything the socket missed, and a dropped connection says so.
  */
@@ -69,6 +89,16 @@ interface Props {
  * blip — so the wall can never be more than a minute behind the office.
  */
 const POLL_MS = 60_000;
+
+/**
+ * How long a board sits on a week somebody scrolled to before returning to
+ * this one. Long enough to read a month ahead and talk about it, short enough
+ * that the wall is showing today by the time the next person looks up.
+ */
+const IDLE_HOME_MS = 5 * 60_000;
+
+/** How long a note about a remote press stays on screen. */
+const NOTE_MS = 6_000;
 
 export function TvBoard({ data, deliveries, view, monday, month, year }: Props) {
     const router = useRouter();
@@ -109,36 +139,137 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
         };
     }, [refresh]);
 
-    // --- remote control ----------------------------------------------------
+    // --- navigation --------------------------------------------------------
 
+    /**
+     * Week and month always point at the same place.
+     *
+     * Both live in the URL because the server has to know which dates to load,
+     * and they are kept in step on every move: stepping a week updates the
+     * month it falls in, stepping a month moves to that month's first week. So
+     * down-then-up returns you to where you were instead of snapping back to
+     * whatever month the board happened to open on.
+     */
     const go = useCallback(
         (next: { view?: TvView; week?: string; y?: number; m?: number }) => {
             const params = new URLSearchParams({
                 view: next.view ?? view,
                 week: next.week ?? monday,
-                year: String(next.y ?? (next.view === 'month' ? month.y : year)),
+                year: String(next.y ?? year),
                 month: String(next.m ?? month.m),
             });
             router.push(`/schedule/tv?${params.toString()}`);
         },
-        [router, view, monday, month.m, month.y, year]
+        [router, view, monday, month.m, year]
     );
 
     const stepPeriod = useCallback(
         (dir: -1 | 1) => {
             if (view === 'week') {
-                go({ week: addDaysISO(monday, dir * 7) });
+                const week = addDaysISO(monday, dir * 7);
+                const { y, m } = monthOfWeek(week);
+                go({ week, y, m });
             } else if (view === 'month') {
-                const nm = month.m + dir;
-                if (nm < 0) go({ y: month.y - 1, m: 11 });
-                else if (nm > 11) go({ y: month.y + 1, m: 0 });
-                else go({ y: month.y, m: nm });
+                const raw = month.m + dir;
+                const y = month.y + (raw < 0 ? -1 : raw > 11 ? 1 : 0);
+                const m = (raw + 12) % 12;
+                go({ y, m, week: weekOfMonthStart(y, m) });
             } else {
                 go({ y: year + dir });
             }
         },
         [go, view, monday, month.m, month.y, year]
     );
+
+    const cycleView = useCallback(() => {
+        const next = nextTvView(view);
+        if (next === 'month') {
+            const { y, m } = monthOfWeek(monday);
+            go({ view: 'month', y, m });
+            return;
+        }
+        // Coming back to the week: keep the week we were on if it belongs to
+        // the month on screen, otherwise open that month's first week. The two
+        // only disagree when the URL was set by hand or by the office board.
+        const cur = monthOfWeek(monday);
+        const inside = cur.y === month.y && cur.m === month.m;
+        go({ view: 'week', week: inside ? monday : weekOfMonthStart(month.y, month.m) });
+    }, [go, view, monday, month.y, month.m]);
+
+    const today = toISO(new Date());
+    const thisMonday = mondayOfISO(today);
+
+    const goHome = useCallback(() => {
+        const now = new Date();
+        go({
+            view: 'week',
+            week: mondayOfISO(toISO(now)),
+            y: now.getFullYear(),
+            m: now.getMonth(),
+        });
+    }, [go]);
+
+    // --- the spare van's column --------------------------------------------
+
+    const extraVan = data.additionalVan;
+
+    // One transient line for anything a press has to say back. The board is
+    // otherwise silent, so this is the only place a refused or consequential
+    // press is visible at all.
+    const [note, setNote] = useState<string | null>(null);
+    useEffect(() => {
+        if (!note) return;
+        const id = setTimeout(() => setNote(null), NOTE_MS);
+        return () => clearTimeout(id);
+    }, [note]);
+
+    const [busy, startToggle] = useTransition();
+    const busyRef = useRef(false);
+
+    /**
+     * Switch the spare van on or off from the remote.
+     *
+     * Shared DB state, exactly as the office toolbar's pill does it — a fourth
+     * column only one room could see would be worse than none (CLAUDE.md §2d).
+     * Which is also why turning it off has to say what happened to any work
+     * standing on it, rather than just dropping a column.
+     */
+    const toggleVan = useCallback(() => {
+        if (!extraVan) {
+            setNote('No spare van is set up.');
+            return;
+        }
+        // A held-down remote button repeats; one flight at a time, or the
+        // column flickers on and off.
+        if (busyRef.current) return;
+        busyRef.current = true;
+        const turningOff = extraVan.is_active;
+
+        startToggle(async () => {
+            const res = await setAdditionalVanActive(!extraVan.is_active);
+            busyRef.current = false;
+            if (!res.ok) {
+                setNote(`${extraVan.name} could not be switched: ${res.error}`);
+                return;
+            }
+            if (turningOff && res.data.strandedJobs > 0) {
+                setNote(
+                    `${extraVan.name} hidden — ${res.data.strandedJobs} job${
+                        res.data.strandedJobs === 1 ? '' : 's'
+                    } stayed on it and will reappear when it is switched back on.`
+                );
+            } else {
+                setNote(`${extraVan.name} ${turningOff ? 'hidden' : 'on the board'}.`);
+            }
+            refresh();
+        });
+    }, [extraVan, refresh]);
+
+    // --- remote control ----------------------------------------------------
+
+    // When the board was last driven by hand. 0 means nobody has touched it,
+    // which is how a board the office pointed at a specific week stays there.
+    const lastPressRef = useRef(0);
 
     useEffect(() => {
         function onKey(e: KeyboardEvent) {
@@ -147,22 +278,43 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
             // Stop the browser scrolling the page under us — the whole point
             // is that this board never scrolls.
             e.preventDefault();
-            if (action === 'view-prev') go({ view: cycleView(view, -1) });
-            else if (action === 'view-next') go({ view: cycleView(view, 1) });
-            else if (action === 'period-prev') stepPeriod(-1);
+
+            // Only the presses that MOVE the board arm the idle return. The
+            // van switch is not navigation, and arming on it would eventually
+            // drag a board the office pointed at a particular week back to
+            // this one for no reason.
+            if (action === 'period-prev' || action === 'period-next' || action === 'view-cycle') {
+                lastPressRef.current = Date.now();
+            }
+
+            if (action === 'period-prev') stepPeriod(-1);
             else if (action === 'period-next') stepPeriod(1);
+            else if (action === 'view-cycle') cycleView();
+            else if (action === 'toggle-van') toggleVan();
             else if (action === 'today') {
-                const now = new Date();
-                go({
-                    week: mondayOfISO(toISO(now)),
-                    y: now.getFullYear(),
-                    m: now.getMonth(),
-                });
+                // Back where it belongs by hand: stop counting down.
+                lastPressRef.current = 0;
+                goHome();
             }
         }
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [go, stepPeriod, view]);
+    }, [stepPeriod, cycleView, toggleVan, goHome]);
+
+    // Come back to this week once the board has been left alone. Only when a
+    // person actually moved it: a board opened on a particular week from the
+    // office board's "TV view" button is meant to sit there.
+    const atHome = view === 'week' && monday === thisMonday;
+    useEffect(() => {
+        if (atHome) return;
+        const id = setInterval(() => {
+            if (lastPressRef.current === 0) return;
+            if (Date.now() - lastPressRef.current < IDLE_HOME_MS) return;
+            lastPressRef.current = 0;
+            goHome();
+        }, 30_000);
+        return () => clearInterval(id);
+    }, [atHome, goHome]);
 
     // --- fitting the board to the screen -----------------------------------
 
@@ -216,6 +368,14 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
 
     const toSchedule = useMemo(() => holdingJobs(data.jobs, 'scheduled'), [data.jobs]);
     const toDeliver = useMemo(() => holdingJobs(data.jobs, 'delivery'), [data.jobs]);
+    // Nothing waiting anywhere means the band earns none of the screen, and
+    // the week takes the room instead.
+    const anyHolding = toSchedule.length > 0 || toDeliver.length > 0;
+
+    // The key decodes card colour, so it lists the PMs whose work can appear
+    // on a card today — a name nobody is running any more is one more thing to
+    // read from across a workshop.
+    const keyPms = useMemo(() => activePms(data.pms), [data.pms]);
 
     const period =
         view === 'week'
@@ -232,15 +392,49 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
                     Not syncing — this board may be out of date. Reconnecting…
                 </div>
             )}
+            {note && <div className="tvb-note">{note}</div>}
 
-            {/* Chrome is one line: who owns the colours on the left, where you
-                are on the right. The chevrons are not buttons — they label what
-                left and right on the remote will do. */}
+            {/* Chrome is one line: the logo, what the remote does, who owns the
+                colours, and where you are. The remote key sits up here beside
+                the logo precisely so it costs no height — the week below is
+                what the screen is for. */}
             <header className="tvb-head">
+                {/* The white mark: the TV always runs the dark stage. Plain
+                    <img> like the sidebar's — a static SVG has nothing for the
+                    image optimiser to do. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                    src="/Odysseus-Logo.svg"
+                    alt="Onesign Odysseus"
+                    className="tvb-logo"
+                />
+
+                {/* Every arrow the remote has, named once. These are labels,
+                    not controls — there is no pointer on a wall, so anything
+                    that looked pressable would be a lie. */}
+                <div className="tvb-remote" aria-hidden>
+                    <span className="r">
+                        <ChevronLeft size={14} />
+                        <ChevronRight size={14} />
+                        {view === 'week' ? 'week' : view === 'month' ? 'month' : 'year'}
+                    </span>
+                    <span className="r">
+                        <ChevronDown size={14} />
+                        {nextTvView(view)} view
+                    </span>
+                    {extraVan && (
+                        <span className={`r ${extraVan.is_active ? 'on' : ''} ${busy ? 'busy' : ''}`}>
+                            <ChevronUp size={14} />
+                            {extraVan.name}
+                            <b>{extraVan.is_active ? 'on' : 'off'}</b>
+                        </span>
+                    )}
+                </div>
+
                 {/* Card colour is whose job it is (CLAUDE.md §2d), which is
                     unreadable on a wall without the key that decodes it. */}
                 <div className="tvb-key">
-                    {data.pms.map((p) => (
+                    {keyPms.map((p) => (
                         <span key={p.id} className="k">
                             <span className="sw" style={{ background: p.colour }} />
                             {p.name}
@@ -248,16 +442,8 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
                     ))}
                 </div>
 
-                <div className="tvb-where">
-                    <ChevronLeft className="tvb-arrow" size={20} aria-hidden />
-                    <div className="tvb-views" role="status" aria-live="polite">
-                        {TV_VIEWS.map((v) => (
-                            <span key={v} className={v === view ? 'on' : ''}>
-                                {v}
-                            </span>
-                        ))}
-                    </div>
-                    <ChevronRight className="tvb-arrow" size={20} aria-hidden />
+                <div className="tvb-where" role="status" aria-live="polite">
+                    <span className="tvb-view">{view}</span>
                     <span className="tvb-period">{period}</span>
                 </div>
             </header>
@@ -277,74 +463,89 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
                         width: `${100 / scale}%`,
                     }}
                 >
-                        {view === 'week' && (
-                            <WeekView
-                                monday={monday}
-                                jobs={data.jobs}
-                                vans={data.vans}
-                                fitters={data.fitters}
-                                pms={data.pms}
-                                defaultCrew={data.defaultCrew}
-                                overrides={data.overrides}
-                                showWeekends={false}
-                                readOnly
-                                tv
-                                onOpenJob={noop}
-                                onAddJob={noop}
-                                onEditCrew={noop}
-                                deliveries={deliveries}
-                                showDeliveries={false}
-                                onOpenDayRoute={noop}
-                            />
-                        )}
+                    {view === 'week' && (
+                        <WeekView
+                            monday={monday}
+                            jobs={data.jobs}
+                            vans={data.vans}
+                            fitters={data.fitters}
+                            pms={data.pms}
+                            defaultCrew={data.defaultCrew}
+                            overrides={data.overrides}
+                            showWeekends={false}
+                            readOnly
+                            tv
+                            onOpenJob={noop}
+                            onAddJob={noop}
+                            onEditCrew={noop}
+                            deliveries={deliveries}
+                            showDeliveries={false}
+                            onOpenDayRoute={noop}
+                        />
+                    )}
 
-                        {view === 'month' && (
-                            <MonthView
-                                year={month.y}
-                                month={month.m}
-                                jobs={data.jobs}
-                                vans={data.vans}
-                                pms={data.pms}
-                                showWeekends={false}
-                                readOnly
-                                onOpenJob={noop}
-                                onJumpWeek={noop}
-                            />
-                        )}
+                    {view === 'month' && (
+                        <MonthView
+                            year={month.y}
+                            month={month.m}
+                            jobs={data.jobs}
+                            vans={data.vans}
+                            pms={data.pms}
+                            showWeekends={false}
+                            readOnly
+                            onOpenJob={noop}
+                            onJumpWeek={noop}
+                        />
+                    )}
 
-                        {view === 'year' && (
-                            <YearView
-                                year={year}
-                                jobs={data.jobs}
-                                vans={data.vans}
-                                onJumpWeek={noop}
-                            />
-                        )}
+                    {view === 'year' && (
+                        <YearView
+                            year={year}
+                            jobs={data.jobs}
+                            vans={data.vans}
+                            onJumpWeek={noop}
+                        />
+                    )}
                 </div>
             </div>
 
             {/* What is waiting to be booked in, and what is going out without a
                 fitting team. The office board keeps these in a side rail; on a
                 wall the width is worth more than the height, so they run along
-                the bottom as two shallow bands.
+                the bottom as two shallow bands — and only while there is
+                something in them, because an empty band is height the week
+                could have had.
 
-                Each band is one row at the same card scale as the grid above —
-                a taller band would take the room the week needs. A list longer
-                than the row drifts past instead of being clipped behind a
-                scrollbar nobody on a wall can reach, so everything waiting
-                comes round. */}
-            <footer
-                className="tvb-holding"
-                // The grid is scaled to fit; the band is not, so without this a
-                // packed week ends up with waiting jobs rendered LARGER than the
-                // booked ones above them. Handing the band the same factor keeps
-                // a card the same size wherever it sits. Its height stays fixed,
-                // so this can't feed back into the measurement that produced it.
-                style={{ ['--tvb-cardscale' as string]: scale }}
-            >
-                <TvHoldingBand title="To be scheduled" empty="Nothing waiting" jobs={toSchedule} pms={data.pms} />
-                <TvHoldingBand title="To be delivered" empty="Nothing to deliver" jobs={toDeliver} pms={data.pms} />
-            </footer>
+                Each band is one row at the same card scale as the grid above.
+                A list longer than the row drifts past instead of being clipped
+                behind a scrollbar nobody on a wall can reach, so everything
+                waiting comes round. */}
+            {anyHolding && (
+                <footer
+                    className="tvb-holding"
+                    // The grid is scaled to fit; the band is not, so without this a
+                    // packed week ends up with waiting jobs rendered LARGER than the
+                    // booked ones above them. Handing the band the same factor keeps
+                    // a card the same size wherever it sits. Its height stays fixed,
+                    // so this can't feed back into the measurement that produced it.
+                    style={{ ['--tvb-cardscale' as string]: scale }}
+                >
+                    {toSchedule.length > 0 && (
+                        <TvHoldingBand
+                            title="To be scheduled"
+                            jobs={toSchedule}
+                            pms={data.pms}
+                        />
+                    )}
+                    {toDeliver.length > 0 && (
+                        <TvHoldingBand
+                            title="To be delivered"
+                            jobs={toDeliver}
+                            pms={data.pms}
+                        />
+                    )}
+                </footer>
+            )}
         </div>
     );
 }
@@ -354,15 +555,15 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
  *
  * Cards are the same component and the same scale as the grid's, so a job
  * waiting to be scheduled looks like the job it becomes once it is placed.
+ * Only rendered with something in it, so the two bands split the width when
+ * both lists are busy and one takes it all when the other is clear.
  */
 function TvHoldingBand({
     title,
-    empty,
     jobs,
     pms,
 }: {
     title: string;
-    empty: string;
     jobs: FittingJobView[];
     pms: ProjectManager[];
 }) {
@@ -375,21 +576,17 @@ function TvHoldingBand({
                 <span className="n">{jobs.length}</span>
             </h2>
 
-            {jobs.length === 0 ? (
-                <p className="tvb-bandempty">{empty}</p>
-            ) : (
-                <Marquee>
-                    {jobs.map((job) => (
-                        <JobCard
-                            key={job.id}
-                            job={job}
-                            pm={job.pm_id ? (pmById.get(job.pm_id) ?? null) : null}
-                            readOnly
-                            onOpen={noop}
-                        />
-                    ))}
-                </Marquee>
-            )}
+            <Marquee>
+                {jobs.map((job) => (
+                    <JobCard
+                        key={job.id}
+                        job={job}
+                        pm={job.pm_id ? (pmById.get(job.pm_id) ?? null) : null}
+                        readOnly
+                        onOpen={noop}
+                    />
+                ))}
+            </Marquee>
         </section>
     );
 }

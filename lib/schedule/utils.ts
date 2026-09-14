@@ -300,6 +300,24 @@ export function diffFromDefault(
 }
 
 // ---------------------------------------------------------------------------
+// Project managers
+// ---------------------------------------------------------------------------
+
+/**
+ * The PMs a new or edited job can be given, and the ones the key lists.
+ *
+ * A PM who has left the rota is deactivated rather than deleted, because
+ * `fitting_jobs.pm_id` is `ON DELETE SET NULL` — deleting one would strip the
+ * colour off every job they ever ran, and card colour surviving on finished
+ * work is the whole point of it being identity rather than status
+ * (CLAUDE.md §2d). So the board keeps resolving every PM for colour, and only
+ * the places that ask you to *choose* one are filtered.
+ */
+export function activePms<T extends { is_active: boolean }>(pms: T[]): T[] {
+    return pms.filter((p) => p.is_active);
+}
+
+// ---------------------------------------------------------------------------
 // Job grouping
 // ---------------------------------------------------------------------------
 
@@ -479,20 +497,6 @@ export function jobMeta(job: FittingJobView): string[] {
         .filter(Boolean)
         .join(', ');
     return [ref, where].filter((x): x is string => !!x);
-}
-
-/**
- * "Mon–Wed" for a job that runs across days, null for a single-day one.
- *
- * Shown on every card of the span rather than only the first, because each day
- * a card appears the reader is asking the same question — is this all of it,
- * or part of something longer?
- */
-export function jobSpanLabel(job: FittingJobView): string | null {
-    if (!isMultiDay(job) || job.scheduled_date == null) return null;
-    const end = jobEndDate(job);
-    if (end == null) return null;
-    return `${DAY_SHORT[dayIndex(job.scheduled_date)]}–${DAY_SHORT[dayIndex(end)]}`;
 }
 
 /** The card's third line: crew override and access note. */

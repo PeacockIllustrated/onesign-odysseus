@@ -32,6 +32,7 @@ import type {
 } from '@/lib/schedule/types';
 import {
     MONTH_NAMES,
+    activePms,
     addDaysISO,
     formatLong,
     holdingJobs,
@@ -424,7 +425,11 @@ export function ScheduleBoard({
             </div>
 
             <div className="sb-legend">
-                {data.pms.map((p) => (
+                {/* Only the PMs whose work can land on a card today: a name
+                    that has left the rota still has to resolve for colour on
+                    the jobs it ran, but it is not a colour anybody needs to
+                    decode from across the office. */}
+                {activePms(data.pms).map((p) => (
                     <span key={p.id} className="l">
                         <span className="sb-swatch" style={{ background: p.colour }} />
                         {p.name}

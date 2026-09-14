@@ -27,7 +27,7 @@ import {
     type SaveVanInput,
 } from './types';
 
-const BOARD_PATHS = ['/admin/schedule', '/fitting-board'];
+const BOARD_PATHS = ['/admin/schedule', '/schedule/tv', '/fitting-board'];
 
 function revalidateBoard() {
     for (const p of BOARD_PATHS) revalidatePath(p);
@@ -195,12 +195,20 @@ export async function moveFittingJob(
  * Turning it off leaves any jobs already on it alone: they keep their van_id
  * and reappear the moment it is switched back on, rather than being silently
  * reassigned or lost. The action says so when it happens.
+ *
+ * Gated on a session rather than on super-admin, unlike every other write in
+ * this module. The workshop TV switches the column with the up button on its
+ * remote (CLAUDE.md §2d) and runs on a floor account that is not a super
+ * admin — the same reason /schedule/tv only requires auth. It is the one write
+ * that surface has, and it is the mildest kind: it moves no work, deletes
+ * nothing, is visible to everyone the instant it happens, and either board can
+ * put it back.
  */
 export async function setAdditionalVanActive(
     active: boolean
 ): Promise<Result<{ strandedJobs: number }>> {
-    const gate = await requireSuperAdminOrError();
-    if (!gate.ok) return err(gate.error);
+    const user = await getUser();
+    if (!user) return err('not authorised');
 
     const supabase = createAdminClient();
 
