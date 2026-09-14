@@ -41,9 +41,8 @@ import { NextResponse, type NextRequest } from 'next/server';
  *    mutating server action, and RLS underneath all of it. A request that was
  *    refused before is refused identically now.
  *  - **It holds no privilege.** It uses the ANON key, never the service role,
- *    so it can read and change nothing a signed-out visitor couldn't. It calls
- *    `getUser()` (which validates the JWT against the auth server) rather than
- *    `getSession()` (which would trust whatever the cookie claimed).
+ *    so it can read and change nothing a signed-out visitor couldn't, and it
+ *    discards whatever it reads — see the note on getSession() below.
  *  - **It cannot take the site down.** A middleware that throws 500s every
  *    route, so the refresh is wrapped: if it fails, the request proceeds and
  *    the page-level gates decide, which is the behaviour we had before.
@@ -84,11 +83,24 @@ export async function middleware(request: NextRequest) {
             },
         });
 
-        // The whole job. Refreshes the token if it has expired and, through
-        // setAll above, persists the rotated pair. The result is deliberately
+        // The whole job: refresh the token IF it has expired and, through
+        // setAll above, persist the rotated pair. The result is deliberately
         // ignored: who the user is, and what they may do, is decided by the
         // layouts and server actions, not here.
-        await supabase.auth.getUser();
+        //
+        // getSession() rather than getUser(), deliberately, and the difference
+        // is a network call per request. getUser() always asks the auth server
+        // who this is; getSession() reads the cookie and goes to the network
+        // only when the token has actually expired — which is the only moment
+        // this file has anything to do. On a constrained instance that is the
+        // difference between ~60 auth requests an hour and a handful.
+        //
+        // The usual warning about getSession() is that its claims are
+        // unverified, so it must not be trusted for access decisions. Nothing
+        // here trusts it: the result is discarded, and every gate still calls
+        // getUser(), which validates. Do NOT move an access decision into this
+        // file on the strength of this call being cheap.
+        await supabase.auth.getSession();
     } catch {
         // A refresh that fails leaves the request exactly as it arrived. The
         // page's own gate then sends them to /login if the session is really
