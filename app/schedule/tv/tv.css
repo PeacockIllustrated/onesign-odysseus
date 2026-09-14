@@ -18,6 +18,14 @@
        Everything below is in `em`, so this is the only number to tune. */
     font-size: calc(1rem * var(--tv-density, 0.78));
 
+    /* Second knob, for the chrome. The GRID gets blown up to fill the panel
+       by the fit-scale in TvBoard; the header, the banners and the holding
+       band labels do not, so keyed to the density alone they come out at
+       12px on a wall — the board's own controls and its colour key ending up
+       smaller than the work they explain. This multiplies the chrome only,
+       and the header is the one row it costs height in (~55px of 1080). */
+    --tvb-chrome: 1.55;
+
     /* The board owns exactly one screen. Nothing here ever scrolls and nothing
        is hidden: content that does not fit is scaled down until it does. */
     height: 100vh;
@@ -38,7 +46,11 @@
 .osd-board.tvb .tvb-head {
     display: flex;
     align-items: center;
-    gap: 1.25em;
+    /* One font-size, and every child sizes off it — the logo, the controls,
+       the PM key and the period are all in `em`, so the chrome knob moves the
+       whole row together and nothing has to be tuned twice. */
+    font-size: calc(1em * var(--tvb-chrome));
+    gap: 0.85em;
     flex: 0 0 auto;
     min-width: 0;
 }
@@ -98,10 +110,15 @@
     cursor: pointer;
     transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
+/* Lucide writes width/height attributes, which do not scale with the chrome
+   knob — so a bigger row would otherwise keep 16px arrows beside 17px text.
+   Sized in em here, where they follow. */
 .osd-board.tvb .tvb-remote .r svg {
     color: var(--bg-fg-muted);
     opacity: 0.8;
     flex: 0 0 auto;
+    width: 1.15em;
+    height: 1.15em;
 }
 
 /* Strong enough to read from across a workshop — a cursor hovering something
@@ -174,16 +191,18 @@
     opacity: 0.8;
 }
 
-/* The PM key. Takes the room left in the middle and gives it back when the
-   line is tight — the names must stay on one line, so a crowded board drops
-   the gaps before it drops the row. */
+/* The PM key. Takes the room left in the middle, and WRAPS rather than clips
+   if the roster ever outgrows the row: a half-shown name is a colour nobody
+   can decode, so a second line — paid for out of the grid's height — is the
+   better failure. At the chrome size above, five PMs leave ~250px spare, so
+   this only bites if the office grows the list. */
 .osd-board.tvb .tvb-key {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 0.3em 0.9em;
     flex: 1 1 auto;
     min-width: 0;
-    overflow: hidden;
     /* At least as legible as the cards it decodes. The grid below is scaled
        up to fill the panel and this row is not, so sizing the key off the
        board's base font puts it on the wall SMALLER than the work it
@@ -247,7 +266,10 @@
     border-radius: var(--radius-sm);
     background: color-mix(in srgb, #d64545 22%, var(--card));
     color: var(--fg);
-    font-size: 0.95em;
+    /* Takes the chrome knob: this is the one interruption the TV is allowed,
+       and at the board's own density it was 12px of red nobody could read
+       from the floor — which is the same as not warning them. */
+    font-size: calc(0.95em * var(--tvb-chrome));
     font-weight: 600;
 }
 
@@ -265,7 +287,7 @@
     background: var(--card);
     border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--card-border));
     color: var(--fg);
-    font-size: 0.9em;
+    font-size: calc(0.9em * var(--tvb-chrome));
     font-weight: 600;
 }
 
@@ -401,13 +423,16 @@
     padding: 0.4em 0.6em;
 }
 
+/* Sized with the chrome, not the cards: "to be scheduled" is a label on the
+   wall, read from where the header is read. The band's own height is fixed, so
+   this cannot push into the grid above. */
 .osd-board.tvb .tvb-bandhead {
     flex: 0 0 auto;
     display: inline-flex;
     align-items: center;
     gap: 0.4em;
     font-family: var(--font-heading);
-    font-size: 0.8em;
+    font-size: calc(0.8em * var(--tvb-chrome));
     font-weight: 700;
     letter-spacing: -0.01em;
     color: var(--fg-muted);
