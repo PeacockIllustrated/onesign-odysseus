@@ -11,6 +11,7 @@ import type {
 } from '@/lib/schedule/types';
 import {
     DAY_NAMES,
+    activePms,
     dayIndex,
     formatWC,
     daysBetweenISO,
@@ -128,6 +129,13 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
 
     const inHolding = d.scheduled_date == null;
     const pm = pms.find((p) => p.id === d.pm_id) ?? null;
+    /**
+     * Who this job can be handed to: whoever is on the rota, plus whoever it
+     * is already assigned to. A PM taken off the list keeps their colour on
+     * the work they ran, so editing one of those cards must not quietly drop
+     * the owner off the form.
+     */
+    const pickablePms = pm && !pm.is_active ? [...activePms(pms), pm] : activePms(pms);
     const link = job ? mapUrl(job) : null;
 
     /**
@@ -353,7 +361,7 @@ export function JobModal({ draft, job, vans, pms, clients, onClose, onSaved }: P
                     <div className="sb-field full">
                         <label>Project manager (sets the card colour)</label>
                         <div className="sb-btnrow pms">
-                            {pms.map((p) => (
+                            {pickablePms.map((p) => (
                                 <button
                                     key={p.id}
                                     style={{ ['--sb-pmbtn' as string]: p.colour }}

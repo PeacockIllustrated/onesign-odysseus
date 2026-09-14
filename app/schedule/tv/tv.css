@@ -32,23 +32,96 @@
 
 /* --- the only chrome ---------------------------------------------------- */
 
+/* One row, and it has to stay one row: everything in it — the mark, the remote
+   key, the PM key, where you are — is there so the grid below can have the
+   rest of the panel. Nothing here wraps to a second line. */
 .osd-board.tvb .tvb-head {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 1.5em;
+    gap: 1.25em;
     flex: 0 0 auto;
+    min-width: 0;
 }
 
-/* The PM key. Wraps rather than scrolls — a name pushed off the edge of a wall
-   screen is a colour nobody can decode. */
+/* The mark, at the height of the line rather than on a line of its own. The
+   white logo is the right one here: the TV always runs the dark stage. */
+.osd-board.tvb .tvb-logo {
+    flex: 0 0 auto;
+    height: 2.3em;
+    width: auto;
+    opacity: 0.95;
+}
+
+/* The remote's key, inline with the logo so it takes no height at all.
+   Labels, not buttons — a wall screen has no pointer, so anything that looked
+   pressable would be a lie. Each of the four arrows appears exactly once. */
+.osd-board.tvb .tvb-remote {
+    display: flex;
+    align-items: center;
+    gap: 0.45em;
+    flex: 0 0 auto;
+    min-width: 0;
+}
+/* Quiet outline chips, NOT light panels. Everything in this row sits on the
+   dark stage, so it is coloured with --bg-fg / --bg-fg-muted (which flip with
+   the theme) and never with the panel ink tokens --fg / --fg-muted, which stay
+   dark in both themes and would go invisible here. A solid --card pill would
+   also read as the loudest thing on the wall, and this is a hint. */
+.osd-board.tvb .tvb-remote .r {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25em;
+    white-space: nowrap;
+    padding: 0.2em 0.55em;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--bg-fg) 22%, transparent);
+    background: color-mix(in srgb, var(--bg-fg) 6%, transparent);
+    color: var(--bg-fg-muted);
+    font-size: 0.9em;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+.osd-board.tvb .tvb-remote .r svg {
+    color: var(--bg-fg-muted);
+    opacity: 0.8;
+}
+/* The spare van's chip doubles as its state — it is the one key entry that
+   reports something rather than just naming a button. */
+.osd-board.tvb .tvb-remote .r b {
+    font-weight: 700;
+    color: var(--bg-fg);
+    text-transform: uppercase;
+    font-size: 0.9em;
+    letter-spacing: 0.04em;
+}
+.osd-board.tvb .tvb-remote .r.on {
+    border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+    color: var(--bg-fg);
+}
+.osd-board.tvb .tvb-remote .r.on svg,
+.osd-board.tvb .tvb-remote .r.on b {
+    color: var(--accent);
+    opacity: 1;
+}
+.osd-board.tvb .tvb-remote .r.busy {
+    opacity: 0.55;
+}
+
+/* The PM key. Takes the room left in the middle and gives it back when the
+   line is tight — the names must stay on one line, so a crowded board drops
+   the gaps before it drops the row. */
 .osd-board.tvb .tvb-key {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
-    gap: 0.4em 1em;
+    gap: 0.3em 0.9em;
+    flex: 1 1 auto;
     min-width: 0;
-    font-size: 0.95em;
+    overflow: hidden;
+    /* At least as legible as the cards it decodes. The grid below is scaled
+       up to fill the panel and this row is not, so sizing the key off the
+       board's base font puts it on the wall SMALLER than the work it
+       explains. It costs a few pixels of header and nothing else. */
+    font-size: 1.3em;
     color: var(--bg-fg-muted);
 }
 .osd-board.tvb .tvb-key .k {
@@ -64,50 +137,34 @@
     flex: 0 0 auto;
 }
 
-/* Where you are, held to the right edge so the key can take the room it needs
-   on the left without the two colliding mid-line. */
+/* Where you are, held to the right edge so the keys can take the room they
+   need on the left without the two colliding mid-line. */
 .osd-board.tvb .tvb-where {
     display: flex;
     align-items: baseline;
-    gap: 0.6em;
+    gap: 0.5em;
     flex: 0 0 auto;
     margin-left: auto;
 }
 
-/* Chevrons are a legend for the remote's D-pad, not controls — there is no
-   pointer on a TV, so anything that looks pressable is a lie. */
-.osd-board.tvb .tvb-arrow {
-    color: var(--fg-subtle);
-    flex: 0 0 auto;
-    align-self: center;
-}
-
-.osd-board.tvb .tvb-views {
-    display: flex;
-    align-items: baseline;
-    gap: 1.1em;
-    font-size: 1.05em;
-    letter-spacing: 0.06em;
+/* Which zoom level is on screen. Named rather than shown as a three-item
+   position indicator: with left/right now stepping the week, the row of
+   view names read as something the D-pad walked along, which it no longer
+   does. */
+.osd-board.tvb .tvb-view {
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 1em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
 }
 
-.osd-board.tvb .tvb-views span {
-    color: var(--fg-subtle);
-    font-weight: 500;
-    transition: color 180ms ease, opacity 180ms ease;
-    opacity: 0.55;
-}
-
-.osd-board.tvb .tvb-views span.on {
-    color: var(--accent);
-    font-weight: 700;
-    opacity: 1;
-}
-
+/* On the stage, so --bg-fg: --fg is dark ink for panels and would vanish
+   against the workshop board's near-black backdrop. */
 .osd-board.tvb .tvb-period {
-    color: var(--fg-muted);
-    font-size: 1.05em;
-    margin-left: 0.4em;
+    color: var(--bg-fg);
+    font-size: 1.35em;
+    font-weight: 600;
 }
 
 /* A board that has stopped updating must say so — it looks authoritative
@@ -124,6 +181,24 @@
     background: color-mix(in srgb, #d64545 22%, var(--card));
     color: var(--fg);
     font-size: 0.95em;
+    font-weight: 600;
+}
+
+/* What a press did. The board is otherwise silent, so this is the only place a
+   refused or consequential press is visible — switching the spare van off with
+   work standing on it, most of all. Clears itself after a few seconds. */
+.osd-board.tvb .tvb-note {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5em;
+    flex: 0 0 auto;
+    padding: 0.35em 0.75em;
+    border-radius: var(--radius-sm);
+    background: var(--card);
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--card-border));
+    color: var(--fg);
+    font-size: 0.9em;
     font-weight: 600;
 }
 
@@ -222,10 +297,15 @@
 
 /* --- holding bands ------------------------------------------------------ */
 
-/* Two shallow bands under the grid. Height is fixed so the grid above is
-   measured against what is actually left, and small so it takes as little of
-   the week's room as it can — one row of cards at the same scale as the grid,
-   not the tall panels the office board uses down its side rail. */
+/* A shallow band per holding list, under the grid. Height is fixed so the grid
+   above is measured against what is actually left, and small so it takes as
+   little of the week's room as it can — one row of cards at the same scale as
+   the grid, not the tall panels the office board uses down its side rail.
+
+   Rendered only while there is something waiting (see TvBoard): an empty band
+   is height the week could have had, and on most days at least one of the two
+   lists is clear. One band then takes the full width rather than sitting in
+   half of it. */
 .osd-board.tvb .tvb-holding {
     /* Fixed, so the grid above is measured against what is actually left and
        the card scale below can never feed back into it. Sized to hold a whole
@@ -235,8 +315,7 @@
        at 1080p, which is nothing against the week. */
     flex: 0 0 7em;
     min-height: 0;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    display: flex;
     gap: 0.75em;
     padding-top: 0.25em;
 }
@@ -245,6 +324,9 @@
     display: flex;
     align-items: center;
     gap: 0.75em;
+    /* Equal shares when both lists are busy, the whole width when only one
+       is. */
+    flex: 1 1 0;
     min-width: 0;
     background: var(--card);
     border: 1px solid var(--card-border);
@@ -275,10 +357,6 @@
     border: 1px solid var(--card-border);
     font-size: 0.85em;
     color: var(--fg);
-}
-.osd-board.tvb .tvb-bandempty {
-    font-size: 0.8em;
-    color: var(--fg-subtle);
 }
 
 /* --- the carousel ------------------------------------------------------- */

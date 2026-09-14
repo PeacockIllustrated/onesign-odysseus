@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+    activePms,
     addDaysISO,
     assignmentForDate,
     cellJobs,
@@ -583,5 +584,33 @@ describe('toggleSpanDay', () => {
                 }
             }
         }
+    });
+});
+
+describe('activePms', () => {
+    const pm = (name: string, is_active: boolean) => ({
+        id: name,
+        name,
+        colour: '#123456',
+        sort_order: 0,
+        is_active,
+    });
+
+    it('offers only the PMs still on the rota', () => {
+        const pms = [pm('Chris', true), pm('Davey', false), pm('Mak', true)];
+        expect(activePms(pms).map((p) => p.name)).toEqual(['Chris', 'Mak']);
+    });
+
+    it('keeps the roster order it was given', () => {
+        const pms = [pm('Mak', true), pm('Chris', true)];
+        expect(activePms(pms).map((p) => p.name)).toEqual(['Mak', 'Chris']);
+    });
+
+    it('does not mutate the list the board resolves colour from', () => {
+        // Retired PMs still have to resolve, or their finished work loses the
+        // colour that says whose job it was.
+        const pms = [pm('Chris', true), pm('John', false)];
+        activePms(pms);
+        expect(pms).toHaveLength(2);
     });
 });

@@ -1465,21 +1465,6 @@
     margin: 0;
 }
 
-/* "Mon–Wed" on a card that runs across days, so each day's copy of it says
-   whether it is the whole job or part of a longer one. */
-.sb-spantag {
-    display: inline-block;
-    align-self: flex-start;
-    margin-bottom: 0.125rem;
-    padding: 0.0625rem 0.3125rem;
-    border-radius: var(--radius-sm);
-    background: var(--sb-tint-strong);
-    color: var(--fg);
-    font-size: 0.6875rem;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-}
-
 /* --- bank holidays ------------------------------------------------------ */
 
 /* A day nobody is fitting on. Tinted rather than blocked out: out-of-hours and

@@ -2,7 +2,7 @@
 
 import { useDraggable } from '@dnd-kit/core';
 import type { FittingJobView, ProjectManager } from '@/lib/schedule/types';
-import { jobCustomer, jobExtra, jobMeta, jobSpanLabel } from '@/lib/schedule/utils';
+import { jobCustomer, jobExtra, jobMeta } from '@/lib/schedule/utils';
 
 interface Props {
     job: FittingJobView;
@@ -47,7 +47,6 @@ export function JobCard({ job, pm, compact, allDay, readOnly, onOpen }: Props) {
     const meta = jobMeta(job);
     const extra = jobExtra(job);
     const summary = job.summary?.trim();
-    const span = jobSpanLabel(job);
     const hasDetail = Boolean(summary) || meta.length > 0 || Boolean(extra);
 
     return (
@@ -63,7 +62,6 @@ export function JobCard({ job, pm, compact, allDay, readOnly, onOpen }: Props) {
             }`}
         >
             {allDay && <span className="sb-alldaytag">all day</span>}
-            {span && <span className="sb-spantag">{span}</span>}
             <div className="top">
                 <span className="name">{customer}</span>
                 {job.done && <span className="fitted">✓ fitted</span>}
