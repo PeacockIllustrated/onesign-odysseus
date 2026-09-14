@@ -160,7 +160,7 @@ export function ScheduleBoard({
                 // Jobs on the van are kept, not reassigned — say so rather
                 // than letting work vanish off the board without explanation.
                 setVanError(
-                    `${extraVan.name} is off. ${res.data.strandedJobs} job${
+                    `${extraVan.name} is off. ${res.data.strandedJobs} upcoming job${
                         res.data.strandedJobs === 1 ? '' : 's'
                     } stayed on it and will reappear when you switch it back on.`
                 );

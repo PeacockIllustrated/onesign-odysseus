@@ -5,7 +5,14 @@ import { createAdminClient } from '@/lib/supabase-admin';
 import { getUser, requireSuperAdminOrError } from '@/lib/auth';
 import { ok, okVoid, err, type Result } from '@/lib/result';
 import { getSchedulableQuotes } from './queries';
-import { addDaysISO, daysBetweenISO, diffFromDefault, expandHolidayRange } from './utils';
+import {
+    addDaysISO,
+    daysBetweenISO,
+    diffFromDefault,
+    expandHolidayRange,
+    toISO,
+    upcomingOnVan,
+} from './utils';
 import {
     HolidayRangeSchema,
     MoveFittingJobSchema,
@@ -230,14 +237,26 @@ export async function setAdditionalVanActive(
 
     // Count what is about to disappear from view, so the board can warn rather
     // than quietly hiding work.
+    //
+    // The rows are fetched and counted in `upcomingOnVan` rather than counted
+    // by the database, because "still to come" spans two columns (a multi-day
+    // job is live until its end_date) and the predicate is worth having under
+    // test. A van holds tens of jobs, not thousands.
     let strandedJobs = 0;
     if (!active) {
-        const { count } = await supabase
+        const { data: onVan } = await supabase
             .from('fitting_jobs')
-            .select('id', { count: 'exact', head: true })
+            .select('scheduled_date, end_date, done')
             .eq('van_id', van.id)
             .is('archived_at', null);
-        strandedJobs = count ?? 0;
+        strandedJobs = upcomingOnVan(
+            (onVan ?? []) as Array<{
+                scheduled_date: string | null;
+                end_date: string | null;
+                done: boolean;
+            }>,
+            toISO(new Date())
+        );
     }
 
     revalidateBoard();

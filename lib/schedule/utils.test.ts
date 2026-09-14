@@ -31,6 +31,7 @@ import {
     jobDates,
     daysBetweenISO,
     toggleSpanDay,
+    upcomingOnVan,
 } from './utils';
 import type {
     DayCrewOverrideRow,
@@ -612,5 +613,56 @@ describe('activePms', () => {
         const pms = [pm('Chris', true), pm('John', false)];
         activePms(pms);
         expect(pms).toHaveLength(2);
+    });
+});
+
+describe('upcomingOnVan', () => {
+    const TODAY = '2026-09-14';
+    const job = (
+        scheduled_date: string | null,
+        end_date: string | null = null,
+        done = false
+    ) => ({ scheduled_date, end_date, done });
+
+    it('counts work still to come', () => {
+        expect(upcomingOnVan([job('2026-09-15'), job('2026-10-01')], TODAY)).toBe(2);
+    });
+
+    it('counts today', () => {
+        expect(upcomingOnVan([job(TODAY)], TODAY)).toBe(1);
+    });
+
+    it('counts a job running THROUGH today', () => {
+        // A Monday-to-Friday fit is live work on the Wednesday.
+        expect(upcomingOnVan([job('2026-09-10', '2026-09-18')], TODAY)).toBe(1);
+    });
+
+    it('ignores the past, which is what made the old count alarming', () => {
+        // The bug this replaces counted every job the van had ever held, so
+        // hiding it announced dozens of jobs that had already happened.
+        expect(upcomingOnVan([job('2026-08-03'), job('2026-09-13')], TODAY)).toBe(0);
+    });
+
+    it('ignores a span that ended before today', () => {
+        expect(upcomingOnVan([job('2026-09-07', '2026-09-11')], TODAY)).toBe(0);
+    });
+
+    it('ignores work already ticked off', () => {
+        expect(upcomingOnVan([job('2026-09-20', null, true)], TODAY)).toBe(0);
+    });
+
+    it('ignores undated work, which a hidden van does not take off screen', () => {
+        // It sits in a holding lane, which is visible whatever the van is doing.
+        expect(upcomingOnVan([job(null)], TODAY)).toBe(0);
+    });
+
+    it('counts nothing for an empty van', () => {
+        expect(upcomingOnVan([], TODAY)).toBe(0);
+    });
+
+    it('survives a row whose end drifted before its start', () => {
+        // Treated as a single day, like everywhere else in here.
+        expect(upcomingOnVan([job('2026-09-20', '2026-09-01')], TODAY)).toBe(1);
+        expect(upcomingOnVan([job('2026-09-02', '2026-08-01')], TODAY)).toBe(0);
     });
 });
