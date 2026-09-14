@@ -373,7 +373,9 @@ const bySortThenCreated = (a: FittingJobView, b: FittingJobView) =>
  * The last day a job occupies. A single-day job ends the day it starts, so
  * `end_date` being null is not a missing value — it is the common case.
  */
-export function jobEndDate(job: FittingJobView): string | null {
+export function jobEndDate(
+    job: Pick<FittingJobView, 'scheduled_date' | 'end_date'>
+): string | null {
     if (job.scheduled_date == null) return null;
     const end = job.end_date;
     // Defend against a row where end_date drifted before the start: render it
@@ -393,6 +395,39 @@ export function jobCoversDate(job: FittingJobView, date: string): boolean {
 export function isMultiDay(job: FittingJobView): boolean {
     const end = jobEndDate(job);
     return end != null && job.scheduled_date != null && end > job.scheduled_date;
+}
+
+/**
+ * How much work hiding a van would take off the board.
+ *
+ * Only what is still to come and not yet ticked. The warning this feeds exists
+ * to say "you are about to hide work that still needs doing", and counting the
+ * van's whole history instead turns it into a number nobody can act on — "37
+ * jobs stayed on it" when two of them are next week and the rest are from
+ * August. The alarming version is worse than no number, because it trains
+ * people to dismiss the one warning that says work has gone invisible.
+ *
+ * A job with no date is not counted: it sits in a holding lane, which is on
+ * screen whether or not its van is a column.
+ *
+ * `today` is passed in rather than read, so this is pure and the boundary is
+ * testable.
+ */
+export function upcomingOnVan(
+    jobs: Array<Pick<FittingJobView, 'scheduled_date' | 'end_date' | 'done'>>,
+    today: string
+): number {
+    let n = 0;
+    for (const job of jobs) {
+        if (job.done) continue;
+        const end = jobEndDate(job);
+        // Unscheduled work has no end date and never disappears with the van.
+        if (end == null) continue;
+        // A job running THROUGH today still counts — a Monday-to-Friday fit is
+        // live work on Wednesday.
+        if (end >= today) n += 1;
+    }
+    return n;
 }
 
 /** Every date a job occupies, inclusive. Empty for an unscheduled job. */

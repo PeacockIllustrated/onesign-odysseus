@@ -260,7 +260,7 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
             }
             if (turningOff && res.data.strandedJobs > 0) {
                 setNote(
-                    `${extraVan.name} hidden — ${res.data.strandedJobs} job${
+                    `${extraVan.name} hidden — ${res.data.strandedJobs} upcoming job${
                         res.data.strandedJobs === 1 ? '' : 's'
                     } stayed on it and will reappear when it is switched back on.`
                 );
