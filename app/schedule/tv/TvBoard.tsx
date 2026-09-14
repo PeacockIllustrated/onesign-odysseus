@@ -76,8 +76,9 @@ import './tv.css';
  *  - **It comes home on its own.** Someone who scans four weeks ahead and
  *    walks away would otherwise leave the wall showing a week that is not
  *    this one, which is worse than showing nothing.
- *  - **Never silently stale.** Realtime pushes redraw it, a slow interval
- *    catches anything the socket missed, and a dropped connection says so.
+ *  - **Never silently stale.** Realtime pushes redraw it; a slow interval
+ *    catches a socket that died quietly, and speeds up when one has; a
+ *    dropped connection says so on screen.
  */
 
 interface Props {
@@ -90,11 +91,35 @@ interface Props {
 }
 
 /**
- * Safety-net refresh. Realtime is the fast path; this catches a socket that
- * died quietly — a TV browser throttling a background tab, a workshop wifi
- * blip — so the wall can never be more than a minute behind the office.
+ * Safety-net refresh, paced by whether the socket is actually up.
+ *
+ * Realtime is the fast path and it is reliable while connected, so polling on
+ * top of it is pure duplication — and it is not cheap: each poll re-renders
+ * the page on the server, which is nine Supabase queries for the board plus
+ * the deliveries. At the old flat 60s the wall TV alone was ~470 REST requests
+ * an hour, the majority of the whole project's traffic, which on a constrained
+ * instance is what tips it into 502s.
+ *
+ * So the poll now does what a safety net should: nothing much while the socket
+ * is healthy, and real work only once it isn't. When Realtime is live a slow
+ * tick is enough to catch a socket that died without saying so; when it is
+ * down, polling IS the only path to fresh data and runs hard.
+ *
+ * Neither number is the board's true freshness guarantee — Realtime is, plus
+ * the visibilitychange/online refreshes below, which still fire immediately.
  */
-const POLL_MS = 60_000;
+const POLL_LIVE_MS = 10 * 60_000;
+/**
+ * Deliberately SLOWER than the flat 60s this replaced, not faster.
+ *
+ * The socket being down is highly correlated with the backend being in
+ * trouble, so "poll harder when Realtime fails" is a feedback loop: the board
+ * would hammer a struggling instance exactly when it has least to give, and
+ * nine queries every 30s is twice the load of the interval we started from.
+ * Two minutes still gets the wall fresh data five times faster than the
+ * healthy tick, while never costing more than the old behaviour did.
+ */
+const POLL_DOWN_MS = 2 * 60_000;
 
 /**
  * How long a board sits on a week somebody scrolled to before returning to
@@ -126,9 +151,10 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
     // --- keeping the wall in step ------------------------------------------
 
     useEffect(() => {
-        const id = setInterval(refresh, POLL_MS);
+        const every = syncStatus === 'live' ? POLL_LIVE_MS : POLL_DOWN_MS;
+        const id = setInterval(refresh, every);
         return () => clearInterval(id);
-    }, [refresh]);
+    }, [refresh, syncStatus]);
 
     // A TV that was asleep, or a tab the browser parked, comes back with a
     // stale board and possibly a dead socket. Pull fresh data the moment it is

@@ -66,7 +66,6 @@ export async function getScheduleBoard(
         pmsRes,
         defaultCrewRes,
         overridesRes,
-        additionalVanRes,
     ] = await Promise.all([
         // Overlap, not containment: a fit running Friday to Monday belongs on
         // BOTH weeks' boards, and a plain `scheduled_date >= from` drops it
@@ -82,9 +81,11 @@ export async function getScheduleBoard(
             .select(JOB_SELECT)
             .is('archived_at', null)
             .is('scheduled_date', null),
-        // Only vans currently on the road are board columns. The additional
-        // van sits inactive until the toolbar switches it on.
-        supabase.from('vans').select('*').eq('is_active', true).order('sort_order'),
+        // Every van in one read, filtered below. The board needs two views of
+        // this table — the active columns, and the spare van whatever its
+        // state — and asking twice made `vans` the second-busiest path in the
+        // whole project for a table with four rows in it.
+        supabase.from('vans').select('*').order('sort_order'),
         supabase.from('fitters').select('*').order('roster_group').order('sort_order'),
         supabase.from('project_managers').select('*').order('sort_order'),
         supabase.from('default_crew').select('*'),
@@ -93,15 +94,6 @@ export async function getScheduleBoard(
             .select('*')
             .gte('date', from)
             .lte('date', to),
-        // Fetched whatever its state, so the toolbar can offer the switch even
-        // while the van is off and therefore absent from `vans` above.
-        supabase
-            .from('vans')
-            .select('id, name, is_active')
-            .eq('is_additional', true)
-            .order('sort_order')
-            .limit(1)
-            .maybeSingle(),
     ]);
 
     const rows = [
@@ -109,16 +101,22 @@ export async function getScheduleBoard(
         ...((holdingRes.data ?? []) as JoinedJobRow[]),
     ];
 
+    const allVans = (vansRes.data ?? []) as Van[];
+    // The spare van is carried separately because `vans` below holds only what
+    // is on the board right now, and the toolbar has to offer the switch even
+    // while the van is off.
+    const additional = allVans.find((v) => v.is_additional) ?? null;
+
     return {
         jobs: rows.map(flatten),
-        vans: (vansRes.data ?? []) as Van[],
+        vans: allVans.filter((v) => v.is_active),
         fitters: (fittersRes.data ?? []) as Fitter[],
         pms: (pmsRes.data ?? []) as ProjectManager[],
         defaultCrew: (defaultCrewRes.data ?? []) as DefaultCrewRow[],
         overrides: (overridesRes.data ?? []) as DayCrewOverrideRow[],
-        additionalVan:
-            (additionalVanRes.data as { id: string; name: string; is_active: boolean } | null) ??
-            null,
+        additionalVan: additional
+            ? { id: additional.id, name: additional.name, is_active: additional.is_active }
+            : null,
     };
 }
 
