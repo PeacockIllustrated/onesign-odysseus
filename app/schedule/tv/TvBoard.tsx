@@ -8,6 +8,7 @@ import {
     ChevronLeft,
     ChevronRight,
     ChevronUp,
+    CalendarCheck,
 } from 'lucide-react';
 import type { PlanningDelivery } from '@/lib/planning/utils';
 import { useRealtimeStatus } from '@/lib/realtime/useRealtimeStatus';
@@ -32,6 +33,7 @@ import {
     monthOfWeek,
     nextTvView,
     weekOfMonthStart,
+    type TvAction,
     type TvView,
 } from '@/lib/schedule/tv';
 import { WeekView } from '@/app/(portal)/admin/schedule/WeekView';
@@ -59,10 +61,14 @@ import './tv.css';
  *
  * Four behaviours make it work unattended:
  *
- *  - **Remote control.** Left/right step the week — scanning ahead is what the
- *    wall is for. Down swaps week and month; up switches the spare van's
- *    column on and off. Every one of those four arrows is labelled in the
- *    header, on the same line as the logo, so the key costs no height.
+ *  - **Remote control, two ways round.** Left/right step the week — scanning
+ *    ahead is what the wall is for. Down swaps week and month; up switches the
+ *    spare van's column. But a Google TV's D-pad drives a virtual mouse
+ *    pointer rather than sending arrow keys to the page, and no web API can
+ *    turn that off, so every action is BOTH a key and a real button in the
+ *    header: press the arrow on a remote that sends keys, or steer the cursor
+ *    onto the control and hit OK. The buttons sit on the logo's line, so
+ *    having them costs no height.
  *  - **One page, never scrolled, nothing hidden.** The grid is measured and
  *    scaled to the viewport, however far down that goes. Everything on the
  *    board is on the board at all times — no rotation, no collapsing, nothing
@@ -271,15 +277,20 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
     // which is how a board the office pointed at a specific week stays there.
     const lastPressRef = useRef(0);
 
-    useEffect(() => {
-        function onKey(e: KeyboardEvent) {
-            const action = keyToTvAction(e.key);
-            if (!action) return;
-            // Stop the browser scrolling the page under us — the whole point
-            // is that this board never scrolls.
-            e.preventDefault();
-
-            // Only the presses that MOVE the board arm the idle return. The
+    /**
+     * Every action arrives here, however it was triggered.
+     *
+     * Two kinds of TV remote reach this board and they look nothing alike from
+     * the page's side: one sends arrow keydowns, the other (Google TV, and
+     * Android TV generally) moves a virtual mouse cursor with the D-pad and
+     * sends the page no keys at all. Funnelling both into one dispatcher is
+     * what keeps them from drifting — there is one definition of what "next
+     * week" does, and the header buttons and the key handler are two doors
+     * into it rather than two implementations.
+     */
+    const press = useCallback(
+        (action: TvAction) => {
+            // Only the actions that MOVE the board arm the idle return. The
             // van switch is not navigation, and arming on it would eventually
             // drag a board the office pointed at a particular week back to
             // this one for no reason.
@@ -296,10 +307,35 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
                 lastPressRef.current = 0;
                 goHome();
             }
+        },
+        [stepPeriod, cycleView, toggleVan, goHome]
+    );
+
+    useEffect(() => {
+        function onKey(e: KeyboardEvent) {
+            const action = keyToTvAction(e.key);
+            if (!action) return;
+
+            // Enter means "today" on a bare board, but if one of the header
+            // controls holds focus it has to mean THAT control — a remote that
+            // sends keys can Tab onto "next week", and having OK jump to today
+            // instead would be indefensible. Let the button's own click run.
+            if (
+                e.key === 'Enter' &&
+                e.target instanceof Element &&
+                e.target.closest('.tvb-remote')
+            ) {
+                return;
+            }
+
+            // Stop the browser scrolling the page under us — the whole point
+            // is that this board never scrolls.
+            e.preventDefault();
+            press(action);
         }
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [stepPeriod, cycleView, toggleVan, goHome]);
+    }, [press]);
 
     // Come back to this week once the board has been left alone. Only when a
     // person actually moved it: a board opened on a particular week from the
@@ -377,6 +413,9 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
     // read from across a workshop.
     const keyPms = useMemo(() => activePms(data.pms), [data.pms]);
 
+    // What left/right step, named on the buttons that do it.
+    const periodUnit = view === 'week' ? 'week' : view === 'month' ? 'month' : 'year';
+
     const period =
         view === 'week'
             ? `w/c ${formatLong(monday)}`
@@ -394,10 +433,10 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
             )}
             {note && <div className="tvb-note">{note}</div>}
 
-            {/* Chrome is one line: the logo, what the remote does, who owns the
-                colours, and where you are. The remote key sits up here beside
-                the logo precisely so it costs no height — the week below is
-                what the screen is for. */}
+            {/* Chrome is one line: the logo, the controls, who owns the
+                colours, and where you are. The controls sit up here beside the
+                logo precisely so they cost no height — the week below is what
+                the screen is for. */}
             <header className="tvb-head">
                 {/* The white mark: the TV always runs the dark stage. Plain
                     <img> like the sidebar's — a static SVG has nothing for the
@@ -409,26 +448,48 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
                     className="tvb-logo"
                 />
 
-                {/* Every arrow the remote has, named once. These are labels,
-                    not controls — there is no pointer on a wall, so anything
-                    that looked pressable would be a lie. */}
-                <div className="tvb-remote" aria-hidden>
-                    <span className="r">
-                        <ChevronLeft size={14} />
-                        <ChevronRight size={14} />
-                        {view === 'week' ? 'week' : view === 'month' ? 'month' : 'year'}
-                    </span>
-                    <span className="r">
-                        <ChevronDown size={14} />
+                {/* Real buttons, not a legend.
+                    These started as labels naming what each arrow on the
+                    remote would do, on the reasoning that a wall screen has no
+                    pointer. A Google TV does: its D-pad moves a virtual mouse
+                    cursor and the arrow keys never reach the page, and there
+                    is no way for a page to opt out of that. So each control
+                    carries the arrow that triggers it AND is clickable, which
+                    covers both kinds of remote with one row and no modes. */}
+                <div className="tvb-remote">
+                    <button className="r" onClick={() => press('period-prev')}>
+                        <ChevronLeft size={16} />
+                        last {periodUnit}
+                    </button>
+                    <button className="r" onClick={() => press('period-next')}>
+                        next {periodUnit}
+                        <ChevronRight size={16} />
+                    </button>
+                    <button className="r" onClick={() => press('view-cycle')}>
+                        <ChevronDown size={16} />
                         {nextTvView(view)} view
-                    </span>
+                    </button>
                     {extraVan && (
-                        <span className={`r ${extraVan.is_active ? 'on' : ''} ${busy ? 'busy' : ''}`}>
-                            <ChevronUp size={14} />
+                        <button
+                            className={`r ${extraVan.is_active ? 'on' : ''} ${busy ? 'busy' : ''}`}
+                            onClick={() => press('toggle-van')}
+                        >
+                            <ChevronUp size={16} />
                             {extraVan.name}
                             <b>{extraVan.is_active ? 'on' : 'off'}</b>
-                        </span>
+                        </button>
                     )}
+                    {/* Only reachable by pointer or Tab: a Google TV remote has
+                        no Home key, so without this a cursor-driven board has
+                        no way back to this week. */}
+                    <button
+                        className={`r ${atHome ? 'here' : 'home'}`}
+                        onClick={() => press('today')}
+                        disabled={atHome}
+                    >
+                        <CalendarCheck size={16} />
+                        {atHome ? 'this week' : 'today'}
+                    </button>
                 </div>
 
                 {/* Card colour is whose job it is (CLAUDE.md §2d), which is

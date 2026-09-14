@@ -52,27 +52,42 @@
     opacity: 0.95;
 }
 
-/* The remote's key, inline with the logo so it takes no height at all.
-   Labels, not buttons — a wall screen has no pointer, so anything that looked
-   pressable would be a lie. Each of the four arrows appears exactly once. */
+/* The controls, inline with the logo so they take no height at all.
+
+   These were a legend — labels naming what each arrow on the remote would do,
+   on the reasoning that a wall screen has no pointer. A Google TV does: its
+   D-pad moves a virtual mouse cursor and the page never sees the arrow keys,
+   with no way to opt out. So they are real buttons that also name their key,
+   and both kinds of remote drive the same row.
+
+   Which means they have to be HITTABLE with a cursor somebody is steering from
+   across a room: roughly 30px tall at the board's density, generous padding,
+   and a hover state strong enough to see from the sofa. */
 .osd-board.tvb .tvb-remote {
     display: flex;
     align-items: center;
-    gap: 0.45em;
+    gap: 0.4em;
     flex: 0 0 auto;
     min-width: 0;
 }
+
 /* Quiet outline chips, NOT light panels. Everything in this row sits on the
    dark stage, so it is coloured with --bg-fg / --bg-fg-muted (which flip with
    the theme) and never with the panel ink tokens --fg / --fg-muted, which stay
    dark in both themes and would go invisible here. A solid --card pill would
-   also read as the loudest thing on the wall, and this is a hint. */
+   also read as the loudest thing on the wall, and these are chrome. */
 .osd-board.tvb .tvb-remote .r {
     display: inline-flex;
     align-items: center;
-    gap: 0.25em;
+    gap: 0.3em;
     white-space: nowrap;
-    padding: 0.2em 0.55em;
+    /* Cursor target, sized for a pointer somebody is nudging across the room
+       with a D-pad: ~34px tall at 1080p. This is the number that decides
+       whether the row is usable from the sofa, and trimming it to tidy the
+       header is how the board stops being drivable. It costs ~5px of grid. */
+    padding: 0.55em 0.9em;
+    /* 3em of the CHIP's own 0.9em font, not the board's — ~34px at 1080p. */
+    min-height: 3em;
     border-radius: 999px;
     border: 1px solid color-mix(in srgb, var(--bg-fg) 22%, transparent);
     background: color-mix(in srgb, var(--bg-fg) 6%, transparent);
@@ -80,13 +95,39 @@
     font-size: 0.9em;
     font-weight: 600;
     letter-spacing: 0.01em;
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 .osd-board.tvb .tvb-remote .r svg {
     color: var(--bg-fg-muted);
     opacity: 0.8;
+    flex: 0 0 auto;
 }
-/* The spare van's chip doubles as its state — it is the one key entry that
-   reports something rather than just naming a button. */
+
+/* Strong enough to read from across a workshop — a cursor hovering something
+   is the only feedback there is before you press OK. */
+.osd-board.tvb .tvb-remote .r:hover {
+    background: color-mix(in srgb, var(--accent) 30%, transparent);
+    border-color: var(--accent);
+    color: var(--bg-fg);
+}
+.osd-board.tvb .tvb-remote .r:hover svg {
+    color: var(--bg-fg);
+    opacity: 1;
+}
+.osd-board.tvb .tvb-remote .r:active {
+    background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+/* Keyboard and spatial-navigation focus, for the remotes and browsers that
+   move focus rather than a pointer. */
+.osd-board.tvb .tvb-remote .r:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    color: var(--bg-fg);
+}
+
+/* The spare van's chip doubles as its state — it is the one control that
+   reports something rather than just naming what it does. */
 .osd-board.tvb .tvb-remote .r b {
     font-weight: 700;
     color: var(--bg-fg);
@@ -105,6 +146,32 @@
 }
 .osd-board.tvb .tvb-remote .r.busy {
     opacity: 0.55;
+    cursor: default;
+}
+
+/* The way back. Lit while the board is off this week, because that is the one
+   state somebody walking past needs to be able to undo; flat and unpressable
+   once there is nothing to go back to. */
+.osd-board.tvb .tvb-remote .r.home {
+    border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+    color: var(--bg-fg);
+}
+.osd-board.tvb .tvb-remote .r.home svg {
+    color: var(--accent);
+    opacity: 1;
+}
+.osd-board.tvb .tvb-remote .r.here {
+    opacity: 0.45;
+    cursor: default;
+}
+.osd-board.tvb .tvb-remote .r.here:hover {
+    background: color-mix(in srgb, var(--bg-fg) 6%, transparent);
+    border-color: color-mix(in srgb, var(--bg-fg) 22%, transparent);
+    color: var(--bg-fg-muted);
+}
+.osd-board.tvb .tvb-remote .r.here:hover svg {
+    color: var(--bg-fg-muted);
+    opacity: 0.8;
 }
 
 /* The PM key. Takes the room left in the middle and gives it back when the
