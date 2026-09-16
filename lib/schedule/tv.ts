@@ -142,3 +142,29 @@ export function fitScale(naturalHeight: number, availableHeight: number): number
     if (naturalHeight <= 0 || availableHeight <= 0) return 1;
     return Math.min(MAX_FIT_SCALE, availableHeight / naturalHeight);
 }
+
+/**
+ * Scale that makes a header `naturalWidth` wide fit `availableWidth`.
+ *
+ * The chrome row — the mark, the remote's buttons, the PM key and where you
+ * are — is laid out at one size and has to survive whatever viewport the wall
+ * browser reports. A Google TV's is not 1920 CSS pixels: it renders the page
+ * at around 960 and lets the panel do the enlarging, so a row designed to
+ * leave a comfortable margin at 1920 overflows badly there. What that cost was
+ * not a tidy clip but a collapse — the key wrapped into a column, spilled over
+ * the period beside it, and ate a third of the panel the week should have had.
+ *
+ * So the row is measured and scaled exactly as the grid is, and for the same
+ * reason: the board decides what fits, rather than assuming.
+ *
+ * Capped at 1 — unlike {@link fitScale}, which grows a quiet grid to fill the
+ * panel. This is chrome: it is sized to be read and no bigger, and a wall
+ * screen with a spare inch of header should give that inch to the week.
+ * Unclamped downwards, because a roster that outgrows the row should shrink
+ * the row rather than hide a name, and a colour whose key is missing is a
+ * colour nobody can decode.
+ */
+export function fitChromeScale(naturalWidth: number, availableWidth: number): number {
+    if (naturalWidth <= 0 || availableWidth <= 0) return 1;
+    return Math.min(1, availableWidth / naturalWidth);
+}

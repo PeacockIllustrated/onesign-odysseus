@@ -17,6 +17,7 @@ import {
     ChevronLeft,
     ChevronRight,
     Monitor,
+    Printer,
     Truck,
     Users,
     Plus,
@@ -37,6 +38,7 @@ import {
     formatLong,
     holdingJobs,
     mondayOfISO,
+    mondaysTouchingMonth,
     toISO,
 } from '@/lib/schedule/utils';
 import { WeekView } from './WeekView';
@@ -308,6 +310,17 @@ export function ScheduleBoard({
         go({ view: 'week', week: m });
     }
 
+    /**
+     * What the print link covers: the week on screen, or the whole month when
+     * the board is showing one. A year view prints the week it is anchored on
+     * rather than fifty-two sheets nobody asked for.
+     */
+    const printRun = useMemo(() => {
+        if (view !== 'month') return { week: monday, weeks: 1 };
+        const mondays = mondaysTouchingMonth(month.y, month.m);
+        return { week: mondays[0], weeks: mondays.length };
+    }, [view, monday, month.y, month.m]);
+
     const title =
         view === 'week'
             ? `week commencing ${formatLong(monday)}`
@@ -405,6 +418,22 @@ export function ScheduleBoard({
                     <button className="sb-pill" onClick={() => setRosterOpen(true)}>
                         <Users size={14} /> Vans &amp; fitters
                     </button>
+                    {/* The board on paper, at a size that can be read without
+                        a screen — A3 by default, and a day-per-sheet layout
+                        for anyone who wants it larger still. Carries the week
+                        on screen, the way the TV link does. */}
+                    <a
+                        className="sb-pill"
+                        href={`/admin/schedule/print?${new URLSearchParams({
+                            week: printRun.week,
+                            weeks: String(printRun.weeks),
+                        }).toString()}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Print this week — A3 by default, or one day per sheet"
+                    >
+                        <Printer size={14} /> Print
+                    </a>
                     {/* A separate page, not an in-place toggle: hiding the
                         board's own controls still leaves the portal sidebar
                         and topbar, which is not what a wall TV wants. */}
