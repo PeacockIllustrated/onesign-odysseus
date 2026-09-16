@@ -42,17 +42,33 @@
 
 /* One row, and it has to stay one row: everything in it — the mark, the remote
    key, the PM key, where you are — is there so the grid below can have the
-   rest of the panel. Nothing here wraps to a second line. */
+   rest of the panel. Nothing here wraps to a second line.
+
+   The header is the BOX that guarantees it. The row inside is laid out at its
+   natural size and scaled to fit by TvBoard, which is what finally makes "one
+   row" true on a wall browser whose CSS viewport is ~960px rather than the
+   1920 the panel suggests. The box's height is set from that scale, so a
+   shrunken header hands the week back the height it isn't using. */
 .osd-board.tvb .tvb-head {
+    flex: 0 0 auto;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.osd-board.tvb .tvb-headrow {
     display: flex;
     align-items: center;
+    flex-wrap: nowrap;
     /* One font-size, and every child sizes off it — the logo, the controls,
        the PM key and the period are all in `em`, so the chrome knob moves the
        whole row together and nothing has to be tuned twice. */
     font-size: calc(1em * var(--tvb-chrome));
     gap: 0.85em;
-    flex: 0 0 auto;
-    min-width: 0;
+    /* Scaled from the top-left, matching the grid's, so the row starts where
+       the header box starts however far it has been shrunk. */
+    transform-origin: top left;
+    will-change: transform;
+    transition: transform 220ms ease, width 220ms ease;
 }
 
 /* The mark, at the height of the line rather than on a line of its own. The
@@ -191,18 +207,20 @@
     opacity: 0.8;
 }
 
-/* The PM key. Takes the room left in the middle, and WRAPS rather than clips
-   if the roster ever outgrows the row: a half-shown name is a colour nobody
-   can decode, so a second line — paid for out of the grid's height — is the
-   better failure. At the chrome size above, five PMs leave ~250px spare, so
-   this only bites if the office grows the list. */
+/* The PM key. Sits beside the controls at its natural width and neither wraps
+   nor shrinks — it is the row's scale that makes it fit.
+
+   It used to do both, and that was the bug the wall showed: squeezed into
+   whatever the buttons left it, the key wrapped to one name per line, its
+   nowrap names overflowed the narrow box they were wrapped into, and the
+   result printed the roster over the top of the period in a column five deep.
+   A key that has to be decoded is worse than a smaller one. */
 .osd-board.tvb .tvb-key {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 0.3em 0.9em;
-    flex: 1 1 auto;
-    min-width: 0;
+    flex: 0 0 auto;
     /* At least as legible as the cards it decodes. The grid below is scaled
        up to fill the panel and this row is not, so sizing the key off the
        board's base font puts it on the wall SMALLER than the work it

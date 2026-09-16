@@ -3,6 +3,7 @@ import {
     keyToTvAction,
     monthOfWeek,
     nextTvView,
+    fitChromeScale,
     fitScale,
     weekOfMonthStart,
     MAX_FIT_SCALE,
@@ -131,5 +132,39 @@ describe('fitting past the old legibility floor', () => {
     it('has no lower bound at all', () => {
         expect(fitScale(100000, 900)).toBeGreaterThan(0);
         expect(fitScale(100000, 900)).toBeLessThan(0.01);
+    });
+});
+
+describe('fitChromeScale', () => {
+    it('shrinks the header row until it fits the width it actually has', () => {
+        expect(fitChromeScale(1000, 500)).toBe(0.5);
+    });
+
+    it('never blows the chrome up past its designed size', () => {
+        // Unlike the grid: spare width in the header belongs to the week, not
+        // to a bigger logo.
+        expect(fitChromeScale(800, 2000)).toBe(1);
+        expect(fitChromeScale(800, 800)).toBe(1);
+    });
+
+    it('keeps shrinking rather than dropping a name from the key', () => {
+        // The roster can outgrow the row; a colour with no key is undecodable,
+        // so the row gets smaller instead of losing a PM.
+        expect(fitChromeScale(2400, 960)).toBeCloseTo(0.4);
+        expect(fitChromeScale(9600, 960)).toBeCloseTo(0.1);
+    });
+
+    it('is the identity for an unmeasured row rather than collapsing it', () => {
+        expect(fitChromeScale(0, 960)).toBe(1);
+        expect(fitChromeScale(960, 0)).toBe(1);
+    });
+
+    it('fits a 1920-wide row onto the ~960px viewport a Google TV reports', () => {
+        // The bug on the wall: a header laid out for 1920 on a browser that
+        // reports half that. It now comes back at half size instead of
+        // wrapping the PM key into a column over the top of the period.
+        const natural = 1500;
+        expect(natural * fitChromeScale(natural, 960)).toBeCloseTo(960);
+        expect(fitChromeScale(natural, 1920)).toBe(1);
     });
 });

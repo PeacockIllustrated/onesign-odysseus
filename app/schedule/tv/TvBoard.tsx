@@ -28,6 +28,7 @@ import {
     toISO,
 } from '@/lib/schedule/utils';
 import {
+    fitChromeScale,
     fitScale,
     keyToTvAction,
     monthOfWeek,
@@ -426,6 +427,77 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
         };
     }, []);
 
+    // --- fitting the chrome to the screen ------------------------------------
+
+    /**
+     * The header is measured and scaled too, for the same reason the grid is.
+     *
+     * A wall browser's CSS viewport is not the panel's pixel count: a Google TV
+     * reports roughly 960 and lets the screen do the enlarging. A row laid out
+     * to sit comfortably across 1920 therefore overflows there, and it did not
+     * fail tidily — the PM key wrapped into a column, spilled over the period
+     * beside it, and pushed the week down the panel. So nothing in the row
+     * wraps or shrinks any more; it is laid out at its natural size and the
+     * whole row is scaled to whatever width the browser actually has.
+     *
+     * Natural width is summed from the children rather than read off the row,
+     * because the row's own box is set from the scale below — measuring it
+     * would be measuring this effect's own output. The children are all
+     * `flex: 0 0 auto`, so their widths do not move when the box does, and
+     * there is no loop.
+     */
+    // Only whether the spare van's chip is in the row, not the van itself: the
+    // row is re-observed when its children change, and a fresh object from
+    // every refresh would re-subscribe for nothing.
+    const extraVanId = extraVan?.id ?? null;
+    const headRef = useRef<HTMLElement>(null);
+    const headRowRef = useRef<HTMLDivElement>(null);
+    const [chrome, setChrome] = useState({ scale: 1, height: 0 });
+
+    useEffect(() => {
+        const head = headRef.current;
+        const row = headRowRef.current;
+        if (!head || !row) return;
+
+        let frame = 0;
+        const measure = () => {
+            cancelAnimationFrame(frame);
+            frame = requestAnimationFrame(() => {
+                const available = head.clientWidth;
+                const kids = Array.from(row.children) as HTMLElement[];
+                if (available <= 0 || kids.length === 0) return;
+
+                const gap = parseFloat(getComputedStyle(row).columnGap) || 0;
+                const natural =
+                    kids.reduce((w, kid) => w + kid.offsetWidth, 0) +
+                    gap * (kids.length - 1);
+                // Pre-transform, like the grid's: the row is scaled, so this is
+                // its natural height and the header box takes the scaled one.
+                const height = row.offsetHeight;
+
+                const next = fitChromeScale(natural, available);
+                setChrome((prev) =>
+                    Math.abs(prev.scale - next) > 0.004 ||
+                    Math.abs(prev.height - height) > 0.5
+                        ? { scale: next, height }
+                        : prev
+                );
+            });
+        };
+
+        measure();
+        const ro = new ResizeObserver(measure);
+        ro.observe(head);
+        // Each child as well as the row: the row's box is ours to set, so it
+        // does not resize when the roster grows or the period text changes
+        // length — the child that grew is the only thing that reports it.
+        for (const kid of Array.from(row.children)) ro.observe(kid);
+        return () => {
+            cancelAnimationFrame(frame);
+            ro.disconnect();
+        };
+    }, [extraVanId]);
+
     // --- label -------------------------------------------------------------
 
     const toSchedule = useMemo(() => holdingJobs(data.jobs, 'scheduled'), [data.jobs]);
@@ -463,75 +535,96 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
                 colours, and where you are. The controls sit up here beside the
                 logo precisely so they cost no height — the week below is what
                 the screen is for. */}
-            <header className="tvb-head">
-                {/* The white mark: the TV always runs the dark stage. Plain
-                    <img> like the sidebar's — a static SVG has nothing for the
-                    image optimiser to do. */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                    src="/Odysseus-Logo.svg"
-                    alt="Onesign Odysseus"
-                    className="tvb-logo"
-                />
+            <header
+                className="tvb-head"
+                ref={headRef}
+                // The row is scaled, which leaves its layout height untouched,
+                // so the box takes the scaled one — otherwise a shrunken header
+                // would still hold the full-size row's height and hand the week
+                // nothing back.
+                style={chrome.height ? { height: chrome.height * chrome.scale } : undefined}
+            >
+                <div
+                    className="tvb-headrow"
+                    ref={headRowRef}
+                    style={{
+                        transform: `scale(${chrome.scale})`,
+                        // Same trick as the grid's: laying the row out wider by
+                        // exactly the scale means the scaled result lands back
+                        // at the header's own width, so "where you are" still
+                        // sits hard against the right edge.
+                        width: `${100 / chrome.scale}%`,
+                    }}
+                >
+                    {/* The white mark: the TV always runs the dark stage. Plain
+                        <img> like the sidebar's — a static SVG has nothing for the
+                        image optimiser to do. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                        src="/Odysseus-Logo.svg"
+                        alt="Onesign Odysseus"
+                        className="tvb-logo"
+                    />
 
-                {/* Real buttons, not a legend.
-                    These started as labels naming what each arrow on the
-                    remote would do, on the reasoning that a wall screen has no
-                    pointer. A Google TV does: its D-pad moves a virtual mouse
-                    cursor and the arrow keys never reach the page, and there
-                    is no way for a page to opt out of that. So each control
-                    carries the arrow that triggers it AND is clickable, which
-                    covers both kinds of remote with one row and no modes. */}
-                <div className="tvb-remote">
-                    <button className="r" onClick={() => press('period-prev')}>
-                        <ChevronLeft size={16} />
-                        last {periodUnit}
-                    </button>
-                    <button className="r" onClick={() => press('period-next')}>
-                        next {periodUnit}
-                        <ChevronRight size={16} />
-                    </button>
-                    <button className="r" onClick={() => press('view-cycle')}>
-                        <ChevronDown size={16} />
-                        {nextTvView(view)} view
-                    </button>
-                    {extraVan && (
-                        <button
-                            className={`r ${extraVan.is_active ? 'on' : ''} ${busy ? 'busy' : ''}`}
-                            onClick={() => press('toggle-van')}
-                        >
-                            <ChevronUp size={16} />
-                            {extraVan.name}
-                            <b>{extraVan.is_active ? 'on' : 'off'}</b>
+                    {/* Real buttons, not a legend.
+                        These started as labels naming what each arrow on the
+                        remote would do, on the reasoning that a wall screen has no
+                        pointer. A Google TV does: its D-pad moves a virtual mouse
+                        cursor and the arrow keys never reach the page, and there
+                        is no way for a page to opt out of that. So each control
+                        carries the arrow that triggers it AND is clickable, which
+                        covers both kinds of remote with one row and no modes. */}
+                    <div className="tvb-remote">
+                        <button className="r" onClick={() => press('period-prev')}>
+                            <ChevronLeft size={16} />
+                            last {periodUnit}
                         </button>
-                    )}
-                    {/* Only reachable by pointer or Tab: a Google TV remote has
-                        no Home key, so without this a cursor-driven board has
-                        no way back to this week. */}
-                    <button
-                        className={`r ${atHome ? 'here' : 'home'}`}
-                        onClick={() => press('today')}
-                        disabled={atHome}
-                    >
-                        <CalendarCheck size={16} />
-                        {atHome ? 'this week' : 'today'}
-                    </button>
-                </div>
+                        <button className="r" onClick={() => press('period-next')}>
+                            next {periodUnit}
+                            <ChevronRight size={16} />
+                        </button>
+                        <button className="r" onClick={() => press('view-cycle')}>
+                            <ChevronDown size={16} />
+                            {nextTvView(view)} view
+                        </button>
+                        {extraVan && (
+                            <button
+                                className={`r ${extraVan.is_active ? 'on' : ''} ${busy ? 'busy' : ''}`}
+                                onClick={() => press('toggle-van')}
+                            >
+                                <ChevronUp size={16} />
+                                {extraVan.name}
+                                <b>{extraVan.is_active ? 'on' : 'off'}</b>
+                            </button>
+                        )}
+                        {/* Only reachable by pointer or Tab: a Google TV remote has
+                            no Home key, so without this a cursor-driven board has
+                            no way back to this week. */}
+                        <button
+                            className={`r ${atHome ? 'here' : 'home'}`}
+                            onClick={() => press('today')}
+                            disabled={atHome}
+                        >
+                            <CalendarCheck size={16} />
+                            {atHome ? 'this week' : 'today'}
+                        </button>
+                    </div>
 
-                {/* Card colour is whose job it is (CLAUDE.md §2d), which is
-                    unreadable on a wall without the key that decodes it. */}
-                <div className="tvb-key">
-                    {keyPms.map((p) => (
-                        <span key={p.id} className="k">
-                            <span className="sw" style={{ background: p.colour }} />
-                            {p.name}
-                        </span>
-                    ))}
-                </div>
+                    {/* Card colour is whose job it is (CLAUDE.md §2d), which is
+                        unreadable on a wall without the key that decodes it. */}
+                    <div className="tvb-key">
+                        {keyPms.map((p) => (
+                            <span key={p.id} className="k">
+                                <span className="sw" style={{ background: p.colour }} />
+                                {p.name}
+                            </span>
+                        ))}
+                    </div>
 
-                <div className="tvb-where" role="status" aria-live="polite">
-                    <span className="tvb-view">{view}</span>
-                    <span className="tvb-period">{period}</span>
+                    <div className="tvb-where" role="status" aria-live="polite">
+                        <span className="tvb-view">{view}</span>
+                        <span className="tvb-period">{period}</span>
+                    </div>
                 </div>
             </header>
 
