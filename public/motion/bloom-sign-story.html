@@ -1252,12 +1252,18 @@ function fabricatorState(t) {
   if (t > T.catch[0]) look = [0.2, -0.7];
   if (t > T.place[0]) { look = [-0.9, -0.2]; dir = -1; rot = 0.06 * Math.sin(Math.PI * prog(t, T.place[0] + 0.3, T.place[1])); }
   if (t > T.router[0] - 0.3) { const hd = routerHead(t); look = [Math.max(-1, (hd[0] - x) / 400), Math.max(-1, Math.min(1, (hd[1] - 560) / 300))]; dir = -1; }
-  if (t > T.leds[0] - 0.2 && t < T.leds[1] + 0.1) {
+  const ledIn = E.inOutCubic(prog(t, T.leds[0] - 0.4, T.leds[0] - 0.02)), ledOut = E.inOutCubic(prog(t, T.leds[1] + 0.05, T.leds[1] + 0.4));
+  const ledReach = ledIn * (1 - ledOut);
+  if (ledReach > 0.001) {
     const i = Math.min(WORDMARK.leds.length - 1, Math.max(0, Math.floor((t - T.leds[0]) / (T.leds[1] - T.leds[0]) * WORDMARK.leds.length)));
     const L = WORDMARK.leds[i].p, d = letterDepth(t, WORDMARK.leds[i].li) / bedH;
-    hands = [null, L2Bed([L[0] - 0.55 * d, L[1] - 0.75 * d])]; look = [-0.9, -0.3];
+    const target = L2Bed([L[0] - 0.55 * d, L[1] - 0.75 * d]);
+    // the resting hand, worked out from the same body the character will be drawn with
+    const spec = CHARACTERS.fabricator, f = charFrame(spec, { x, y: 870, sx: 1 / Math.sqrt(sy), sy, rot }), sh = shoulderOf(spec, f, 1);
+    const rest = [sh[0] + 10, sh[1] + spec.h * 0.3];
+    hands = [null, lerp2(rest, target, ledReach)]; if (ledReach > 0.3) look = [-0.9, -0.3];
   }
-  const ledGrow = 1 + 1.9 * E.outBack(prog(t, T.leds[0] - 0.25, T.leds[0])) * (1 - E.inOutCubic(prog(t, T.leds[1], T.leds[1] + 0.3)));
+  const ledGrow = 1 + 1.9 * ledReach;
   if (t > T.thumbs - 0.1 && t < T.glow[0] + 0.5) {
     const k = E.outBack(prog(t, T.thumbs - 0.1, T.thumbs + 0.14));
     hands = [null, [x + 80, 700 - 220 * k]]; handStyle = [null, 'thumb']; look = [0, 0.1]; dir = 1;
@@ -1282,7 +1288,7 @@ function drawFabricator(t) {
 
 const VAN = { wheelR: 44, ground: 1000, scale: 1 };
 const VAN_PARK = OX - 10, VAN_START = -3200;          // parks clear of the ladder, tail lift short of it
-const VAN_REAR = 380, LIFT_LEN = 120;
+const VAN_REAR = 380, LIFT_LEN = 200;          // tail lift platform depth
 function vanX(t) {
   if (t < T.drive[0]) return VAN_START;
   if (t < T.leave[0]) return keys(t, [[T.drive[0], VAN_START], [T.drive[1], VAN_PARK, E.inOutSine]]);
@@ -1290,7 +1296,7 @@ function vanX(t) {
 }
 // Tail-lift geometry, in world units for a van parked at x.
 const FLOOR_Y = VAN.ground - VAN.wheelR - 44, GROUND_Y = VAN.ground - 8, PARCEL_HALF = 35;
-const liftX = x => x + VAN_REAR + LIFT_LEN * 0.55;
+const liftX = x => x + VAN_REAR + 104;          // parcel centre on the platform, clear of the rear doors
 function liftPose(t) {                    // fold: 0 up against the doors → 1 out flat; drop: 0 at floor height → 1 on the road
   if (t < T.drive[0]) return {
     fold: keys(t, [[T.liftOut1[0], 0], [T.liftOut1[1], 1, E.inOutSine], [T.liftFold1[0], 1], [T.liftFold1[1], 0, E.inOutSine]]),
@@ -1352,68 +1358,103 @@ function drawParcel(t) {
   ctx.restore();
   ctx.restore();
 }
+// A real-looking Luton: crisp lines, square corners where a van has them, alloy trim, proper wheels.
+const VAN_INK = { width: 2.6, amp: 0.3 };
+const vk = (pts, o = {}) => sk(pts, { ...VAN_INK, ...o });
+function roundedPoly(pts, radii, seg = 5) {        // polygon with a chosen radius at each corner (0 = square)
+  const out = [];
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], a = pts[(i - 1 + pts.length) % pts.length], b = pts[(i + 1) % pts.length], r = radii[i] || 0;
+    if (!r) { out.push(p); continue; }
+    const la = Math.hypot(a[0] - p[0], a[1] - p[1]), lb = Math.hypot(b[0] - p[0], b[1] - p[1]);
+    const ra = Math.min(r, la / 2), rb = Math.min(r, lb / 2);
+    const p0 = [p[0] + (a[0] - p[0]) / la * ra, p[1] + (a[1] - p[1]) / la * ra], p1 = [p[0] + (b[0] - p[0]) / lb * rb, p[1] + (b[1] - p[1]) / lb * rb];
+    for (let k = 0; k <= seg; k++) { const u = k / seg; out.push([(1-u)*(1-u)*p0[0] + 2*(1-u)*u*p[0] + u*u*p1[0], (1-u)*(1-u)*p0[1] + 2*(1-u)*u*p[1] + u*u*p1[1]]); }
+  }
+  return out;
+}
+function drawVanWheel(wx, R, wa, dual) {
+  vk(circle(wx, 0, R), { closed: true, fill: '#262b2e', width: 2.8 });
+  vk(circle(wx, 0, R * 0.86), { closed: true, stroke: '#3b4246', width: 2 });                  // tyre sidewall
+  if (dual) vk(circle(wx, 0, R * 0.64), { closed: true, fill: '#9aa1a4', width: 2 });          // inner rim of the twin
+  vk(circle(wx, 0, R * 0.58), { closed: true, fill: '#d3d7d8', width: 2.2 });                  // alloy rim
+  vk(circle(wx, 0, R * 0.40), { closed: true, fill: '#b9bec0', width: 1.6 });                  // dish
+  for (let k = 0; k < 6; k++) { const a = wa + k * Math.PI / 3; dot(wx + Math.cos(a) * R * 0.27, Math.sin(a) * R * 0.27, 2.6, '#6d7478'); }
+  dot(wx, 0, R * 0.12, '#565d61');
+}
 function drawVan(t) {
   const x = vanX(t), g = VAN.ground, R = VAN.wheelR;
   const vx = (vanX(t + 0.02) - vanX(t - 0.02)) / 0.04;
-  const rot = 0.022 * settle(t - T.drive[0] + 0.1, 9, 0.35) + 0.018 * settle(t - T.leave[0], 9, 0.35) - 0.02 * settle(t - T.drive[1], 10, 0.3);
-  const bob = Math.abs(vx) > 5 ? 2.2 * Math.sin(x * 0.04) : 0;
-  const wa = -x / R;
-  puff(x + VAN_REAR + 14, g - 26, T.drive[0], t, 3, 10); puff(x + VAN_REAR + 14, g - 26, T.leave[0], t, 3, 10);
-  ctx.beginPath(); ctx.ellipse(x + 10, g + 3, 420, 13, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(35,40,43,0.14)'; ctx.fill();
-  const WF = -250, WR = 250, AR = R + 12;                       // wheel centres, arch radius
+  const rot = 0.018 * settle(t - T.drive[0] + 0.1, 9, 0.35) + 0.015 * settle(t - T.leave[0], 9, 0.35) - 0.016 * settle(t - T.drive[1], 10, 0.3);
+  const bob = Math.abs(vx) > 5 ? 1.6 * Math.sin(x * 0.04) : 0;
+  const wa = -x / R, WF = -262, WR = 250;
+  puff(x + VAN_REAR - 30, g - 10, T.drive[0], t, 3, 9); puff(x + VAN_REAR - 30, g - 10, T.leave[0], t, 3, 9);
+  ctx.beginPath(); ctx.ellipse(x + 6, g + 3, 430, 12, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(35,40,43,0.16)'; ctx.fill();
   ctx.save(); ctx.translate(x, g - R - bob); ctx.rotate(rot);
-  // side guard between the wheels, and the chassis rail behind it
-  sk(rect(-176, -50, 360, 12), { closed: true, fill: COLORS.bezel, width: 2.4 });
-  sk(rect(-168, -22, 350, 9), { closed: true, fill: COLORS.steel, width: 2.2 });
-  for (const gx of [-140, 0, 150]) sk([[gx, -38], [gx, -13]], { width: 3, stroke: COLORS.steel });
-  // Luton box: one outline from the rear, over the roof, round the peak above the cab
-  const box = [[-150, -50], ...poly([[-150, -50], [366, -50]], false, 40).slice(1), [380, -64], [380, -372], [366, -386],
-               ...poly([[340, -386], [-196, -386]], false, 40), ...chaikin([[-196, -386], [-252, -380], [-272, -352], [-270, -312], [-246, -290], [-150, -286]], 2).slice(2, -2), [-150, -286]];
-  sk(box, { closed: true, fill: COLORS.van, width: 3.8 });
-  sk([[-196, -372], [366, -372]], { width: 1.8, alpha: 0.4 });                         // roof capping
-  for (let sx = -40; sx < 360; sx += 100) sk([[sx, -370], [sx, -122]], { width: 1.4, alpha: 0.16, amp: 0.4 });
-  sk(rect(-150, -122, 530, 20), { closed: true, fill: COLORS.teal, width: 2.4 });    // brand band
-  sk(rect(-150, -102, 530, 6), { closed: true, fill: COLORS.tealDark, stroke: false });
-  drawOnesignLogo(114, -262, 420);
-  label('onesignanddigital.com', 114, -170, 21, COLORS.tealDark, 600);
-  for (const mx of [-110, 60, 230]) dot(mx, -60, 4.5, COLORS.designer);                // side marker lights
-  sk(rect(362, -372, 18, 322), { closed: true, fill: '#ebe6db', width: 2.6 });        // rear door frame
-  sk(rrect(366, -150, 12, 38, 4), { closed: true, fill: COLORS.customer, width: 2.2 });
-  sk(rrect(366, -110, 12, 16, 4), { closed: true, fill: COLORS.designer, width: 2 });
-  // cab: roof under the peak, raked screen, short bonnet, deep bumper
-  const cab = chaikin([[-150, -286], [-232, -286], [-306, -196], [-346, -178], [-362, -158], [-366, -80], [-360, -44], [-150, -44]], 2);
-  sk(cab, { closed: true, fill: COLORS.van, width: 3.6 });
-  sk(chaikin([[-162, -274], [-228, -274], [-292, -196], [-162, -196]], 1), { closed: true, fill: COLORS.glass, width: 3 });
-  sk([[-188, -264], [-214, -214]], { width: 2.2, stroke: '#fbf8f1', amp: 0.3 });
-  sk([[-166, -196], [-166, -64]], { width: 2.4 });                                    // door shut line
-  sk([[-292, -196], [-306, -178], [-312, -120]], { width: 2.4 });
-  sk(rrect(-200, -176, 26, 7, 3), { closed: true, fill: COLORS.bezel, width: 1.8 });  // handle
-  sk([[-294, -206], [-320, -214]], { width: 3 });                                     // mirror
-  sk(rrect(-340, -242, 22, 40, 7), { closed: true, fill: COLORS.bezel, width: 2.4 });
-  sk(rrect(-366, -150, 22, 30, 8), { closed: true, fill: '#f6e7c1', width: 2.4 });    // headlight
-  dot(-343, -120, 4, COLORS.designer);
-  for (let gy = -114; gy <= -90; gy += 8) sk([[-368, gy], [-346, gy]], { width: 2, amp: 0.3 });
-  sk(rrect(-376, -72, 86, 26, 9), { closed: true, fill: COLORS.steel, width: 2.6 });  // bumper
-  dot(-356, -59, 4, '#f6e7c1');
+  const WHITE = COLORS.van, ALLOY = '#c7ccce', TRIM = '#3b4246', BOX_FLOOR = -52;
+
+  // chassis, fuel tank, side guard (seen below the box between the wheels)
+  vk(rect(-160, BOX_FLOOR, 540, 12), { closed: true, fill: TRIM });
+  vk(roundedPoly([[-120, BOX_FLOOR + 12], [-30, BOX_FLOOR + 12], [-30, -6], [-120, -6]], [0, 0, 8, 8]), { closed: true, fill: '#4a5155' });
+  for (const gy of [-28, -8]) vk(rect(-190, gy, 380, 7), { closed: true, fill: ALLOY, width: 2 });
+  for (const gx of [-176, 176]) vk([[gx, BOX_FLOOR + 12], [gx, 2]], { width: 3.4, stroke: TRIM });
+
+  // Luton box + moulded peak over the cab, one outline, square bottom corners
+  const body = roundedPoly([[-150, BOX_FLOOR], [380, BOX_FLOOR], [380, -388], [-214, -388], [-262, -366], [-270, -318], [-256, -290], [-150, -282]],
+                           [0, 0, 6, 0, 26, 18, 14, 0]);
+  vk(body, { closed: true, fill: WHITE, width: 3.2 });
+  vk([[-150, -282], [-150, BOX_FLOOR]], { width: 2 });
+  // alloy corner post, capping and bottom rail
+  vk(rect(360, -388, 20, 336), { closed: true, fill: ALLOY });
+  vk(rect(-150, -388, 510, 10), { closed: true, fill: ALLOY });
+  vk(rect(-150, BOX_FLOOR - 16, 510, 16), { closed: true, fill: ALLOY });
+  for (let sx = -40; sx < 360; sx += 100) vk([[sx, -378], [sx, BOX_FLOOR - 16]], { width: 1.2, alpha: 0.18, amp: 0.2 });
+  // livery
+  vk(rect(-150, -138, 510, 22), { closed: true, fill: COLORS.teal, width: 2 });
+  drawOnesignLogo(105, -270, 400);
+  label('onesignanddigital.com', 105, -182, 20, COLORS.tealDark, 600);
+  for (const mx of [-120, 40, 200]) vk(rect(mx - 7, BOX_FLOOR - 12, 14, 8), { closed: true, fill: COLORS.designer, width: 1.4 });
+  vk(roundedPoly([[364, -160], [376, -160], [376, -104], [364, -104]], [3, 3, 3, 3]), { closed: true, fill: COLORS.customer, width: 1.8 });
+  vk(rect(364, -104, 12, 14), { closed: true, fill: COLORS.designer, width: 1.6 });
+
+  // cab: square where it meets the box and at the sill, rounded only where a van is
+  const cab = roundedPoly([[-150, -282], [-236, -282], [-316, -168], [-346, -150], [-356, -126], [-358, -44], [-150, -44]],
+                          [0, 16, 10, 22, 10, 4, 0]);
+  vk(cab, { closed: true, fill: WHITE, width: 3.2 });
+  // glazing, door, handle, step
+  vk(roundedPoly([[-162, -268], [-230, -268], [-290, -184], [-162, -184]], [6, 6, 6, 6]), { closed: true, fill: '#c9d6d8', width: 2.4 });
+  vk([[-198, -258], [-224, -218]], { width: 2, stroke: '#eef3f3', amp: 0 });
+  vk([[-162, -184], [-162, -52]], { width: 2 });                                   // B-pillar shut line
+  vk([[-290, -184], [-300, -166], [-302, -92]], { width: 2 });                     // door front edge
+  vk(roundedPoly([[-206, -172], [-180, -172], [-180, -166], [-206, -166]], [3, 3, 3, 3]), { closed: true, fill: TRIM, width: 1.4 });
+  // dark lower cladding + wheel arch flare
+  vk(rect(-358, -66, 208, 22), { closed: true, fill: '#4a5155', width: 2.2 });
+  // mirror
+  vk([[-294, -196], [-322, -204]], { width: 3.4, stroke: TRIM });
+  vk(roundedPoly([[-338, -236], [-318, -236], [-318, -190], [-338, -190]], [5, 5, 5, 5]), { closed: true, fill: TRIM, width: 2 });
+  // front end: swept headlamp, grille, indicator, bumper with a square bottom corner
+  vk(roundedPoly([[-348, -144], [-330, -151], [-316, -146], [-324, -128], [-350, -122]], [4, 4, 6, 4, 4]), { closed: true, fill: '#f3ead0', width: 2.2 });
+  vk(rect(-328, -143, 7, 7), { closed: true, fill: COLORS.designer, width: 1.2 });
+  vk(rect(-357, -112, 7, 38), { closed: true, fill: TRIM, width: 1.6 });             // grille edge, inside the profile
+  vk(roundedPoly([[-366, -72], [-300, -72], [-300, -40], [-366, -40]], [6, 0, 0, 0]), { closed: true, fill: '#4a5155', width: 2.4 });
+  dot(-352, -56, 4, '#f6e7c1');
+
   // rear: roller shutter + tail lift
   const LP = liftPose(t);
-  if (LP.shutter > 0.02) sk(rect(366, -372 + 322 * (1 - LP.shutter), 12, 322 * LP.shutter), { closed: true, fill: '#6d6a62', width: 2.4 });
+  if (LP.shutter > 0.02) vk(rect(362, -378 + 326 * (1 - LP.shutter), 16, 326 * LP.shutter), { closed: true, fill: '#6d6a62', width: 2 });
   const hinge = [VAN_REAR, -44], ang = lerp(-Math.PI / 2, 0, LP.fold), lower = LP.drop * (R - 8 + 44);
   const tip = [hinge[0] + Math.cos(ang) * LIFT_LEN, hinge[1] + Math.sin(ang) * LIFT_LEN + lower];
-  sk([[hinge[0] - 6, -56], [hinge[0] + 8, hinge[1] + lower]], { width: 4, stroke: COLORS.steel });
-  sk(poly([[hinge[0], hinge[1] + lower], tip, [tip[0] + 5, tip[1] + 10], [hinge[0] + 5, hinge[1] + lower + 10]], true, 12), { closed: true, fill: COLORS.steel, width: 2.6 });
-  sk(rrect(300, -46, 14, 52, 3), { closed: true, fill: COLORS.bezel, width: 2 });      // mudflap
-  // wheel arches cut into the body, then the wheels
-  for (const wx of [WF, WR]) {
-    const arch = []; for (let k = 0; k <= 20; k++) { const a = Math.PI + k / 20 * Math.PI; arch.push([wx + Math.cos(a) * AR, Math.sin(a) * AR]); }
-    sk([...arch, [wx + AR, 6], [wx - AR, 6]], { closed: true, fill: '#3a4145', width: 3 });
-  }
-  for (const wx of [WF, WR]) {
-    sk(circle(wx, 0, R), { closed: true, fill: COLORS.bezel, width: 3.4 });
-    sk(circle(wx, 0, 25), { closed: true, fill: '#d6d2c8', width: 2.4 });
-    for (let k = 0; k < 5; k++) { const a = wa + k * Math.PI * 2 / 5; sk([[wx + Math.cos(a) * 7, Math.sin(a) * 7], [wx + Math.cos(a) * 21, Math.sin(a) * 21]], { width: 2.4, stroke: COLORS.steel, amp: 0 }); }
-    dot(wx, 0, 6, COLORS.bezel);
-  }
+  vk([[hinge[0] - 8, BOX_FLOOR + 6], [hinge[0] + 6, hinge[1] + lower]], { width: 4, stroke: TRIM });
+  vk(poly([[hinge[0], hinge[1] + lower], tip, [tip[0] + 4, tip[1] + 9], [hinge[0] + 4, hinge[1] + lower + 9]], true, 20), { closed: true, fill: ALLOY, width: 2.2 });
+
+  // wheel arches: a flared arch on the cab, a mudguard over the rear twin
+  const archF = []; for (let k = 0; k <= 24; k++) { const a = Math.PI + k / 24 * Math.PI; archF.push([WF + Math.cos(a) * (R + 12), Math.sin(a) * (R + 12)]); }
+  vk([...archF, [WF + R + 12, -44], [WF - R - 12, -44]], { closed: true, fill: '#262b2e', width: 2.4 });
+  vk(archF.map(p => [WF + (p[0] - WF) * 1.1, p[1] * 1.1]).filter(p => p[1] < -30), { width: 6, stroke: '#4a5155' });
+  const guard = []; for (let k = 0; k <= 24; k++) { const a = Math.PI + k / 24 * Math.PI; guard.push([WR + Math.cos(a) * (R + 10), Math.sin(a) * (R + 10)]); }
+  vk(guard.filter(p => p[1] < -8), { width: 7, stroke: TRIM });
+  drawVanWheel(WF, R, wa, false);
+  drawVanWheel(WR, R, wa, true);
   ctx.restore();
 }
 
