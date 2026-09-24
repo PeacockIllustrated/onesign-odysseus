@@ -332,6 +332,10 @@ const shoulderOf = (spec, f, i) => f.L2W((i ? 1 : -1) * spec.w * (spec.shape ===
 function drawCharacter(spec, st) {
   const f = charFrame(spec, st), { L2W } = f, w = spec.w, h = spec.h, dir = st.dir || 1, k = spec.k || 1;
   const legs = st.legs || { mode: 'stand' };
+  if (legs.mode !== 'sit' && legs.mode !== 'climb') {        // soft contact shadow grounds them
+    const k2 = 1 / (1 + (st.jump || 0) / 60);
+    ctx.beginPath(); ctx.ellipse(st.x, st.y + 3, w * 0.5 * k2, 8 * k2, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(35,40,43,0.10)'; ctx.fill();
+  }
   for (const side of [-1, 1]) {
     const hip = L2W(side * w * 0.2, -2);
     let foot;
@@ -875,10 +879,7 @@ function drawStudioRoom(t) {
   sk([[-330, -40], [1950, -40]], { width: 4 });
   sk(rect(-360, -110, 2340, 70), { closed: true, fill: COLORS.roof });
   sk(rect(1950, -110, 30, 980), { closed: true, fill: COLORS.roof });
-  // partition + serving hatch to the workshop
-  sk(rect(-330, -40, 40, 110), { closed: true, fill: '#d9cfbd' });
-  sk(rect(-330, 480, 40, 390), { closed: true, fill: '#d9cfbd' });
-  sk(rect(-340, 470, 70, 14), { closed: true, fill: COLORS.desk, width: 2.6 });
+  drawPartition();
   // bookshelf of binders
   sk(rect(-240, 200, 280, 670), { closed: true, fill: COLORS.desk });
   for (const y of [360, 520, 690]) sk([[-240, y], [40, y]], { width: 3 });
@@ -1022,7 +1023,7 @@ function drawWorkshopRoom(t) {
   sk([[x0, -40], [x1, -40]], { width: 4 });
   sk([[x0, 40], [x1, 40]], { width: 4, stroke: COLORS.steel });
   for (let x = x0; x < x1 - 60; x += 120) sk([[x, 40], [x + 60, -36], [x + 120, 40]], { width: 2.6, stroke: COLORS.steel, amp: 0.6 });
-  for (const x of [-2690, -1880, -1370, -360]) { sk(rect(x - 12, 40, 24, 830), { closed: true, fill: COLORS.steel, width: 2.6 }); sk([[x - 20, 40], [x + 20, 40]], { width: 4 }); }
+  for (const x of [-2690, -1900, -1470, -560]) { sk(rect(x - 12, 40, 24, 830), { closed: true, fill: COLORS.steel, width: 2.6 }); sk([[x - 20, 40], [x + 20, 40]], { width: 4 }); }
   // high-bay lights
   for (const x of [-2300, -1620, -1040, -560]) { sk([[x, 40], [x, 110]], { width: 2.4 }); sk(chaikin([[x - 46, 160], [x - 30, 110], [x + 30, 110], [x + 46, 160]], 1), { closed: true, fill: COLORS.teal, width: 3 }); }
   // left wall with a slatted roller door, rolled up
@@ -1053,9 +1054,15 @@ function drawWorkshopRoom(t) {
   sk(rect(-450, 560, 100, 60), { closed: true, fill: COLORS.paperHi, width: 2.4 }); label('FIRE', -400, 590, 20, COLORS.customer, 800);
   // hazard stripes in front of the machine
   for (let x = BED.cx - 300; x < BED.cx + 300; x += 36) sk(poly([[x, 876], [x + 18, 876], [x + 8, 896], [x - 10, 896]], true), { closed: true, fill: COLORS.ink, stroke: false, amp: 0 });
-  // partition wall + hatch (workshop side)
-  sk(rect(-330, -40, 40, 110), { closed: true, fill: '#d9cfbd' });
-  sk(rect(-330, 480, 40, 390), { closed: true, fill: '#d9cfbd' });
+  drawPartition();
+}
+function drawPartition() {               // the wall between the rooms, cut through by the hatch the sheet flies through
+  sk(rect(-346, -40, 72, 130), { closed: true, fill: '#d2c7b3', width: 3 });
+  sk(rect(-346, 470, 72, 400), { closed: true, fill: '#d2c7b3', width: 3 });
+  ctx.fillStyle = 'rgba(35,40,43,0.06)'; ctx.fillRect(-346, 90, 72, 380);
+  sk(rect(-360, 462, 100, 16), { closed: true, fill: COLORS.desk, width: 2.6 });
+  sk(rect(-356, 82, 92, 12), { closed: true, fill: COLORS.desk, width: 2.4 });
+  for (let y = 520; y < 860; y += 60) sk([[-346, y], [-274, y]], { width: 1.4, alpha: 0.3, amp: 0.5 });
 }
 function drawCNC(t) {
   const L = BED.cx - BED.w / 2, R = BED.cx + BED.w / 2, Tp = BED.cy - BED_H / 2, B = BED.cy + BED_H / 2;
@@ -1063,8 +1070,9 @@ function drawCNC(t) {
   sk([[L - 30, B + 40], [L - 40, 870]], { width: 7 }); sk([[R + 30, B + 40], [R + 40, 870]], { width: 7 });
   sk([[L - 36, 800], [R + 36, 800]], { width: 4, stroke: COLORS.steel });
   // bed with T-slots
-  sk(rect(L - 40, Tp - 36, BED.w + 80, BED_H + 76), { closed: true, fill: '#cfd8d6' });
-  for (let y = Tp - 16; y < B + 36; y += 26) sk([[L - 28, y], [R + 28, y]], { width: 1.4, alpha: 0.4, amp: 0.4 });
+  sk(rect(L - 40, Tp - 36, BED.w + 80, BED_H + 76), { closed: true, fill: '#dde3e1' });
+  for (let y = Tp - 20; y < B + 30; y += 30) for (let x = L - 24; x < R + 30; x += 30) dot(x, y, 2.2, 'rgba(35,40,43,0.28)');
+  label('CNC 01', R + 10, B + 58, 16, COLORS.ink, 700);
   // side rails
   sk(rect(L - 64, Tp - 70, 24, BED_H + 140), { closed: true, fill: COLORS.steel, width: 3 });
   sk(rect(R + 40, Tp - 70, 24, BED_H + 140), { closed: true, fill: COLORS.steel, width: 3 });
@@ -1182,7 +1190,9 @@ function drawFabricator(t) {
   if (st.skipArm === 2) { const f = charFrame(spec, st); drawArm(spec, shoulderOf(spec, f, 0), st.hands[0], 1.25, null, 0); drawArm(spec, shoulderOf(spec, f, 1), st.hands[1], 1.25, null, 1); }
   if (t > T.leds[0] && t < T.hop[0]) {
     const hand = st.hands[1] || [st.x + 60, 700];
-    sk([[hand[0], hand[1]], [hand[0] + 40, hand[1] + 160], [st.x + 120, 850]], { width: 2.2, stroke: COLORS.tealDark, amp: 0.8 });
+    const sp = [st.x + 120, 846], wire = [];
+    for (let i = 0; i <= 14; i++) { const u = i / 14; wire.push([lerp(hand[0], sp[0], u), lerp(hand[1], sp[1], u) + Math.sin(Math.PI * u) * 60]); }
+    sk(wire, { width: 2, stroke: COLORS.tealDark, amp: 0.6 });
     sk(circle(st.x + 130, 846, 18), { closed: true, fill: COLORS.tealSoft, width: 2.6 });
   }
 }
@@ -1191,15 +1201,15 @@ function drawFabricator(t) {
    Scene 6: the parcel + the Luton van
    ========================================================================== */
 
-const VAN = { wheelR: 38, ground: 1000, scale: 1.15 };
+const VAN = { wheelR: 44, ground: 1000, scale: 1 };
 const VAN_PARK = OX + 250, VAN_START = -3200;
-const VAN_REAR = 330 * VAN.scale, LIFT_LEN = 110;
+const VAN_REAR = 380, LIFT_LEN = 120;
 function vanX(t) {
   if (t < T.drive[0]) return VAN_START;
   if (t < T.leave[0]) return keys(t, [[T.drive[0], VAN_START], [T.drive[1], VAN_PARK, E.inOutSine]]);
   return keys(t, [[T.leave[0], VAN_PARK], [T.leave[1], OX - 1400, E.inCubic]]);
 }
-const platform = x => [x + VAN_REAR + LIFT_LEN * VAN.scale * 0.55, VAN.ground - 62];
+const platform = x => [x + VAN_REAR + LIFT_LEN * 0.55, VAN.ground - 58];
 function parcelPos(t) {
   const start = [BED.cx, BED.cy], onLift = platform(VAN_START);
   if (t < T.hop[0]) return start;
@@ -1248,37 +1258,57 @@ function liftState(t) {                   // 0 = tail lift up, 1 = down
   return keys(t, [[T.unloadLift[0], 0], [T.unloadLift[1], 1, E.outBackSoft], [T.pack[1], 1], [T.pack[1] + 0.25, 0, E.inOutSine]]);
 }
 function drawVan(t) {
-  const x = vanX(t), g = VAN.ground;
+  const x = vanX(t), g = VAN.ground, R = VAN.wheelR;
   const vx = (vanX(t + 0.02) - vanX(t - 0.02)) / 0.04;
-  const rot = 0.03 * settle(t - T.drive[0] + 0.1, 9, 0.35) + 0.025 * settle(t - T.leave[0], 9, 0.35) - 0.025 * settle(t - T.drive[1], 10, 0.3);
-  const bob = Math.abs(vx) > 5 ? 3 * Math.sin(x * 0.04) : 0;
-  const wa = -x / (VAN.wheelR * VAN.scale);
-  puff(x + VAN_REAR + 10, g - 30, T.drive[0], t, 3, 10); puff(x + VAN_REAR + 10, g - 30, T.leave[0], t, 3, 10);
-  ctx.save(); ctx.translate(x, g - VAN.wheelR * VAN.scale - bob); ctx.rotate(rot); ctx.scale(VAN.scale, VAN.scale);
-  // Luton box body with its peak over the cab
-  sk(rrect(-170, -300, 500, 262, 14), { closed: true, fill: COLORS.van, width: 3.8 });
-  sk(chaikin([[-170, -300], [-238, -300], [-262, -276], [-262, -234], [-238, -212], [-170, -212]], 1), { closed: true, fill: COLORS.van, width: 3.6 });
-  sk(rect(-170, -58, 500, 16), { closed: true, fill: COLORS.teal, width: 2.4 });
-  // cab
-  sk(chaikin([[-170, -212], [-212, -212], [-262, -150], [-302, -128], [-308, -64], [-300, -38], [-170, -38]], 1), { closed: true, fill: COLORS.van, width: 3.6 });
-  sk(poly([[-186, -198], [-222, -198], [-260, -150], [-186, -150]], true), { closed: true, fill: COLORS.glass, width: 3 });
-  sk([[-176, -150], [-176, -40]], { width: 2.4 }); sk([[-196, -120], [-182, -120]], { width: 3 });
-  sk(rect(-318, -60, 44, 16), { closed: true, fill: COLORS.steel, width: 2.6 });
-  dot(-300, -96, 7, '#f6e7c1'); sk(rect(-190, -206, 10, 26), { closed: true, fill: COLORS.bezel, width: 2 });
-  // the Onesign logo on the box
-  drawOnesignLogo(80, -176, 400);
-  // rear: shutter and tail lift
+  const rot = 0.025 * settle(t - T.drive[0] + 0.1, 9, 0.35) + 0.02 * settle(t - T.leave[0], 9, 0.35) - 0.022 * settle(t - T.drive[1], 10, 0.3);
+  const bob = Math.abs(vx) > 5 ? 2.5 * Math.sin(x * 0.04) : 0;
+  const wa = -x / R;
+  puff(x + VAN_REAR + 14, g - 26, T.drive[0], t, 3, 10); puff(x + VAN_REAR + 14, g - 26, T.leave[0], t, 3, 10);
+  // ground shadow stays on the road while the body rocks
+  ctx.beginPath(); ctx.ellipse(x + 20, g + 2, 400, 14, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(35,40,43,0.12)'; ctx.fill();
+  ctx.save(); ctx.translate(x, g - R - bob); ctx.rotate(rot);
+  // wheel arches (behind the body line)
+  for (const wx of [-236, 250]) sk(ellipse(wx, -6, 58, 56, 28).filter(p => p[1] < -4), { width: 3, fill: '#4a5256' });
+  // chassis rail
+  sk(rect(-150, -56, 530, 12), { closed: true, fill: COLORS.bezel, width: 2.6 });
+  // Luton box: body, peak over the cab, roof rail, accent stripe, panel seams
+  // one continuous outline: box + the peak over the cab
+  const nose = chaikin([[-150, -262], [-240, -266], [-258, -292], [-252, -338], [-226, -360], [-150, -360]], 1).slice(1, -1);
+  sk([[-150, -56], [372, -56], [380, -64], [380, -352], [372, -360], ...poly([[340, -360], [-150, -360]], false, 30), ...[...nose].reverse(), [-150, -262]], { closed: true, fill: COLORS.van, width: 3.8 });
+  sk([[-140, -348], [372, -348]], { width: 2, alpha: 0.45 });
+  for (let sx = -44; sx < 370; sx += 106) sk([[sx, -346], [sx, -76]], { width: 1.6, alpha: 0.22, amp: 0.5 });
+  sk(rect(-150, -76, 530, 14), { closed: true, fill: COLORS.teal, width: 2.4 });
+  drawOnesignLogo(118, -222, 440);
+  label('onesignanddigital.com', 118, -136, 22, COLORS.tealDark, 600);
+  // tail lights + rear edge
+  sk(rect(368, -126, 12, 34), { closed: true, fill: COLORS.customer, width: 2.2 });
+  sk(rect(368, -90, 12, 14), { closed: true, fill: COLORS.designer, width: 2 });
+  // cab under the peak
+  sk(chaikin([[-150, -262], [-236, -262], [-296, -184], [-318, -160], [-334, -122], [-338, -70], [-330, -50], [-150, -50]], 1), { closed: true, fill: COLORS.van, width: 3.6 });
+  sk(poly([[-162, -248], [-226, -248], [-278, -182], [-162, -182]], true, 12), { closed: true, fill: COLORS.glass, width: 3 });
+  sk([[-196, -238], [-222, -204]], { width: 2.2, stroke: '#fbf8f1', amp: 0.3 });
+  sk([[-162, -182], [-162, -60]], { width: 2.4 }); sk([[-278, -182], [-300, -150], [-304, -60]], { width: 2.4 });
+  sk([[-196, -160], [-178, -160]], { width: 3.4 });
+  sk([[-286, -190], [-300, -196]], { width: 3 }); sk(rrect(-318, -214, 20, 34, 6), { closed: true, fill: COLORS.bezel, width: 2.4 });
+  // front: headlight, grille, indicator, bumper
+  sk(ellipse(-322, -118, 11, 14, 14), { closed: true, fill: '#f6e7c1', width: 2.4 });
+  for (let gy = -100; gy <= -80; gy += 7) sk([[-338, gy], [-322, gy]], { width: 2, amp: 0.3 });
+  dot(-316, -140, 4, COLORS.designer);
+  sk(rrect(-350, -66, 70, 18, 6), { closed: true, fill: COLORS.steel, width: 2.6 });
+  // rear: shutter + tail lift
   const lf = liftState(t);
-  if (lf > 0.02) sk(rect(318, -290, 12, 248), { closed: true, fill: '#6d6a62', width: 2.4 });
-  const hinge = [330, -30], ang = lerp(-Math.PI / 2, 0, lf), lx = Math.cos(ang) * LIFT_LEN, ly = Math.sin(ang) * LIFT_LEN;
-  const lower = lf * 26;
-  sk(poly([[hinge[0], hinge[1] + lower], [hinge[0] + lx, hinge[1] + ly + lower], [hinge[0] + lx + 4, hinge[1] + ly + lower + 10], [hinge[0] + 4, hinge[1] + lower + 10]], true), { closed: true, fill: COLORS.steel, width: 2.6 });
+  if (lf > 0.02) sk(rect(362, -346, 16, 282), { closed: true, fill: '#6d6a62', width: 2.4 });
+  const hinge = [VAN_REAR, -44], ang = lerp(-Math.PI / 2, 0, lf), lower = lf * (R - 8 + 44);
+  const tip = [hinge[0] + Math.cos(ang) * LIFT_LEN, hinge[1] + Math.sin(ang) * LIFT_LEN + lower];
+  sk([[hinge[0] - 6, -56], [hinge[0] + 8, hinge[1] + lower]], { width: 4, stroke: COLORS.steel });
+  sk(poly([[hinge[0], hinge[1] + lower], tip, [tip[0] + 5, tip[1] + 10], [hinge[0] + 5, hinge[1] + lower + 10]], true, 12), { closed: true, fill: COLORS.steel, width: 2.6 });
+  sk(rect(300, -40, 10, 46), { closed: true, fill: COLORS.bezel, width: 2 });
   // wheels
-  for (const wx of [-215, 230]) {
-    sk(circle(wx, 0, VAN.wheelR), { closed: true, fill: COLORS.bezel, width: 3.4 });
-    sk(circle(wx, 0, 14), { closed: true, fill: '#d6d2c8', width: 2.4 });
-    sk([[wx + Math.cos(wa) * 14, Math.sin(wa) * 14], [wx + Math.cos(wa) * 30, Math.sin(wa) * 30]], { width: 3, stroke: '#d6d2c8', amp: 0 });
-    sk(chaikin([[wx - 56, -38], [wx - 50, -62], [wx + 50, -62], [wx + 56, -38]], 1).slice(1, -1), { width: 3 });
+  for (const wx of [-236, 250]) {
+    sk(circle(wx, 0, R), { closed: true, fill: COLORS.bezel, width: 3.4 });
+    sk(circle(wx, 0, 22), { closed: true, fill: '#d6d2c8', width: 2.4 });
+    for (let k = 0; k < 5; k++) { const a = wa + k * Math.PI * 2 / 5; sk([[wx + Math.cos(a) * 6, Math.sin(a) * 6], [wx + Math.cos(a) * 19, Math.sin(a) * 19]], { width: 2.2, stroke: COLORS.steel, amp: 0 }); }
+    dot(wx, 0, 5, COLORS.bezel);
   }
   ctx.restore();
 }
