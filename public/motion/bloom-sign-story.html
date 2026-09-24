@@ -5,9 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Bloom Sign Story</title>
 <!--
-  The story of a sign being made by Onesign, 32s, told with paper characters.
+  The story of a sign being made by Onesign, ~40s. The customer is a paper character;
+  Onesign's staff are the Onesign mark itself, the 1 lit in each one's colour.
 
-  1 Shop front → 2 Into the studio → 3 Peel & throw → 4 The flight →
+  1 Shop front → 2 Into the studio → 3 Peel & throw → 4 The flight, signed off
+  in slow motion by the project manager as it flies past his desk →
   5 Fabrication → 6 The van → 7 The fit. The BLOOM design is one object the
   whole way: thought bubble → monitor → peeled sheet → template → letters →
   parcel → fascia. Scene changes follow it; there are no cuts or fades.
@@ -64,7 +66,7 @@
    SETTINGS: timings, colours, characters. Tune here.
    ========================================================================== */
 
-const STORY_END = 37.1;               // story seconds; real playback length is DURATION (the flight plays faster)
+const STORY_END = 37.1;               // story seconds; real playback length is DURATION (the flight plays faster, the sign-off slower)
 const FPS = 60;
 const BOIL_EVERY = 3;                 // frames per re-seed of the line boil
 
@@ -72,7 +74,7 @@ const SCENES = [
   { id: 1, name: 'Shop front',      t0: 0,     t1: 4     },
   { id: 2, name: 'Into the studio', t0: 4,     t1: 8     },
   { id: 3, name: 'Peel & throw',    t0: 8,     t1: 10.75 },
-  { id: 4, name: 'The flight',      t0: 10.75, t1: 12.95 },
+  { id: 4, name: 'Flight & sign-off', t0: 10.75, t1: 12.95 },
   { id: 5, name: 'Fabrication',     t0: 12.95, t1: 20    },
   { id: 6, name: 'The van',         t0: 20,    t1: 27.5  },
   { id: 7, name: 'The fit',         t0: 27.5,  t1: STORY_END },
@@ -102,18 +104,25 @@ const COLORS = {
   fabricator: '#cf5c78',
   fitterA:    '#f2a65a',
   fitterB:    '#b9573f',
+  pm:         '#4e7e8c',
   printer:    '#bfc1bf',
 };
 
 const INK = { width: 3.4, boil: 1.25 };            // boil amplitude in screen px
 
+// The customer is a paper character. Onesign's staff are the Onesign mark itself: the logo icon in ink,
+// the 1 lit in their colour, an eye either side of the stem, and the one bit of kit that says the job.
 const CHARACTERS = {
-  customer:   { shape: 'pill',   w: 124, h: 202, legLen: 70, color: COLORS.customer,   eyeGap: 34, eyeY: 0.72, eyeR: 7,   k: 1.35 },
-  designer:   { shape: 'square', w: 178, h: 158, legLen: 52, color: COLORS.designer,   eyeGap: 42, eyeY: 0.64, eyeR: 7.5, k: 1.3 },
-  fabricator: { shape: 'trap',   w: 170, h: 176, legLen: 58, color: COLORS.fabricator, eyeGap: 40, eyeY: 0.66, eyeR: 7,   k: 1.3, goggles: true },
-  fitterA:    { shape: 'round',  w: 128, h: 124, legLen: 50, color: COLORS.fitterA,    eyeGap: 32, eyeY: 0.6,  eyeR: 6.5, k: 1.2 },
-  fitterB:    { shape: 'round',  w: 136, h: 132, legLen: 50, color: COLORS.fitterB,    eyeGap: 34, eyeY: 0.6,  eyeR: 6.5, k: 1.2 },
+  customer:   { shape: 'pill', w: 124, h: 202, legLen: 70, color: COLORS.customer,   eyeGap: 34, eyeY: 0.72, eyeR: 7,   k: 1.35 },
+  designer:   { shape: 'mark', w: 176, legLen: 52, color: COLORS.designer,   k: 1.3 },
+  pm:         { shape: 'mark', w: 150, legLen: 48, color: COLORS.pm,         k: 1.2, kit: 'headset' },
+  fabricator: { shape: 'mark', w: 172, legLen: 58, color: COLORS.fabricator, k: 1.3, kit: 'goggles' },
+  fitterA:    { shape: 'mark', w: 132, legLen: 50, color: COLORS.fitterA,    k: 1.2, kit: 'hardhat' },
+  fitterB:    { shape: 'mark', w: 140, legLen: 50, color: COLORS.fitterB,    k: 1.2, kit: 'hardhat' },
 };
+// The icon in its own SVG units: the O spans x 0–157, y 10–152; the 1 is cut out of it.
+const MARK_ICON = { w: 157, h: 142, cx: 78.5, base: 152, eyes: [[46, 112], [134, 102]], eyeR: 12 };
+for (const s of Object.values(CHARACTERS)) if (s.shape === 'mark') s.h = s.w * MARK_ICON.h / MARK_ICON.w;
 
 const HAND = { r: 6, stretchGrow: 3.2, carried: 1.8 };   // designer's hand swells as the arm stretches
 const PAPER = 0.34;                   // the design shrinks to regular paper size in flight
@@ -141,8 +150,12 @@ const T = {
   tools: [5.95, 6.55, 7.0, 7.5],           // pen → align guides → paint bucket
   glance: 8.0, judder: [8.3, 9.0], shake: [9.0, 9.3], wind: 9.25, reach: [9.4, 9.7],
   peel: [9.7, 10.3], toss: [10.3, 10.75],
-  // 4 flight (the throw carries straight through)
+  // 4 flight (the throw carries straight through). The project manager signs it off on the way past:
+  // looks up, crouches, leaps; time slows while he turns with the page, reads it, thumbs up, tick;
+  // time snaps back and he drops into his chair. The page never leaves its path.
   flight: [10.75, 12.45], catch: [12.45, 12.95],
+  pm: { notice: 10.4, crouch: [10.7, 10.86], leap: [10.86, 11.04], slow: [11.0, 11.27], scan: [11.05, 11.165],
+        thumb: [11.165, 11.195], tick: 11.195, back: [11.29, 11.8] },
   // 5 fabrication
   place: [12.95, 13.6], router: [13.85, 16.2], extrude: [16.3, 17.3], leds: [17.45, 18.6], thumbs: 18.75, glow: [19.05, 19.8],
   // 6 van
@@ -216,8 +229,12 @@ function hash(n) {
   return (x >>> 0) / 4294967296;
 }
 // The flight plays faster than the rest: story time runs at speedAt(s) × real time, eased in and out.
-const FLIGHT_SPEED = { k: 1.7, rampIn: [10.5, 10.85], rampOut: [12.15, 12.5] };
-const speedAt = s => 1 + (FLIGHT_SPEED.k - 1) * E.inOutSine(prog(s, ...FLIGHT_SPEED.rampIn)) * (1 - E.inOutSine(prog(s, ...FLIGHT_SPEED.rampOut)));
+const FLIGHT_SPEED = { k: 1.7, rampIn: [11.5, 11.7], rampOut: [12.15, 12.5] };   // speeds up once the sign-off is done
+// Inside it, the sign-off plays in slow motion: SLOWMO.k × real time, with short ramps so the drop is felt.
+const SLOWMO = { k: 0.085, rampIn: 0.07, rampOut: 0.04 };
+const slowEnv = s => E.inOutSine(prog(s, T.pm.slow[0] - SLOWMO.rampIn, T.pm.slow[0])) * (1 - E.inOutSine(prog(s, T.pm.slow[1], T.pm.slow[1] + SLOWMO.rampOut)));
+const flightSpeed = s => 1 + (FLIGHT_SPEED.k - 1) * E.inOutSine(prog(s, ...FLIGHT_SPEED.rampIn)) * (1 - E.inOutSine(prog(s, ...FLIGHT_SPEED.rampOut)));
+const speedAt = s => lerp(flightSpeed(s), SLOWMO.k, slowEnv(s));
 const WARP = (() => {
   const ds = 0.001, n = Math.ceil(STORY_END / ds), r = new Float64Array(n + 1);
   for (let i = 1; i <= n; i++) r[i] = r[i - 1] + ds / speedAt((i - 0.5) * ds);
@@ -356,6 +373,47 @@ function bodyShape(spec) {
 }
 const shoulderOf = (spec, f, i) => f.L2W((i ? 1 : -1) * spec.w * (spec.shape === 'trap' ? 0.42 : 0.5), -spec.h * 0.46);
 
+// A staff member's body, face and kit, drawn in the icon's own units under the body's transform.
+// The mark is filled straight from the logo path and never redrawn; only the colour behind the 1 changes.
+function drawMarkBody(spec, st, f) {
+  const s = spec.w / MARK_ICON.w, I = MARK_ICON;
+  ctx.save();
+  ctx.translate(f.bx, f.by); ctx.rotate(st.rot || 0); ctx.scale(f.sx * s, f.sy * s); ctx.translate(-I.cx, -I.base);
+  ctx.beginPath(); ctx.ellipse(79, 81, 74, 68, 0, 0, Math.PI * 2); ctx.fillStyle = spec.color; ctx.fill();
+  ctx.save(); ctx.beginPath(); ctx.rect(-4, -4, 166, 172); ctx.clip(); ctx.fillStyle = COLORS.ink; ctx.fill(ONESIGN_LOGO.mark); ctx.restore();
+  if (spec.kit === 'headset') {
+    sk(ellipse(79, 70, 86, 84, 40).slice(21, 40), { width: 6 });
+    sk(rrect(-14, 66, 18, 32, 7, 8), { closed: true, fill: COLORS.ink, width: 3 });
+    sk([[-6, 96], [4, 124], [26, 132]], { width: 3.4 });
+    sk(circle(29, 132, 5), { closed: true, fill: spec.color, width: 2.4 });
+  }
+  const lk = st.look || [0, 0], wide = st.wide || 0, lids = st.lids || 0;
+  I.eyes.forEach(([x, y], i) => {
+    const shut = st.happy || (st.blink || 0) > 0.5 || (st.wink && i === 1);
+    if (shut) {
+      if (st.happy || st.wink) sk([[x - 10, y + 4], [x - 4, y - 5], [x + 4, y - 5], [x + 10, y + 4]], { width: 4.4, stroke: COLORS.paperHi, amp: 0.3 });
+      else sk([[x - 10, y], [x + 10, y]], { width: 4, stroke: COLORS.paperHi, amp: 0.3 });
+      return;
+    }
+    const r = I.eyeR * (1 + 0.18 * wide);
+    dot(x, y, r, COLORS.paperHi);
+    dot(x + lk[0] * 4.5, y + lk[1] * 4 + lids * 2, 5.5 * (1 - 0.2 * wide));
+    if (lids > 0.01) { ctx.save(); ctx.beginPath(); ctx.arc(x, y, r + 1, 0, Math.PI * 2); ctx.clip(); ctx.fillStyle = COLORS.ink; ctx.fillRect(x - r - 2, y - r - 2, 2 * r + 4, (r + 2) * lids); ctx.restore(); }
+  });
+  if (spec.kit === 'goggles') {
+    I.eyes.forEach(([x, y]) => sk(circle(x, y, 18), { closed: true, fill: 'rgba(168,195,202,0.45)', width: 3.4 }));
+    sk([[I.eyes[0][0] + 18, I.eyes[0][1] - 3], [I.eyes[1][0] - 18, I.eyes[1][1] + 1]], { width: 5, stroke: COLORS.steel });
+    sk([[I.eyes[0][0] - 18, I.eyes[0][1]], [2, I.eyes[0][1] - 8]], { width: 5, stroke: COLORS.steel });
+    sk([[I.eyes[1][0] + 18, I.eyes[1][1]], [156, I.eyes[1][1] - 10]], { width: 5, stroke: COLORS.steel });
+  }
+  if (spec.kit === 'hardhat') {
+    sk(chaikin([[10, 30], [22, -8], [79, -22], [136, -8], [148, 30]], 2).concat([[148, 30]]), { closed: true, fill: '#f2c14e', width: 3.4 });
+    sk(rrect(-2, 24, 162, 12, 5, 12), { closed: true, fill: '#e0ab35', width: 3 });
+    sk([[79, -20], [79, 24]], { width: 2.4, amp: 0.4 });
+  }
+  ctx.restore();
+}
+
 function drawCharacter(spec, st) {
   const f = charFrame(spec, st), { L2W } = f, w = spec.w, h = spec.h, dir = st.dir || 1, k = spec.k || 1;
   const legs = st.legs || { mode: 'stand' };
@@ -363,8 +421,9 @@ function drawCharacter(spec, st) {
     const k2 = 1 / (1 + (st.jump || 0) / 60);
     ctx.beginPath(); ctx.ellipse(st.x, st.y + 3, w * 0.5 * k2, 8 * k2, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(35,40,43,0.10)'; ctx.fill();
   }
+  const mark = spec.shape === 'mark';
   for (const side of [-1, 1]) {
-    const hip = L2W(side * w * 0.2, -2);
+    const hip = L2W(side * w * 0.2, mark ? -h * 0.07 : -2);
     let foot;
     if (legs.mode === 'walk') {
       const ph = legs.phase + (side > 0 ? Math.PI : 0);
@@ -380,13 +439,10 @@ function drawCharacter(spec, st) {
   const sh = [0, 1].map(i => shoulderOf(spec, f, i));
   const hands = [0, 1].map(i => st.hands && st.hands[i] ? st.hands[i]
     : [sh[i][0] + (i ? 10 : -10) + Math.sin((legs.phase || 0) + i*Math.PI) * 12 * k * (legs.amt || 0), sh[i][1] + h * 0.3]);
-  sk(bodyShape(spec).map(p => L2W(p[0], p[1])), { closed: true, fill: spec.color, width: 3.6 });
+  if (mark) drawMarkBody(spec, st, f);
+  else sk(bodyShape(spec).map(p => L2W(p[0], p[1])), { closed: true, fill: spec.color, width: 3.6 });
   const lx = (st.look ? st.look[0] : 0) * 9 * k, ly = (st.look ? st.look[1] : 0) * 8 * k;
-  if (spec.goggles) {
-    sk([L2W(-w * 0.36, -h * spec.eyeY), L2W(w * 0.36, -h * spec.eyeY)], { width: 4.5 });
-    for (const side of [-1, 1]) { const e = L2W(side * spec.eyeGap / 2, -h * spec.eyeY); sk(circle(e[0], e[1], spec.eyeR * 2.3), { closed: true, fill: COLORS.tealSoft, width: 3 }); }
-  }
-  for (const side of [-1, 1]) {
+  if (!mark) for (const side of [-1, 1]) {
     const g = spec.goggles ? 0.5 : 1;
     const e = L2W(side * spec.eyeGap / 2 + lx * g, -h * spec.eyeY + ly * g);
     if (st.happy) sk([[e[0] - 7, e[1] + 3], [e[0], e[1] - 5], [e[0] + 7, e[1] + 3]], { width: 3.4, amp: 0.3 });
@@ -395,20 +451,22 @@ function drawCharacter(spec, st) {
   }
   for (let i = 0; i < 2; i++) {
     if (st.skipArm === i || st.skipArm === 2) continue;
-    drawArm(spec, sh[i], hands[i], (st.armGrow && st.armGrow[i]) || 1, st.handStyle && st.handStyle[i], i);
+    drawArm(spec, sh[i], hands[i], (st.armGrow && st.armGrow[i]) || 1, st.handStyle && st.handStyle[i], i, st.thumbAng || 0);
   }
   return { shoulders: sh, hands };
 }
-function drawArm(spec, a, hand, grow = 1, style = null, side = 1) {
+function drawArm(spec, a, hand, grow = 1, style = null, side = 1, thumbAng = 0) {
   const len = Math.hypot(hand[0]-a[0], hand[1]-a[1]) || 1;
   const mx = (a[0] + hand[0]) / 2, my = (a[1] + hand[1]) / 2, bend = Math.min(18, len * 0.12) * (side ? 1 : -1);
   const nx = -(hand[1] - a[1]) / len, ny = (hand[0] - a[0]) / len;
   const pts = []; for (let k = 0; k <= 10; k++) { const u = k/10; pts.push([(1-u)*(1-u)*a[0] + 2*(1-u)*u*(mx + nx*bend) + u*u*hand[0], (1-u)*(1-u)*a[1] + 2*(1-u)*u*(my + ny*bend) + u*u*hand[1]]); }
   sk(pts, { width: 3.4 + (grow - 1) * 0.9 });
   const r = HAND.r * (spec.k || 1) * grow, ux = (hand[0] - a[0]) / len, uy = (hand[1] - a[1]) / len;
-  if (style === 'thumb') {
-    sk(circle(hand[0], hand[1], r * 2), { closed: true, fill: spec.color, width: 3, amp: 0.5 });
-    sk(rrect(hand[0] - r * 0.45, hand[1] - r * 3.6, r * 0.9, r * 2.2, r * 0.45, 8), { closed: true, fill: spec.color, width: 3, amp: 0.4 });
+  if (style === 'thumb') {                 // a fist with the thumb up, turned with the body when it is upside down
+    ctx.save(); ctx.translate(hand[0], hand[1]); ctx.rotate(thumbAng);
+    sk(circle(0, 0, r * 2), { closed: true, fill: spec.color, width: 3, amp: 0.5 });
+    sk(rrect(-r * 0.45, -r * 3.6, r * 0.9, r * 2.2, r * 0.45, 8), { closed: true, fill: spec.color, width: 3, amp: 0.4 });
+    ctx.restore();
     return;
   }
   sk(circle(hand[0] - ux * r * 0.35, hand[1] - uy * r * 0.35, r), { closed: true, fill: spec.color, width: 2.6 + (grow - 1) * 0.5, amp: 0.5 });
@@ -608,8 +666,9 @@ const cornerAt = (p, r) => { const a = curlMap(p, p, r)[0]; return [PEEL.C[0] + 
 const Q_END = cornerAt(PEEL.Dmax, R_END);
 const C_BED = [BED.cx + BED.w / 2, BED.cy - Fh(BED) / 2];
 const CATCH = [-600, 560];
-// One smooth path from the pinched corner, over the designer's head, through the hatch, into the fabricator's hands.
-const THROW = arcPath([Q_END, [Q_END[0] - 50, Q_END[1] - 150], [720, 250], [520, 232], [290, 222], [40, 242], [-230, 300], [-440, 410], CATCH]);
+// One smooth path from the pinched corner, over the designer's head, low past the project manager's desk,
+// through the hatch, into the fabricator's hands. Nobody touches it on the way.
+const THROW = arcPath([Q_END, [Q_END[0] - 50, Q_END[1] - 150], [720, 250], [540, 262], [330, 290], [150, 318], [-60, 318], [-250, 318], [-440, 410], CATCH]);
 const throwS = t => 1 - Math.pow(1 - prog(t, T.toss[0], T.flight[1]), 1.7);   // leaves the peel at speed, eases into the catch
 
 function sheetPose(t) {
@@ -716,7 +775,15 @@ const S1_CAM = [
   [3.1, cam(905, 452, 1.24), E.inOutSine],
   [4.0, cam(915, 442, 1.3), E.inOutSine],
 ];
-const followSheet = t => { const h = sheetHand(t - 0.2) || CATCH; return cam(h[0] - 30, h[1] + 70, keys(t, [[10.3, 1.2], [11.4, 1.02], [12.45, 1.26]], E.inOutSine), 0); };
+const followSheetRaw = t => { const h = sheetHand(t - 0.2) || CATCH; return cam(h[0] - 30, h[1] + 70, keys(t, [[10.3, 1.2], [11.4, 1.02], [12.45, 1.26]], E.inOutSine), 0); };
+// Through the sign-off the camera settles on the page and the PM together and pushes in a touch.
+const pmCamBlend = t => E.inOutSine(prog(t, T.pm.leap[0] + 0.02, T.pm.slow[0] + 0.03)) * (1 - E.inOutSine(prog(t, T.pm.slow[1] - 0.01, T.pm.back[0] + 0.1)));
+function followSheet(t) {
+  const f = followSheetRaw(t), b = pmCamBlend(t);
+  if (b <= 0) return f;
+  const Q = pmPaired(Math.min(t, T.pm.slow[1])), m = lerp2(Q.paper, Q.centre, 0.5);
+  return camLerp(f, cam(m[0] + 30, m[1] - 10, 1.62, 0), b);
+}
 function mainCam(t) {
   return camKeys(t, [
     [T.pull[0], fcam(WORLDS.main.F, PUSH_MAX_W)],
@@ -726,7 +793,8 @@ function mainCam(t) {
     [9.0,  cam(1230, 606, 1.33, 0.004), E.inOutSine],
     [9.45, cam(885, 468, 1.18), E.inOutCubic],                            // and back
     [10.3, cam(865, 455, 1.24), E.inOutSine],
-    [10.85, followSheet, E.inOutSine],
+    [10.72, cam(470, 470, 1.18), E.inOutSine],                             // the throw heads for the PM's desk: show him see it coming
+    [10.95, followSheet, E.inOutSine],
     [12.25, followSheet],
     [12.8, cam(-650, 580, 1.3), E.inOutSine],
     [13.6, cam(-830, 540, 1.26), E.inOutSine],
@@ -938,11 +1006,13 @@ function drawStudioRoom(t) {
   });
   sk(rect(-230, 720, 90, 150), { closed: true, fill: COLORS.printer, width: 2.4 });
   // tall floor plant
-  sk(poly([[150, 870], [140, 780], [240, 780], [230, 870]], true), { closed: true, fill: COLORS.customer, width: 3 });
-  for (const [dx, dy, a] of [[-60, -160, -0.5], [10, -230, 0.1], [70, -150, 0.6], [-20, -110, -0.2], [50, -80, 0.4]]) {
-    sk([[190, 780], [190 + dx * 0.6, 780 + dy * 0.6]], { width: 3 });
-    sk(ellipse(190 + dx, 780 + dy, 34, 14, 16).map(p => { const c = Math.cos(a), s = Math.sin(a), x = p[0] - 190 - dx, y = p[1] - 780 - dy; return [190 + dx + x * c - y * s, 780 + dy + x * s + y * c]; }), { closed: true, fill: COLORS.tree, width: 2.6 });
+  const PX = 96;
+  sk(poly([[PX - 40, 870], [PX - 50, 780], [PX + 50, 780], [PX + 40, 870]], true), { closed: true, fill: COLORS.customer, width: 3 });
+  for (const [dx, dy, a] of [[-50, -160, -0.5], [10, -230, 0.1], [60, -150, 0.6], [-20, -110, -0.2], [44, -80, 0.4]]) {
+    sk([[PX, 780], [PX + dx * 0.6, 780 + dy * 0.6]], { width: 3 });
+    sk(ellipse(PX + dx, 780 + dy, 34, 14, 16).map(p => { const c = Math.cos(a), s = Math.sin(a), x = p[0] - PX - dx, y = p[1] - 780 - dy; return [PX + dx + x * c - y * s, 780 + dy + x * s + y * c]; }), { closed: true, fill: COLORS.tree, width: 2.6 });
   }
+  drawPMDesk(t);
   // window with a half-drawn roller blind and a sill plant
   sk(rect(380, 40, 230, 270), { closed: true, fill: COLORS.sky });
   sk([[495, 40], [495, 310]], { width: 3 }); sk([[380, 175], [610, 175]], { width: 3 });
@@ -996,6 +1066,115 @@ function drawStudioRoom(t) {
   // stool
   sk(ellipse(DESIGNER_X, 716, 82, 11, 22), { closed: true, fill: COLORS.desk, width: 3 });
   sk([[DESIGNER_X - 44, 725], [DESIGNER_X - 66, 870]], { width: 4 }); sk([[DESIGNER_X + 44, 725], [DESIGNER_X + 66, 870]], { width: 4 });
+}
+// The project manager: at his desk with a laptop and a headset, between the designer and the hatch.
+const PM_X = 250, PM_SEAT = 716;
+const pmChairX = t => PM_X - 26 * E.outCubic(prog(t, T.pm.leap[0], T.pm.leap[0] + 0.1)) * (1 - E.inOutSine(prog(t, T.pm.back[0], T.pm.back[1] - 0.05)));
+function drawPMDesk(t) {
+  // desk, laptop (screen facing him), mug, a stack of job sheets
+  sk(rect(330, 652, 200, 22), { closed: true, fill: COLORS.desk });
+  sk([[350, 674], [350, 870]], { width: 5 }); sk([[510, 674], [510, 870]], { width: 5 });
+  sk(rrect(352, 640, 116, 12, 4), { closed: true, fill: '#c7ccce', width: 2.6 });
+  sk(poly([[462, 642], [448, 556], [460, 554], [474, 640]], true), { closed: true, fill: COLORS.bezel, width: 2.6 });
+  dot(461, 596, 3.5, COLORS.teal);
+  sk(rrect(488, 614, 26, 38, 5), { closed: true, fill: COLORS.paperHi, width: 2.4 });
+  sk(ellipse(516, 630, 8, 9, 12).slice(8, 24), { width: 2.2 });
+  for (let i = 0; i < 3; i++) sk(rect(398 - i * 3, 632 - i * 6, 44, 6), { closed: true, fill: i === 2 ? COLORS.paperHi : '#ece6d8', width: 1.8, amp: 0.4 });
+  // office chair: back, seat, gas stem, five-star base on castors; it rolls back when he leaps
+  const cx = pmChairX(t);
+  sk(rrect(cx - 96, 560, 28, 150, 12), { closed: true, fill: COLORS.tealDark, width: 3 });
+  sk([[cx - 82, 706], [cx - 60, 722]], { width: 4 });
+  sk(ellipse(cx, 722, 72, 11, 22), { closed: true, fill: COLORS.tealDark, width: 3 });
+  sk([[cx, 733], [cx, 832]], { width: 6 });
+  for (const d of [-62, -26, 26, 62]) { sk([[cx, 834], [cx + d, 856]], { width: 4 }); sk(circle(cx + d, 862, 7), { closed: true, fill: COLORS.bezel, width: 2.2 }); }
+}
+// Where he is while he reads it: alongside the page, just behind it, turned and flipped exactly as it is,
+// so the page always reads the right way up to him. He never touches it.
+function pmPaired(t) {
+  const S = sheetPose(t); if (!S || !S.H) return null;
+  const c = poseApply(S, [PEEL.F.cx, PEEL.F.cy]);
+  return { centre: [c[0] + 190, c[1] + 26], rot: S.ang, flip: S.flip, paper: c };
+}
+let pmThumb = 1;
+const clamp = (x, a, b) => x < a ? a : x > b ? b : x;
+function pmState(t) {
+  const spec = CHARACTERS.pm, h = spec.h, w = spec.w, P = T.pm;
+  const seatC = [pmChairX(t), PM_SEAT - h / 2];
+  let centre = seatC, rot = 0, flip = 1, sy = 1 + 0.012 * Math.sin(t * 2.2), look = [0.9, 0.45], lids = 0, wide = 0, blink = 0, air = false;
+  let hands = [null, [PM_X + 118 + Math.sin(t * 40) * 2, 634 - Math.abs(Math.sin(t * 23)) * 5]], style = null;
+  const toPaper = (from) => { const S = sheetPose(t), c = S && S.H ? poseApply(S, [PEEL.F.cx, PEEL.F.cy]) : [900, 300]; const d = [c[0] - from[0], c[1] - from[1]], L = Math.hypot(...d) || 1; return [d[0] / L, d[1] / L]; };
+  if (t > P.notice && t < P.leap[0]) {                     // something is coming: look up at it, eyes wide, crouch
+    look = toPaper(seatC); wide = E.outBack(prog(t, P.notice, P.notice + 0.08));
+    hands = [null, lerp2(hands[1], [PM_X + 96, 600], E.outCubic(prog(t, P.notice, P.notice + 0.12)))];
+    sy *= keys(t, [[P.crouch[0], 1], [P.crouch[1], 0.84, E.inOutCubic]]);
+  }
+  if (t >= P.leap[0] && t < P.back[0]) {
+    air = true;
+    const Q = pmPaired(t), u = E.outCubic(prog(t, P.leap[0], P.leap[1]));
+    centre = lerp2(seatC, Q.centre, u); centre[1] -= 70 * Math.sin(Math.PI * u) * (1 - u);
+    rot = Q.rot * E.inOutSine(prog(t, P.leap[0], P.leap[1])); flip = lerp(1, Q.flip, u);
+    sy = keys(t, [[P.leap[0], 0.84], [P.leap[0] + 0.03, 1.14, E.outCubic], [P.leap[1], 1, E.inOutSine]]);
+    // dead serious: lids down, reading the page line by line. Look directions are in his own (turned) frame.
+    const Q2 = pmPaired(t), d = [Q2.paper[0] - centre[0], Q2.paper[1] - centre[1]], dl = Math.hypot(...d) || 1;
+    const cr = Math.cos(rot), sr = Math.sin(rot), sg = flip < 0 ? -1 : 1;
+    const toward = [sg * (d[0] * cr + d[1] * sr) / dl, (-d[0] * sr + d[1] * cr) / dl];
+    lids = 0.45 * E.inOutSine(prog(t, P.leap[0], P.leap[0] + 0.08)); wide = 0; look = toward;
+    if (t > P.scan[0] && t < P.scan[1]) {
+      const ph = prog(t, P.scan[0], P.scan[1]) * 3, line = Math.floor(ph), f = ph - line;
+      const sweep = f < 0.8 ? lerp(-0.6, 0.6, f / 0.8) : lerp(0.6, -0.6, (f - 0.8) / 0.2), down = (line - 1) * 0.35;
+      look = [clamp(toward[0] - toward[1] * sweep + toward[0] * down, -1, 1), clamp(toward[1] + toward[0] * sweep + toward[1] * down, -1, 1)];
+    }
+    const L2 = (lx, ly) => [centre[0] + lx * flip * cr - ly * sy * sr, centre[1] + lx * flip * sr + ly * sy * cr];
+    // the thumb goes up on the side away from the page, and it points up in the room, whichever way up he is
+    const th = E.outBack(prog(t, P.thumb[0], P.thumb[1]));
+    const sh = [L2(-w * 0.5, -h * 0.04), L2(w * 0.5, -h * 0.04)], far = sh[0][0] > sh[1][0] ? 0 : 1;
+    const rest = [L2(-w * 0.62, h * 0.2), L2(w * 0.62, h * 0.2)];
+    hands = rest.slice();
+    hands[far] = lerp2(rest[far], [centre[0] + w * 0.78, centre[1] - h * 0.92], th);
+    if (th > 0.02) { style = far ? [null, 'thumb'] : ['thumb', null]; }
+    pmThumb = far;
+  }
+  if (t >= P.back[0]) {                                   // time snaps back and he drops into his chair
+    const Q = pmPaired(P.back[0]), u = E.inOutCubic(prog(t, P.back[0], P.back[1]));
+    if (u < 1) {
+      air = true;
+      centre = lerp2(Q.centre, seatC, u); centre[1] -= 60 * Math.sin(Math.PI * u);
+      rot = lerp(Q.rot, 0, u); flip = lerp(Q.flip, 1, u);
+      const flail = Math.sin(t * 60) * 12;
+      const L2 = (lx, ly) => { const c = Math.cos(rot), s = Math.sin(rot); return [centre[0] + lx * flip * c - ly * s, centre[1] + lx * flip * s + ly * c]; };
+      hands = [L2(-w * 0.75, -h * 0.55 + flail), L2(w * 0.75, -h * 0.55 - flail)];
+      lids = 0.45 * (1 - u); look = [0.2, -0.4];
+    } else {
+      sy = 1 - 0.14 * settle(t - P.back[1], 16, 0.3);
+      blink = t < P.back[1] + 0.08 ? 1 : 0;
+      if (t < P.back[1] + 0.3) hands = [null, lerp2([PM_X + 96, 610], hands[1], E.inOutCubic(prog(t, P.back[1], P.back[1] + 0.3)))];
+    }
+  }
+  if (!air) blink = blink || [4.6, 7.3, 9.1].some(b => t > b && t < b + 0.11) ? 1 : 0;
+  // body centre → base point for the drawing frame
+  const c = Math.cos(rot), s = Math.sin(rot);
+  const base = [centre[0] - (h / 2) * sy * s, centre[1] + (h / 2) * sy * c];
+  const L2Wb = (lx, ly) => [base[0] + lx * flip * c - ly * sy * s, base[1] + lx * flip * s + ly * sy * c];
+  const feet = air ? [-1, 1].map(side => L2Wb(side * (w * 0.22 + 6) + Math.sin(t * 9 + side) * 6, spec.legLen * 0.8)) : null;
+  return { t, x: base[0], y: base[1], base, rot, sx: flip, sy, dir: 1, look, lids, wide, blink, legs: air ? { mode: 'air' } : { mode: 'sit' }, feet,
+           hands, handStyle: style, thumbAng: 0, air, thumbHand: pmThumb };
+}
+function drawPM(t) { drawCharacter(CHARACTERS.pm, pmState(t)); }
+// The tick: pops by his thumb, dead centre of the slow motion, and is gone as time snaps back.
+function drawPMTick(t) {
+  const P = T.pm, pop = E.outBackBig(prog(t, P.tick, P.tick + 0.025)) * (1 - E.inCubic(prog(t, P.slow[1] - 0.005, P.slow[1] + 0.03)));
+  if (pop < 0.01) return;
+  const st = pmState(t), hd = st.hands[st.thumbHand], at = [hd[0] + 20, hd[1] - 92];
+  const burst = prog(t, P.tick, P.tick + 0.04);
+  if (burst > 0 && burst < 1) for (let i = 0; i < 8; i++) {
+    const a = i / 8 * Math.PI * 2 + 0.2, r0 = 44 + 40 * E.outCubic(burst), r1 = r0 + 18 * (1 - burst);
+    sk([[at[0] + Math.cos(a) * r0, at[1] + Math.sin(a) * r0], [at[0] + Math.cos(a) * r1, at[1] + Math.sin(a) * r1]], { width: 3.4, stroke: COLORS.teal, amp: 0.3 });
+  }
+  ctx.save(); ctx.translate(at[0], at[1]); ctx.scale(pop, pop);
+  sk(circle(0, 0, 38), { closed: true, fill: COLORS.teal, width: 3.6 });
+  const tick = [[-17, 1], [-5, 14], [19, -13]], draw = E.inOutSine(prog(t, P.tick + 0.008, P.tick + 0.032));
+  if (draw > 0) sk(partial(tick, draw * (Math.hypot(12, 13) + Math.hypot(24, 27))), { width: 8, stroke: COLORS.paperHi, amp: 0.3 });
+  ctx.restore();
 }
 function drawDesigner(t) {
   const st = designerState(t), spec = CHARACTERS.designer, hand = designerHand(t);
@@ -1715,9 +1894,10 @@ function drawMain(t, c) {
     drawFitCrew(t, v);
     if (TRACKED !== 'van') drawVan(t);
     if (TRACKED !== 'parcel') { if (t > T.hop[0] && t < T.hop[1]) ghosted(t, drawParcel); else drawParcel(t); }   // clipped at the van's rear doors while it slides in or out
-    if (inStudio) drawDesigner(t);
+    if (inStudio) { drawPM(t); drawDesigner(t); }
     if (inShop) drawFabricator(t);
     else { const S = sheetPose(t); if (S && (S.stage === 'flight' || S.stage === 'held')) drawSheet(t, 'flap'); }
+    if (inStudio) drawPMTick(t);
     drawFitFront(t, v);
     drawForeground(c, v);
   };
@@ -1903,7 +2083,7 @@ function drawFrame(tIn) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = grain; ctx.fillRect(0, 0, canvas.width, canvas.height);
   const vg = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, Math.min(canvas.width, canvas.height) * 0.35, canvas.width / 2, canvas.height / 2, Math.hypot(canvas.width, canvas.height) * 0.6);
-  vg.addColorStop(0, 'rgba(90,70,40,0)'); vg.addColorStop(1, 'rgba(90,70,40,0.10)');
+  vg.addColorStop(0, 'rgba(90,70,40,0)'); vg.addColorStop(1, `rgba(90,70,40,${(0.10 + 0.16 * slowEnv(t)).toFixed(3)})`);
   ctx.fillStyle = vg; ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
