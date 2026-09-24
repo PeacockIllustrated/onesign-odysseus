@@ -153,7 +153,7 @@ const T = {
   // unload: the same in reverse at the shop
   shutter2: [27.7, 27.9], liftOut2: [27.85, 28.1], slideOut: [28.15, 28.5], liftDrop2: [28.5, 28.85], pickup: [28.85, 29.3],
   fitOut: [27.75, 28.2], ladder: [28.55, 28.95], climb: [28.95, 29.5], letter0: 29.6, letterStep: 0.46, letterDur: 0.36, letterCatch: 0.18,
-  halo: 31.95, pack: [32.0, 32.4], liftIn2: [32.0, 32.4], leave: [32.45, 33.1],
+  halo: 32.3, pack: [32.3, 32.7], liftIn2: [32.3, 32.7], leave: [32.75, 33.4],
   custIn: [32.95, 33.75], custLook: 33.77, celebrate: [33.85, 34.95], door: [35.05, 35.45],
   // dusk gathers while the letters go up, night falls as they pack away, the customer arrives under the lit sign
   nightKeys: [[30.0, 0], [31.5, 0.35], [33.2, 1], [35.5, 1], [36.2, 0]],
@@ -745,14 +745,14 @@ function mainCam(t) {
     [24.05, cam(VAN_START + 20, 760, 0.98), E.inOutSine],
     [24.5, t => cam(vanX(t) + 20, 750, 0.98), E.inOutSine],
     [27.0, t => cam(vanX(t) + 20, 750, 0.98)],
-    [27.75, cam(OX + 560, 720, 1.16), E.inOutSine],                        // unload at the shop
-    [28.9, cam(OX + 600, 700, 1.16), E.inOutSine],
+    [27.75, cam(OX + 470, 720, 1.16), E.inOutSine],                        // unload at the shop
+    [28.9, cam(OX + 540, 700, 1.16), E.inOutSine],
     [29.45, cam(OX + 720, 520, 1.14), E.inOutSine],
     ...fitCamKeys(),
     [32.2, cam(OX + 900, 440, 1.14), E.inOutCubic],
     [33.0, cam(OX + 880, 430, 1.08), E.inOutSine],                          // dusk settles; the sign holds the frame
-    [33.8, cam(OX + 720, 540, 1.1), E.inOutSine],
-    [34.9, cam(OX + 740, 500, 1.14), E.inOutSine],                          // the celebration
+    [33.8, cam(OX + 800, 540, 1.06), E.inOutSine],
+    [34.9, cam(OX + 860, 520, 1.04), E.inOutSine],                          // the celebration: customer and the whole sign
     [35.6, cam(OX + 860, 420, 1.02), E.inOutSine],
     [36.25, cam(OX + 900, 400, 1.0), E.inOutSine],
     [STORY_END, cam(OX + 760, 860, 1.5), E.inOutCubic],
@@ -1023,8 +1023,13 @@ function drawScreenUI(F, t) {
   const tool = t < t0 ? 'arrow' : t < t1 ? 'pen' : t < t2 ? 'align' : t < t3 ? 'bucket' : 'arrow';
   // tool palette down the left of the screen
   const kinds = ['arrow', 'pen', 'align', 'bucket'];
-  sk(rrect(F.cx - F.w / 2 + 8, F.cy - 104, 40, 170, 8, 12), { closed: true, fill: '#e9e4d8', width: 2, amp: 0.3 });
-  kinds.forEach((k, i) => toolIcon(k, F.cx - F.w / 2 + 28, F.cy - 82 + i * 42, 0.8, k === tool));
+  const pal = E.outBack(prog(t, 5.75, 6.0));
+  if (pal > 0.01) {
+    ctx.save(); ctx.translate(F.cx - F.w / 2 + 6, F.cy - 104); ctx.scale(pal, 1);
+    sk(rrect(0, 0, 34, 170, 8, 12), { closed: true, fill: '#e9e4d8', width: 2, amp: 0.3 });
+    kinds.forEach((k, i) => toolIcon(k, 17, 22 + i * 42, 0.7, k === tool));
+    ctx.restore();
+  }
   // where the cursor goes for each tool (letter units)
   const targets = [[1.6, 1.3], [-1.9, -0.15], [1.2, 0.62], [0.35, -0.9], [2.3, -1.2]], times = [5.9, t0 + 0.25, t1 + 0.25, t2 + 0.25, t3 + 0.2];
   let p = targets[0];
@@ -1152,7 +1157,7 @@ function drawCNC(t) {
   // bed with T-slots
   sk(rect(L - 40, Tp - 36, BED.w + 80, BED_H + 76), { closed: true, fill: '#dde3e1' });
   for (let y = Tp - 20; y < B + 30; y += 30) for (let x = L - 24; x < R + 30; x += 30) dot(x, y, 2.2, 'rgba(35,40,43,0.28)');
-  label('CNC 01', R + 10, B + 58, 16, COLORS.ink, 700);
+  sk(rrect(R - 92, B + 44, 70, 26, 5, 10), { closed: true, fill: COLORS.paperHi, width: 2 }); label('CNC 01', R - 57, B + 57, 15, COLORS.ink, 700);
   // side rails
   sk(rect(L - 64, Tp - 70, 24, BED_H + 140), { closed: true, fill: COLORS.steel, width: 3 });
   sk(rect(R + 40, Tp - 70, 24, BED_H + 140), { closed: true, fill: COLORS.steel, width: 3 });
@@ -1276,7 +1281,7 @@ function drawFabricator(t) {
    ========================================================================== */
 
 const VAN = { wheelR: 44, ground: 1000, scale: 1 };
-const VAN_PARK = OX + 250, VAN_START = -3200;
+const VAN_PARK = OX - 10, VAN_START = -3200;          // parks clear of the ladder, tail lift short of it
 const VAN_REAR = 380, LIFT_LEN = 120;
 function vanX(t) {
   if (t < T.drive[0]) return VAN_START;
@@ -1589,18 +1594,18 @@ const CONFETTI_COLORS = [COLORS.teal, COLORS.tealSoft, COLORS.customer, COLORS.d
 function drawConfetti(t) {
   const bursts = [[T.celebrate[0] + 0.06, 70], [T.celebrate[0] + 0.42, 45]];
   bursts.forEach(([t0, n], b) => {
-    const tau0 = t - t0; if (tau0 <= 0 || tau0 > 2.6) return;
+    const tau0 = t - t0; if (tau0 <= 0 || tau0 > 1.5) return;
     const src = [OX + 700, 880 - 272 - 60];
     for (let i = 0; i < n; i++) {
       const id = b * 1000 + i, h = k => hash(id * 11 + k);
       const tau = tau0 - h(1) * 0.08; if (tau <= 0) continue;
-      const ang = -Math.PI / 2 + (h(2) - 0.5) * 2.2, sp = 700 + 700 * h(3), kD = 3.2, g = 650;
+      const ang = -Math.PI / 2 + (h(2) - 0.5) * 2.2, sp = 650 + 650 * h(3), kD = 3.2, g = 1100;
       const f = (1 - Math.exp(-kD * tau)) / kD;
       const x = src[0] + Math.cos(ang) * sp * f + 22 * Math.sin(tau * (6 + 4 * h(4)) + h(5) * 6);
       const y = src[1] + (Math.sin(ang) * sp + g / kD) * f - g * tau / kD;
       if (y > 905) continue;
       const rot = h(6) * 6.28 + tau * (4 + 8 * h(7)), flip = Math.cos(tau * (7 + 6 * h(8)) + h(9) * 6);
-      const alpha = 1 - E.inCubic(prog(tau, 2.0, 2.6));
+      const alpha = 1 - E.inCubic(prog(tau, 1.0, 1.5));   // gone well before morning
       ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(1, Math.max(0.12, Math.abs(flip)));
       ctx.globalAlpha = alpha; ctx.fillStyle = CONFETTI_COLORS[Math.floor(h(10) * CONFETTI_COLORS.length)];
       ctx.fillRect(-8, -4, 16, 8); ctx.lineWidth = 1.4; ctx.strokeStyle = COLORS.ink; ctx.strokeRect(-8, -4, 16, 8);
