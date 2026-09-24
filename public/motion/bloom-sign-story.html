@@ -406,10 +406,17 @@ function drawMarkBody(spec, st, f) {
     sk([[I.eyes[0][0] - 18, I.eyes[0][1]], [2, I.eyes[0][1] - 8]], { width: 5, stroke: COLORS.steel });
     sk([[I.eyes[1][0] + 18, I.eyes[1][1]], [156, I.eyes[1][1] - 10]], { width: 5, stroke: COLORS.steel });
   }
-  if (spec.kit === 'hardhat') {
-    sk(chaikin([[10, 30], [22, -8], [79, -22], [136, -8], [148, 30]], 2).concat([[148, 30]]), { closed: true, fill: '#f2c14e', width: 3.4 });
-    sk(rrect(-2, 24, 162, 12, 5, 12), { closed: true, fill: '#e0ab35', width: 3 });
-    sk([[79, -20], [79, 24]], { width: 2.4, amp: 0.4 });
+  if (spec.kit === 'hardhat') {             // a domed helmet whose brim wraps round the top of the head
+    const eArc = (rx, ry, a0, a1, n = 18) => { const o = []; for (let i = 0; i <= n; i++) { const a = lerp(a0, a1, i / n); o.push([79 + rx * Math.cos(a), 81 + ry * Math.sin(a)]); } return o; };
+    const dome = [];
+    for (let i = 0; i <= 20; i++) { const a = Math.PI + i / 20 * Math.PI; dome.push([79 + 62 * Math.cos(a), 22 + 46 * Math.sin(a)]); }
+    const aR = Math.acos(62 / 78), aL = Math.PI - aR;       // where the dome's foot meets the head
+    dome.push(...eArc(78, 70, 2 * Math.PI - aR, Math.PI + aR));
+    sk(dome, { closed: true, fill: '#f2c14e', width: 3.4 });
+    sk([[79, -24], [79, 12]], { width: 2.6, amp: 0.3 });
+    sk(chaikin([[50, -12], [62, -19], [66, 12]], 1), { width: 2, amp: 0.3, stroke: 'rgba(35,40,43,0.45)' });
+    const a0 = Math.PI * 1.1, a1 = Math.PI * 1.9;
+    sk([...eArc(92, 84, a0, a1), ...eArc(79, 71, a1, a0)], { closed: true, fill: '#e0ab35', width: 3 });
   }
   ctx.restore();
 }
@@ -462,10 +469,14 @@ function drawArm(spec, a, hand, grow = 1, style = null, side = 1, thumbAng = 0) 
   const pts = []; for (let k = 0; k <= 10; k++) { const u = k/10; pts.push([(1-u)*(1-u)*a[0] + 2*(1-u)*u*(mx + nx*bend) + u*u*hand[0], (1-u)*(1-u)*a[1] + 2*(1-u)*u*(my + ny*bend) + u*u*hand[1]]); }
   sk(pts, { width: 3.4 + (grow - 1) * 0.9 });
   const r = HAND.r * (spec.k || 1) * grow, ux = (hand[0] - a[0]) / len, uy = (hand[1] - a[1]) / len;
-  if (style === 'thumb') {                 // a fist with the thumb up, turned with the body when it is upside down
+  if (style === 'thumb') {                 // thumbs up: a wide fist, curled fingers showing, a short stout thumb on top
     ctx.save(); ctx.translate(hand[0], hand[1]); ctx.rotate(thumbAng);
-    sk(circle(0, 0, r * 2), { closed: true, fill: spec.color, width: 3, amp: 0.5 });
-    sk(rrect(-r * 0.45, -r * 3.6, r * 0.9, r * 2.2, r * 0.45, 8), { closed: true, fill: spec.color, width: 3, amp: 0.4 });
+    const q = r * 1.6, s2 = side ? 1 : -1;               // the thumb sits on the side nearest the body
+    ctx.save(); ctx.translate(-s2 * q * 0.55, -q * 1.1); ctx.rotate(-s2 * 0.18);
+    sk(rrect(-q * 0.62, -q * 1.9, q * 1.24, q * 2.4, q * 0.6, 6), { closed: true, fill: spec.color, width: 3, amp: 0.3 });
+    ctx.restore();
+    sk(rrect(-q * 1.5, -q * 1.25, q * 3, q * 2.5, q * 0.85, 8), { closed: true, fill: spec.color, width: 3, amp: 0.3 });
+    for (const y of [-0.45, 0.2, 0.85]) sk([[s2 * q * 1.5, -q * 0.12 + y * q * 0.75], [s2 * q * 0.55, -q * 0.12 + y * q * 0.75]], { width: 2.4, amp: 0.2 });
     ctx.restore();
     return;
   }
@@ -882,6 +893,49 @@ function customerState(t) {
   };
 }
 
+// A flowering sprig for each end of the BLOOM fascia, mirrored by dir: a curved stem, three leaves
+// with midribs, a bud on a side shoot and a five-petal bloom at the top.
+function sprigLeaf(base, len, ang, fill = COLORS.tealSoft) {
+  const c = Math.cos(ang), s = Math.sin(ang), P = (u, v) => [base[0] + u * c - v * s, base[1] + u * s + v * c], out = [];
+  for (let i = 0; i <= 10; i++) { const u = i / 10; out.push(P(u * len, Math.pow(Math.sin(Math.PI * u), 0.85) * len * 0.3)); }
+  for (let i = 9; i > 0; i--) { const u = i / 10; out.push(P(u * len, -Math.pow(Math.sin(Math.PI * u), 0.85) * len * 0.3)); }
+  sk(out, { closed: true, fill, width: 1.8, stroke: COLORS.tealDark, amp: 0.25 });
+  sk([P(len * 0.08, 0), P(len * 0.82, 0)], { width: 1.3, stroke: COLORS.tealDark, amp: 0.15 });
+}
+function drawBloomSprig(cx, dir) {
+  ctx.save(); ctx.translate(cx, 253); ctx.scale(1.12, 1.12); ctx.translate(-cx, -253);
+  const X = x => cx + dir * x;
+  const stem = chaikin([[X(4), 250], [X(-2), 226], [X(6), 204], [X(2), 186], [X(12), 176]].concat([[X(12), 176]]), 2).slice(0, -3);
+  const at = u => stem[Math.min(stem.length - 1, Math.round(u * (stem.length - 1)))];
+  sk(stem, { width: 2.6, stroke: COLORS.tealDark, amp: 0.3 });
+  // a side shoot carrying a closed bud
+  const b0 = at(0.42), bud = [X(-22), 194];
+  sk(chaikin([b0, [X(-12), 206], bud], 1).concat([bud]), { width: 2, stroke: COLORS.tealDark, amp: 0.25 });
+  sprigLeaf(bud, 16, dir > 0 ? -2.3 : -0.84, COLORS.customer);
+  // leaves, alternating
+  sprigLeaf(at(0.2), 26, dir > 0 ? -0.35 : Math.PI + 0.35);
+  sprigLeaf(at(0.55), 22, dir > 0 ? -0.45 : Math.PI + 0.45);
+  sprigLeaf(at(0.3), 20, dir > 0 ? Math.PI + 0.55 : -0.55);
+  // the bloom: five petals round a warm centre, turned a little
+  const f = stem[stem.length - 1];
+  for (let i = 0; i < 5; i++) {
+    const a = i / 5 * Math.PI * 2 + 0.3 * dir, c = [f[0] + Math.cos(a) * 8.5, f[1] + Math.sin(a) * 8.5];
+    sk(ellipse(c[0], c[1], 8.5, 6, 14).map(p => { const dx = p[0] - c[0], dy = p[1] - c[1]; return [c[0] + dx * Math.cos(a) - dy * Math.sin(a), c[1] + dx * Math.sin(a) + dy * Math.cos(a)]; }),
+       { closed: true, fill: COLORS.customer, width: 1.8, amp: 0.2 });
+  }
+  sk(circle(f[0], f[1], 5), { closed: true, fill: COLORS.designer, width: 1.8, amp: 0.15 });
+  // a second, smaller bloom reaching in towards the lettering
+  const s0 = at(0.62), g = [X(40), 206];
+  sk(chaikin([s0, [X(24), 196], g], 1).concat([g]), { width: 2, stroke: COLORS.tealDark, amp: 0.25 });
+  sprigLeaf([X(26), 198], 16, dir > 0 ? 0.9 : Math.PI - 0.9);
+  for (let i = 0; i < 5; i++) {
+    const a = i / 5 * Math.PI * 2 - 0.4 * dir, c = [g[0] + Math.cos(a) * 6, g[1] + Math.sin(a) * 6];
+    sk(ellipse(c[0], c[1], 6, 4.3, 12).map(p => { const dx = p[0] - c[0], dy = p[1] - c[1]; return [c[0] + dx * Math.cos(a) - dy * Math.sin(a), c[1] + dx * Math.sin(a) + dy * Math.cos(a)]; }),
+       { closed: true, fill: COLORS.tealSoft, width: 1.6, amp: 0.2 });
+  }
+  sk(circle(g[0], g[1], 3.6), { closed: true, fill: COLORS.designer, width: 1.6, amp: 0.15 });
+  ctx.restore();
+}
 function drawShopBlock(t, opts = {}) {
   sk(rect(-900, -900, 1460, 1790), { closed: true, fill: COLORS.neighbourL });
   sk(rect(1360, -900, 1500, 1790), { closed: true, fill: COLORS.neighbourR });
@@ -901,10 +955,7 @@ function drawShopBlock(t, opts = {}) {
     sk(rect(586, 144, 748, 124), { closed: true, fill: mixHex('#efe8da', '#fff3dc', I * 0.5), width: 3.4 });
     sk(rect(598, 156, 724, 100), { closed: true, stroke: COLORS.teal, width: 3, amp: 0.6 });
     sk(rect(580, 266, 760, 10), { closed: true, fill: COLORS.steel, width: 2.4 });
-    for (const [cx, dir] of [[650, 1], [1270, -1]]) {
-      sk([[cx, 236], [cx + dir * 14, 176]], { width: 2.4, stroke: COLORS.tealDark, amp: 0.4 });
-      for (const [u, side] of [[0.25, 1], [0.5, -1], [0.75, 1]]) { const px = cx + dir * 14 * u, py = 236 - 60 * u; sk(ellipse(px + side * 12, py, 11, 5, 12), { closed: true, fill: COLORS.tealSoft, width: 1.8, amp: 0.3 }); }
-    }
+    drawBloomSprig(652, 1); drawBloomSprig(1268, -1);
   } else sk(rect(590, 150, 740, 112), { closed: true, fill: COLORS.fascia });
   if (!opts.fitted) {
     sk(rect(640, 176, 150, 60), { closed: true, stroke: 'rgba(35,40,43,.18)', width: 2 });
@@ -1148,7 +1199,7 @@ function pmState(t) {
     const sh = [L2(-w * 0.5, -h * 0.04), L2(w * 0.5, -h * 0.04)], far = sh[0][0] > sh[1][0] ? 0 : 1;
     const rest = [L2(-w * 0.62, h * 0.2), L2(w * 0.62, h * 0.2)];
     hands = rest.slice();
-    hands[far] = lerp2(rest[far], [centre[0] + w * 0.78, centre[1] - h * 0.92], th);
+    hands[far] = lerp2(rest[far], [centre[0] + w * 0.6, centre[1] - h * 0.85], th);
     if (th > 0.02) { style = far ? [null, 'thumb'] : ['thumb', null]; }
     pmThumb = far;
   }
