@@ -1512,7 +1512,9 @@ function drawFitBack(t, v) {             // shop, landed letters, ladder and fit
   drawShopBlock(t, { fitted: t > T.letter0, halo: I, doorOpen: t > T.door[0] ? Math.sin(Math.PI * prog(t, T.door[0] + 0.05, T.door[1] - 0.04)) : 0 });
   ctx.restore();
   if (t > T.letter0) { const F = flyingLetters(t); drawLetters(FASCIA.cx, FASCIA.cy, FASCIA.H, { show: i => F[i].show && t >= letterLand(i), depth: () => 10, squash: i => F[i].squash || 1, glow: I, shadow: [8, 10] }); }
-  if (t < T.drive[1] - 0.5) return;
+}
+function drawFitCrew(t, v) {             // ladder and fitters (behind the van)
+  if (v.x1 < OX - 900 || v.x0 > OX + 2860 || t < T.drive[1] - 0.5) return;
   drawLadder(t);
   if (t > T.fitOut[0] && t < T.pack[1] + 0.05) { drawCharacter(CHARACTERS.fitterA, fitterAState(t)); drawCharacter(CHARACTERS.fitterB, fitterBState(t)); }
 }
@@ -1547,36 +1549,108 @@ function drawMain(t, c) {
   const inShop = v.x1 > -2800 && v.x0 < -290, inStudio = v.x1 > -340 && v.x0 < 2000;
   if (inShop) { drawWorkshopRoom(t); drawBed(t); }
   if (inStudio) drawStudioRoom(t);
-  drawVan(t);
-  drawParcel(t);                          // clipped at the van's rear doors while it slides in or out
-  if (inStudio) drawDesigner(t);
-  if (inShop) drawFabricator(t);
-  else { const S = sheetPose(t); if (S && (S.stage === 'flight' || S.stage === 'held')) drawSheet(t, 'flap'); }
-  drawFitFront(t, v);
-  drawForeground(c, v);
-  drawNight(t, v);
-}
-// Night falls over the whole world; then the lights: shop, windows, lamp and the halo behind the letters.
-function drawNight(t, v) {
+  const actors = () => {
+    drawFitCrew(t, v);
+    drawVan(t);
+    drawParcel(t);                        // clipped at the van's rear doors while it slides in or out
+    if (inStudio) drawDesigner(t);
+    if (inShop) drawFabricator(t);
+    else { const S = sheetPose(t); if (S && (S.stage === 'flight' || S.stage === 'held')) drawSheet(t, 'flap'); }
+    drawFitFront(t, v);
+    drawForeground(c, v);
+  };
   const n = nightAt(t);
-  if (n < 0.002) return;
+  if (n < 0.002) { actors(); return; }
+  // Night: the set is darkened and lit first; the people and the van are drawn on
+  // their own layer and lit from the same sources, so a window glows BEHIND whoever
+  // stands in front of it and the street lamp throws their shadow along the pavement.
+  drawNightSet(t, v, n);
+  drawLitLayer(actors, t, n);
+}
+
+// Night light sources, in shop-local coordinates (shop block is drawn at x + OX).
+const LAMP = [502, 132], LAMP_H = 880 - 132;
+const warm = a => `rgba(255,196,120,${a})`;
+function actorsForShadows(t) {           // [footX, footY, height, width] of everyone on the pavement
+  const out = [];
+  if (t > T.custIn[0] && t < T.door[1]) { const c = customerFit(t); if (!c.jump || c.jump < 1) out.push([c.x, 880, 272, 124]); else out.push([c.x, 880, 272 + c.jump, 124 * 0.8]); }
+  if (t > T.fitOut[0] && t < T.pack[1] + 0.05) {
+    const a = fitterAState(t); if (!a.base) out.push([a.x, 880, 174, 128]);
+    const b = fitterBState(t); out.push([b.x, 880, 182, 136]);
+  }
+  return out;
+}
+function drawNightSet(t, v, n) {
+  const I = haloI(t);
   ctx.save();
+  // 1. darkness over the set
   ctx.globalCompositeOperation = 'multiply';
-  ctx.fillStyle = mixHex('#ffffff', '#52648c', n); ctx.fillRect(v.x0 - 200, v.y0 - 200, v.x1 - v.x0 + 400, v.y1 - v.y0 + 400);
+  ctx.fillStyle = mixHex('#ffffff', '#4e5f86', n); ctx.fillRect(v.x0 - 200, v.y0 - 200, v.x1 - v.x0 + 400, v.y1 - v.y0 + 400);
+  // 2. light: interiors, lamp, sign halo, and the spill each throws onto the pavement
   ctx.globalCompositeOperation = 'lighter';
   ctx.translate(OX, 0);
-  const warm = a => `rgba(255,196,120,${a})`;
-  for (const [x, y, w, h] of [[640, -440, 220, 300], [1060, -440, 220, 300], [600, 320, 430, 450], [1102, 362, 176, 250], [150, 60, 120, 190], [1640, -380, 120, 190]]) { ctx.fillStyle = warm(0.28 * n); ctx.fillRect(x, y, w, h); }
-  const lamp = ctx.createRadialGradient(502, 140, 10, 502, 140, 340);
-  lamp.addColorStop(0, warm(0.55 * n)); lamp.addColorStop(1, warm(0)); ctx.fillStyle = lamp; ctx.fillRect(160, -200, 700, 700);
-  const I = haloI(t);
-  const g = ctx.createRadialGradient(960, 206, 30, 960, 206, 460);
-  g.addColorStop(0, warm(0.55 * n * I)); g.addColorStop(1, warm(0)); ctx.fillStyle = g; ctx.fillRect(460, -260, 1000, 940);
-  ctx.translate(-OX, 0);
-  drawLetters(FASCIA.cx, FASCIA.cy, FASCIA.H, { depth: () => 10, glow: Math.min(1, I * (0.6 + 0.8 * n)), glowOnly: true });
+  for (const [x, y, w, h, a] of [[600, 320, 430, 450, 0.34], [1102, 362, 176, 250, 0.3], [640, -440, 220, 300, 0.22], [1060, -440, 220, 300, 0.12], [150, 60, 120, 190, 0.2], [1640, -380, 120, 190, 0.18]]) {
+    const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, warm(a * n * 0.7)); g.addColorStop(1, warm(a * n)); ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+  }
+  // window light falling out across the pavement, fading with distance
+  for (const [cx, rx, a] of [[815, 300, 0.24], [1190, 150, 0.16]]) {
+    const sp = ctx.createRadialGradient(cx, 884, 4, cx, 884, rx);
+    sp.addColorStop(0, warm(a * n)); sp.addColorStop(1, warm(0));
+    ctx.save(); ctx.translate(cx, 884); ctx.scale(1, 0.22); ctx.translate(-cx, -884); ctx.fillStyle = sp; ctx.beginPath(); ctx.arc(cx, 884, rx, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+  }
+  // street lamp: a cone down to a pool on the pavement
+  const cone = ctx.createLinearGradient(0, LAMP[1], 0, 900);
+  cone.addColorStop(0, warm(0.2 * n)); cone.addColorStop(0.7, warm(0.07 * n)); cone.addColorStop(1, warm(0.02 * n));
+  ctx.fillStyle = cone; ctx.beginPath(); ctx.moveTo(LAMP[0] - 16, LAMP[1] + 6); ctx.lineTo(LAMP[0] + 16, LAMP[1] + 6); ctx.lineTo(LAMP[0] + 330, 900); ctx.lineTo(LAMP[0] - 330, 900); ctx.closePath(); ctx.fill();
+  const pool = ctx.createRadialGradient(LAMP[0], 890, 10, LAMP[0], 890, 340);
+  pool.addColorStop(0, warm(0.34 * n)); pool.addColorStop(1, warm(0));
+  ctx.fillStyle = pool; ctx.save(); ctx.translate(LAMP[0], 890); ctx.scale(1, 0.16); ctx.beginPath(); ctx.arc(0, 0, 340, 0, Math.PI * 2); ctx.restore(); ctx.fill();
+  const bulb = ctx.createRadialGradient(LAMP[0], LAMP[1], 2, LAMP[0], LAMP[1], 70);
+  bulb.addColorStop(0, warm(0.9 * n)); bulb.addColorStop(1, warm(0)); ctx.fillStyle = bulb; ctx.fillRect(LAMP[0] - 80, LAMP[1] - 80, 160, 160);
+  // the halo washes the fascia board and the wall above it
+  const halo = ctx.createRadialGradient(960, 206, 20, 960, 206, 420);
+  halo.addColorStop(0, warm(0.5 * n * I)); halo.addColorStop(1, warm(0)); ctx.fillStyle = halo; ctx.fillRect(530, -224, 860, 860);
+  // 3. shadows: the lamp throws each person's shadow away from it along the pavement
   ctx.globalCompositeOperation = 'source-over';
-  drawLetters(FASCIA.cx, FASCIA.cy, FASCIA.H, { depth: () => 10, dark: 0.55 * n });   // halo-lit letters read as silhouettes against their own glow
+  for (const [fx, fy, h, w] of actorsForShadows(t)) {
+    const x = fx - OX, d = x - LAMP[0], reach = clamp01(1 - Math.abs(d) / 1100);
+    if (reach <= 0) continue;
+    const len = Math.max(-700, Math.min(700, d * h / Math.max(80, LAMP_H - h)));
+    const a = 0.6 * n * reach, g = ctx.createLinearGradient(x, 0, x + len, 0);
+    g.addColorStop(0, `rgba(12,16,28,${a})`); g.addColorStop(0.7, `rgba(12,16,28,${a * 0.5})`); g.addColorStop(1, 'rgba(12,16,28,0)');
+    ctx.fillStyle = g; ctx.beginPath();
+    ctx.moveTo(x - w * 0.35, fy + 2); ctx.lineTo(x + len - Math.sign(len) * w * 0.1, fy + 8 + Math.abs(len) * 0.05);
+    ctx.lineTo(x + len + Math.sign(len) * w * 0.2, fy + 14 + Math.abs(len) * 0.05); ctx.lineTo(x + w * 0.35, fy + 6); ctx.closePath(); ctx.fill();
+  }
+  ctx.translate(-OX, 0);
+  // 4. the letters: only the ones already up, dark against their own glow
+  const up = i => t >= letterLand(i);
+  ctx.globalCompositeOperation = 'lighter';
+  drawLetters(FASCIA.cx, FASCIA.cy, FASCIA.H, { show: up, depth: () => 10, glow: Math.min(1, I * (0.6 + 0.8 * n)), glowOnly: true });
+  ctx.globalCompositeOperation = 'source-over';
+  drawLetters(FASCIA.cx, FASCIA.cy, FASCIA.H, { show: up, depth: () => 10, dark: 0.55 * n });
   ctx.restore();
+}
+// Draw the moving cast on an offscreen layer, then darken and light it from the same sources.
+const litCanvas = document.createElement('canvas'), litCtx = litCanvas.getContext('2d');
+function drawLitLayer(drawFn, t, n) {
+  const host = ctx, m = host.getTransform(), W0 = host.canvas.width, H0 = host.canvas.height;
+  if (litCanvas.width !== W0 || litCanvas.height !== H0) { litCanvas.width = W0; litCanvas.height = H0; }
+  litCtx.setTransform(1, 0, 0, 1, 0, 0); litCtx.clearRect(0, 0, W0, H0);
+  litCtx.setTransform(m);
+  ctx = litCtx;
+  drawFn();
+  const I = haloI(t);
+  ctx.save(); ctx.globalCompositeOperation = 'source-atop';
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = `rgba(34,44,72,${0.62 * n})`; ctx.fillRect(0, 0, W0, H0);
+  ctx.setTransform(m); ctx.translate(OX, 0);
+  const lamp = ctx.createRadialGradient(LAMP[0], LAMP[1], 20, LAMP[0], LAMP[1] + 300, 700);
+  lamp.addColorStop(0, warm(0.4 * n)); lamp.addColorStop(1, warm(0)); ctx.fillStyle = lamp; ctx.fillRect(LAMP[0] - 900, -400, 1800, 1600);
+  const halo = ctx.createRadialGradient(960, 206, 40, 960, 420, 620);
+  halo.addColorStop(0, warm(0.3 * n * I)); halo.addColorStop(1, warm(0)); ctx.fillStyle = halo; ctx.fillRect(300, -300, 1320, 1400);
+  ctx.restore();
+  ctx = host;
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(litCanvas, 0, 0); ctx.restore();
 }
 
 /* ==========================================================================
