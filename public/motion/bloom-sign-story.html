@@ -66,7 +66,7 @@
    SETTINGS: timings, colours, characters. Tune here.
    ========================================================================== */
 
-const STORY_END = 37.1;               // story seconds; real playback length is DURATION (the flight plays faster, the sign-off slower)
+const STORY_END = 38.4;               // story seconds; real playback length is DURATION (the flight plays faster, the sign-off slower)
 const FPS = 60;
 const BOIL_EVERY = 3;                 // frames per re-seed of the line boil
 
@@ -165,13 +165,16 @@ const T = {
   // 7 fit
   // unload: the same in reverse at the shop
   shutter2: [27.7, 27.9], liftOut2: [27.85, 28.1], slideOut: [28.15, 28.5], liftDrop2: [28.5, 28.85], pickup: [28.85, 29.3],
-  fitOut: [27.75, 28.2], ladder: [28.55, 28.95], climb: [28.95, 29.5], letter0: 29.6, letterStep: 0.46, letterDur: 0.36, letterCatch: 0.18,
-  halo: 32.3, pack: [32.3, 32.7], liftIn2: [32.3, 32.7], leave: [32.75, 33.4],
-  custIn: [32.95, 33.75], custLook: 33.77, celebrate: [33.85, 34.95], door: [35.05, 35.45],
+  fitOut: [27.75, 28.2], ladder: [28.55, 28.95], climb: [28.95, 29.5],
+  // the fascia panel first: B lifts it out of the wrap and throws it up, A catches its end, presses it home and fixes it
+  panel: { toss: [29.62, 30.14], fix: [30.14, 30.78] },
+  letter0: 30.9, letterStep: 0.46, letterDur: 0.36, letterCatch: 0.18,
+  halo: 33.6, pack: [33.6, 34], liftIn2: [33.6, 34], leave: [34.05, 34.7],
+  custIn: [34.25, 35.05], custLook: 35.07, celebrate: [35.15, 36.25], door: [36.35, 36.75],
   // dusk gathers while the letters go up, night falls as they pack away, the customer arrives under the lit sign
-  nightKeys: [[30.0, 0], [31.5, 0.35], [33.2, 1], [35.5, 1], [36.2, 0]],
-  morning: [35.5, 36.2],                    // the sign's timer switches off with the daylight
-  endFocus: [36.35, 37.08],                 // soft focus down onto the pavement: the loop point
+  nightKeys: [[31.3, 0], [32.8, 0.35], [34.5, 1], [36.8, 1], [37.5, 0]],
+  morning: [36.8, 37.5],                    // the sign's timer switches off with the daylight
+  endFocus: [37.65, 38.38],                 // soft focus down onto the pavement: the loop point
 };
 
 /* ==========================================================================
@@ -840,13 +843,15 @@ function mainCam(t) {
     [27.75, cam(OX + 470, 720, 1.16), E.inOutSine],                        // unload at the shop
     [28.9, cam(OX + 540, 700, 1.16), E.inOutSine],
     [29.45, cam(OX + 720, 520, 1.14), E.inOutSine],
+    [29.95, cam(OX + 915, 420, 0.97), E.inOutSine],                        // the panel goes up: hold the whole fascia, end to end on a phone
+    [30.8, cam(OX + 905, 400, 0.99), E.inOutSine],
     ...fitCamKeys(),
-    [32.2, cam(OX + 900, 440, 1.14), E.inOutCubic],
-    [33.0, cam(OX + 880, 430, 1.08), E.inOutSine],                          // dusk settles; the sign holds the frame
-    [33.8, cam(OX + 800, 540, 1.06), E.inOutSine],
-    [34.9, cam(OX + 860, 520, 1.04), E.inOutSine],                          // the celebration: customer and the whole sign
-    [35.6, cam(OX + 860, 420, 1.02), E.inOutSine],
-    [36.25, cam(OX + 900, 400, 1.0), E.inOutSine],
+    [33.5, cam(OX + 900, 440, 1.14), E.inOutCubic],
+    [34.3, cam(OX + 880, 430, 1.08), E.inOutSine],                          // dusk settles; the sign holds the frame
+    [35.1, cam(OX + 800, 540, 1.06), E.inOutSine],
+    [36.2, cam(OX + 860, 520, 1.04), E.inOutSine],                          // the celebration: customer and the whole sign
+    [36.9, cam(OX + 860, 420, 1.02), E.inOutSine],
+    [37.55, cam(OX + 900, 400, 1.0), E.inOutSine],
     [STORY_END, cam(OX + 760, 860, 1.5), E.inOutCubic],
   ]);
 }
@@ -936,6 +941,14 @@ function drawBloomSprig(cx, dir) {
   sk(circle(g[0], g[1], 3.6), { closed: true, fill: COLORS.designer, width: 1.6, amp: 0.15 });
   ctx.restore();
 }
+// The finished fascia panel, in shop-local units around its home at (960, 206): cream tray, teal trim,
+// drip ledge, a flowering sprig at each end. Drawn in place once fitted, and in the air while it is thrown up.
+function drawFasciaPanel(I = 0) {
+  sk(rect(586, 144, 748, 124), { closed: true, fill: mixHex('#efe8da', '#fff3dc', I * 0.5), width: 3.4 });
+  sk(rect(598, 156, 724, 100), { closed: true, stroke: COLORS.teal, width: 3, amp: 0.6 });
+  sk(rect(580, 266, 760, 10), { closed: true, fill: COLORS.steel, width: 2.4 });
+  drawBloomSprig(652, 1); drawBloomSprig(1268, -1);
+}
 function drawShopBlock(t, opts = {}) {
   sk(rect(-900, -900, 1460, 1790), { closed: true, fill: COLORS.neighbourL });
   sk(rect(1360, -900, 1500, 1790), { closed: true, fill: COLORS.neighbourR });
@@ -950,12 +963,11 @@ function drawShopBlock(t, opts = {}) {
     g.addColorStop(0, `rgba(255,214,140,${0.55 * I})`); g.addColorStop(1, 'rgba(255,214,140,0)');
     ctx.fillStyle = g; ctx.fillRect(420, -120, 1080, 560);
   }
-  if (opts.fitted) {                     // the finished fascia: cream tray, teal trim, drip ledge, leaf sprigs
+  if (opts.fitted) {
+    ctx.save(); ctx.translate(0, opts.panelDy || 0);
     ctx.fillStyle = 'rgba(35,40,43,0.12)'; ctx.fillRect(596, 262, 740, 14);
-    sk(rect(586, 144, 748, 124), { closed: true, fill: mixHex('#efe8da', '#fff3dc', I * 0.5), width: 3.4 });
-    sk(rect(598, 156, 724, 100), { closed: true, stroke: COLORS.teal, width: 3, amp: 0.6 });
-    sk(rect(580, 266, 760, 10), { closed: true, fill: COLORS.steel, width: 2.4 });
-    drawBloomSprig(652, 1); drawBloomSprig(1268, -1);
+    drawFasciaPanel(I);
+    ctx.restore();
   } else sk(rect(590, 150, 740, 112), { closed: true, fill: COLORS.fascia });
   if (!opts.fitted) {
     sk(rect(640, 176, 150, 60), { closed: true, stroke: 'rgba(35,40,43,.18)', width: 2 });
@@ -1804,6 +1816,23 @@ function fitterAState(t) {
   const B = fitterABody(t);
   let hands = B.grips ? [...B.grips] : [null, null], look = [0.6, -0.8], tool = null;
   const x = B.x;
+  if (B.base && t > T.panel.toss[0] + 0.15 && t < T.panel.fix[1]) {
+    const [t0, t1] = T.panel.toss, [f0, f1] = T.panel.fix;
+    const end = [[OX + 600, 176], [OX + 600, 240]];          // the panel's left end, where he takes it
+    if (t < t1) {                                            // reach out and catch it as it comes in
+      const Q = panelPose(t), u = E.outBack(prog(t, t0 + 0.15, t1 - 0.05)), at = [panelPt(Q, -360, -40), panelPt(Q, -360, 30)];
+      hands = [lerp2(B.grips[0], at[0], u), lerp2(B.grips[1], at[1], u)];
+      look = [0.9, -0.5];
+    } else if (t < f1 - 0.14) {                              // press it home, then screw off the end
+      const k = prog(t, f0 + 0.08, f1 - 0.14), tap = Math.abs(Math.sin(k * Math.PI * 4)) * 9;
+      hands = [[end[0][0] - 4 * (1 - E.outCubic(prog(t, f0, f0 + 0.08))), end[0][1]], [end[1][0] + 18, end[1][1] - tap]];
+      if (t > f0 + 0.08) tool = [hands[1], [hands[1][0] + 16, hands[1][1] + 26]];
+      look = [0.7, -0.4];
+    } else {                                                 // back to the rails
+      const u = E.inOutSine(prog(t, f1 - 0.14, f1));
+      hands = [lerp2(end[0], B.grips[0], u), lerp2([end[1][0] + 18, end[1][1]], B.grips[1], u)];
+    }
+  }
   if (B.base) for (let i = 0; i < WORDMARK.count; i++) {
     const t0 = letterT0(i), tc = t0 + T.letterCatch, tl = t0 + T.letterDur, tf = tl + 0.22, s = slotPos(i), hw = halfW(i), C = catchPt();
     if (t < t0 - 0.1 || t > tf + 0.12) continue;
@@ -1837,6 +1866,17 @@ function fitterBState(t) {
   const P = parcelPos(t);
   if (t > T.pickup[0] - 0.1 && t < T.letter0 + WORDMARK.count * T.letterStep) hands = [[P[0] - 40, P[1] + 20], [P[0] + 40, P[1] + 20]];
   sy *= keys(t, [[T.pickup[0] - 0.1, 1], [T.pickup[0] + 0.05, 0.86, E.outCubic], [T.pickup[0] + 0.3, 1.04, E.outBack], [T.pickup[1], 1]]);
+  {                                            // the panel: lift it out of the wrap, crouch, heave it up two-handed
+    const [p0] = T.panel.toss, Q = panelPose(Math.min(t, p0 - 0.001));
+    sy *= keys(t, [[p0 - 0.22, 1], [p0 - 0.04, 0.82, E.inOutCubic], [p0 + 0.06, 1.12, E.outBack], [p0 + 0.3, 1]]);
+    rot += 0.08 * Math.sin(Math.PI * prog(t, p0 - 0.1, p0 + 0.25));
+    if (Q && t > p0 - 0.2 && t < p0 + 0.28) {
+      const hold = [panelPt(Q, -130, 50), panelPt(Q, 130, 50)];
+      const back = E.inOutSine(prog(t, p0 + 0.02, p0 + 0.28)), up = [[x - 60, 560], [x + 60, 560]];
+      hands = t < p0 ? hold : [lerp2(up[0], hands[0], back), lerp2(up[1], hands[1], back)];
+      look = [0.6, -0.9];
+    }
+  }
   for (let i = 0; i < WORDMARK.count; i++) {
     const t0 = letterT0(i);
     sy *= keys(t, [[t0 - 0.16, 1], [t0 - 0.04, 0.88, E.outCubic], [t0 + 0.08, 1.06, E.outBack], [t0 + 0.3, 1]]);
@@ -1910,11 +1950,28 @@ function ghosted(t, fn, n = 4, span = 0.04) {
   ctx.globalAlpha = a; fn(t);
 }
 const flyingLetters = t => [0, 1, 2, 3, 4].map(i => flyingLetter(t, i));
+// The fascia panel's flight: it comes up out of the wrap in B's hands, is heaved up, spins once, and lands home.
+const PANEL_HOME = [OX + 960, 206], PANEL_HALF = [374, 62];
+function panelPose(t) {
+  const [t0, t1] = T.panel.toss, lift0 = t0 - 0.2;
+  if (t < lift0 || t >= t1) return null;
+  const P = parcelPos(t), held = [P[0], P[1] - 70];
+  if (t < t0) { const u = E.outCubic(prog(t, lift0, t0)); return { c: lerp2([P[0], P[1] - 20], held, u), rot: 0.12 * u, sc: lerp(0.12, 0.32, u) }; }
+  const u = prog(t, t0, t1), e = E.inOutSine(u), c = lerp2(held, PANEL_HOME, e);
+  return { c: [c[0], c[1] - 220 * Math.sin(Math.PI * e)], rot: 0.12 + (-Math.PI * 2 - 0.12) * E.inOutCubic(u), sc: lerp(0.32, 1, E.outCubic(u)) };
+}
+const panelPt = (Q, lx, ly) => { const c = Math.cos(Q.rot), s = Math.sin(Q.rot); return [Q.c[0] + (lx * c - ly * s) * Q.sc, Q.c[1] + (lx * s + ly * c) * Q.sc]; };
+function drawFlyingPanel(tt) {
+  const Q = panelPose(tt); if (!Q) return;
+  ctx.save(); ctx.translate(Q.c[0], Q.c[1]); ctx.rotate(Q.rot); ctx.scale(Q.sc, Q.sc); ctx.translate(-960, -206);
+  drawFasciaPanel(0);
+  ctx.restore();
+}
 function drawFitBack(t, v) {             // shop, landed letters, ladder and fitters (behind the van)
   if (v.x1 < OX - 900 || v.x0 > OX + 2860) return;
   const I = haloI(t);
   ctx.save(); ctx.translate(OX, 0);
-  drawShopBlock(t, { fitted: t > T.letter0, halo: I, doorOpen: t > T.door[0] ? Math.sin(Math.PI * prog(t, T.door[0] + 0.05, T.door[1] - 0.04)) : 0 });
+  drawShopBlock(t, { fitted: t >= T.panel.toss[1], panelDy: -5 * settle(t - T.panel.toss[1], 22, 0.32), halo: I, doorOpen: t > T.door[0] ? Math.sin(Math.PI * prog(t, T.door[0] + 0.05, T.door[1] - 0.04)) : 0 });
   ctx.restore();
   if (t > T.letter0) { const F = flyingLetters(t); drawLetters(FASCIA.cx, FASCIA.cy, FASCIA.H, { show: i => F[i].show && t >= letterLand(i), depth: () => 10, squash: i => F[i].squash || 1, glow: I, shadow: [8, 10] }); }
 }
@@ -1931,6 +1988,8 @@ function drawFitCrew(t, v) {             // ladder and fitters (behind the van)
 function drawFitFront(t, v) {            // parcel, flying letters, dust, customer (in front of the van)
   if (v.x1 < OX - 900 || v.x0 > OX + 2860 || t < T.drive[1] - 0.5) return;
   const F = flyingLetters(t);
+  if (t > T.panel.toss[0]) ghosted(t, drawFlyingPanel, 4, 0.05); else drawFlyingPanel(t);
+  for (const x of [OX + 600, OX + 1320]) puff(x, 270, T.panel.toss[1], t, 3, 10);
   ghosted(t, tt => { const G = flyingLetters(tt); drawLetters(FASCIA.cx, FASCIA.cy, FASCIA.H, { show: i => G[i].show && tt < letterLand(i) && G[i].rot !== 0, depth: () => 10, off: i => G[i].off || [0, 0], squash: i => G[i].squash || 1, rot: i => G[i].rot || 0 }); });
   drawLetters(FASCIA.cx, FASCIA.cy, FASCIA.H, { show: i => F[i].show && t < letterLand(i) && F[i].rot === 0, depth: () => 10, off: i => F[i].off || [0, 0] });
   for (let i = 0; i < WORDMARK.count; i++) { const s = slotPos(i); puff(s[0], s[1] + 46, letterLand(i), t, 3, 8); }
