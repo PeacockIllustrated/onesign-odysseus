@@ -138,6 +138,7 @@ const T = {
   // 2 studio
   push: [4.0, 5.35], pull: [5.35, 6.8], morph: [4.3, 6.4], clicks: [6.35, 6.8, 7.25], swatch: 7.32,
   // 3 peel & throw
+  tools: [5.95, 6.55, 7.0, 7.5],           // pen → align guides → paint bucket
   glance: 8.0, judder: [8.3, 9.0], shake: [9.0, 9.3], wind: 9.25, reach: [9.4, 9.7],
   peel: [9.7, 10.3], toss: [10.3, 10.75],
   // 4 flight (the throw carries straight through)
@@ -145,10 +146,12 @@ const T = {
   // 5 fabrication
   place: [12.95, 13.6], router: [13.85, 16.2], extrude: [16.3, 17.3], leds: [17.45, 18.6], thumbs: 18.75, glow: [19.05, 19.8],
   // 6 van
-  wrap: [19.95, 20.55], lift: [20.3, 21.8], hop: [20.6, 21.35], slide: [21.35, 21.65], drive: [22.3, 25.9],
+  wrap: [19.95, 20.7], lift: [20.6, 22.6], hop: [20.85, 22.0], slide: [22.0, 22.35], drive: [22.9, 25.9],
   // 7 fit
-  unloadLift: [26.1, 26.3], unload: [26.3, 26.85], ladder: [26.55, 26.95], climb: [26.95, 27.3], letter0: 27.35, letterStep: 0.4, letterDur: 0.32,
-  halo: 29.4, pack: [29.5, 29.85], leave: [29.9, 30.65], custIn: [30.3, 31.0], custLook: 31.12, bounce: [31.2, 31.5], door: [31.55, 31.92],
+  unloadLift: [26.1, 26.3], unload: [26.3, 26.85], ladder: [26.5, 26.85], climb: [26.85, 27.35], letter0: 27.35, letterStep: 0.34, letterDur: 0.3,
+  halo: 29.0, pack: [29.05, 29.45], leave: [29.45, 30.05], custIn: [29.3, 30.1], custLook: 30.12, bounce: [30.2, 30.5], door: [30.55, 30.95],
+  night: [30.2, 30.75, 31.1, 31.6],         // dusk → night → hold → morning (the sign's timer switches off)
+  endFocus: [31.35, 31.98],                 // soft focus down onto the pavement: the loop point
 };
 
 /* ==========================================================================
@@ -213,7 +216,9 @@ const mixHex = (a, b, u) => { const A = hexRgb(a), B = hexRgb(b); return `rgb(${
    ========================================================================== */
 
 const canvas = document.getElementById('c');
-const ctx = canvas.getContext('2d');
+const MAIN_CTX = canvas.getContext('2d');
+let ctx = MAIN_CTX;                   // swapped to an offscreen context while the world renders for the focus pull
+const focusCanvas = document.createElement('canvas'), focusCtx = focusCanvas.getContext('2d');
 let BASE_SCALE = 1, BOIL = 0, STROKE = 0;
 
 const worldScale = () => { const m = ctx.getTransform(); return Math.hypot(m.a, m.b) / BASE_SCALE; };
@@ -315,7 +320,7 @@ function drawOnesignLogo(cx, cy, width, color = COLORS.ink, tagColor = COLORS.te
 function charFrame(spec, st) {
   const sit = st.legs && st.legs.mode === 'sit';
   const bob = st.legs && st.legs.mode === 'walk' ? Math.abs(Math.sin(st.legs.phase)) * 5 * (spec.k || 1) * st.legs.amt : 0;
-  const bx = st.x, by = (sit ? st.y : st.y - spec.legLen - bob) - (st.jump || 0);
+  const bx = st.base ? st.base[0] : st.x, by = st.base ? st.base[1] : (sit ? st.y : st.y - spec.legLen - bob) - (st.jump || 0);
   const c = Math.cos(st.rot || 0), s = Math.sin(st.rot || 0), sx = st.sx || 1, sy = st.sy || 1;
   const L2W = (lx, ly) => [bx + lx*sx*c - ly*sy*s, by + lx*sx*s + ly*sy*c];
   return { bx, by, L2W, sx, sy };
@@ -332,7 +337,7 @@ const shoulderOf = (spec, f, i) => f.L2W((i ? 1 : -1) * spec.w * (spec.shape ===
 function drawCharacter(spec, st) {
   const f = charFrame(spec, st), { L2W } = f, w = spec.w, h = spec.h, dir = st.dir || 1, k = spec.k || 1;
   const legs = st.legs || { mode: 'stand' };
-  if (legs.mode !== 'sit' && legs.mode !== 'climb') {        // soft contact shadow grounds them
+  if (legs.mode !== 'sit' && legs.mode !== 'climb' && !st.base) {        // soft contact shadow grounds them
     const k2 = 1 / (1 + (st.jump || 0) / 60);
     ctx.beginPath(); ctx.ellipse(st.x, st.y + 3, w * 0.5 * k2, 8 * k2, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(35,40,43,0.10)'; ctx.fill();
   }
@@ -346,6 +351,7 @@ function drawCharacter(spec, st) {
     else if (legs.mode === 'air') foot = [hip[0] + side * 10, hip[1] + spec.legLen * 0.8];
     else if (legs.mode === 'climb') foot = [hip[0] + side * 8, hip[1] + spec.legLen * (side > 0 ? 0.75 : 1)];
     else foot = [hip[0] + side * 6, st.y];
+    if (st.feet) foot = st.feet[side < 0 ? 0 : 1];
     sk([hip, foot], { width: 3.4 });
     sk([foot, [foot[0] + dir * 11, foot[1]]], { width: 3.4 });
   }
@@ -366,7 +372,7 @@ function drawCharacter(spec, st) {
   }
   for (let i = 0; i < 2; i++) {
     if (st.skipArm === i || st.skipArm === 2) continue;
-    drawArm(spec, sh[i], hands[i], 1, st.handStyle && st.handStyle[i], i);
+    drawArm(spec, sh[i], hands[i], (st.armGrow && st.armGrow[i]) || 1, st.handStyle && st.handStyle[i], i);
   }
   return { shoulders: sh, hands };
 }
@@ -410,12 +416,12 @@ const WORDMARK = (() => {
     { w: 0.55, color: 'ink',  strokes: [ [[0, -.5], [0, .5]],
                                          [[0, -.5], [.26, -.5], ...arc(.26, -.25, .25, -H, H).slice(1), [0, 0]],
                                          [[0, 0], [.3, 0], ...arc(.3, .25, .25, -H, H).slice(1), [0, .5]] ] },
-    { w: 0.42, color: 'ink',  strokes: [ [[0, -.5], [0, .5], [.42, .5]] ] },
+    { w: 0.42, color: 'ink',  kern: -0.18, strokes: [ [[0, -.5], [0, .5], [.42, .5]] ] },   // L→O kerned tight
     { w: 1.0,  color: 'teal', strokes: [ arc(.5, 0, .5, -H, -H - Math.PI*2, 36) ] },
     { w: 1.0,  color: 'teal', strokes: [ arc(.5, 0, .5, -H, -H - Math.PI*2, 36) ] },
     { w: 0.8,  color: 'ink',  strokes: [ [[0, .5], [0, -.5], [.4, .12], [.8, -.5], [.8, .5]] ] },
   ];
-  const total = letters.reduce((s, l) => s + l.w, 0) + gap * (letters.length - 1);
+  const total = letters.reduce((s, l) => s + l.w, 0) + gap * (letters.length - 1) + letters.reduce((s, l) => s + (l.kern || 0), 0);
   const strokes = [], centers = []; let x = -total / 2;
   letters.forEach((l, li) => {
     centers.push(x + l.w / 2);
@@ -424,7 +430,7 @@ const WORDMARK = (() => {
       let len = 0; for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1]);
       strokes.push({ pts, len, color: l.color, li });
     }
-    x += l.w + gap;
+    x += l.w + gap + (l.kern || 0);
   });
   const leds = [];
   strokes.forEach(s => { let acc = 0.12; while (acc < s.len - 0.05) { leds.push({ p: partial(s.pts, acc).pop(), li: s.li }); acc += 0.3; } });
@@ -479,20 +485,23 @@ function drawLetters(cx, cy, H, o = {}) {
     ctx.translate(lc, 0.5); ctx.rotate(o.rot ? o.rot(li) : 0); ctx.scale(1 / Math.sqrt(s), s); ctx.translate(-lc, -0.5);
   };
   const strokesOf = li => WORDMARK.strokes.filter(s => s.li === li);
+  if (o.shadow) each(li => { ctx.save(); place(li); for (const s of strokesOf(li)) sk(s.pts.map(p => [p[0] + o.shadow[0] / H, p[1] + o.shadow[1] / H]), { width: 0.22, stroke: 'rgba(35,40,43,0.2)', amp: 0 }); ctx.restore(); });
   if (o.glow > 0.01) {
     each(li => {
       ctx.save(); place(li);
       const d = (o.depth ? o.depth(li) : 0) / H;
       ctx.shadowColor = `rgba(255,205,120,${0.9 * o.glow})`; ctx.shadowBlur = 55 * pxPerWorld * o.glow;
-      for (const s of strokesOf(li)) sk(s.pts.map(p => [p[0] + V[0]*d*0.3, p[1] + V[1]*d*0.3]), { width: 0.3, stroke: `rgba(255,217,138,${0.8 * o.glow})`, amp: 0 });
+      for (const s of strokesOf(li)) sk(s.pts.map(p => [p[0] + V[0]*d*0.3, p[1] + V[1]*d*0.3]), { width: o.glowOnly ? 0.42 : 0.3, stroke: `rgba(255,217,138,${(o.glowOnly ? 0.55 : 0.8) * o.glow})`, amp: 0 });
       ctx.restore();
     });
   }
+  if (o.glowOnly) { ctx.restore(); return; }
   each(li => {
     ctx.save(); place(li);
     const d = (o.depth ? o.depth(li) : 0) / H, N = Math.max(1, Math.ceil(d * H / 2.2));
     const teal = strokesOf(li)[0].color === 'teal';
-    const face = teal ? COLORS.teal : COLORS.faceInk, ret = teal ? COLORS.tealDark : COLORS.returnInk;
+    let face = teal ? COLORS.teal : COLORS.faceInk, ret = teal ? COLORS.tealDark : COLORS.returnInk;
+    if (o.dark) { face = mixHex(face, '#161c26', o.dark); ret = mixHex(ret, '#161c26', o.dark); }
     for (const s of strokesOf(li)) sk(s.pts, { width: 0.2, amp: 0 });
     for (let k = 1; k < N; k++) for (const s of strokesOf(li)) sk(s.pts.map(p => [p[0] + V[0]*d*k/N, p[1] + V[1]*d*k/N]), { width: 0.17, stroke: ret, amp: 0 });
     const fp = pts => pts.map(p => [p[0] + V[0]*d, p[1] + V[1]*d]);
@@ -676,8 +685,8 @@ const fcam = (F, w) => cam(F.cx, F.cy, w / F.w, 0);
 const shake = (t, t0, amp) => t < t0 ? 0 : amp * settle(t - t0, 30, 0.3);
 
 const S1_CAM = [
-  [0,   cam(960, 540, 1)],
-  [1.0, t => cam(customerState(t).x + 140, 600, 1.18), E.inOutSine],
+  [0,   cam(760, 860, 1.5)],                                               // the loop shot: soft pavement, fascia out of view
+  [1.1, t => cam(Math.max(560, customerState(t).x + 160), 700, 1.3), E.inOutSine],
   [1.8, t => cam(customerState(t).x + 130, 590, 1.2)],
   [2.45, cam(880, 440, 1.16), E.inOutCubic],
   [3.1, cam(905, 452, 1.24), E.inOutSine],
@@ -704,19 +713,21 @@ function mainCam(t) {
     [18.95, cam(-810, 610, 1.42), E.inOutSine],
     [19.35, cam(-815, 610, 1.44), E.inOutSine],
     [19.75, cam(-980, 540, 1.3), E.inOutSine],
-    [20.5, cam(-1040, 530, 1.36), E.inOutSine],
-    [20.85, t => { const p = parcelPos(t - 0.08); return cam(p[0], p[1] - 20, 1.08); }, E.inOutSine],
-    [21.3, t => { const p = parcelPos(t - 0.08); return cam(p[0], p[1] - 20, 1.02); }],
-    [21.8, cam(VAN_START + 20, 760, 0.98), E.inOutCubic],
-    [22.3, cam(VAN_START + 20, 760, 0.98), E.inOutSine],
-    [22.9, t => cam(vanX(t) + 20, 750, 0.98), E.inOutSine],
+    [20.75, cam(-1040, 530, 1.38), E.inOutSine],
+    [21.2, t => { const p = parcelPos(t - 0.1); return cam(p[0] - 40, p[1] + 20, 0.92); }, E.inOutSine],
+    [21.85, t => { const p = parcelPos(t - 0.1); return cam(p[0] - 40, p[1] + 20, 0.92); }],
+    [22.4, cam(VAN_START + 20, 760, 0.98), E.inOutSine],
+    [22.9, cam(VAN_START + 20, 760, 0.98), E.inOutSine],
+    [23.4, t => cam(vanX(t) + 20, 750, 0.98), E.inOutSine],
     [25.5, t => cam(vanX(t) + 20, 750, 0.98)],
     [26.25, cam(OX + 440, 620, 1.04), E.inOutSine],
     [27.2, cam(OX + 720, 520, 1.14), E.inOutSine],
     ...fitCamKeys(),
-    [29.75, cam(OX + 900, 440, 1.14), E.inOutCubic],
-    [30.9, cam(OX + 620, 540, 1.08), E.inOutSine],
-    [31.7, cam(OX + 960, 540, 1), E.inOutCubic],
+    [29.3, cam(OX + 900, 440, 1.14), E.inOutCubic],
+    [29.9, cam(OX + 640, 560, 1.1), E.inOutSine],
+    [30.6, cam(OX + 860, 420, 1.02), E.inOutSine],
+    [31.3, cam(OX + 900, 400, 1.0), E.inOutSine],
+    [32.0, cam(OX + 760, 860, 1.5), E.inOutCubic],
   ]);
 }
 function fitCamKeys() {                    // ease along the fascia, letter by letter
@@ -776,7 +787,16 @@ function drawShopBlock(t, opts = {}) {
     g.addColorStop(0, `rgba(255,214,140,${0.55 * I})`); g.addColorStop(1, 'rgba(255,214,140,0)');
     ctx.fillStyle = g; ctx.fillRect(420, -120, 1080, 560);
   }
-  sk(rect(590, 150, 740, 112), { closed: true, fill: I > 0.01 ? mixHex(COLORS.fascia, '#f1dcb2', I * 0.6) : COLORS.fascia });
+  if (opts.fitted) {                     // the finished fascia: cream tray, teal trim, drip ledge, leaf sprigs
+    ctx.fillStyle = 'rgba(35,40,43,0.12)'; ctx.fillRect(596, 262, 740, 14);
+    sk(rect(586, 144, 748, 124), { closed: true, fill: mixHex('#efe8da', '#fff3dc', I * 0.5), width: 3.4 });
+    sk(rect(598, 156, 724, 100), { closed: true, stroke: COLORS.teal, width: 3, amp: 0.6 });
+    sk(rect(580, 266, 760, 10), { closed: true, fill: COLORS.steel, width: 2.4 });
+    for (const [cx, dir] of [[650, 1], [1270, -1]]) {
+      sk([[cx, 236], [cx + dir * 14, 176]], { width: 2.4, stroke: COLORS.tealDark, amp: 0.4 });
+      for (const [u, side] of [[0.25, 1], [0.5, -1], [0.75, 1]]) { const px = cx + dir * 14 * u, py = 236 - 60 * u; sk(ellipse(px + side * 12, py, 11, 5, 12), { closed: true, fill: COLORS.tealSoft, width: 1.8, amp: 0.3 }); }
+    }
+  } else sk(rect(590, 150, 740, 112), { closed: true, fill: COLORS.fascia });
   if (!opts.fitted) {
     sk(rect(640, 176, 150, 60), { closed: true, stroke: 'rgba(35,40,43,.18)', width: 2 });
     sk([[1180, 262], [1196, 292], [1188, 318]], { width: 2.2 });
@@ -958,17 +978,48 @@ function drawDesigner(t) {
     drawArm(spec, shoulderOf(spec, charFrame(spec, st), 1), hand, handGrow(t));
   } else drawCharacter(spec, { ...st, hands: [null, hand] });
 }
+// Tool icons, drawn at (x, y) in world units, ~26 px tall.
+function toolIcon(kind, x, y, s = 1, active = false) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+  if (active) sk(rrect(-17, -17, 34, 34, 7, 8), { closed: true, fill: COLORS.tealSoft, width: 2, amp: 0.3 });
+  if (kind === 'pen') { sk([[0, -12], [7, 2], [0, 12], [-7, 2]], { closed: true, fill: COLORS.paperHi, width: 2.2, amp: 0.2 }); sk([[0, -2], [0, 12]], { width: 1.6, amp: 0 }); dot(0, 0, 2); }
+  else if (kind === 'align') { sk(rect(-12, -9, 24, 18), { closed: true, fill: COLORS.paperHi, width: 2.2, amp: 0.2 }); for (let i = -8; i <= 8; i += 4) sk([[i, -9], [i, i % 8 ? -4 : -1]], { width: 1.4, amp: 0 }); }
+  else if (kind === 'bucket') { sk([[-10, -4], [8, -10], [12, 4], [-4, 11]], { closed: true, fill: COLORS.paperHi, width: 2.2, amp: 0.2 }); sk([[-10, -4], [-6, -14], [8, -10]], { width: 1.8, amp: 0 }); dot(12, 11, 3, COLORS.teal); }
+  else { sk([[-6, -12], [-6, 8], [-1, 4], [3, 12], [6, 10], [2, 2], [8, 2]], { closed: true, fill: COLORS.paperHi, width: 2, amp: 0.2 }); }
+  ctx.restore();
+}
 function drawScreenUI(F, t) {
-  const pts = [[0.55, 0.45], [-0.3, 0.08], [0.12, -0.05], [0.7, -0.4]], times = [6.0, ...T.clicks];
-  let u = pts[0][0], v = pts[0][1];
-  for (let i = 1; i < pts.length; i++) { const k = E.inOutCubic(prog(t, times[i] - 0.34, times[i] - 0.04)); u = lerp(u, pts[i][0], k); v = lerp(v, pts[i][1], k); }
-  T.clicks.forEach((c, i) => {
-    const k = prog(t, c, c + 0.35);
-    if (k > 0 && k < 1) { const [x, y] = Fpt(F, pts[i + 1][0], pts[i + 1][1]); sk(circle(x, y, 6 + 22 * E.outCubic(k)), { closed: true, stroke: COLORS.teal, width: 2.4 * (1 - k) + 0.4, amp: 0.4 }); }
-  });
-  const s = E.outBackBig(prog(t, T.swatch, T.swatch + 0.32));
-  if (s > 0.01) { const [x, y] = Fpt(F, 0.78, -0.43); sk(circle(x, y, 16 * s), { closed: true, fill: COLORS.teal, width: 2.6 }); sk(circle(x - 30 * s, y + 4, 9 * s), { closed: true, fill: COLORS.tealSoft, width: 2.2 }); }
-  if (t > 5.9) { const [x, y] = Fpt(F, u, v); sk([[x, y], [x, y + 20], [x + 5, y + 15], [x + 10, y + 23], [x + 14, y + 21], [x + 9, y + 13], [x + 15, y + 13]], { closed: true, fill: COLORS.paperHi, width: 2.2, amp: 0.3 }); }
+  const H = letterH(F), L2F = p => [F.cx + p[0] * H, F.cy + p[1] * H];
+  const [t0, t1, t2, t3] = T.tools;
+  const tool = t < t0 ? 'arrow' : t < t1 ? 'pen' : t < t2 ? 'align' : t < t3 ? 'bucket' : 'arrow';
+  // tool palette down the left of the screen
+  const kinds = ['arrow', 'pen', 'align', 'bucket'];
+  sk(rrect(F.cx - F.w / 2 + 8, F.cy - 104, 40, 170, 8, 12), { closed: true, fill: '#e9e4d8', width: 2, amp: 0.3 });
+  kinds.forEach((k, i) => toolIcon(k, F.cx - F.w / 2 + 28, F.cy - 82 + i * 42, 0.8, k === tool));
+  // where the cursor goes for each tool (letter units)
+  const targets = [[1.6, 1.3], [-1.9, -0.15], [1.2, 0.62], [0.35, -0.9], [2.3, -1.2]], times = [5.9, t0 + 0.25, t1 + 0.25, t2 + 0.25, t3 + 0.2];
+  let p = targets[0];
+  for (let i = 1; i < targets.length; i++) p = lerp2(p, targets[i], E.inOutCubic(prog(t, times[i] - 0.3, times[i])));
+  // pen: anchors + bézier handles on the B
+  const pen = E.outBack(prog(t, t0 + 0.2, t0 + 0.4)) * (1 - E.inCubic(prog(t, t1 - 0.05, t1 + 0.1)));
+  if (pen > 0.02) {
+    const B = WORDMARK.centers[0] - 0.275;
+    [[0, -.5], [0, 0], [0, .5], [.26, -.5], [.3, 0], [.3, .5]].forEach(q => { const w = L2F([B + q[0], q[1]]); sk(rect(w[0] - 4 * pen, w[1] - 4 * pen, 8 * pen, 8 * pen), { closed: true, fill: COLORS.paperHi, width: 1.6, amp: 0 }); });
+    [[.51, -.25], [.55, .25]].forEach(q => { const a = L2F([B + q[0], q[1] - 0.14]), b = L2F([B + q[0], q[1] + 0.14]); sk([a, b], { width: 1.4, stroke: COLORS.teal, amp: 0 }); dot(a[0], a[1], 3 * pen, COLORS.teal); dot(b[0], b[1], 3 * pen, COLORS.teal); });
+  }
+  // align: guides snap onto cap height and baseline
+  const al = E.outCubic(prog(t, t1 + 0.15, t1 + 0.4)) * (1 - E.inCubic(prog(t, t2 - 0.05, t2 + 0.1)));
+  if (al > 0.02) for (const yy of [-0.5, 0.5]) { const y = L2F([0, yy])[1], x0 = F.cx - F.w / 2 + 56; ctx.setLineDash([6, 5]); sk([[x0, y], [lerp(x0, F.cx + F.w / 2 - 10, al), y]], { width: 1.6, stroke: COLORS.teal, amp: 0 }); ctx.setLineDash([]); }
+  // bucket: a drop into the O's, then a ripple
+  const td = T.clicks[2];
+  if (t > td - 0.15 && t < td + 0.5) {
+    const drop = prog(t, td - 0.15, td), o = L2F([WORDMARK.centers[2] + 0.2, -0.15]), from = L2F([0.35 + 0.15, -0.9]);
+    if (drop < 1) { const q = lerp2(from, o, E.inCubic(drop)); sk(ellipse(q[0], q[1], 5, 7, 12), { closed: true, fill: COLORS.teal, width: 1.6, amp: 0 }); }
+    else { const k = prog(t, td, td + 0.5); sk(ellipse(o[0], o[1], 8 + 34 * E.outCubic(k), 4 + 14 * E.outCubic(k), 24), { closed: true, stroke: COLORS.teal, width: 2.4 * (1 - k) + 0.3, amp: 0.3 }); }
+  }
+  const sw = E.outBackBig(prog(t, T.swatch, T.swatch + 0.32));
+  if (sw > 0.01) { const [x, y] = Fpt(F, 0.8, -0.45); sk(circle(x, y, 14 * sw), { closed: true, fill: COLORS.teal, width: 2.4 }); sk(circle(x - 26 * sw, y + 4, 8 * sw), { closed: true, fill: COLORS.tealSoft, width: 2 }); }
+  if (t > 5.9) { const w = L2F(p); toolIcon(tool, w[0] + 8, w[1] + 10, 0.9); }
 }
 
 /* ==========================================================================
@@ -1172,6 +1223,7 @@ function fabricatorState(t) {
     const L = WORDMARK.leds[i].p, d = letterDepth(t, WORDMARK.leds[i].li) / bedH;
     hands = [null, L2Bed([L[0] - 0.55 * d, L[1] - 0.75 * d])]; look = [-0.9, -0.3];
   }
+  const ledGrow = 1 + 1.9 * E.outBack(prog(t, T.leds[0] - 0.25, T.leds[0])) * (1 - E.inOutCubic(prog(t, T.leds[1], T.leds[1] + 0.3)));
   if (t > T.thumbs - 0.1 && t < T.glow[0] + 0.5) {
     const k = E.outBack(prog(t, T.thumbs - 0.1, T.thumbs + 0.14));
     hands = [null, [x + 80, 700 - 220 * k]]; handStyle = [null, 'thumb']; look = [0, 0.1]; dir = 1;
@@ -1180,7 +1232,7 @@ function fabricatorState(t) {
   if (t > T.glow[0] + 0.3) look = [-0.8, -0.2];
   if (t > T.hop[0]) { const p = parcelPos(t); look = [Math.max(-1, (p[0] - x) / 300), -0.4]; }
   const moving = Math.abs(FAB_X(t) - FAB_X(t - 0.05)) > 0.3;
-  return { t, x, y: 870, sx: 1 / Math.sqrt(sy), sy, rot, look, dir, legs: moving ? walkState(x, 1) : { mode: 'stand' }, hands, handStyle, skipArm: skip, jump };
+  return { t, x, y: 870, sx: 1 / Math.sqrt(sy), sy, rot, look, dir, legs: moving ? walkState(x, 1) : { mode: 'stand' }, hands, handStyle, skipArm: skip, jump, armGrow: [1, ledGrow] };
 }
 function drawFabricator(t) {
   const spec = CHARACTERS.fabricator, st = fabricatorState(t);
@@ -1188,13 +1240,6 @@ function drawFabricator(t) {
   const S = sheetPose(t);
   if (S && (S.stage === 'flight' || S.stage === 'held')) drawSheet(t, 'flap');
   if (st.skipArm === 2) { const f = charFrame(spec, st); drawArm(spec, shoulderOf(spec, f, 0), st.hands[0], 1.25, null, 0); drawArm(spec, shoulderOf(spec, f, 1), st.hands[1], 1.25, null, 1); }
-  if (t > T.leds[0] && t < T.hop[0]) {
-    const hand = st.hands[1] || [st.x + 60, 700];
-    const sp = [st.x + 120, 846], wire = [];
-    for (let i = 0; i <= 14; i++) { const u = i / 14; wire.push([lerp(hand[0], sp[0], u), lerp(hand[1], sp[1], u) + Math.sin(Math.PI * u) * 60]); }
-    sk(wire, { width: 2, stroke: COLORS.tealDark, amp: 0.6 });
-    sk(circle(st.x + 130, 846, 18), { closed: true, fill: COLORS.tealSoft, width: 2.6 });
-  }
 }
 
 /* ==========================================================================
@@ -1351,7 +1396,10 @@ function drawForeground(c, v) {
    ========================================================================== */
 
 const letterLand = i => T.letter0 + i * T.letterStep + T.letterDur;
-const haloI = t => t < T.halo ? 0 : keys(t, [[T.halo, 0], [T.halo + 0.08, 0.95, E.outCubic], [T.halo + 0.16, 0.12, E.inCubic], [T.halo + 0.24, 0.2], [T.halo + 0.3, 0.6, E.outCubic]]) + (t > T.halo + 0.3 ? 0.4 * spring(t - T.halo - 0.3, 9, 0.5) : 0);
+const nightAt = t => keys(t, [[T.night[0], 0], [T.night[1], 1, E.inOutSine], [T.night[2], 1], [T.night[3], 0, E.inOutSine]]);
+const focusBlur = t => Math.max(1 - E.inOutSine(prog(t, 0.05, 0.9)), E.inOutSine(prog(t, T.endFocus[0], T.endFocus[1])));
+const haloI = t => (1 - E.inOutSine(prog(t, T.night[2] + 0.05, T.night[3] - 0.05))) * haloOn(t);
+const haloOn = t => t < T.halo ? 0 : keys(t, [[T.halo, 0], [T.halo + 0.08, 0.95, E.outCubic], [T.halo + 0.16, 0.12, E.inCubic], [T.halo + 0.24, 0.2], [T.halo + 0.3, 0.6, E.outCubic]]) + (t > T.halo + 0.3 ? 0.4 * spring(t - T.halo - 0.3, 9, 0.5) : 0);
 const ladderBase = [OX + 560, 880], ladderTop = [OX + 620, 250];
 function ladderState(t) {
   if (t < T.ladder[0] || t > T.pack[1] + 0.05) return null;
@@ -1370,19 +1418,31 @@ function drawLadder(t) {
   for (let k = 1; k < 12; k++) { const p = lerp2(L.base, L.top, k / 12); sk([[p[0] + n[0], p[1] + n[1]], [p[0] - n[0], p[1] - n[1]]], { width: 3.4 }); }
 }
 const slotPos = i => [FASCIA.cx + WORDMARK.centers[i] * FASCIA.H, FASCIA.cy];
+const RUNGS = 12;
+function ladderPt(L, u, side = 0) { const p = lerp2(L.base, L.top, u), n = [-L.d[1], L.d[0]]; return [p[0] + n[0] * side, p[1] + n[1] * side]; }
 function fitterAState(t) {
   const L = ladderState(t);
-  const climb = E.inOutSine(prog(t, T.climb[0], T.climb[1])) * (1 - E.inOutCubic(prog(t, T.pack[0] - 0.05, T.pack[0] + 0.2)));
-  const walkKeys = [[T.unload[0], VAN_PARK + 300], [T.unload[0] + 0.3, OX + 540, E.inOutSine], [T.pack[0] + 0.2, OX + 540], [T.pack[1], VAN_PARK + 150, E.inOutSine]];
-  let x = keys(t, walkKeys), y = 880;
-  if (L && climb > 0) { const p = lerp2(L.base, lerp2(L.base, L.top, 0.55), climb); x = p[0] - 30; y = p[1]; }
-  let hands = [null, null], look = [0.6, -0.8];
-  for (let i = 0; i < WORDMARK.count; i++) {
-    const k = Math.max(0, 1 - Math.abs(t - letterLand(i)) / 0.28);
-    if (k > 0) { const s = slotPos(i); hands = [null, lerp2([x + 60, y - 160], [s[0] - 10, s[1] + 50], E.outCubic(k))]; look = [Math.max(-1, Math.min(1, (s[0] - x) / 300)), -0.9]; }
+  const climb = E.inOutSine(prog(t, T.climb[0], T.climb[1])) * (1 - E.inOutSine(prog(t, T.pack[0], T.pack[0] + 0.3)));
+  const walkKeys = [[T.unload[0], VAN_PARK + 300], [T.unload[0] + 0.3, OX + 575, E.inOutSine], [T.pack[0] + 0.3, OX + 575], [T.pack[1], VAN_PARK + 150, E.inOutSine]];
+  let x = keys(t, walkKeys), hands = [null, null], look = [0.6, -0.8], base = null, feet = null;
+  if (L && climb > 0.001) {
+    // step up rung by rung: each foot waits, then moves two rungs while the other holds
+    const phi = climb * 7.2, rungOf = o => { const q = (phi + o) / 2, k = Math.floor(q), f = q - k; return Math.max(0, 2 * k - o + 2 * E.inOutSine(clamp01((f - 0.5) * 2))); };
+    const lift = o => { const q = (phi + o) / 2, f = q - Math.floor(q); return 10 * Math.sin(Math.PI * clamp01((f - 0.5) * 2)); };
+    const rl = rungOf(0), rr = rungOf(1);
+    feet = [ladderPt(L, rl / RUNGS, -10), ladderPt(L, rr / RUNGS, 10)];
+    feet[0][1] -= lift(0); feet[1][1] -= lift(1);
+    base = ladderPt(L, (Math.max(rl, rr) + 1.05) / RUNGS, 0); x = base[0];
+    const grip = (Math.max(rl, rr) + 4.2) / RUNGS;
+    hands = [ladderPt(L, Math.min(0.98, grip), -24), ladderPt(L, Math.min(0.98, grip + 0.7 / RUNGS), 24)];
   }
-  const moving = Math.abs(keys(t, walkKeys) - keys(t - 0.05, walkKeys)) > 0.5 && climb === 0;
-  return { t, x, y, sx: 1, sy: 1 + 0.012 * Math.sin(t * 3), rot: 0, look, dir: 1, legs: climb > 0 ? { mode: 'climb' } : moving ? walkState(x, 1) : { mode: 'stand' }, hands };
+  const y = base ? base[1] : 880;
+  for (let i = 0; i < WORDMARK.count; i++) {
+    const k = Math.max(0, 1 - Math.abs(t - letterLand(i)) / 0.26);
+    if (k > 0) { const s = slotPos(i); hands = [hands[0], lerp2(hands[1] || [x + 60, y - 160], [s[0] - 10, s[1] + 50], E.outCubic(k))]; look = [Math.max(-1, Math.min(1, (s[0] - x) / 300)), -0.9]; }
+  }
+  const moving = Math.abs(keys(t, walkKeys) - keys(t - 0.05, walkKeys)) > 0.5 && !base;
+  return { t, x, y: 880, base, feet, sx: 1, sy: 1 + 0.012 * Math.sin(t * 3), rot: 0, look, dir: 1, legs: base ? { mode: 'climb' } : moving ? walkState(x, 1) : { mode: 'stand' }, hands };
 }
 function fitterBState(t) {
   const walkKeys = [[T.unload[0], VAN_PARK + 320], [T.unload[0] + 0.25, OX + 820, E.inOutSine], [T.pack[0], OX + 820], [T.pack[1], VAN_PARK + 180, E.inOutSine]];
@@ -1424,7 +1484,7 @@ function drawFitBack(t, v) {             // shop, landed letters, ladder and fit
   ctx.save(); ctx.translate(OX, 0);
   drawShopBlock(t, { fitted: t > T.letter0, halo: I, doorOpen: t > T.door[0] ? Math.sin(Math.PI * prog(t, T.door[0] + 0.05, T.door[1] - 0.04)) : 0 });
   ctx.restore();
-  if (t > T.letter0) { const F = flyingLetters(t); drawLetters(FASCIA.cx, FASCIA.cy, FASCIA.H, { show: i => F[i].show && t >= letterLand(i), depth: () => 10, squash: i => F[i].squash || 1, glow: I }); }
+  if (t > T.letter0) { const F = flyingLetters(t); drawLetters(FASCIA.cx, FASCIA.cy, FASCIA.H, { show: i => F[i].show && t >= letterLand(i), depth: () => 10, squash: i => F[i].squash || 1, glow: I, shadow: [8, 10] }); }
   if (t < T.drive[1] - 0.5) return;
   drawLadder(t);
   if (t > T.unload[0] && t < T.pack[1] + 0.05) { drawCharacter(CHARACTERS.fitterA, fitterAState(t)); drawCharacter(CHARACTERS.fitterB, fitterBState(t)); }
@@ -1468,6 +1528,29 @@ function drawMain(t, c) {
   else { const S = sheetPose(t); if (S && (S.stage === 'flight' || S.stage === 'held')) drawSheet(t, 'flap'); }
   drawFitFront(t, v);
   drawForeground(c, v);
+  drawNight(t, v);
+}
+// Night falls over the whole world; then the lights: shop, windows, lamp and the halo behind the letters.
+function drawNight(t, v) {
+  const n = nightAt(t);
+  if (n < 0.002) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.fillStyle = mixHex('#ffffff', '#52648c', n); ctx.fillRect(v.x0 - 200, v.y0 - 200, v.x1 - v.x0 + 400, v.y1 - v.y0 + 400);
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.translate(OX, 0);
+  const warm = a => `rgba(255,196,120,${a})`;
+  for (const [x, y, w, h] of [[640, -440, 220, 300], [1060, -440, 220, 300], [600, 320, 430, 450], [1102, 362, 176, 250], [150, 60, 120, 190], [1640, -380, 120, 190]]) { ctx.fillStyle = warm(0.28 * n); ctx.fillRect(x, y, w, h); }
+  const lamp = ctx.createRadialGradient(502, 140, 10, 502, 140, 340);
+  lamp.addColorStop(0, warm(0.55 * n)); lamp.addColorStop(1, warm(0)); ctx.fillStyle = lamp; ctx.fillRect(160, -200, 700, 700);
+  const I = haloI(t);
+  const g = ctx.createRadialGradient(960, 206, 30, 960, 206, 460);
+  g.addColorStop(0, warm(0.55 * n * I)); g.addColorStop(1, warm(0)); ctx.fillStyle = g; ctx.fillRect(460, -260, 1000, 940);
+  ctx.translate(-OX, 0);
+  drawLetters(FASCIA.cx, FASCIA.cy, FASCIA.H, { depth: () => 10, glow: Math.min(1, I * (0.6 + 0.8 * n)), glowOnly: true });
+  ctx.globalCompositeOperation = 'source-over';
+  drawLetters(FASCIA.cx, FASCIA.cy, FASCIA.H, { depth: () => 10, dark: 0.55 * n });   // halo-lit letters read as silhouettes against their own glow
+  ctx.restore();
 }
 
 /* ==========================================================================
@@ -1507,11 +1590,24 @@ function drawFrame(tIn) {
   ctx.translate(W / 2, H / 2); ctx.scale(fit, fit);
   ctx.translate(PORTRAIT ? -PORTRAIT_VIEW.cx : -960, PORTRAIT ? -PORTRAIT_VIEW.cy : -540);
 
-  const c = camera(t);
+  const c = camera(t), blur = focusBlur(t);
+  if (blur > 0.01) {                     // soft focus at the loop point: render the world offscreen, composite blurred
+    if (focusCanvas.width !== canvas.width || focusCanvas.height !== canvas.height) { focusCanvas.width = canvas.width; focusCanvas.height = canvas.height; }
+    focusCtx.setTransform(1, 0, 0, 1, 0, 0); focusCtx.fillStyle = COLORS.paper; focusCtx.fillRect(0, 0, canvas.width, canvas.height);
+    focusCtx.setTransform(MAIN_CTX.getTransform());
+    ctx = focusCtx;
+  }
   ctx.save();
   ctx.translate(960, 540); ctx.rotate(c.roll); ctx.scale(c.zoom, c.zoom); ctx.translate(-c.cx, -c.cy);
   if (c.world === 'street') drawStreet(t); else drawMain(t, c);
   ctx.restore();
+  if (ctx !== MAIN_CTX) {
+    ctx = MAIN_CTX;
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.filter = `blur(${(9 * K * blur).toFixed(2)}px)`;
+    ctx.drawImage(focusCanvas, 0, 0);
+    ctx.filter = 'none'; ctx.restore();
+  }
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = grain; ctx.fillRect(0, 0, canvas.width, canvas.height);
