@@ -53,8 +53,8 @@
 <div id="bar">
   <button id="play" aria-label="Play / pause"></button>
   <select id="scene" aria-label="Jump to scene"></select>
-  <div id="track"><div id="rail"></div><input id="scrub" type="range" min="0" max="36" step="0.001" value="0" aria-label="Scrub"></div>
-  <div id="time"><b>00.00</b> / 36.00</div>
+  <div id="track"><div id="rail"></div><input id="scrub" type="range" min="0" max="37" step="0.001" value="0" aria-label="Scrub"></div>
+  <div id="time"><b>00.00</b></div>
   <button id="orient" aria-label="Toggle orientation">16:9</button>
 </div>
 <script>
@@ -64,7 +64,7 @@
    SETTINGS: timings, colours, characters. Tune here.
    ========================================================================== */
 
-const DURATION = 36;                // room for the van to load and unload properly
+const STORY_END = 37.1;               // story seconds; real playback length is DURATION (the flight plays faster)
 const FPS = 60;
 const BOIL_EVERY = 3;                 // frames per re-seed of the line boil
 
@@ -75,7 +75,7 @@ const SCENES = [
   { id: 4, name: 'The flight',      t0: 10.75, t1: 12.95 },
   { id: 5, name: 'Fabrication',     t0: 12.95, t1: 20    },
   { id: 6, name: 'The van',         t0: 20,    t1: 27.5  },
-  { id: 7, name: 'The fit',         t0: 27.5,  t1: 36    },
+  { id: 7, name: 'The fit',         t0: 27.5,  t1: STORY_END },
 ];
 
 const COLORS = {
@@ -152,13 +152,13 @@ const T = {
   // 7 fit
   // unload: the same in reverse at the shop
   shutter2: [27.7, 27.9], liftOut2: [27.85, 28.1], slideOut: [28.15, 28.5], liftDrop2: [28.5, 28.85], pickup: [28.85, 29.3],
-  fitOut: [27.75, 28.2], ladder: [28.55, 28.95], climb: [28.95, 29.5], letter0: 29.6, letterStep: 0.34, letterDur: 0.3,
-  halo: 31.3, pack: [31.35, 31.75], liftIn2: [31.35, 31.75], leave: [31.8, 32.45],
-  custIn: [32.3, 33.1], custLook: 33.12, bounce: [33.2, 33.5], door: [33.6, 34.0],
+  fitOut: [27.75, 28.2], ladder: [28.55, 28.95], climb: [28.95, 29.5], letter0: 29.6, letterStep: 0.46, letterDur: 0.36, letterCatch: 0.18,
+  halo: 31.95, pack: [32.0, 32.4], liftIn2: [32.0, 32.4], leave: [32.45, 33.1],
+  custIn: [32.95, 33.75], custLook: 33.77, celebrate: [33.85, 34.95], door: [35.05, 35.45],
   // dusk gathers while the letters go up, night falls as they pack away, the customer arrives under the lit sign
-  nightKeys: [[30.0, 0], [31.3, 0.35], [32.6, 1], [34.4, 1], [35.1, 0]],
-  morning: [34.4, 35.1],                    // the sign's timer switches off with the daylight
-  endFocus: [35.25, 35.98],                 // soft focus down onto the pavement: the loop point
+  nightKeys: [[30.0, 0], [31.5, 0.35], [33.2, 1], [35.5, 1], [36.2, 0]],
+  morning: [35.5, 36.2],                    // the sign's timer switches off with the daylight
+  endFocus: [36.35, 37.08],                 // soft focus down onto the pavement: the loop point
 };
 
 /* ==========================================================================
@@ -214,6 +214,21 @@ function hash(n) {
   let x = Math.imul((n | 0) ^ 0x9e3779b9, 0x85ebca6b);
   x ^= x >>> 13; x = Math.imul(x, 0xc2b2ae35); x ^= x >>> 16;
   return (x >>> 0) / 4294967296;
+}
+// The flight plays faster than the rest: story time runs at speedAt(s) × real time, eased in and out.
+const FLIGHT_SPEED = { k: 1.7, rampIn: [10.5, 10.85], rampOut: [12.15, 12.5] };
+const speedAt = s => 1 + (FLIGHT_SPEED.k - 1) * E.inOutSine(prog(s, ...FLIGHT_SPEED.rampIn)) * (1 - E.inOutSine(prog(s, ...FLIGHT_SPEED.rampOut)));
+const WARP = (() => {
+  const ds = 0.001, n = Math.ceil(STORY_END / ds), r = new Float64Array(n + 1);
+  for (let i = 1; i <= n; i++) r[i] = r[i - 1] + ds / speedAt((i - 0.5) * ds);
+  return { ds, n, r };
+})();
+const DURATION = WARP.r[WARP.n];      // real seconds
+function realAt(st) { const x = clamp01(st / STORY_END) * WARP.n, i = Math.min(WARP.n - 1, Math.floor(x)); return lerp(WARP.r[i], WARP.r[i + 1], x - i); }
+function storyAt(rt) {
+  let lo = 0, hi = WARP.n; if (rt <= 0) return 0; if (rt >= WARP.r[hi]) return STORY_END;
+  while (lo < hi - 1) { const m = (lo + hi) >> 1; if (WARP.r[m] <= rt) lo = m; else hi = m; }
+  return (lo + (rt - WARP.r[lo]) / (WARP.r[hi] - WARP.r[lo])) * WARP.ds;
 }
 const hexRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 const mixHex = (a, b, u) => { const A = hexRgb(a), B = hexRgb(b); return `rgb(${A.map((v, i) => Math.round(lerp(v, B[i], u)))})`; };
@@ -374,7 +389,8 @@ function drawCharacter(spec, st) {
   for (const side of [-1, 1]) {
     const g = spec.goggles ? 0.5 : 1;
     const e = L2W(side * spec.eyeGap / 2 + lx * g, -h * spec.eyeY + ly * g);
-    if ((st.blink || 0) > 0.5) sk([[e[0] - 6, e[1]], [e[0] + 6, e[1]]], { width: 3, amp: 0.4 });
+    if (st.happy) sk([[e[0] - 7, e[1] + 3], [e[0], e[1] - 5], [e[0] + 7, e[1] + 3]], { width: 3.4, amp: 0.3 });
+    else if ((st.blink || 0) > 0.5) sk([[e[0] - 6, e[1]], [e[0] + 6, e[1]]], { width: 3, amp: 0.4 });
     else dot(e[0], e[1], spec.eyeR);
   }
   for (let i = 0; i < 2; i++) {
@@ -632,6 +648,7 @@ function drawSheetContent(F) {
 function drawSheet(t, layer) {
   const S = sheetPose(t);
   if (!S || S.stage === 'bed') return;
+  if (layer === 'flap' && TRACKED === 'sheet' && S.stage === 'flight') return;   // drawn sharp after the camera smear
   const { F, C, d, corners, aOf } = PEEL, p = S.p, r = S.r;
   ctx.save();
   if (S.H) {
@@ -732,19 +749,20 @@ function mainCam(t) {
     [28.9, cam(OX + 600, 700, 1.16), E.inOutSine],
     [29.45, cam(OX + 720, 520, 1.14), E.inOutSine],
     ...fitCamKeys(),
-    [31.6, cam(OX + 900, 440, 1.14), E.inOutCubic],
-    [32.4, cam(OX + 880, 430, 1.08), E.inOutSine],                          // dusk settles; the sign holds the frame
-    [33.2, cam(OX + 700, 540, 1.1), E.inOutSine],
-    [34.1, cam(OX + 860, 420, 1.02), E.inOutSine],
-    [35.0, cam(OX + 900, 400, 1.0), E.inOutSine],
-    [DURATION, cam(OX + 760, 860, 1.5), E.inOutCubic],
+    [32.2, cam(OX + 900, 440, 1.14), E.inOutCubic],
+    [33.0, cam(OX + 880, 430, 1.08), E.inOutSine],                          // dusk settles; the sign holds the frame
+    [33.8, cam(OX + 720, 540, 1.1), E.inOutSine],
+    [34.9, cam(OX + 740, 500, 1.14), E.inOutSine],                          // the celebration
+    [35.6, cam(OX + 860, 420, 1.02), E.inOutSine],
+    [36.25, cam(OX + 900, 400, 1.0), E.inOutSine],
+    [STORY_END, cam(OX + 760, 860, 1.5), E.inOutCubic],
   ]);
 }
 function fitCamKeys() {                    // ease along the fascia, letter by letter
   const out = [];
   for (let i = 0; i < WORDMARK.count; i++) {
     const tl = T.letter0 + i * T.letterStep + T.letterDur, x = FASCIA.cx + WORDMARK.centers[i] * FASCIA.H;
-    out.push([tl, cam(lerp(x, OX + 960, 0.35), 330, 1.36), E.inOutSine]);
+    out.push([tl, cam(lerp(x, OX + 800, 0.45), 360, 1.2), E.inOutSine]);
   }
   return out;
 }
@@ -984,7 +1002,8 @@ function drawDesigner(t) {
   if (t > T.reach[0] - 0.05) {
     drawCharacter(spec, { ...st, skipArm: 1 });
     const S = sheetPose(t);
-    if (S && (S.stage === 'peel' || S.stage === 'toss')) drawSheet(t, 'flap');
+    if (S && S.stage === 'peel') drawSheet(t, 'flap');
+    else if (S && S.stage === 'toss') ghosted(t, tt => drawSheet(tt, 'flap'), 4, 0.05);
     drawArm(spec, shoulderOf(spec, charFrame(spec, st), 1), hand, handGrow(t));
   } else drawCharacter(spec, { ...st, hands: [null, hand] });
 }
@@ -1331,55 +1350,64 @@ function drawParcel(t) {
 function drawVan(t) {
   const x = vanX(t), g = VAN.ground, R = VAN.wheelR;
   const vx = (vanX(t + 0.02) - vanX(t - 0.02)) / 0.04;
-  const rot = 0.025 * settle(t - T.drive[0] + 0.1, 9, 0.35) + 0.02 * settle(t - T.leave[0], 9, 0.35) - 0.022 * settle(t - T.drive[1], 10, 0.3);
-  const bob = Math.abs(vx) > 5 ? 2.5 * Math.sin(x * 0.04) : 0;
+  const rot = 0.022 * settle(t - T.drive[0] + 0.1, 9, 0.35) + 0.018 * settle(t - T.leave[0], 9, 0.35) - 0.02 * settle(t - T.drive[1], 10, 0.3);
+  const bob = Math.abs(vx) > 5 ? 2.2 * Math.sin(x * 0.04) : 0;
   const wa = -x / R;
   puff(x + VAN_REAR + 14, g - 26, T.drive[0], t, 3, 10); puff(x + VAN_REAR + 14, g - 26, T.leave[0], t, 3, 10);
-  // ground shadow stays on the road while the body rocks
-  ctx.beginPath(); ctx.ellipse(x + 20, g + 2, 400, 14, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(35,40,43,0.12)'; ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x + 10, g + 3, 420, 13, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(35,40,43,0.14)'; ctx.fill();
+  const WF = -250, WR = 250, AR = R + 12;                       // wheel centres, arch radius
   ctx.save(); ctx.translate(x, g - R - bob); ctx.rotate(rot);
-  // wheel arches (behind the body line)
-  for (const wx of [-236, 250]) sk(ellipse(wx, -6, 58, 56, 28).filter(p => p[1] < -4), { width: 3, fill: '#4a5256' });
-  // chassis rail
-  sk(rect(-150, -56, 530, 12), { closed: true, fill: COLORS.bezel, width: 2.6 });
-  // Luton box: body, peak over the cab, roof rail, accent stripe, panel seams
-  // one continuous outline: box + the peak over the cab
-  const nose = chaikin([[-150, -262], [-240, -266], [-258, -292], [-252, -338], [-226, -360], [-150, -360]], 1).slice(1, -1);
-  sk([[-150, -56], [372, -56], [380, -64], [380, -352], [372, -360], ...poly([[340, -360], [-150, -360]], false, 30), ...[...nose].reverse(), [-150, -262]], { closed: true, fill: COLORS.van, width: 3.8 });
-  sk([[-140, -348], [372, -348]], { width: 2, alpha: 0.45 });
-  for (let sx = -44; sx < 370; sx += 106) sk([[sx, -346], [sx, -76]], { width: 1.6, alpha: 0.22, amp: 0.5 });
-  sk(rect(-150, -76, 530, 14), { closed: true, fill: COLORS.teal, width: 2.4 });
-  drawOnesignLogo(118, -222, 440);
-  label('onesignanddigital.com', 118, -136, 22, COLORS.tealDark, 600);
-  // tail lights + rear edge
-  sk(rect(368, -126, 12, 34), { closed: true, fill: COLORS.customer, width: 2.2 });
-  sk(rect(368, -90, 12, 14), { closed: true, fill: COLORS.designer, width: 2 });
-  // cab under the peak
-  sk(chaikin([[-150, -262], [-236, -262], [-296, -184], [-318, -160], [-334, -122], [-338, -70], [-330, -50], [-150, -50]], 1), { closed: true, fill: COLORS.van, width: 3.6 });
-  sk(poly([[-162, -248], [-226, -248], [-278, -182], [-162, -182]], true, 12), { closed: true, fill: COLORS.glass, width: 3 });
-  sk([[-196, -238], [-222, -204]], { width: 2.2, stroke: '#fbf8f1', amp: 0.3 });
-  sk([[-162, -182], [-162, -60]], { width: 2.4 }); sk([[-278, -182], [-300, -150], [-304, -60]], { width: 2.4 });
-  sk([[-196, -160], [-178, -160]], { width: 3.4 });
-  sk([[-286, -190], [-300, -196]], { width: 3 }); sk(rrect(-318, -214, 20, 34, 6), { closed: true, fill: COLORS.bezel, width: 2.4 });
-  // front: headlight, grille, indicator, bumper
-  sk(ellipse(-322, -118, 11, 14, 14), { closed: true, fill: '#f6e7c1', width: 2.4 });
-  for (let gy = -100; gy <= -80; gy += 7) sk([[-338, gy], [-322, gy]], { width: 2, amp: 0.3 });
-  dot(-316, -140, 4, COLORS.designer);
-  sk(rrect(-350, -66, 70, 18, 6), { closed: true, fill: COLORS.steel, width: 2.6 });
-  // rear: shutter + tail lift
+  // side guard between the wheels, and the chassis rail behind it
+  sk(rect(-176, -50, 360, 12), { closed: true, fill: COLORS.bezel, width: 2.4 });
+  sk(rect(-168, -22, 350, 9), { closed: true, fill: COLORS.steel, width: 2.2 });
+  for (const gx of [-140, 0, 150]) sk([[gx, -38], [gx, -13]], { width: 3, stroke: COLORS.steel });
+  // Luton box: one outline from the rear, over the roof, round the peak above the cab
+  const box = [[-150, -50], ...poly([[-150, -50], [366, -50]], false, 40).slice(1), [380, -64], [380, -372], [366, -386],
+               ...poly([[340, -386], [-196, -386]], false, 40), ...chaikin([[-196, -386], [-252, -380], [-272, -352], [-270, -312], [-246, -290], [-150, -286]], 2).slice(2, -2), [-150, -286]];
+  sk(box, { closed: true, fill: COLORS.van, width: 3.8 });
+  sk([[-196, -372], [366, -372]], { width: 1.8, alpha: 0.4 });                         // roof capping
+  for (let sx = -40; sx < 360; sx += 100) sk([[sx, -370], [sx, -122]], { width: 1.4, alpha: 0.16, amp: 0.4 });
+  sk(rect(-150, -122, 530, 20), { closed: true, fill: COLORS.teal, width: 2.4 });    // brand band
+  sk(rect(-150, -102, 530, 6), { closed: true, fill: COLORS.tealDark, stroke: false });
+  drawOnesignLogo(114, -262, 420);
+  label('onesignanddigital.com', 114, -170, 21, COLORS.tealDark, 600);
+  for (const mx of [-110, 60, 230]) dot(mx, -60, 4.5, COLORS.designer);                // side marker lights
+  sk(rect(362, -372, 18, 322), { closed: true, fill: '#ebe6db', width: 2.6 });        // rear door frame
+  sk(rrect(366, -150, 12, 38, 4), { closed: true, fill: COLORS.customer, width: 2.2 });
+  sk(rrect(366, -110, 12, 16, 4), { closed: true, fill: COLORS.designer, width: 2 });
+  // cab: roof under the peak, raked screen, short bonnet, deep bumper
+  const cab = chaikin([[-150, -286], [-232, -286], [-306, -196], [-346, -178], [-362, -158], [-366, -80], [-360, -44], [-150, -44]], 2);
+  sk(cab, { closed: true, fill: COLORS.van, width: 3.6 });
+  sk(chaikin([[-162, -274], [-228, -274], [-292, -196], [-162, -196]], 1), { closed: true, fill: COLORS.glass, width: 3 });
+  sk([[-188, -264], [-214, -214]], { width: 2.2, stroke: '#fbf8f1', amp: 0.3 });
+  sk([[-166, -196], [-166, -64]], { width: 2.4 });                                    // door shut line
+  sk([[-292, -196], [-306, -178], [-312, -120]], { width: 2.4 });
+  sk(rrect(-200, -176, 26, 7, 3), { closed: true, fill: COLORS.bezel, width: 1.8 });  // handle
+  sk([[-294, -206], [-320, -214]], { width: 3 });                                     // mirror
+  sk(rrect(-340, -242, 22, 40, 7), { closed: true, fill: COLORS.bezel, width: 2.4 });
+  sk(rrect(-366, -150, 22, 30, 8), { closed: true, fill: '#f6e7c1', width: 2.4 });    // headlight
+  dot(-343, -120, 4, COLORS.designer);
+  for (let gy = -114; gy <= -90; gy += 8) sk([[-368, gy], [-346, gy]], { width: 2, amp: 0.3 });
+  sk(rrect(-376, -72, 86, 26, 9), { closed: true, fill: COLORS.steel, width: 2.6 });  // bumper
+  dot(-356, -59, 4, '#f6e7c1');
+  // rear: roller shutter + tail lift
   const LP = liftPose(t);
-  if (LP.shutter > 0.02) sk(rect(366, -346 + 282 * (1 - LP.shutter), 12, 282 * LP.shutter), { closed: true, fill: '#6d6a62', width: 2.4 });   // the open shutter
+  if (LP.shutter > 0.02) sk(rect(366, -372 + 322 * (1 - LP.shutter), 12, 322 * LP.shutter), { closed: true, fill: '#6d6a62', width: 2.4 });
   const hinge = [VAN_REAR, -44], ang = lerp(-Math.PI / 2, 0, LP.fold), lower = LP.drop * (R - 8 + 44);
   const tip = [hinge[0] + Math.cos(ang) * LIFT_LEN, hinge[1] + Math.sin(ang) * LIFT_LEN + lower];
   sk([[hinge[0] - 6, -56], [hinge[0] + 8, hinge[1] + lower]], { width: 4, stroke: COLORS.steel });
   sk(poly([[hinge[0], hinge[1] + lower], tip, [tip[0] + 5, tip[1] + 10], [hinge[0] + 5, hinge[1] + lower + 10]], true, 12), { closed: true, fill: COLORS.steel, width: 2.6 });
-  sk(rect(300, -40, 10, 46), { closed: true, fill: COLORS.bezel, width: 2 });
-  // wheels
-  for (const wx of [-236, 250]) {
+  sk(rrect(300, -46, 14, 52, 3), { closed: true, fill: COLORS.bezel, width: 2 });      // mudflap
+  // wheel arches cut into the body, then the wheels
+  for (const wx of [WF, WR]) {
+    const arch = []; for (let k = 0; k <= 20; k++) { const a = Math.PI + k / 20 * Math.PI; arch.push([wx + Math.cos(a) * AR, Math.sin(a) * AR]); }
+    sk([...arch, [wx + AR, 6], [wx - AR, 6]], { closed: true, fill: '#3a4145', width: 3 });
+  }
+  for (const wx of [WF, WR]) {
     sk(circle(wx, 0, R), { closed: true, fill: COLORS.bezel, width: 3.4 });
-    sk(circle(wx, 0, 22), { closed: true, fill: '#d6d2c8', width: 2.4 });
-    for (let k = 0; k < 5; k++) { const a = wa + k * Math.PI * 2 / 5; sk([[wx + Math.cos(a) * 6, Math.sin(a) * 6], [wx + Math.cos(a) * 19, Math.sin(a) * 19]], { width: 2.2, stroke: COLORS.steel, amp: 0 }); }
-    dot(wx, 0, 5, COLORS.bezel);
+    sk(circle(wx, 0, 25), { closed: true, fill: '#d6d2c8', width: 2.4 });
+    for (let k = 0; k < 5; k++) { const a = wa + k * Math.PI * 2 / 5; sk([[wx + Math.cos(a) * 7, Math.sin(a) * 7], [wx + Math.cos(a) * 21, Math.sin(a) * 21]], { width: 2.4, stroke: COLORS.steel, amp: 0 }); }
+    dot(wx, 0, 6, COLORS.bezel);
   }
   ctx.restore();
 }
@@ -1446,11 +1474,14 @@ function drawLadder(t) {
 const slotPos = i => [FASCIA.cx + WORDMARK.centers[i] * FASCIA.H, FASCIA.cy];
 const RUNGS = 12;
 function ladderPt(L, u, side = 0) { const p = lerp2(L.base, L.top, u), n = [-L.d[1], L.d[0]]; return [p[0] + n[0] * side, p[1] + n[1] * side]; }
-function fitterAState(t) {
+// Letter widths in letter units, for where hands hold them.
+const LETTER_W = [0, 1, 2, 3, 4].map(li => { const xs = WORDMARK.strokes.filter(k => k.li === li).flatMap(k => k.pts.map(p => p[0])); return Math.max(...xs) - Math.min(...xs); });
+const halfW = i => LETTER_W[i] * FASCIA.H / 2 + 6;
+function fitterABody(t) {                 // where fitter A is (walking or on the ladder), without the hands
   const L = ladderState(t);
   const climb = E.inOutSine(prog(t, T.climb[0], T.climb[1])) * (1 - E.inOutSine(prog(t, T.pack[0], T.pack[0] + 0.3)));
   const walkKeys = [[T.fitOut[0], VAN_PARK + 300], [T.fitOut[1] + 0.3, OX + 575, E.inOutSine], [T.pack[0] + 0.3, OX + 575], [T.pack[1], VAN_PARK + 150, E.inOutSine]];
-  let x = keys(t, walkKeys), hands = [null, null], look = [0.6, -0.8], base = null, feet = null;
+  let x = keys(t, walkKeys), base = null, feet = null, grips = null;
   if (L && climb > 0.001) {
     // step up rung by rung: each foot waits, then moves two rungs while the other holds
     const phi = climb * 7.2, rungOf = o => { const q = (phi + o) / 2, k = Math.floor(q), f = q - k; return Math.max(0, 2 * k - o + 2 * E.inOutSine(clamp01((f - 0.5) * 2))); };
@@ -1460,49 +1491,128 @@ function fitterAState(t) {
     feet[0][1] -= lift(0); feet[1][1] -= lift(1);
     base = ladderPt(L, (Math.max(rl, rr) + 1.05) / RUNGS, 0); x = base[0];
     const grip = (Math.max(rl, rr) + 4.2) / RUNGS;
-    hands = [ladderPt(L, Math.min(0.98, grip), -24), ladderPt(L, Math.min(0.98, grip + 0.7 / RUNGS), 24)];
-  }
-  const y = base ? base[1] : 880;
-  for (let i = 0; i < WORDMARK.count; i++) {
-    const k = Math.max(0, 1 - Math.abs(t - letterLand(i)) / 0.26);
-    if (k > 0) { const s = slotPos(i); hands = [hands[0], lerp2(hands[1] || [x + 60, y - 160], [s[0] - 10, s[1] + 50], E.outCubic(k))]; look = [Math.max(-1, Math.min(1, (s[0] - x) / 300)), -0.9]; }
+    grips = [ladderPt(L, Math.min(0.98, grip), -24), ladderPt(L, Math.min(0.98, grip + 0.7 / RUNGS), 24)];
   }
   const moving = Math.abs(keys(t, walkKeys) - keys(t - 0.05, walkKeys)) > 0.5 && !base;
-  return { t, x, y: 880, base, feet, sx: 1, sy: 1 + 0.012 * Math.sin(t * 3), rot: 0, look, dir: 1, legs: base ? { mode: 'climb' } : moving ? walkState(x, 1) : { mode: 'stand' }, hands };
+  return { x, base, feet, grips, moving };
+}
+const letterT0 = i => T.letter0 + i * T.letterStep;
+const RELEASE = () => [OX + 850, 600];     // where fitter B lets go of each letter
+function catchPt() { const b = fitterABody(T.letter0).base || [OX + 600, 430]; return [b[0] + 125, b[1] - 150]; }
+function letterPos(t, i) {                // centre of letter i: tossed up, caught, carried across to its slot
+  const t0 = letterT0(i), tc = t0 + T.letterCatch, tl = t0 + T.letterDur, s = slotPos(i), C = catchPt(), R = RELEASE();
+  if (t < tc) { const u = prog(t, t0, tc), p = lerp2(R, C, E.inOutSine(u)); return { p: [p[0], p[1] - 120 * Math.sin(Math.PI * u)], rot: 0.9 * Math.sin(Math.PI * u) * (i % 2 ? 1 : -1), phase: 'thrown' }; }
+  const u = E.inOutCubic(prog(t, tc, tl)), p = lerp2(C, s, u);
+  return { p: [p[0], p[1] - 30 * Math.sin(Math.PI * u)], rot: 0, phase: 'carried' };
+}
+function fitterAState(t) {
+  const B = fitterABody(t);
+  let hands = B.grips ? [...B.grips] : [null, null], look = [0.6, -0.8], tool = null;
+  const x = B.x;
+  if (B.base) for (let i = 0; i < WORDMARK.count; i++) {
+    const t0 = letterT0(i), tc = t0 + T.letterCatch, tl = t0 + T.letterDur, tf = tl + 0.22, s = slotPos(i), hw = halfW(i), C = catchPt();
+    if (t < t0 - 0.1 || t > tf + 0.12) continue;
+    if (t < tc) {                                          // open the hands out to receive it
+      const u = E.outBack(prog(t, t0 - 0.1, tc));
+      hands = [lerp2(B.grips[0], [C[0] - hw, C[1] + 6], u), lerp2(B.grips[1], [C[0] + hw, C[1] + 6], u)];
+      look = [0.8, 0.3];
+    } else if (t < tl) {                                   // carry it across, a hand either side
+      const P = letterPos(t, i).p; hands = [[P[0] - hw, P[1] + 8], [P[0] + hw, P[1] + 8]];
+      look = [Math.max(-1, Math.min(1, (P[0] - x) / 300)), -0.8];
+    } else if (t < tf) {                                   // press it home, then fix it
+      const press = 1 - E.outCubic(prog(t, tl, tl + 0.07));
+      const k = prog(t, tl + 0.07, tf), tap = Math.abs(Math.sin(k * Math.PI * 3)) * 9;
+      hands = [[s[0] - hw - 2 * press, s[1] + 8], [s[0] + hw * 0.55, s[1] - 30 - tap]];
+      if (t > tl + 0.07) tool = [hands[1], [hands[1][0] + 16, hands[1][1] + 26]];
+      look = [Math.max(-1, Math.min(1, (s[0] - x) / 300)), -0.8];
+    } else {                                               // back to the rails
+      const u = E.inOutSine(prog(t, tf, tf + 0.12));
+      hands = [lerp2([s[0] - hw, s[1] + 8], B.grips[0], u), lerp2([s[0] + hw * 0.55, s[1] - 30], B.grips[1], u)];
+    }
+  }
+  const sh = B.base ? [B.base[0] - 64, B.base[1] - 57] : [x, 800];
+  const grow = h => h ? 1 + 0.9 * clamp01((Math.hypot(h[0] - sh[0], h[1] - sh[1]) - 170) / 380) : 1;
+  return { t, x, y: 880, base: B.base, feet: B.feet, sx: 1, sy: 1 + 0.012 * Math.sin(t * 3), rot: 0, look, dir: 1,
+           legs: B.base ? { mode: 'climb' } : B.moving ? walkState(x, 1) : { mode: 'stand' }, hands, armGrow: [grow(hands[0]), grow(hands[1])], tool };
 }
 function fitterBState(t) {
   const walkKeys = [[T.fitOut[0], VAN_PARK + 320], [T.fitOut[1], liftX(VAN_PARK) + 60, E.inOutSine], [T.pickup[0], liftX(VAN_PARK) + 60], [T.pickup[1], OX + 820, E.inOutSine], [T.pack[0], OX + 820], [T.pack[1], VAN_PARK + 180, E.inOutSine]];
   const x = keys(t, walkKeys);
-  let sy = 1 + 0.012 * Math.sin(t * 3.3), rot = 0, hands = [null, null];
+  let sy = 1 + 0.012 * Math.sin(t * 3.3), rot = 0, hands = [null, null], look = [0.2, -0.8];
   const P = parcelPos(t);
   if (t > T.pickup[0] - 0.1 && t < T.letter0 + WORDMARK.count * T.letterStep) hands = [[P[0] - 40, P[1] + 20], [P[0] + 40, P[1] + 20]];
   sy *= keys(t, [[T.pickup[0] - 0.1, 1], [T.pickup[0] + 0.05, 0.86, E.outCubic], [T.pickup[0] + 0.3, 1.04, E.outBack], [T.pickup[1], 1]]);
   for (let i = 0; i < WORDMARK.count; i++) {
-    const t0 = T.letter0 + i * T.letterStep;
-    sy *= keys(t, [[t0 - 0.12, 1], [t0, 0.9, E.outCubic], [t0 + 0.12, 1.05, E.outBack], [t0 + 0.3, 1]]);
-    rot += 0.05 * Math.sin(Math.PI * prog(t, t0 - 0.1, t0 + 0.2));
+    const t0 = letterT0(i);
+    sy *= keys(t, [[t0 - 0.16, 1], [t0 - 0.04, 0.88, E.outCubic], [t0 + 0.08, 1.06, E.outBack], [t0 + 0.3, 1]]);
+    rot += 0.06 * Math.sin(Math.PI * prog(t, t0 - 0.14, t0 + 0.2));
+    // the right hand lifts each letter out of the wrap and tosses it up to the ladder
+    if (t > t0 - 0.16 && t < t0 + 0.2) {
+      const up = t < t0 ? E.inOutSine(prog(t, t0 - 0.16, t0)) : 1 - E.inOutSine(prog(t, t0, t0 + 0.2));
+      hands = [hands[0], lerp2(hands[1] || [x + 40, 760], RELEASE(), up)]; look = [-0.6, -0.9];
+    }
   }
   const moving = Math.abs(keys(t, walkKeys) - keys(t - 0.05, walkKeys)) > 0.5;
-  return { t, x, y: 880, sx: 1 / Math.sqrt(sy), sy, rot, look: [0.2, -0.8], dir: 1, legs: moving ? walkState(x, 1) : { mode: 'stand' }, hands };
+  return { t, x, y: 880, sx: 1 / Math.sqrt(sy), sy, rot, look, dir: 1, legs: moving ? walkState(x, 1) : { mode: 'stand' }, hands };
 }
 function flyingLetter(t, i) {
-  const t0 = T.letter0 + i * T.letterStep, tl = t0 + T.letterDur, s = slotPos(i);
+  const t0 = letterT0(i), tl = t0 + T.letterDur, sl = slotPos(i);
   if (t < t0) return { show: false };
   if (t >= tl) return { show: true, off: [0, 0], squash: 1 - 0.18 * settle(t - tl, 20, 0.3), rot: 0 };
-  const u = prog(t, t0, tl), from = parcelPos(t0);
-  const p = lerp2(from, s, E.inOutSine(u));
-  return { show: true, off: [p[0] - s[0], p[1] - s[1] - 160 * Math.sin(Math.PI * u)], squash: 1 + 0.1 * Math.sin(Math.PI * u), rot: 0.35 * Math.sin(Math.PI * u) * (i % 2 ? 1 : -1) };
+  const L = letterPos(t, i);
+  return { show: true, off: [L.p[0] - sl[0], L.p[1] - sl[1]], squash: L.phase === 'thrown' ? 1 + 0.1 * Math.sin(Math.PI * prog(t, t0, t0 + T.letterCatch)) : 1, rot: L.rot };
 }
+const HOPS = [[0, 0.3, 95], [0.36, 0.28, 75], [0.7, 0.26, 55]];   // [offset, duration, height] of each happy hop
 function customerFit(t) {
   const x = keys(t, [[T.custIn[0], OX - 160], [T.custIn[1], OX + 700, E.inOutSine], [T.door[0], OX + 700], [T.door[1], OX + 1190, E.inOutSine]]);
   const moving = (t > T.custIn[0] && t < T.custIn[1]) || (t > T.door[0] && t < T.door[1]);
-  const jump = 70 * Math.max(0, Math.sin(Math.PI * prog(t, T.bounce[0], T.bounce[1])));
-  let sy = keys(t, [[T.bounce[0] - 0.12, 1], [T.bounce[0], 0.86, E.outCubic], [T.bounce[0] + 0.1, 1.12, E.outBack], [T.bounce[1], 1.0], [T.bounce[1] + 0.08, 0.88, E.outCubic], [T.bounce[1] + 0.3, 1, E.outBack]]);
+  const c0 = T.celebrate[0];
+  let jump = 0, sy = 1;
+  for (const [o, d, h] of HOPS) {
+    const a = c0 + o;
+    jump += h * Math.max(0, Math.sin(Math.PI * prog(t, a, a + d)));
+    sy *= keys(t, [[a - 0.1, 1], [a, 0.84, E.outCubic], [a + 0.08, 1.14, E.outBack], [a + d, 1.0], [a + d + 0.06, 0.88, E.outCubic], [a + d + 0.22, 1, E.outBack]]);
+  }
   sy -= 0.1 * settle(t - T.custIn[1], 15, 0.3);
   const lk = E.outBack(prog(t, T.custLook, T.custLook + 0.2));
-  return { t, x, y: 880, sx: 1 / Math.sqrt(sy), sy, rot: 0.05 * settle(t - T.custIn[1], 11, 0.28), dir: 1, jump,
-           look: t > T.door[0] ? [0.8, 0] : [lerp(0.6, 0.4, lk), lerp(0.1, -1, lk)], blink: 0,
+  const cheer = E.outBack(prog(t, c0 - 0.12, c0 + 0.08)) * (1 - E.inOutSine(prog(t, T.celebrate[1] - 0.15, T.celebrate[1] + 0.1)));
+  const spec = CHARACTERS.customer, bodyTop = 880 - spec.legLen - jump - spec.h;
+  const wave = Math.sin((t - c0) * 22) * 14;
+  const hands = cheer > 0.01 ? [[x - 70 - wave * 0.5, lerp(bodyTop + 120, bodyTop - 50 + wave, cheer)], [x + 70 + wave * 0.5, lerp(bodyTop + 120, bodyTop - 50 - wave, cheer)]] : null;
+  return { t, x, y: 880, sx: 1 / Math.sqrt(sy), sy, rot: 0.05 * settle(t - T.custIn[1], 11, 0.28) + 0.04 * Math.sin((t - c0) * 9) * cheer, dir: 1, jump,
+           look: t > T.door[0] ? [0.8, 0] : [lerp(0.6, 0.1, lk), lerp(0.1, -1, lk)], blink: 0, hands,
+           happy: t > T.custLook + 0.25 && t < T.door[0] + 0.1,
            legs: jump > 1 ? { mode: 'air' } : moving ? walkState(x, 1) : { mode: 'stand' } };
+}
+// Confetti: two bursts from above the customer's head, every piece derived from its index.
+const CONFETTI_COLORS = [COLORS.teal, COLORS.tealSoft, COLORS.customer, COLORS.designer, COLORS.fabricator, COLORS.fitterA, COLORS.paperHi];
+function drawConfetti(t) {
+  const bursts = [[T.celebrate[0] + 0.06, 70], [T.celebrate[0] + 0.42, 45]];
+  bursts.forEach(([t0, n], b) => {
+    const tau0 = t - t0; if (tau0 <= 0 || tau0 > 2.6) return;
+    const src = [OX + 700, 880 - 272 - 60];
+    for (let i = 0; i < n; i++) {
+      const id = b * 1000 + i, h = k => hash(id * 11 + k);
+      const tau = tau0 - h(1) * 0.08; if (tau <= 0) continue;
+      const ang = -Math.PI / 2 + (h(2) - 0.5) * 2.2, sp = 700 + 700 * h(3), kD = 3.2, g = 650;
+      const f = (1 - Math.exp(-kD * tau)) / kD;
+      const x = src[0] + Math.cos(ang) * sp * f + 22 * Math.sin(tau * (6 + 4 * h(4)) + h(5) * 6);
+      const y = src[1] + (Math.sin(ang) * sp + g / kD) * f - g * tau / kD;
+      if (y > 905) continue;
+      const rot = h(6) * 6.28 + tau * (4 + 8 * h(7)), flip = Math.cos(tau * (7 + 6 * h(8)) + h(9) * 6);
+      const alpha = 1 - E.inCubic(prog(tau, 2.0, 2.6));
+      ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(1, Math.max(0.12, Math.abs(flip)));
+      ctx.globalAlpha = alpha; ctx.fillStyle = CONFETTI_COLORS[Math.floor(h(10) * CONFETTI_COLORS.length)];
+      ctx.fillRect(-8, -4, 16, 8); ctx.lineWidth = 1.4; ctx.strokeStyle = COLORS.ink; ctx.strokeRect(-8, -4, 16, 8);
+      ctx.restore();
+    }
+  });
+}
+// Motion trails for fast objects the camera isn't following: faint copies at earlier moments, then the object itself.
+function ghosted(t, fn, n = 4, span = 0.04) {
+  const s0 = STROKE, a = ctx.globalAlpha;
+  for (let k = n; k >= 1; k--) { ctx.globalAlpha = a * 0.28 * (1 - k / (n + 1)); fn(t - span * k / n); STROKE = s0; }
+  ctx.globalAlpha = a; fn(t);
 }
 const flyingLetters = t => [0, 1, 2, 3, 4].map(i => flyingLetter(t, i));
 function drawFitBack(t, v) {             // shop, landed letters, ladder and fitters (behind the van)
@@ -1516,12 +1626,18 @@ function drawFitBack(t, v) {             // shop, landed letters, ladder and fit
 function drawFitCrew(t, v) {             // ladder and fitters (behind the van)
   if (v.x1 < OX - 900 || v.x0 > OX + 2860 || t < T.drive[1] - 0.5) return;
   drawLadder(t);
-  if (t > T.fitOut[0] && t < T.pack[1] + 0.05) { drawCharacter(CHARACTERS.fitterA, fitterAState(t)); drawCharacter(CHARACTERS.fitterB, fitterBState(t)); }
+  if (t > T.fitOut[0] && t < T.pack[1] + 0.05) {
+    const A = fitterAState(t);
+    drawCharacter(CHARACTERS.fitterA, A);
+    if (A.tool) { sk([A.tool[0], A.tool[1]], { width: 5, stroke: COLORS.designer }); sk([A.tool[1], [A.tool[1][0] + 5, A.tool[1][1] + 9]], { width: 2.4 }); }
+    drawCharacter(CHARACTERS.fitterB, fitterBState(t));
+  }
 }
 function drawFitFront(t, v) {            // parcel, flying letters, dust, customer (in front of the van)
   if (v.x1 < OX - 900 || v.x0 > OX + 2860 || t < T.drive[1] - 0.5) return;
   const F = flyingLetters(t);
-  drawLetters(FASCIA.cx, FASCIA.cy, FASCIA.H, { show: i => F[i].show && t < letterLand(i), depth: () => 10, off: i => F[i].off || [0, 0], squash: i => F[i].squash || 1, rot: i => F[i].rot || 0 });
+  ghosted(t, tt => { const G = flyingLetters(tt); drawLetters(FASCIA.cx, FASCIA.cy, FASCIA.H, { show: i => G[i].show && tt < letterLand(i) && G[i].rot !== 0, depth: () => 10, off: i => G[i].off || [0, 0], squash: i => G[i].squash || 1, rot: i => G[i].rot || 0 }); });
+  drawLetters(FASCIA.cx, FASCIA.cy, FASCIA.H, { show: i => F[i].show && t < letterLand(i) && F[i].rot === 0, depth: () => 10, off: i => F[i].off || [0, 0] });
   for (let i = 0; i < WORDMARK.count; i++) { const s = slotPos(i); puff(s[0], s[1] + 46, letterLand(i), t, 3, 8); }
   if (t > T.custIn[0]) {
     ctx.save();
@@ -1551,8 +1667,8 @@ function drawMain(t, c) {
   if (inStudio) drawStudioRoom(t);
   const actors = () => {
     drawFitCrew(t, v);
-    drawVan(t);
-    drawParcel(t);                        // clipped at the van's rear doors while it slides in or out
+    if (TRACKED !== 'van') drawVan(t);
+    if (TRACKED !== 'parcel') { if (t > T.hop[0] && t < T.hop[1]) ghosted(t, drawParcel); else drawParcel(t); }   // clipped at the van's rear doors while it slides in or out
     if (inStudio) drawDesigner(t);
     if (inShop) drawFabricator(t);
     else { const S = sheetPose(t); if (S && (S.stage === 'flight' || S.stage === 'held')) drawSheet(t, 'flap'); }
@@ -1560,12 +1676,13 @@ function drawMain(t, c) {
     drawForeground(c, v);
   };
   const n = nightAt(t);
-  if (n < 0.002) { actors(); return; }
+  if (n < 0.002) { actors(); drawConfetti(t); return; }
   // Night: the set is darkened and lit first; the people and the van are drawn on
   // their own layer and lit from the same sources, so a window glows BEHIND whoever
   // stands in front of it and the street lamp throws their shadow along the pavement.
   drawNightSet(t, v, n);
   drawLitLayer(actors, t, n);
+  drawConfetti(t);
 }
 
 // Night light sources, in shop-local coordinates (shop block is drawn at x + OX).
@@ -1675,9 +1792,25 @@ function buildGrain() {
   grain = ctx.createPattern(c, 'repeat');
 }
 
+// Motion blur: when the camera moves fast the frame is smeared along its motion,
+// except the subject it is tracking, which is drawn sharp on top.
+let TRACKED = null;
+const SHUTTER = 0.75 / FPS;             // real seconds the shutter is open
+function trackedAt(t) {
+  if (t > 10.9 && t < 12.2) return 'sheet';
+  if (t > 21.15 && t < 21.9) return 'parcel';
+  if (t > 24.4 && t < 27.1) return 'van';
+  return null;
+}
+const smearCanvas = document.createElement('canvas'), smearCtx = smearCanvas.getContext('2d');
+function drawTracked(t, who) {
+  if (who === 'van') drawVan(t);
+  else if (who === 'parcel') drawParcel(t);
+  else if (who === 'sheet') drawSheet(t, 'flap');
+}
 function drawFrame(tIn) {
-  const t = ((tIn % DURATION) + DURATION) % DURATION;
-  BOIL = Math.floor(t * FPS / BOIL_EVERY);
+  const r = ((tIn % DURATION) + DURATION) % DURATION, t = storyAt(r);
+  BOIL = Math.floor(r * FPS / BOIL_EVERY);
   STROKE = 0;
   const fit = PORTRAIT ? PORTRAIT_VIEW.fit : 1;
   BASE_SCALE = K * fit;
@@ -1691,23 +1824,35 @@ function drawFrame(tIn) {
   ctx.translate(PORTRAIT ? -PORTRAIT_VIEW.cx : -960, PORTRAIT ? -PORTRAIT_VIEW.cy : -540);
 
   const c = camera(t), blur = focusBlur(t);
-  if (blur > 0.01) {                     // soft focus at the loop point: render the world offscreen, composite blurred
-    if (focusCanvas.width !== canvas.width || focusCanvas.height !== canvas.height) { focusCanvas.width = canvas.width; focusCanvas.height = canvas.height; }
-    focusCtx.setTransform(1, 0, 0, 1, 0, 0); focusCtx.fillStyle = COLORS.paper; focusCtx.fillRect(0, 0, canvas.width, canvas.height);
-    focusCtx.setTransform(MAIN_CTX.getTransform());
-    ctx = focusCtx;
+  // how far the world slides across the screen while the shutter is open (stage px)
+  const cp = camera(storyAt(Math.max(0, r - SHUTTER)));
+  const mv = cp.world === c.world ? [(cp.cx - c.cx) * c.zoom, (cp.cy - c.cy) * c.zoom] : [0, 0];
+  const smear = Math.hypot(mv[0], mv[1]);
+  const useSmear = blur <= 0.01 && smear > 5;
+  TRACKED = useSmear ? trackedAt(t) : null;
+  const applyCam = () => { ctx.translate(960, 540); ctx.rotate(c.roll); ctx.scale(c.zoom, c.zoom); ctx.translate(-c.cx, -c.cy); };
+  if (blur > 0.01 || useSmear) {         // render the world offscreen, then composite it blurred or smeared
+    const off = useSmear ? smearCanvas : focusCanvas, octx = useSmear ? smearCtx : focusCtx;
+    if (off.width !== canvas.width || off.height !== canvas.height) { off.width = canvas.width; off.height = canvas.height; }
+    octx.setTransform(1, 0, 0, 1, 0, 0); octx.fillStyle = COLORS.paper; octx.fillRect(0, 0, canvas.width, canvas.height);
+    octx.setTransform(MAIN_CTX.getTransform());
+    ctx = octx;
   }
-  ctx.save();
-  ctx.translate(960, 540); ctx.rotate(c.roll); ctx.scale(c.zoom, c.zoom); ctx.translate(-c.cx, -c.cy);
+  ctx.save(); applyCam();
   if (c.world === 'street') drawStreet(t); else drawMain(t, c);
   ctx.restore();
   if (ctx !== MAIN_CTX) {
-    ctx = MAIN_CTX;
+    const off = ctx.canvas; ctx = MAIN_CTX;
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.filter = `blur(${(9 * K * blur).toFixed(2)}px)`;
-    ctx.drawImage(focusCanvas, 0, 0);
-    ctx.filter = 'none'; ctx.restore();
+    if (useSmear) {                      // equal-weight average of copies spread along the motion
+      const n = Math.min(12, Math.ceil(smear / 3)) + 1, sc = K * fit;
+      for (let i = 0; i < n; i++) { const u = i / (n - 1) - 0.5; ctx.globalAlpha = 1 / (i + 1); ctx.drawImage(off, mv[0] * u * sc, mv[1] * u * sc); }
+      ctx.globalAlpha = 1;
+    } else { ctx.filter = `blur(${(9 * K * blur).toFixed(2)}px)`; ctx.drawImage(off, 0, 0); ctx.filter = 'none'; }
+    ctx.restore();
+    if (TRACKED) { const keep = TRACKED; TRACKED = null; ctx.save(); applyCam(); drawTracked(t, keep); ctx.restore(); }
   }
+  TRACKED = null;
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = grain; ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1751,18 +1896,19 @@ function seek(t) { held = ((t % DURATION) + DURATION) % DURATION; origin = perfo
 function updateUI(t) {
   if (!scrubbing) scrub.value = t.toFixed(3);
   timeEl.innerHTML = `<b>${t.toFixed(2).padStart(5, '0')}</b> / ${DURATION.toFixed(2)}`;
-  const sc = SCENES.find(s => t >= s.t0 && t < s.t1); if (sc && document.activeElement !== sceneSel) sceneSel.value = String(sc.id);
+  const st = storyAt(t), sc = SCENES.find(s => st >= s.t0 && st < s.t1); if (sc && document.activeElement !== sceneSel) sceneSel.value = String(sc.id);
 }
+scrub.max = DURATION.toFixed(3);
 
 SCENES.forEach(s => {
   const o = document.createElement('option'); o.value = s.id; o.textContent = `${s.id}. ${s.name}`; sceneSel.appendChild(o);
-  if (s.t0 > 0) { const d = document.createElement('div'); d.className = 'tick'; d.style.left = `calc(6px + (100% - 12px) * ${s.t0 / DURATION})`; document.getElementById('track').appendChild(d); }
+  if (s.t0 > 0) { const d = document.createElement('div'); d.className = 'tick'; d.style.left = `calc(6px + (100% - 12px) * ${realAt(s.t0) / DURATION})`; document.getElementById('track').appendChild(d); }
 });
 
 playBtn.addEventListener('click', () => setPlaying(!playing));
 scrub.addEventListener('input', () => { scrubbing = true; if (playing) setPlaying(false); seek(parseFloat(scrub.value)); });
 scrub.addEventListener('change', () => { scrubbing = false; });
-sceneSel.addEventListener('change', () => { const s = SCENES.find(x => x.id === +sceneSel.value); seek(s.t0); if (!playing) setPlaying(true); });
+sceneSel.addEventListener('change', () => { const s = SCENES.find(x => x.id === +sceneSel.value); seek(realAt(s.t0)); if (!playing) setPlaying(true); });
 document.getElementById('orient').addEventListener('click', () => { PORTRAIT = !PORTRAIT; resize(); });
 window.addEventListener('keydown', e => {
   if (e.target === sceneSel) return;
