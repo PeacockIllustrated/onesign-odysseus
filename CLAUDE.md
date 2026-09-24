@@ -152,7 +152,8 @@ onesign-odysseus/
 ├── supabase/
 │   └── migrations/            # 66 migrations — see "Database schema" section
 ├── public/
-│   └── fonts/
+│   ├── fonts/
+│   └── motion/            # ★ Story animations + the 1nesign crew mascot spec (see §2f / onesign-motion skill)
 ├── CLAUDE.md                  # This file
 ├── ARCHITECTURE.md            # ★ NEW — Written during cleanup sprint
 ├── package.json               # name: "onesign-odysseus"
@@ -362,6 +363,10 @@ hand-rolled SVG in `charts.tsx` rather than a charting dependency: three shapes
 is the whole requirement, the portal carries no chart library today, and drawing
 them here means every colour is a `var(--…)` token that follows the theme toggle
 for free.
+
+### 2f. Motion pieces are a studio tool that lives in `public/motion/`
+
+Onesign's story animations (`public/motion/bloom-sign-story.html`, `sign-making.html`) are self-contained canvas pages, not app routes: no dependencies, every frame a pure function of `t`, `window.renderFrame` + `window.DURATION` for capture. Onesign staff appear as **the 1nesign crew**: mascots made of the Onesign mark with the 1 lit in each role's colour, specified in `public/motion/onesign-crew.html`. The whole method (house style, cast rules, beat sheet, review loop, render + encode + delivery) is the **`onesign-motion` skill** in `.claude/skills/onesign-motion/`, with the tooling in `scripts/motion/` (`stills.mjs` contact sheets, `render.mjs` frame-exact MP4 masters, `encode.sh` web/share encodes). Use the skill for any new piece or change to one. Rendered videos are never committed.
 
 ### 3. Single-tenant internal platform — clients are records, not users
 
