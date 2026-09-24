@@ -53,8 +53,8 @@
 <div id="bar">
   <button id="play" aria-label="Play / pause"></button>
   <select id="scene" aria-label="Jump to scene"></select>
-  <div id="track"><div id="rail"></div><input id="scrub" type="range" min="0" max="32" step="0.001" value="0" aria-label="Scrub"></div>
-  <div id="time"><b>00.00</b> / 32.00</div>
+  <div id="track"><div id="rail"></div><input id="scrub" type="range" min="0" max="36" step="0.001" value="0" aria-label="Scrub"></div>
+  <div id="time"><b>00.00</b> / 36.00</div>
   <button id="orient" aria-label="Toggle orientation">16:9</button>
 </div>
 <script>
@@ -64,7 +64,7 @@
    SETTINGS: timings, colours, characters. Tune here.
    ========================================================================== */
 
-const DURATION = 32;
+const DURATION = 36;                // room for the van to load and unload properly
 const FPS = 60;
 const BOIL_EVERY = 3;                 // frames per re-seed of the line boil
 
@@ -74,8 +74,8 @@ const SCENES = [
   { id: 3, name: 'Peel & throw',    t0: 8,     t1: 10.75 },
   { id: 4, name: 'The flight',      t0: 10.75, t1: 12.95 },
   { id: 5, name: 'Fabrication',     t0: 12.95, t1: 20    },
-  { id: 6, name: 'The van',         t0: 20,    t1: 26    },
-  { id: 7, name: 'The fit',         t0: 26,    t1: 32    },
+  { id: 6, name: 'The van',         t0: 20,    t1: 27.5  },
+  { id: 7, name: 'The fit',         t0: 27.5,  t1: 36    },
 ];
 
 const COLORS = {
@@ -146,12 +146,19 @@ const T = {
   // 5 fabrication
   place: [12.95, 13.6], router: [13.85, 16.2], extrude: [16.3, 17.3], leds: [17.45, 18.6], thumbs: 18.75, glow: [19.05, 19.8],
   // 6 van
-  wrap: [19.95, 20.7], lift: [20.6, 22.6], hop: [20.85, 22.0], slide: [22.0, 22.35], drive: [22.9, 25.9],
+  // load: shutter up, tail lift out and down, parcel lands, lift rises, parcel slides in, shutter down, lift folds
+  wrap: [19.95, 20.7], hop: [20.85, 22.0], shutter1: [20.3, 20.5], liftOut1: [20.4, 20.6], liftDrop1: [20.6, 20.85],
+  liftUp1: [22.15, 22.6], slide: [22.7, 23.1], shutter1Close: [23.15, 23.35], liftFold1: [23.35, 23.65], drive: [24.0, 27.5],
   // 7 fit
-  unloadLift: [26.1, 26.3], unload: [26.3, 26.85], ladder: [26.5, 26.85], climb: [26.85, 27.35], letter0: 27.35, letterStep: 0.34, letterDur: 0.3,
-  halo: 29.0, pack: [29.05, 29.45], leave: [29.45, 30.05], custIn: [29.3, 30.1], custLook: 30.12, bounce: [30.2, 30.5], door: [30.55, 30.95],
-  night: [30.2, 30.75, 31.1, 31.6],         // dusk → night → hold → morning (the sign's timer switches off)
-  endFocus: [31.35, 31.98],                 // soft focus down onto the pavement: the loop point
+  // unload: the same in reverse at the shop
+  shutter2: [27.7, 27.9], liftOut2: [27.85, 28.1], slideOut: [28.15, 28.5], liftDrop2: [28.5, 28.85], pickup: [28.85, 29.3],
+  fitOut: [27.75, 28.2], ladder: [28.55, 28.95], climb: [28.95, 29.5], letter0: 29.6, letterStep: 0.34, letterDur: 0.3,
+  halo: 31.3, pack: [31.35, 31.75], liftIn2: [31.35, 31.75], leave: [31.8, 32.45],
+  custIn: [32.3, 33.1], custLook: 33.12, bounce: [33.2, 33.5], door: [33.6, 34.0],
+  // dusk gathers while the letters go up, night falls as they pack away, the customer arrives under the lit sign
+  nightKeys: [[30.0, 0], [31.3, 0.35], [32.6, 1], [34.4, 1], [35.1, 0]],
+  morning: [34.4, 35.1],                    // the sign's timer switches off with the daylight
+  endFocus: [35.25, 35.98],                 // soft focus down onto the pavement: the loop point
 };
 
 /* ==========================================================================
@@ -696,8 +703,8 @@ const followSheet = t => { const h = sheetHand(t - 0.2) || CATCH; return cam(h[0
 function mainCam(t) {
   return camKeys(t, [
     [T.pull[0], fcam(WORLDS.main.F, PUSH_MAX_W)],
-    [T.pull[1], cam(905, 470, 1.15), E.outCubic],
-    [7.95, cam(915, 460, 1.22), E.inOutSine],
+    [T.pull[1], cam(860, 470, 1.15), E.outCubic],
+    [7.95, cam(870, 462, 1.18), E.inOutSine],
     [8.5,  cam(1210, 600, 1.3, 0.004), E.inOutCubic],                      // pan across to the printer
     [9.0,  cam(1230, 606, 1.33, 0.004), E.inOutSine],
     [9.45, cam(885, 468, 1.18), E.inOutCubic],                            // and back
@@ -706,28 +713,31 @@ function mainCam(t) {
     [12.25, followSheet],
     [12.8, cam(-650, 580, 1.3), E.inOutSine],
     [13.6, cam(-830, 540, 1.26), E.inOutSine],
-    [13.95, cam(-960, 520, 1.3), E.inOutSine],
-    [16.2, t => { const r = routerHead(t); return cam(lerp(-980, r[0], 0.2), lerp(520, r[1], 0.2), keys(t, [[13.95, 1.3], [16.2, 1.42]], E.inOutSine)); }, E.inOutSine],
-    [17.3, cam(-990, 540, 1.3), E.inOutSine],
-    [18.55, cam(-920, 560, 1.32), E.inOutSine],
-    [18.95, cam(-810, 610, 1.42), E.inOutSine],
-    [19.35, cam(-815, 610, 1.44), E.inOutSine],
-    [19.75, cam(-980, 540, 1.3), E.inOutSine],
-    [20.75, cam(-1040, 530, 1.38), E.inOutSine],
+    [13.95, cam(-955, 530, 1.18), E.inOutSine],                             // machine + fabricator share the frame
+    [16.2, t => { const r = routerHead(t); return cam(lerp(-960, r[0], 0.15), lerp(530, r[1], 0.15), keys(t, [[13.95, 1.18], [16.2, 1.28]], E.inOutSine)); }, E.inOutSine],
+    [17.3, cam(-960, 540, 1.18), E.inOutSine],
+    [18.55, cam(-930, 560, 1.2), E.inOutSine],
+    [18.95, cam(-820, 600, 1.36), E.inOutSine],
+    [19.35, cam(-825, 600, 1.38), E.inOutSine],
+    [19.75, cam(-960, 540, 1.18), E.inOutSine],
+    [20.75, cam(-990, 530, 1.24), E.inOutSine],
     [21.2, t => { const p = parcelPos(t - 0.1); return cam(p[0] - 40, p[1] + 20, 0.92); }, E.inOutSine],
     [21.85, t => { const p = parcelPos(t - 0.1); return cam(p[0] - 40, p[1] + 20, 0.92); }],
-    [22.4, cam(VAN_START + 20, 760, 0.98), E.inOutSine],
-    [22.9, cam(VAN_START + 20, 760, 0.98), E.inOutSine],
-    [23.4, t => cam(vanX(t) + 20, 750, 0.98), E.inOutSine],
-    [25.5, t => cam(vanX(t) + 20, 750, 0.98)],
-    [26.25, cam(OX + 440, 620, 1.04), E.inOutSine],
-    [27.2, cam(OX + 720, 520, 1.14), E.inOutSine],
+    [22.35, cam(VAN_START + 300, 800, 1.2), E.inOutSine],                  // watch it go in
+    [23.55, cam(VAN_START + 280, 796, 1.24), E.inOutSine],
+    [24.05, cam(VAN_START + 20, 760, 0.98), E.inOutSine],
+    [24.5, t => cam(vanX(t) + 20, 750, 0.98), E.inOutSine],
+    [27.0, t => cam(vanX(t) + 20, 750, 0.98)],
+    [27.75, cam(OX + 560, 720, 1.16), E.inOutSine],                        // unload at the shop
+    [28.9, cam(OX + 600, 700, 1.16), E.inOutSine],
+    [29.45, cam(OX + 720, 520, 1.14), E.inOutSine],
     ...fitCamKeys(),
-    [29.3, cam(OX + 900, 440, 1.14), E.inOutCubic],
-    [29.9, cam(OX + 640, 560, 1.1), E.inOutSine],
-    [30.6, cam(OX + 860, 420, 1.02), E.inOutSine],
-    [31.3, cam(OX + 900, 400, 1.0), E.inOutSine],
-    [32.0, cam(OX + 760, 860, 1.5), E.inOutCubic],
+    [31.6, cam(OX + 900, 440, 1.14), E.inOutCubic],
+    [32.4, cam(OX + 880, 430, 1.08), E.inOutSine],                          // dusk settles; the sign holds the frame
+    [33.2, cam(OX + 700, 540, 1.1), E.inOutSine],
+    [34.1, cam(OX + 860, 420, 1.02), E.inOutSine],
+    [35.0, cam(OX + 900, 400, 1.0), E.inOutSine],
+    [DURATION, cam(OX + 760, 860, 1.5), E.inOutCubic],
   ]);
 }
 function fitCamKeys() {                    // ease along the fascia, letter by letter
@@ -1254,29 +1264,48 @@ function vanX(t) {
   if (t < T.leave[0]) return keys(t, [[T.drive[0], VAN_START], [T.drive[1], VAN_PARK, E.inOutSine]]);
   return keys(t, [[T.leave[0], VAN_PARK], [T.leave[1], OX - 1400, E.inCubic]]);
 }
-const platform = x => [x + VAN_REAR + LIFT_LEN * 0.55, VAN.ground - 58];
+// Tail-lift geometry, in world units for a van parked at x.
+const FLOOR_Y = VAN.ground - VAN.wheelR - 44, GROUND_Y = VAN.ground - 8, PARCEL_HALF = 35;
+const liftX = x => x + VAN_REAR + LIFT_LEN * 0.55;
+function liftPose(t) {                    // fold: 0 up against the doors → 1 out flat; drop: 0 at floor height → 1 on the road
+  if (t < T.drive[0]) return {
+    fold: keys(t, [[T.liftOut1[0], 0], [T.liftOut1[1], 1, E.inOutSine], [T.liftFold1[0], 1], [T.liftFold1[1], 0, E.inOutSine]]),
+    drop: keys(t, [[T.liftDrop1[0], 0], [T.liftDrop1[1], 1, E.inOutSine], [T.liftUp1[0], 1], [T.liftUp1[1], 0, E.inOutSine]]),
+    shutter: keys(t, [[T.shutter1[0], 0], [T.shutter1[1], 1, E.inOutSine], [T.shutter1Close[0], 1], [T.shutter1Close[1], 0, E.inOutSine]]) };
+  return {
+    fold: keys(t, [[T.liftOut2[0], 0], [T.liftOut2[1], 1, E.inOutSine], [T.liftIn2[0] + 0.2, 1], [T.liftIn2[1], 0, E.inOutSine]]),
+    drop: keys(t, [[T.liftDrop2[0], 0], [T.liftDrop2[1], 1, E.inOutSine], [T.liftIn2[0], 1], [T.liftIn2[0] + 0.2, 0, E.inOutSine]]),
+    shutter: keys(t, [[T.shutter2[0], 0], [T.shutter2[1], 1, E.inOutSine], [T.liftIn2[1], 1], [T.liftIn2[1] + 0.05, 0, E.inOutSine]]) };
+}
+const onLiftY = t => lerp(FLOOR_Y, GROUND_Y, liftPose(t).drop) - PARCEL_HALF;
+function parcelInVan(t) { return (t > T.slide[1] && t < T.slideOut[0]); }
 function parcelPos(t) {
-  const start = [BED.cx, BED.cy], onLift = platform(VAN_START);
+  const start = [BED.cx, BED.cy];
   if (t < T.hop[0]) return start;
-  if (t < T.hop[1]) { const u = prog(t, T.hop[0], T.hop[1]); const p = lerp2(start, onLift, E.inOutSine(u)); return [p[0], p[1] - 330 * Math.sin(Math.PI * u)]; }
-  if (t < T.slide[1]) return lerp2(onLift, [VAN_START + 140, onLift[1] - 20], E.inOutCubic(prog(t, T.slide[0], T.slide[1])));
-  if (t < T.unload[0]) return [VAN_START + 140, onLift[1] - 20];
-  const lift = platform(VAN_PARK), arms = [OX + 820, 690];
-  if (t < T.unload[0] + 0.2) return lerp2([VAN_PARK + 140, lift[1] - 20], lift, E.outCubic(prog(t, T.unload[0], T.unload[0] + 0.2)));
-  const u = prog(t, T.unload[0] + 0.2, T.unload[1]); const p = lerp2(lift, arms, E.inOutSine(u)); return [p[0], p[1] - 90 * Math.sin(Math.PI * u)];
+  if (t < T.hop[1]) { const u = prog(t, T.hop[0], T.hop[1]), end = [liftX(VAN_START), GROUND_Y - PARCEL_HALF]; const p = lerp2(start, end, E.inOutSine(u)); return [p[0], p[1] - 330 * Math.sin(Math.PI * u)]; }
+  if (t < T.slide[0]) return [liftX(VAN_START), onLiftY(t)];
+  if (t < T.slideOut[0]) return [lerp(liftX(VAN_START), VAN_START + 120, E.inOutCubic(prog(t, T.slide[0], T.slide[1]))), FLOOR_Y - PARCEL_HALF];
+  if (t < T.slideOut[1]) return [lerp(VAN_PARK + 120, liftX(VAN_PARK), E.inOutCubic(prog(t, T.slideOut[0], T.slideOut[1]))), FLOOR_Y - PARCEL_HALF];
+  if (t < T.pickup[0]) return [liftX(VAN_PARK), onLiftY(t)];
+  const u = prog(t, T.pickup[0], T.pickup[1]), from = [liftX(VAN_PARK), GROUND_Y - PARCEL_HALF], arms = [OX + 820, 690];
+  const p = lerp2(from, arms, E.inOutSine(u)); return [p[0], p[1] - 70 * Math.sin(Math.PI * u)];
 }
 function parcelScale(t) {
   if (t < T.hop[1]) return lerp(1, 0.5, E.inOutSine(prog(t, T.hop[0], T.hop[1])));
-  if (t < T.unload[0]) return 0.5;
+  if (t < T.pickup[0]) return 0.5;
   const last = T.letter0 + (WORDMARK.count - 1) * T.letterStep;
-  return lerp(0.5, 0.6, E.outBackSoft(prog(t, T.unload[0] + 0.2, T.unload[1]))) * (1 - E.inCubic(prog(t, last, last + 0.3)));
+  return lerp(0.5, 0.6, E.outBackSoft(prog(t, T.pickup[0], T.pickup[1]))) * (1 - E.inCubic(prog(t, last, last + 0.3)));
 }
 function drawParcel(t) {
-  if (t < T.wrap[0]) return;
+  if (t < T.wrap[0] || parcelInVan(t)) return;
   const P = parcelPos(t), s = parcelScale(t);
   if (s < 0.02) return;
+  // while sliding through the rear doors, only the part outside the box shows
+  const sliding = (t >= T.slide[0] && t <= T.slide[1]) || (t >= T.slideOut[0] && t <= T.slideOut[1]);
+  ctx.save();
+  if (sliding) { const rear = vanX(t) + VAN_REAR; ctx.beginPath(); ctx.rect(rear, -2000, 6000, 5000); ctx.clip(); }
   const wrapU = E.outCubic(prog(t, T.wrap[0], T.wrap[1]));
-  const squash = 1 + 0.1 * settle(t - T.hop[1], 16, 0.3) + 0.1 * settle(t - T.unload[1], 16, 0.3);
+  const squash = 1 + 0.1 * settle(t - T.hop[1], 16, 0.3) + 0.08 * settle(t - T.liftDrop2[1], 16, 0.3) + 0.1 * settle(t - T.pickup[1], 16, 0.3);
   ctx.save(); ctx.translate(P[0], P[1]); ctx.scale(s / Math.sqrt(squash), s * squash);
   ctx.rotate(t > T.hop[0] && t < T.hop[1] ? -0.35 * Math.sin(Math.PI * prog(t, T.hop[0], T.hop[1])) : 0);
   if (t < T.letter0) drawLetters(0, 0, bedH, { depth: () => 14 });
@@ -1297,10 +1326,7 @@ function drawParcel(t) {
     sk(rect(-18, -h/2 - 2, 36, (h + 4) * tp), { closed: true, fill: COLORS.teal, width: 2.4, amp: 0.5 });
   }
   ctx.restore();
-}
-function liftState(t) {                   // 0 = tail lift up, 1 = down
-  if (t < T.drive[0]) return keys(t, [[T.lift[0], 0], [T.lift[0] + 0.25, 1, E.outBackSoft], [T.lift[1], 1], [T.lift[1] + 0.3, 0, E.inOutSine]]);
-  return keys(t, [[T.unloadLift[0], 0], [T.unloadLift[1], 1, E.outBackSoft], [T.pack[1], 1], [T.pack[1] + 0.25, 0, E.inOutSine]]);
+  ctx.restore();
 }
 function drawVan(t) {
   const x = vanX(t), g = VAN.ground, R = VAN.wheelR;
@@ -1341,9 +1367,9 @@ function drawVan(t) {
   dot(-316, -140, 4, COLORS.designer);
   sk(rrect(-350, -66, 70, 18, 6), { closed: true, fill: COLORS.steel, width: 2.6 });
   // rear: shutter + tail lift
-  const lf = liftState(t);
-  if (lf > 0.02) sk(rect(362, -346, 16, 282), { closed: true, fill: '#6d6a62', width: 2.4 });
-  const hinge = [VAN_REAR, -44], ang = lerp(-Math.PI / 2, 0, lf), lower = lf * (R - 8 + 44);
+  const LP = liftPose(t);
+  if (LP.shutter > 0.02) sk(rect(366, -346 + 282 * (1 - LP.shutter), 12, 282 * LP.shutter), { closed: true, fill: '#6d6a62', width: 2.4 });   // the open shutter
+  const hinge = [VAN_REAR, -44], ang = lerp(-Math.PI / 2, 0, LP.fold), lower = LP.drop * (R - 8 + 44);
   const tip = [hinge[0] + Math.cos(ang) * LIFT_LEN, hinge[1] + Math.sin(ang) * LIFT_LEN + lower];
   sk([[hinge[0] - 6, -56], [hinge[0] + 8, hinge[1] + lower]], { width: 4, stroke: COLORS.steel });
   sk(poly([[hinge[0], hinge[1] + lower], tip, [tip[0] + 5, tip[1] + 10], [hinge[0] + 5, hinge[1] + lower + 10]], true, 12), { closed: true, fill: COLORS.steel, width: 2.6 });
@@ -1396,9 +1422,9 @@ function drawForeground(c, v) {
    ========================================================================== */
 
 const letterLand = i => T.letter0 + i * T.letterStep + T.letterDur;
-const nightAt = t => keys(t, [[T.night[0], 0], [T.night[1], 1, E.inOutSine], [T.night[2], 1], [T.night[3], 0, E.inOutSine]]);
+const nightAt = t => keys(t, T.nightKeys.map((k, i) => i ? [k[0], k[1], E.inOutSine] : k));
 const focusBlur = t => Math.max(1 - E.inOutSine(prog(t, 0.05, 0.9)), E.inOutSine(prog(t, T.endFocus[0], T.endFocus[1])));
-const haloI = t => (1 - E.inOutSine(prog(t, T.night[2] + 0.05, T.night[3] - 0.05))) * haloOn(t);
+const haloI = t => (1 - E.inOutSine(prog(t, T.morning[0] + 0.05, T.morning[1] - 0.05))) * haloOn(t);
 const haloOn = t => t < T.halo ? 0 : keys(t, [[T.halo, 0], [T.halo + 0.08, 0.95, E.outCubic], [T.halo + 0.16, 0.12, E.inCubic], [T.halo + 0.24, 0.2], [T.halo + 0.3, 0.6, E.outCubic]]) + (t > T.halo + 0.3 ? 0.4 * spring(t - T.halo - 0.3, 9, 0.5) : 0);
 const ladderBase = [OX + 560, 880], ladderTop = [OX + 620, 250];
 function ladderState(t) {
@@ -1423,7 +1449,7 @@ function ladderPt(L, u, side = 0) { const p = lerp2(L.base, L.top, u), n = [-L.d
 function fitterAState(t) {
   const L = ladderState(t);
   const climb = E.inOutSine(prog(t, T.climb[0], T.climb[1])) * (1 - E.inOutSine(prog(t, T.pack[0], T.pack[0] + 0.3)));
-  const walkKeys = [[T.unload[0], VAN_PARK + 300], [T.unload[0] + 0.3, OX + 575, E.inOutSine], [T.pack[0] + 0.3, OX + 575], [T.pack[1], VAN_PARK + 150, E.inOutSine]];
+  const walkKeys = [[T.fitOut[0], VAN_PARK + 300], [T.fitOut[1] + 0.3, OX + 575, E.inOutSine], [T.pack[0] + 0.3, OX + 575], [T.pack[1], VAN_PARK + 150, E.inOutSine]];
   let x = keys(t, walkKeys), hands = [null, null], look = [0.6, -0.8], base = null, feet = null;
   if (L && climb > 0.001) {
     // step up rung by rung: each foot waits, then moves two rungs while the other holds
@@ -1445,11 +1471,12 @@ function fitterAState(t) {
   return { t, x, y: 880, base, feet, sx: 1, sy: 1 + 0.012 * Math.sin(t * 3), rot: 0, look, dir: 1, legs: base ? { mode: 'climb' } : moving ? walkState(x, 1) : { mode: 'stand' }, hands };
 }
 function fitterBState(t) {
-  const walkKeys = [[T.unload[0], VAN_PARK + 320], [T.unload[0] + 0.25, OX + 820, E.inOutSine], [T.pack[0], OX + 820], [T.pack[1], VAN_PARK + 180, E.inOutSine]];
+  const walkKeys = [[T.fitOut[0], VAN_PARK + 320], [T.fitOut[1], liftX(VAN_PARK) + 60, E.inOutSine], [T.pickup[0], liftX(VAN_PARK) + 60], [T.pickup[1], OX + 820, E.inOutSine], [T.pack[0], OX + 820], [T.pack[1], VAN_PARK + 180, E.inOutSine]];
   const x = keys(t, walkKeys);
   let sy = 1 + 0.012 * Math.sin(t * 3.3), rot = 0, hands = [null, null];
   const P = parcelPos(t);
-  if (t > T.unload[1] - 0.1 && t < T.letter0 + WORDMARK.count * T.letterStep) hands = [[P[0] - 40, P[1] + 20], [P[0] + 40, P[1] + 20]];
+  if (t > T.pickup[0] - 0.1 && t < T.letter0 + WORDMARK.count * T.letterStep) hands = [[P[0] - 40, P[1] + 20], [P[0] + 40, P[1] + 20]];
+  sy *= keys(t, [[T.pickup[0] - 0.1, 1], [T.pickup[0] + 0.05, 0.86, E.outCubic], [T.pickup[0] + 0.3, 1.04, E.outBack], [T.pickup[1], 1]]);
   for (let i = 0; i < WORDMARK.count; i++) {
     const t0 = T.letter0 + i * T.letterStep;
     sy *= keys(t, [[t0 - 0.12, 1], [t0, 0.9, E.outCubic], [t0 + 0.12, 1.05, E.outBack], [t0 + 0.3, 1]]);
@@ -1487,11 +1514,10 @@ function drawFitBack(t, v) {             // shop, landed letters, ladder and fit
   if (t > T.letter0) { const F = flyingLetters(t); drawLetters(FASCIA.cx, FASCIA.cy, FASCIA.H, { show: i => F[i].show && t >= letterLand(i), depth: () => 10, squash: i => F[i].squash || 1, glow: I, shadow: [8, 10] }); }
   if (t < T.drive[1] - 0.5) return;
   drawLadder(t);
-  if (t > T.unload[0] && t < T.pack[1] + 0.05) { drawCharacter(CHARACTERS.fitterA, fitterAState(t)); drawCharacter(CHARACTERS.fitterB, fitterBState(t)); }
+  if (t > T.fitOut[0] && t < T.pack[1] + 0.05) { drawCharacter(CHARACTERS.fitterA, fitterAState(t)); drawCharacter(CHARACTERS.fitterB, fitterBState(t)); }
 }
 function drawFitFront(t, v) {            // parcel, flying letters, dust, customer (in front of the van)
   if (v.x1 < OX - 900 || v.x0 > OX + 2860 || t < T.drive[1] - 0.5) return;
-  if (t > T.unload[0]) drawParcel(t);
   const F = flyingLetters(t);
   drawLetters(FASCIA.cx, FASCIA.cy, FASCIA.H, { show: i => F[i].show && t < letterLand(i), depth: () => 10, off: i => F[i].off || [0, 0], squash: i => F[i].squash || 1, rot: i => F[i].rot || 0 });
   for (let i = 0; i < WORDMARK.count; i++) { const s = slotPos(i); puff(s[0], s[1] + 46, letterLand(i), t, 3, 8); }
@@ -1521,8 +1547,8 @@ function drawMain(t, c) {
   const inShop = v.x1 > -2800 && v.x0 < -290, inStudio = v.x1 > -340 && v.x0 < 2000;
   if (inShop) { drawWorkshopRoom(t); drawBed(t); }
   if (inStudio) drawStudioRoom(t);
-  if (t > T.wrap[0] && t < T.drive[0]) drawParcel(t);          // into the van: drawn first so the body swallows it
   drawVan(t);
+  drawParcel(t);                          // clipped at the van's rear doors while it slides in or out
   if (inStudio) drawDesigner(t);
   if (inShop) drawFabricator(t);
   else { const S = sheetPose(t); if (S && (S.stage === 'flight' || S.stage === 'held')) drawSheet(t, 'flap'); }
