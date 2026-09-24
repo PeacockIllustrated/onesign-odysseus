@@ -154,8 +154,8 @@ const T = {
   // looks up, crouches, leaps; time slows while he turns with the page, reads it, thumbs up, tick;
   // time snaps back and he drops into his chair. The page never leaves its path.
   flight: [10.75, 12.45], catch: [12.45, 12.95],
-  pm: { notice: 10.4, crouch: [10.7, 10.86], leap: [10.86, 11.04], slow: [11.0, 11.27], scan: [11.05, 11.165],
-        thumb: [11.165, 11.195], tick: 11.195, back: [11.29, 11.8] },
+  pm: { notice: 10.45, crouch: [10.8, 10.96], leap: [10.96, 11.16], slow: [11.12, 11.42], scan: [11.18, 11.31],
+        thumb: [11.31, 11.345], tick: 11.345, back: [11.44, 11.95] },
   // 5 fabrication
   place: [12.95, 13.6], router: [13.85, 16.2], extrude: [16.3, 17.3], leds: [17.45, 18.6], thumbs: 18.75, glow: [19.05, 19.8],
   // 6 van
@@ -229,7 +229,7 @@ function hash(n) {
   return (x >>> 0) / 4294967296;
 }
 // The flight plays faster than the rest: story time runs at speedAt(s) × real time, eased in and out.
-const FLIGHT_SPEED = { k: 1.7, rampIn: [11.5, 11.7], rampOut: [12.15, 12.5] };   // speeds up once the sign-off is done
+const FLIGHT_SPEED = { k: 1.7, rampIn: [11.7, 11.85], rampOut: [12.15, 12.5] };   // speeds up once the sign-off is done
 // Inside it, the sign-off plays in slow motion: SLOWMO.k × real time, with short ramps so the drop is felt.
 const SLOWMO = { k: 0.085, rampIn: 0.07, rampOut: 0.04 };
 const slowEnv = s => E.inOutSine(prog(s, T.pm.slow[0] - SLOWMO.rampIn, T.pm.slow[0])) * (1 - E.inOutSine(prog(s, T.pm.slow[1], T.pm.slow[1] + SLOWMO.rampOut)));
@@ -260,7 +260,7 @@ let ctx = MAIN_CTX;                   // swapped to an offscreen context while t
 const focusCanvas = document.createElement('canvas'), focusCtx = focusCanvas.getContext('2d');
 let BASE_SCALE = 1, BOIL = 0, STROKE = 0;
 
-const worldScale = () => { const m = ctx.getTransform(); return Math.hypot(m.a, m.b) / BASE_SCALE; };
+const worldScale = () => { const m = ctx.getTransform(); return Math.max(0.05, Math.sqrt(Math.abs(m.a * m.d - m.b * m.c))) / BASE_SCALE; };   // area scale: squashed frames don't blow the boil up
 
 function boil(pts, amp, closed) {
   const id = STROKE++;
@@ -669,7 +669,20 @@ const CATCH = [-600, 560];
 // One smooth path from the pinched corner, over the designer's head, low past the project manager's desk,
 // through the hatch, into the fabricator's hands. Nobody touches it on the way.
 const THROW = arcPath([Q_END, [Q_END[0] - 50, Q_END[1] - 150], [720, 250], [540, 262], [330, 290], [150, 318], [-60, 318], [-250, 318], [-440, 410], CATCH]);
-const throwS = t => 1 - Math.pow(1 - prog(t, T.toss[0], T.flight[1]), 1.7);   // leaves the peel at speed, eases into the catch
+// Progress along THROW: leaves the peel at speed and eases into the catch, and on the way it floats, the way
+// a sheet of paper does, while it passes the PM's desk. Speed along the path is integrated once into a table.
+const FLOAT = { at: [11.1, 11.46], k: 0.1, ease: 0.14 };
+const THROW_T = (() => {
+  const a = T.toss[0], b = T.flight[1], n = 4000, c = new Float64Array(n + 1);
+  for (let i = 1; i <= n; i++) {
+    const t = a + (i - 0.5) / n * (b - a), u = (t - a) / (b - a);
+    const bump = E.inOutSine(prog(t, FLOAT.at[0] - FLOAT.ease, FLOAT.at[0])) * (1 - E.inOutSine(prog(t, FLOAT.at[1], FLOAT.at[1] + FLOAT.ease)));
+    c[i] = c[i - 1] + Math.pow(1 - u, 0.7) * (1 - (1 - FLOAT.k) * bump);
+  }
+  for (let i = 1; i <= n; i++) c[i] /= c[n];
+  return { a, b, n, c };
+})();
+function throwS(t) { const x = clamp01((t - THROW_T.a) / (THROW_T.b - THROW_T.a)) * THROW_T.n, i = Math.min(THROW_T.n - 1, Math.floor(x)); return lerp(THROW_T.c[i], THROW_T.c[i + 1], x - i); }
 
 function sheetPose(t) {
   if (t < T.peel[0]) return null;
@@ -781,8 +794,8 @@ const pmCamBlend = t => E.inOutSine(prog(t, T.pm.leap[0] + 0.02, T.pm.slow[0] + 
 function followSheet(t) {
   const f = followSheetRaw(t), b = pmCamBlend(t);
   if (b <= 0) return f;
-  const Q = pmPaired(Math.min(t, T.pm.slow[1])), m = lerp2(Q.paper, Q.centre, 0.5);
-  return camLerp(f, cam(m[0] + 30, m[1] - 10, 1.62, 0), b);
+  const Q = pmPaired(Math.min(t, T.pm.slow[1])), m = lerp2(Q.paper, Q.centre, 0.58);
+  return camLerp(f, cam(m[0] + 10, m[1] - 24, 2.05, 0), b);
 }
 function mainCam(t) {
   return camKeys(t, [
@@ -793,8 +806,8 @@ function mainCam(t) {
     [9.0,  cam(1230, 606, 1.33, 0.004), E.inOutSine],
     [9.45, cam(885, 468, 1.18), E.inOutCubic],                            // and back
     [10.3, cam(865, 455, 1.24), E.inOutSine],
-    [10.72, cam(470, 470, 1.18), E.inOutSine],                             // the throw heads for the PM's desk: show him see it coming
-    [10.95, followSheet, E.inOutSine],
+    [10.8, cam(200, 480, 1.18), E.inOutSine],                              // the throw heads for the PM's desk: show him see it coming
+    [11.05, followSheet, E.inOutSine],
     [12.25, followSheet],
     [12.8, cam(-650, 580, 1.3), E.inOutSine],
     [13.6, cam(-830, 540, 1.26), E.inOutSine],
@@ -996,24 +1009,26 @@ function drawStudioRoom(t) {
   sk(rect(-360, -110, 2340, 70), { closed: true, fill: COLORS.roof });
   sk(rect(1950, -110, 30, 980), { closed: true, fill: COLORS.roof });
   drawPartition();
-  // bookshelf of binders
-  sk(rect(-240, 200, 280, 670), { closed: true, fill: COLORS.desk });
-  for (const y of [360, 520, 690]) sk([[-240, y], [40, y]], { width: 3 });
+  // bookshelf of binders, between the PM's desk and the designer
+  const BX = 280, BW = 220;
+  sk(rect(BX, 200, BW, 670), { closed: true, fill: COLORS.desk });
+  for (const y of [360, 520, 690]) sk([[BX, y], [BX + BW, y]], { width: 3 });
   const binderCols = [COLORS.teal, COLORS.designer, COLORS.tealSoft, COLORS.customer, '#fbf8f1', COLORS.fabricator];
   [[210, 360], [370, 520], [530, 690]].forEach(([y0, y1], row) => {
-    let x = -226;
-    for (let i = 0; i < 7; i++) { const w = 26 + hash(row * 17 + i) * 12, h = (y1 - y0) - 18 - hash(row * 9 + i) * 30; sk(rect(x, y1 - h, w, h), { closed: true, fill: binderCols[(i + row) % binderCols.length], width: 2.4, amp: 0.8 }); x += w + 4; if (x > 20) break; }
+    let x = BX + 14;
+    for (let i = 0; i < 7; i++) { const w = 26 + hash(row * 17 + i) * 12, h = (y1 - y0) - 18 - hash(row * 9 + i) * 30; if (x + w > BX + BW - 10) break; sk(rect(x, y1 - h, w, h), { closed: true, fill: binderCols[(i + row) % binderCols.length], width: 2.4, amp: 0.8 }); x += w + 4; }
   });
-  sk(rect(-230, 720, 90, 150), { closed: true, fill: COLORS.printer, width: 2.4 });
-  // tall floor plant
-  const PX = 96;
+  sk(rect(BX + 10, 720, 90, 150), { closed: true, fill: COLORS.printer, width: 2.4 });
+  // tall floor plant, tucked in by the partition
+  const PX = -214;
   sk(poly([[PX - 40, 870], [PX - 50, 780], [PX + 50, 780], [PX + 40, 870]], true), { closed: true, fill: COLORS.customer, width: 3 });
   for (const [dx, dy, a] of [[-50, -160, -0.5], [10, -230, 0.1], [60, -150, 0.6], [-20, -110, -0.2], [44, -80, 0.4]]) {
     sk([[PX, 780], [PX + dx * 0.6, 780 + dy * 0.6]], { width: 3 });
     sk(ellipse(PX + dx, 780 + dy, 34, 14, 16).map(p => { const c = Math.cos(a), s = Math.sin(a), x = p[0] - PX - dx, y = p[1] - 780 - dy; return [PX + dx + x * c - y * s, 780 + dy + x * s + y * c]; }), { closed: true, fill: COLORS.tree, width: 2.6 });
   }
   drawPMDesk(t);
-  // window with a half-drawn roller blind and a sill plant
+  // window with a half-drawn roller blind and a sill plant, over the PM's desk
+  ctx.save(); ctx.translate(-440, 0);
   sk(rect(380, 40, 230, 270), { closed: true, fill: COLORS.sky });
   sk([[495, 40], [495, 310]], { width: 3 }); sk([[380, 175], [610, 175]], { width: 3 });
   sk(ellipse(440, 110, 34, 12, 16), { closed: true, fill: COLORS.paperHi, width: 2.4 });
@@ -1022,6 +1037,7 @@ function drawStudioRoom(t) {
   sk(rect(366, 310, 258, 14), { closed: true, fill: COLORS.desk, width: 2.6 });
   sk(poly([[560, 310], [556, 282], [596, 282], [592, 310]], true), { closed: true, fill: COLORS.designer, width: 2.4 });
   sk(circle(576, 268, 16), { closed: true, fill: COLORS.tree, width: 2.4 });
+  ctx.restore();
   // pendant lamp
   sk([[960, -40], [960, 96]], { width: 2.4 });
   sk([[912, 150], [936, 96], [984, 96], [1008, 150]], { closed: true, fill: COLORS.teal, width: 3 });
@@ -1068,9 +1084,10 @@ function drawStudioRoom(t) {
   sk([[DESIGNER_X - 44, 725], [DESIGNER_X - 66, 870]], { width: 4 }); sk([[DESIGNER_X + 44, 725], [DESIGNER_X + 66, 870]], { width: 4 });
 }
 // The project manager: at his desk with a laptop and a headset, between the designer and the hatch.
-const PM_X = 250, PM_SEAT = 716;
+const PM_X = -70, PM_SEAT = 716;
 const pmChairX = t => PM_X - 26 * E.outCubic(prog(t, T.pm.leap[0], T.pm.leap[0] + 0.1)) * (1 - E.inOutSine(prog(t, T.pm.back[0], T.pm.back[1] - 0.05)));
 function drawPMDesk(t) {
+  ctx.save(); ctx.translate(PM_X - 250, 0);          // drawn at x 250, placed at PM_X
   // desk, laptop (screen facing him), mug, a stack of job sheets
   sk(rect(330, 652, 200, 22), { closed: true, fill: COLORS.desk });
   sk([[350, 674], [350, 870]], { width: 5 }); sk([[510, 674], [510, 870]], { width: 5 });
@@ -1081,6 +1098,7 @@ function drawPMDesk(t) {
   sk(ellipse(516, 630, 8, 9, 12).slice(8, 24), { width: 2.2 });
   for (let i = 0; i < 3; i++) sk(rect(398 - i * 3, 632 - i * 6, 44, 6), { closed: true, fill: i === 2 ? COLORS.paperHi : '#ece6d8', width: 1.8, amp: 0.4 });
   // office chair: back, seat, gas stem, five-star base on castors; it rolls back when he leaps
+  ctx.restore();
   const cx = pmChairX(t);
   sk(rrect(cx - 96, 560, 28, 150, 12), { closed: true, fill: COLORS.tealDark, width: 3 });
   sk([[cx - 82, 706], [cx - 60, 722]], { width: 4 });
@@ -1093,7 +1111,7 @@ function drawPMDesk(t) {
 function pmPaired(t) {
   const S = sheetPose(t); if (!S || !S.H) return null;
   const c = poseApply(S, [PEEL.F.cx, PEEL.F.cy]);
-  return { centre: [c[0] + 190, c[1] + 26], rot: S.ang, flip: S.flip, paper: c };
+  return { centre: [c[0] + 150, c[1] + 18], rot: S.ang, flip: S.flip, paper: c };
 }
 let pmThumb = 1;
 const clamp = (x, a, b) => x < a ? a : x > b ? b : x;
@@ -1151,6 +1169,7 @@ function pmState(t) {
     }
   }
   if (!air) blink = blink || [4.6, 7.3, 9.1].some(b => t > b && t < b + 0.11) ? 1 : 0;
+  flip = (flip < 0 ? -1 : 1) * Math.max(0.07, Math.abs(flip));   // edge-on, never zero width
   // body centre → base point for the drawing frame
   const c = Math.cos(rot), s = Math.sin(rot);
   const base = [centre[0] - (h / 2) * sy * s, centre[1] + (h / 2) * sy * c];
@@ -1164,7 +1183,7 @@ function drawPM(t) { drawCharacter(CHARACTERS.pm, pmState(t)); }
 function drawPMTick(t) {
   const P = T.pm, pop = E.outBackBig(prog(t, P.tick, P.tick + 0.025)) * (1 - E.inCubic(prog(t, P.slow[1] - 0.005, P.slow[1] + 0.03)));
   if (pop < 0.01) return;
-  const st = pmState(t), hd = st.hands[st.thumbHand], at = [hd[0] + 20, hd[1] - 92];
+  const st = pmState(t), hd = st.hands[st.thumbHand], at = [hd[0] - 46, hd[1] - 96];
   const burst = prog(t, P.tick, P.tick + 0.04);
   if (burst > 0 && burst < 1) for (let i = 0; i < 8; i++) {
     const a = i / 8 * Math.PI * 2 + 0.2, r0 = 44 + 40 * E.outCubic(burst), r1 = r0 + 18 * (1 - burst);
