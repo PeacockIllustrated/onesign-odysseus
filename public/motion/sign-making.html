@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sign Making</title>
+<title>Onesign Sign Build</title>
 <!--
   A sign being made, told abstractly. 1080×1920, 12s, loops.
 
@@ -20,19 +20,20 @@
                ?native=1  back the canvas at exactly 1080×1920 (for capture)
 -->
 <style>
-  :root { --bg:#0f1417; --teal:#4e7e8c; --ink:#c9d6da; --muted:#6f848b; --bar:#0b0f11; }
+  :root { color-scheme:dark; --bg:#0f1417; --teal:#4e7e8c; --ink:#c9d6da; --muted:#6f848b; --bar:#0b0f11; }
   * { box-sizing:border-box; }
   html, body { margin:0; height:100%; background:var(--bg); overflow:hidden;
     font:500 12px/1 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--ink); }
-  #stage { position:absolute; inset:0 0 56px 0; display:flex; align-items:center; justify-content:center; }
+  #stage { position:absolute; inset:0 0 calc(56px + env(safe-area-inset-bottom, 0px)) 0; display:flex; align-items:center; justify-content:center; }
   body.noui #stage { bottom:0; }
   canvas { display:block; background:var(--bg); }
-  #bar { position:absolute; left:0; right:0; bottom:0; height:56px; display:flex; align-items:center;
-    gap:14px; padding:0 16px; background:var(--bar); border-top:1px solid #1b2327; }
+  #bar { position:absolute; left:0; right:0; bottom:0; height:calc(56px + env(safe-area-inset-bottom, 0px)); display:flex; align-items:center;
+    gap:14px; padding:0 16px env(safe-area-inset-bottom, 0px); background:var(--bar); border-top:1px solid #1b2327; }
   body.noui #bar { display:none; }
   #play { width:34px; height:34px; flex:none; border-radius:50%; border:1px solid #2a383e; background:transparent;
     color:var(--ink); cursor:pointer; display:grid; place-items:center; }
-  #play:hover { border-color:var(--teal); }
+  #play:hover, #play:focus-visible { border-color:var(--teal); outline:none; }
+  #scrub:focus-visible::-webkit-slider-thumb { box-shadow:0 0 0 3px #0b0f11, 0 0 0 5px var(--teal); }
   #play svg { width:12px; height:12px; fill:currentColor; }
   #track { position:relative; flex:1; height:34px; display:flex; align-items:center; }
   #scrub { width:100%; margin:0; appearance:none; -webkit-appearance:none; background:transparent; height:34px; cursor:pointer; position:relative; z-index:1; }
