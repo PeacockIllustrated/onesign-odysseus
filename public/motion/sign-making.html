@@ -1,0 +1,715 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign Making</title>
+<!--
+  A sign being made, told abstractly. 1080×1920, 12s, loops.
+
+  0–3s   router traces the outline, leaving a thin steel-teal line
+  3–6s   outline extrudes into letters with returns; camera orbits to 3/4
+  6–9s   halo switches on — strikes, flickers once, settles
+  9–12s  camera eases back, hold, lights down, loop
+
+  Deterministic: renderFrame(t) is a pure function of t (seconds). Nothing
+  reads the clock except the playback driver at the bottom of the script, so
+  Remotion can call window.renderFrame(frame / fps) directly.
+
+  URL params:  ?t=4.5     freeze on a time      ?ui=0     hide the review bar
+               ?native=1  back the canvas at exactly 1080×1920 (for capture)
+-->
+<style>
+  :root { --bg:#0f1417; --teal:#4e7e8c; --ink:#c9d6da; --muted:#6f848b; --bar:#0b0f11; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); overflow:hidden;
+    font:500 12px/1 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--ink); }
+  #stage { position:absolute; inset:0 0 56px 0; display:flex; align-items:center; justify-content:center; }
+  body.noui #stage { bottom:0; }
+  canvas { display:block; background:var(--bg); }
+  #bar { position:absolute; left:0; right:0; bottom:0; height:56px; display:flex; align-items:center;
+    gap:14px; padding:0 16px; background:var(--bar); border-top:1px solid #1b2327; }
+  body.noui #bar { display:none; }
+  #play { width:34px; height:34px; flex:none; border-radius:50%; border:1px solid #2a383e; background:transparent;
+    color:var(--ink); cursor:pointer; display:grid; place-items:center; }
+  #play:hover { border-color:var(--teal); }
+  #play svg { width:12px; height:12px; fill:currentColor; }
+  #track { position:relative; flex:1; height:34px; display:flex; align-items:center; }
+  #scrub { width:100%; margin:0; appearance:none; -webkit-appearance:none; background:transparent; height:34px; cursor:pointer; position:relative; z-index:1; }
+  #scrub::-webkit-slider-runnable-track { height:2px; background:#26323a; }
+  #scrub::-moz-range-track { height:2px; background:#26323a; }
+  #scrub::-webkit-slider-thumb { -webkit-appearance:none; width:12px; height:12px; margin-top:-5px; border-radius:50%; background:var(--teal); box-shadow:0 0 10px var(--teal); }
+  #scrub::-moz-range-thumb { width:12px; height:12px; border:0; border-radius:50%; background:var(--teal); }
+  .tick { position:absolute; top:6px; bottom:6px; width:1px; background:#26323a; pointer-events:none; }
+  .tick span { position:absolute; top:-2px; left:4px; font-size:9px; letter-spacing:.08em; color:var(--muted); text-transform:uppercase; white-space:nowrap; }
+  #time { font-variant-numeric:tabular-nums; color:var(--muted); min-width:92px; text-align:right; }
+  #time b { color:var(--ink); font-weight:500; }
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="c"></canvas></div>
+<div id="bar">
+  <button id="play" aria-label="Play / pause"></button>
+  <div id="track"><input id="scrub" type="range" min="0" max="12" step="0.001" value="0" aria-label="Scrub"></div>
+  <div id="time"><b>00.00</b> / 12.00</div>
+</div>
+<script>
+'use strict';
+
+/* ==========================================================================
+   TUNING — colours, timings, stroke weights. Everything else derives from here.
+   ========================================================================== */
+
+const W = 1080, H = 1920;             // logical canvas size
+const DURATION = 12;                  // seconds, loops
+
+const COLORS = {
+  bg:        '#0f1417',
+  teal:      [78, 126, 140],          // #4e7e8c steel teal
+  warm:      [255, 228, 196],         // halo / warm white light
+  white:     [255, 249, 240],         // tool point core
+  faceTop:   '#161d21',               // letter face gradient
+  faceBot:   '#0b0f12',
+  returnDark:[12, 17, 20],            // unlit return
+  returnLit: [34, 50, 56],            // key-lit return (teal-grey)
+  returnWarm:[46, 34, 24],            // bounce from the lit wall
+};
+
+const TIMING = {
+  toolIn:        [0.05, 0.35],        // tool point fades in
+  trace:         [0.20, 2.90],        // router path (eased as a whole)
+  toolOut:       [2.90, 3.25],        // tool lifts off
+  extrude:        3.00,               // spring starts (per contour, staggered)
+  extrudeStagger: 0.055,              // s between letters
+  rotate:        [3.00, 6.00],        // orbit to three-quarter
+  solid:         [4.80, 6.00],        // wireframe → solid returns
+  haloOn:         6.00,               // first strike
+  drift:         [6.00, 11.4],        // slow continuing orbit
+  pull:          [9.00, 10.9],        // camera eases back
+  lightsDown:    [11.05, 11.70],      // halo off
+  fade:          [11.30, 11.97],      // scene to empty stage (loop point)
+};
+
+const STROKE = {
+  trace:  [ { w: 3.4, a: 0.07 }, { w: 1.6, a: 0.20 }, { w: 0.7, a: 0.85 } ], // stacked passes
+  heat:   { len: 90, w: 1.3, a: 0.75, chunks: 6 },    // freshly cut, still warm
+  ruling: { w: 0.7, a: 0.32 },                        // return hatch lines
+  rim:    { w: 1.1, a: 0.60 },                        // halo-lit back edge
+  trim:   { w: 0.8, a: 0.55 },                        // face edge once solid
+  spark:  { w: 0.9, a: 0.9 },
+};
+
+const GEOM = {
+  markR: 200,        // logomark radius (world units ≈ mm)
+  depth: 60,         // return depth
+  standoff: 40,      // gap to wall (halo)
+  strokeW: 18,       // wordmark stroke weight
+  tracking: 22,      // wordmark letter spacing
+  markY: 75,         // mark centre
+  baseY: -275,       // wordmark baseline
+  sample: 8,         // max edge length → ruling density
+  arcSeg: 7,         // arc segment length
+  travelWeight: 0.35 // rapid moves are this fraction of cut time per unit
+};
+
+const CAMERA = {
+  f: 1820, cx: 540, cy: 930,
+  dist: 1400, pushIn: 40,             // slow push during trace/extrude
+  yaw: 0.47, pitch: -0.085,           // three-quarter view (rad)
+  yawDrift: 0.07,
+  pullDist: 1790, pullPitch: -0.12,
+};
+
+const GLOW = {                         // halo layers (blur in logical px)
+  wash: { blur: 180, a: 0.45, color: 'teal' },
+  mid:  { blur: 60,  a: 0.62, color: 'warm' },
+  edge: { blur: 14,  a: 0.95, w: 3, color: 'warm' },
+  core: { blur: 4,   a: 0.55, w: 1.2, color: 'white' },
+  tool: { r: 46, a: 0.55 },
+};
+
+const SPRING = {
+  extrude: { w: 9.0, z: 0.55 },       // slight overshoot
+  halo:    { w: 6.5, z: 0.62 },
+};
+
+const GLOW_RES = 0.4;                  // halo buffer resolution vs main canvas
+const SPARKS = { rate: 42, life: [0.25, 0.55], speed: [70, 260], gravity: 320 };
+const GRAIN  = { amount: 0.06, fps: 24, tiles: 6, size: 256 };
+const VIGNETTE = { inner: 0.30, outer: 0.92, strength: 0.62 };
+
+/* ==========================================================================
+   Maths — easing, springs, hashing. All pure.
+   ========================================================================== */
+
+const clamp01 = x => x < 0 ? 0 : x > 1 ? 1 : x;
+const lerp = (a, b, u) => a + (b - a) * u;
+const prog = (t, [a, b]) => clamp01((t - a) / (b - a));
+const easeInOutCubic = u => u < 0.5 ? 4*u*u*u : 1 - Math.pow(-2*u + 2, 3) / 2;
+const easeInOutSine  = u => -(Math.cos(Math.PI * u) - 1) / 2;
+const easeOutCubic   = u => 1 - Math.pow(1 - u, 3);
+const easeInQuad     = u => u * u;
+const easeInOutQuint = u => u < 0.5 ? 16*u*u*u*u*u : 1 - Math.pow(-2*u + 2, 5) / 2;
+
+// Damped harmonic oscillator step response (0 → 1), analytic so it's pure in t.
+function spring(t, { w, z }) {
+  if (t <= 0) return 0;
+  const wd = w * Math.sqrt(1 - z*z);
+  return 1 - Math.exp(-z*w*t) * (Math.cos(wd*t) + (z*w/wd) * Math.sin(wd*t));
+}
+
+function hash(n) {
+  let x = Math.imul((n | 0) ^ 0x9e3779b9, 0x85ebca6b);
+  x ^= x >>> 13; x = Math.imul(x, 0xc2b2ae35); x ^= x >>> 16;
+  return (x >>> 0) / 4294967296;
+}
+function mulberry32(a) {
+  return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+
+/* ==========================================================================
+   Geometry — the Onesign mark (circle, geometric "1" cut out) over a
+   geometric ONESIGN wordmark. World units, y up, letters face +z.
+   ========================================================================== */
+
+function arc(cx, cy, rx, ry, a0, a1, seg) {
+  const n = Math.max(2, Math.ceil(Math.abs(a1 - a0) * Math.max(rx, ry) / seg));
+  const out = [];
+  for (let i = 0; i <= n; i++) { const a = lerp(a0, a1, i / n); out.push([cx + rx*Math.cos(a), cy + ry*Math.sin(a)]); }
+  return out;
+}
+
+// Closed outline of an open centreline stroke, with mitred joins and butt caps.
+function strokeOutline(c, w) {
+  const h = w / 2, L = [], R = [], n = c.length;
+  for (let i = 0; i < n; i++) {
+    const p = c[i], a = c[Math.max(0, i - 1)], b = c[Math.min(n - 1, i + 1)];
+    let n1, n2;
+    const nrm = (u, v) => { const dx = v[0]-u[0], dy = v[1]-u[1], l = Math.hypot(dx, dy) || 1; return [-dy/l, dx/l]; };
+    n1 = i > 0 ? nrm(a, p) : nrm(p, b);
+    n2 = i < n - 1 ? nrm(p, b) : n1;
+    let mx = n1[0] + n2[0], my = n1[1] + n2[1]; const ml = Math.hypot(mx, my) || 1; mx /= ml; my /= ml;
+    const k = h / Math.max(0.3, mx*n1[0] + my*n1[1]);
+    L.push([p[0] + mx*k, p[1] + my*k]); R.push([p[0] - mx*k, p[1] - my*k]);
+  }
+  return L.concat(R.reverse());
+}
+
+function subdivide(pts, maxSeg) {
+  const out = [];
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    const n = Math.max(1, Math.ceil(Math.hypot(b[0]-a[0], b[1]-a[1]) / maxSeg));
+    for (let j = 0; j < n; j++) out.push([lerp(a[0], b[0], j/n), lerp(a[1], b[1], j/n)]);
+  }
+  return out;
+}
+function dedupe(pts) {
+  const out = [];
+  for (const p of pts) { const q = out[out.length - 1]; if (!q || Math.hypot(p[0]-q[0], p[1]-q[1]) > 0.5) out.push(p); }
+  const f = out[0], l = out[out.length - 1];
+  if (out.length > 2 && Math.hypot(f[0]-l[0], f[1]-l[1]) < 0.5) out.pop();
+  return out;
+}
+const area = pts => { let s = 0; for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i+1) % pts.length]; s += a[0]*b[1] - b[0]*a[1]; } return s / 2; };
+
+function buildLogo() {
+  const { markR, strokeW: sw, tracking, markY, baseY, arcSeg } = GEOM;
+  const shapes = [];        // { pts, hole, group }
+  let group = 0;
+  const add = (pts, hole, dx, dy, g) => shapes.push({ pts: pts.map(p => [p[0] + dx, p[1] + dy]), hole, group: g });
+
+  // Mark: circle + "1" cutout. Circle starts at the top so the router begins there.
+  const circle = arc(0, 0, markR, markR, Math.PI/2, Math.PI/2 + Math.PI*2, arcSeg); circle.pop();
+  add(circle, false, 0, markY, group);
+  add([[5,120],[50,120],[50,-120],[0,-120],[0,62],[-50,40],[-50,88]], true, 0, markY, group);
+  group++;
+
+  // Wordmark glyphs (local: baseline 0, cap height 100).
+  const r = 41, rI = 50 - sw;
+  const glyphs = {
+    O: { w: 100, c: () => [
+      { pts: (() => { const a = arc(50, 50, 50, 50, Math.PI/2, Math.PI/2 + Math.PI*2, arcSeg); a.pop(); return a; })() },
+      { pts: (() => { const a = arc(50, 50, rI, rI, Math.PI/2, Math.PI/2 - Math.PI*2, arcSeg); a.pop(); return a; })(), hole: true } ] },
+    N: { w: 80, c: () => [ { pts: [[0,0],[sw,0],[sw,64],[80-sw,0],[80,0],[80,100],[80-sw,100],[80-sw,36],[sw,100],[0,100]] } ] },
+    E: { w: 70, c: () => [ { pts: [[0,0],[70,0],[70,sw],[sw,sw],[sw,41],[60,41],[60,59],[sw,59],[sw,100-sw],[70,100-sw],[70,100],[0,100]] } ] },
+    S: { w: 80, c: () => {
+      const ry = (100 - sw) / 4, rx = 29, top = 100 - sw/2 - ry, bot = sw/2 + ry;
+      const d = Math.PI / 180;
+      const cl = arc(40, top, rx, ry, 18*d, 270*d, 4).concat(arc(40, bot, rx, ry, 90*d, -162*d, 4).slice(1));
+      return [ { pts: strokeOutline(cl, sw) } ]; } },
+    I: { w: sw, c: () => [ { pts: [[0,0],[sw,0],[sw,100],[0,100]] } ] },
+    G: { w: 100, c: () => {
+      const d = Math.PI / 180;
+      const cl = arc(50, 50, r, r, 42*d, 360*d, 4).concat([[56, 50]]);
+      return [ { pts: strokeOutline(cl, sw) } ]; } },
+  };
+  const word = 'ONESIGN';
+  const total = [...word].reduce((s, ch) => s + glyphs[ch].w, 0) + tracking * (word.length - 1);
+  let x = -total / 2;
+  for (const ch of word) {
+    for (const c of glyphs[ch].c()) add(c.pts, !!c.hole, x, baseY, group);
+    x += glyphs[ch].w + tracking; group++;
+  }
+
+  // Normalise: outers CCW, holes CW, uniform-ish sampling, per-edge outward normals.
+  return shapes.map(s => {
+    let pts = dedupe(s.pts);
+    const A = area(pts);
+    if ((s.hole && A > 0) || (!s.hole && A < 0)) pts.reverse();
+    pts = subdivide(pts, GEOM.sample);
+    const n = pts.length, cum = new Float64Array(n + 1), nx = new Float64Array(n), ny = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      const a = pts[i], b = pts[(i + 1) % n], dx = b[0]-a[0], dy = b[1]-a[1], l = Math.hypot(dx, dy) || 1;
+      cum[i + 1] = cum[i] + l; nx[i] = dy / l; ny[i] = -dx / l;   // right-hand side = away from material
+    }
+    return { ...s, pts, n, cum, len: cum[n], nx, ny };
+  });
+}
+
+const LOGO = buildLogo();
+const GROUPS = LOGO.reduce((m, c) => Math.max(m, c.group), 0) + 1;
+
+// Router schedule: cut each contour, rapid-travel to the next. Distances in "cost" units.
+const SCHEDULE = (() => {
+  const items = []; let s = 0;
+  LOGO.forEach((c, k) => {
+    items.push({ type: 'cut', k, s0: s, cost: c.len }); s += c.len;
+    const nxt = LOGO[k + 1];
+    if (nxt) {
+      const a = c.pts[0], b = nxt.pts[0], d = Math.hypot(b[0]-a[0], b[1]-a[1]);
+      items.push({ type: 'travel', from: a, to: b, s0: s, cost: d * GEOM.travelWeight }); s += d * GEOM.travelWeight;
+    }
+  });
+  return { items, total: s };
+})();
+
+function contourPoint(c, d) {           // point at arc length d along a closed contour
+  d = Math.max(0, Math.min(c.len, d));
+  let lo = 0, hi = c.n;
+  while (lo < hi - 1) { const m = (lo + hi) >> 1; if (c.cum[m] <= d) lo = m; else hi = m; }
+  const a = c.pts[lo], b = c.pts[(lo + 1) % c.n], u = (d - c.cum[lo]) / ((c.cum[lo + 1] - c.cum[lo]) || 1);
+  return [lerp(a[0], b[0], u), lerp(a[1], b[1], u)];
+}
+
+function routerState(t) {
+  const p = easeInOutSine(prog(t, TIMING.trace));
+  const s = p * SCHEDULE.total;
+  const cut = new Float64Array(LOGO.length);
+  let tool = LOGO[0].pts[0], active = -1, travelling = false;
+  for (const it of SCHEDULE.items) {
+    if (s < it.s0) break;
+    const u = Math.min(it.cost, s - it.s0);
+    if (it.type === 'cut') { cut[it.k] = u; tool = contourPoint(LOGO[it.k], u); active = it.k; travelling = false; }
+    else if (s < it.s0 + it.cost) { const v = easeInOutCubic(u / it.cost); tool = [lerp(it.from[0], it.to[0], v), lerp(it.from[1], it.to[1], v)]; travelling = true; active = -1; }
+  }
+  return { cut, tool, active, travelling, done: p >= 1 };
+}
+
+/* ==========================================================================
+   Camera — orbit around the sign, perspective projection.
+   ========================================================================== */
+
+function cameraAt(t) {
+  const rot = easeInOutCubic(prog(t, TIMING.rotate));
+  const pull = easeInOutCubic(prog(t, TIMING.pull));
+  const yaw = CAMERA.yaw * rot + CAMERA.yawDrift * easeInOutSine(prog(t, TIMING.drift));
+  const pitch = CAMERA.pitch * rot + (CAMERA.pullPitch - CAMERA.pitch) * pull;
+  const dist = CAMERA.dist - CAMERA.pushIn * easeInOutSine(prog(t, [0, 9])) + (CAMERA.pullDist - CAMERA.dist + CAMERA.pushIn) * pull;
+  const target = [0, 0, GEOM.depth / 2];
+  const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const pos = [target[0] + dist*sy*cp, target[1] + dist*sp, target[2] + dist*cy*cp];
+  return { cy, sy, cp, sp, pos };
+}
+function project(cam, x, y, z, out, i) {
+  const px = x - cam.pos[0], py = y - cam.pos[1], pz = z - cam.pos[2];
+  const x1 = px*cam.cy - pz*cam.sy, z1 = px*cam.sy + pz*cam.cy;
+  const y2 = py*cam.cp - z1*cam.sp, z2 = py*cam.sp + z1*cam.cp;
+  const depth = -z2, k = CAMERA.f / depth;
+  out[i] = CAMERA.cx + x1*k; out[i + 1] = CAMERA.cy - y2*k;
+  return depth;
+}
+
+/* ==========================================================================
+   Halo intensity: strike, drop, buzz, spring to full; lights down at the end.
+   ========================================================================== */
+
+function haloIntensity(t) {
+  const u = t - TIMING.haloOn;
+  if (u <= 0) return 0;
+  let v;
+  if (u < 0.09)       v = 0.85 * easeOutCubic(u / 0.09);
+  else if (u < 0.15)  v = lerp(0.85, 0.10, easeInQuad((u - 0.09) / 0.06));
+  else if (u < 0.30)  v = 0.10 + 0.05 * (0.5 + 0.5*Math.sin(u * 140));        // LED driver buzz
+  else                v = 0.10 + 0.90 * spring(u - 0.30, SPRING.halo);
+  v *= 1 + 0.025 * Math.sin(u * 53) * Math.exp(-u * 1.8);                     // hum, decaying
+  v *= 1 - easeInOutSine(prog(t, TIMING.lightsDown));
+  return Math.max(0, v);
+}
+
+/* ==========================================================================
+   Canvas setup — DPR aware. Logical coords are always 1080×1920.
+   ========================================================================== */
+
+const params = new URLSearchParams(location.search);
+const NATIVE = params.get('native') === '1';
+if (params.get('ui') === '0') document.body.classList.add('noui');
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const glowCanvas = document.createElement('canvas');
+const gctx = glowCanvas.getContext('2d');
+const vigCanvas = document.createElement('canvas');
+let K = 1, KG = 0.5;                    // logical → device px (main, glow buffer)
+let grainPatterns = [];
+
+function buildGrain() {
+  grainPatterns = [];
+  for (let i = 0; i < GRAIN.tiles; i++) {
+    const c = document.createElement('canvas'); c.width = c.height = GRAIN.size;
+    const g = c.getContext('2d'), img = g.createImageData(GRAIN.size, GRAIN.size), rnd = mulberry32(1234 + i * 977);
+    for (let p = 0; p < img.data.length; p += 4) {
+      const v = rnd(), light = v > 0.5, a = Math.abs(v - 0.5) * 2;
+      img.data[p] = img.data[p+1] = img.data[p+2] = light ? 255 : 0;
+      img.data[p+3] = Math.round(a * a * 255 * GRAIN.amount * 2.2);
+    }
+    g.putImageData(img, 0, 0);
+    grainPatterns.push(ctx.createPattern(c, 'repeat'));
+  }
+}
+
+function buildVignette() {
+  vigCanvas.width = canvas.width; vigCanvas.height = canvas.height;
+  const v = vigCanvas.getContext('2d');
+  v.setTransform(K, 0, 0, K, 0, 0);
+  const R = Math.hypot(W, H) / 2;
+  const g = v.createRadialGradient(W/2, H*0.47, R*VIGNETTE.inner, W/2, H*0.47, R*VIGNETTE.outer);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(0.6, `rgba(0,0,0,${VIGNETTE.strength * 0.35})`);
+  g.addColorStop(1, `rgba(0,0,0,${VIGNETTE.strength})`);
+  v.fillStyle = g; v.fillRect(0, 0, W, H);
+}
+
+function resize() {
+  const stage = document.getElementById('stage');
+  const aw = stage.clientWidth, ah = stage.clientHeight;
+  const cssW = Math.min(aw, ah * W / H), cssH = cssW * H / W;
+  canvas.style.width = cssW + 'px'; canvas.style.height = cssH + 'px';
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = NATIVE ? W : Math.max(2, Math.round(cssW * dpr));
+  canvas.height = NATIVE ? H : Math.max(2, Math.round(cssH * dpr));
+  K = canvas.width / W; KG = K * GLOW_RES;
+  glowCanvas.width = Math.ceil(canvas.width * GLOW_RES); glowCanvas.height = Math.ceil(canvas.height * GLOW_RES);
+  buildVignette();
+  if (!grainPatterns.length) buildGrain();
+  drawFrame(currentTime());
+}
+
+/* ==========================================================================
+   Frame — pure function of t.
+   ========================================================================== */
+
+// Scratch buffers, reused every frame (contents fully rewritten, so still pure).
+const BUF = LOGO.map(c => ({ back: new Float64Array(c.n*2), face: new Float64Array(c.n*2), wall: new Float64Array(c.n*2) }));
+const OFF = 30000;                      // off-canvas offset for shadow-only glow
+
+function tracePolyline(g, xy, c, d0, d1) {   // stroke-path arc-length range [d0, d1] of contour c
+  if (d1 <= d0) return;
+  let started = false;
+  for (let i = 0; i < c.n; i++) {
+    const s0 = c.cum[i], s1 = c.cum[i + 1];
+    if (s1 < d0) continue;
+    if (s0 > d1) break;
+    const j = (i + 1) % c.n;
+    const ax = xy[i*2], ay = xy[i*2+1], bx = xy[j*2], by = xy[j*2+1];
+    const u0 = Math.max(0, (d0 - s0) / (s1 - s0)), u1 = Math.min(1, (d1 - s0) / (s1 - s0));
+    if (!started) { g.moveTo(lerp(ax, bx, u0), lerp(ay, by, u0)); started = true; }
+    g.lineTo(lerp(ax, bx, u1), lerp(ay, by, u1));
+  }
+}
+function contourPath(g, xy, c) {
+  g.moveTo(xy[0], xy[1]);
+  for (let i = 1; i < c.n; i++) g.lineTo(xy[i*2], xy[i*2+1]);
+  g.closePath();
+}
+function glowLayer(color, alpha, blur, draw) {  // shadow-only blurred shape on the glow buffer
+  gctx.save();
+  gctx.shadowColor = rgba(color, alpha);
+  gctx.shadowBlur = blur * KG;
+  gctx.shadowOffsetX = OFF * KG;
+  gctx.translate(-OFF, 0);
+  draw();
+  gctx.restore();
+}
+
+function drawFrame(tIn) {
+  const t = ((tIn % DURATION) + DURATION) % DURATION;
+  const cam = cameraAt(t);
+  const router = routerState(t);
+  const I = haloIntensity(t);
+  const solid = easeInOutCubic(prog(t, TIMING.solid));
+  const { depth, standoff } = GEOM;
+
+  // Per-contour extrusion (spring, staggered by letter) and projection.
+  const ext = LOGO.map(c => t < TIMING.extrude ? 0 : spring(t - TIMING.extrude - c.group * TIMING.extrudeStagger, SPRING.extrude));
+  LOGO.forEach((c, k) => {
+    const b = BUF[k], fz = depth * ext[k];
+    for (let i = 0; i < c.n; i++) {
+      const [x, y] = c.pts[i];
+      project(cam, x, y, 0, b.back, i*2);
+      project(cam, x, y, fz, b.face, i*2);
+      if (I > 0) project(cam, x, y, -standoff, b.wall, i*2);
+    }
+  });
+
+  ctx.setTransform(K, 0, 0, K, 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = COLORS.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  /* ---- Halo: light thrown back onto the wall -------------------------- */
+  if (I > 0.001) {
+    gctx.setTransform(1, 0, 0, 1, 0, 0);
+    gctx.clearRect(0, 0, glowCanvas.width, glowCanvas.height);
+    gctx.setTransform(KG, 0, 0, KG, 0, 0);
+    gctx.globalCompositeOperation = 'lighter';
+    const col = name => COLORS[name];
+    const wallFill = () => { gctx.beginPath(); LOGO.forEach((c, k) => { if (!c.hole) contourPath(gctx, BUF[k].wall, c); }); gctx.fillStyle = '#000'; gctx.fill(); };
+    const wallStroke = w => () => { gctx.beginPath(); LOGO.forEach((c, k) => contourPath(gctx, BUF[k].wall, c)); gctx.lineWidth = w; gctx.strokeStyle = '#000'; gctx.stroke(); };
+    glowLayer(col(GLOW.wash.color), GLOW.wash.a * I, GLOW.wash.blur, wallFill);
+    glowLayer(col(GLOW.mid.color),  GLOW.mid.a * I,  GLOW.mid.blur,  wallFill);
+    glowLayer(col(GLOW.edge.color), GLOW.edge.a * I, GLOW.edge.blur, wallStroke(GLOW.edge.w));
+    glowLayer(col(GLOW.core.color), GLOW.core.a * I, GLOW.core.blur, wallStroke(GLOW.core.w));
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(glowCanvas, 0, 0, canvas.width, canvas.height);
+    ctx.restore();
+  }
+
+  /* ---- Returns: wireframe hatch, turning solid ----------------------- */
+  if (t >= TIMING.extrude) {
+    const quads = [];
+    LOGO.forEach((c, k) => {
+      const fz = depth * ext[k];
+      if (fz < 0.5) return;
+      for (let i = 0; i < c.n; i++) {
+        const j = (i + 1) % c.n, a = c.pts[i], b = c.pts[j];
+        const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, mz = fz / 2;
+        const facing = c.nx[i]*(cam.pos[0] - mx) + c.ny[i]*(cam.pos[1] - my) > 0;
+        const px = mx - cam.pos[0], py = my - cam.pos[1], pz = mz - cam.pos[2];
+        const z1 = px*cam.sy + pz*cam.cy, d = -(py*cam.sp + z1*cam.cp);
+        quads.push({ k, i, j, facing, d });
+      }
+    });
+    quads.sort((p, q) => q.d - p.d);
+
+    const L = [-0.55, 0.72]; const Ll = Math.hypot(L[0], L[1]);
+    const wireIn = clamp01((t - TIMING.extrude) / 0.25);
+    for (const q of quads) {
+      const c = LOGO[q.k], b = BUF[q.k];
+      const bx0 = b.back[q.i*2], by0 = b.back[q.i*2+1], bx1 = b.back[q.j*2], by1 = b.back[q.j*2+1];
+      const fx0 = b.face[q.i*2], fy0 = b.face[q.i*2+1], fx1 = b.face[q.j*2], fy1 = b.face[q.j*2+1];
+      if (q.facing && solid > 0) {
+        const lam = Math.max(0, (c.nx[q.i]*L[0] + c.ny[q.i]*L[1]) / Ll);
+        const s = 0.15 + 0.85 * lam, warm = I * 0.35;
+        const col = [0, 1, 2].map(ch => Math.round(lerp(COLORS.returnDark[ch], COLORS.returnLit[ch], s) + COLORS.returnWarm[ch] * warm));
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = solid;
+        ctx.beginPath(); ctx.moveTo(bx0, by0); ctx.lineTo(bx1, by1); ctx.lineTo(fx1, fy1); ctx.lineTo(fx0, fy0); ctx.closePath();
+        ctx.fillStyle = `rgb(${col})`; ctx.fill();
+        ctx.lineWidth = 0.6; ctx.strokeStyle = `rgb(${col})`; ctx.stroke();       // hide AA seams
+        if (I > 0.001) {                                                          // halo rim on the back edge
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = STROKE.rim.a * I * solid;
+          ctx.beginPath(); ctx.moveTo(bx0, by0); ctx.lineTo(bx1, by1);
+          ctx.lineWidth = STROKE.rim.w; ctx.strokeStyle = rgba(COLORS.warm, 1); ctx.stroke();
+        }
+      }
+      const wa = STROKE.ruling.a * wireIn * (q.facing ? 1 - 0.72 * solid : 1 - solid);
+      if (wa > 0.002) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = wa;
+        ctx.beginPath(); ctx.moveTo(bx0, by0); ctx.lineTo(fx0, fy0);
+        ctx.lineWidth = STROKE.ruling.w; ctx.strokeStyle = rgba(COLORS.teal, 1); ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+
+    // Faces (even-odd keeps the "1" and the counters open to the lit wall).
+    if (solid > 0) {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = solid;
+      const g = ctx.createLinearGradient(0, 560, 0, 1350);
+      g.addColorStop(0, COLORS.faceTop); g.addColorStop(1, COLORS.faceBot);
+      ctx.beginPath(); LOGO.forEach((c, k) => { if (ext[k] > 0.01) contourPath(ctx, BUF[k].face, c); });
+      ctx.fillStyle = g; ctx.fill('evenodd');
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  /* ---- Outlines: traced line (back), lifted copy (face) --------------- */
+  ctx.globalCompositeOperation = 'lighter';
+  const backAlpha = 1 - solid;
+  for (const pass of STROKE.trace) {
+    ctx.lineWidth = pass.w; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.strokeStyle = rgba(COLORS.teal, 1);
+    // back outline (the router's line)
+    if (backAlpha > 0.002) {
+      ctx.globalAlpha = pass.a * backAlpha;
+      ctx.beginPath();
+      LOGO.forEach((c, k) => {
+        const d = router.cut[k];
+        if (d >= c.len - 0.01) contourPath(ctx, BUF[k].back, c); else tracePolyline(ctx, BUF[k].back, c, 0, d);
+      });
+      ctx.stroke();
+    }
+    // face outline, lifting away
+    if (t >= TIMING.extrude) {
+      const trim = lerp(1, STROKE.trim.a / 0.85, solid);
+      ctx.beginPath();
+      let any = false;
+      LOGO.forEach((c, k) => { if (ext[k] > 0.002) { contourPath(ctx, BUF[k].face, c); any = true; } });
+      if (any) { ctx.globalAlpha = pass.a * trim * clamp01((t - TIMING.extrude) / 0.2); ctx.stroke(); }
+    }
+  }
+
+  /* ---- Router tool point, hot trail, chips ---------------------------- */
+  const toolA = easeInOutSine(prog(t, TIMING.toolIn)) * (1 - easeInOutSine(prog(t, TIMING.toolOut)));
+  if (toolA > 0.002) {
+    // heat: the last few cm of cut, warmer and brighter
+    if (router.active >= 0) {
+      const c = LOGO[router.active], d = router.cut[router.active], h = STROKE.heat;
+      for (let q = 0; q < h.chunks; q++) {
+        const d0 = d - h.len * (1 - q / h.chunks), d1 = d - h.len * (1 - (q + 1) / h.chunks);
+        if (d1 <= 0) continue;
+        ctx.globalAlpha = h.a * toolA * Math.pow((q + 1) / h.chunks, 1.6);
+        ctx.beginPath(); tracePolyline(ctx, BUF[router.active].back, c, Math.max(0, d0), d1);
+        ctx.lineWidth = h.w; ctx.strokeStyle = rgba(COLORS.warm, 1); ctx.stroke();
+      }
+    }
+    // chips: emitted at a fixed rate while cutting; each derived from its index
+    const sp = SPARKS, maxLife = sp.life[1];
+    const i0 = Math.ceil((t - maxLife) * sp.rate), i1 = Math.floor(t * sp.rate);
+    ctx.lineCap = 'round';
+    for (let i = Math.max(0, i0); i <= i1; i++) {
+      const te = i / sp.rate, age = t - te, life = lerp(sp.life[0], sp.life[1], hash(i*7 + 1));
+      if (age > life) continue;
+      const st = routerState(te);
+      if (st.active < 0 || st.done || te < TIMING.trace[0] + 0.05) continue;
+      const ang = hash(i*7 + 2) * Math.PI * 2, spd = lerp(sp.speed[0], sp.speed[1], hash(i*7 + 3));
+      const vx = Math.cos(ang) * spd, vy = Math.sin(ang) * spd + 60;
+      const x = st.tool[0] + vx*age, y = st.tool[1] + vy*age - 0.5*sp.gravity*age*age;
+      const vyNow = vy - sp.gravity*age, tail = 0.022;
+      const P = [0, 0, 0, 0];
+      project(cam, x, y, 2, P, 0); project(cam, x - vx*tail, y - vyNow*tail, 2, P, 2);
+      const fade = 1 - easeInQuad(age / life);
+      ctx.globalAlpha = STROKE.spark.a * fade * toolA;
+      ctx.beginPath(); ctx.moveTo(P[0], P[1]); ctx.lineTo(P[2], P[3]);
+      ctx.lineWidth = STROKE.spark.w; ctx.strokeStyle = rgba(hash(i*7 + 4) > 0.7 ? COLORS.teal : COLORS.warm, 1); ctx.stroke();
+    }
+    // the point itself
+    const P = [0, 0];
+    project(cam, router.tool[0], router.tool[1], 0, P, 0);
+    const lift = router.travelling ? 0.4 : 1;
+    const pulse = 1 + 0.08 * Math.sin(t * 38) * Math.sin(t * 13.7);
+    const g = ctx.createRadialGradient(P[0], P[1], 0, P[0], P[1], GLOW.tool.r * pulse);
+    g.addColorStop(0, rgba(COLORS.warm, GLOW.tool.a * toolA * lift));
+    g.addColorStop(0.25, rgba(COLORS.warm, 0.18 * toolA * lift));
+    g.addColorStop(1, rgba(COLORS.teal, 0));
+    ctx.globalAlpha = 1; ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(P[0], P[1], GLOW.tool.r * pulse, 0, Math.PI*2); ctx.fill();
+    ctx.save();
+    ctx.shadowColor = rgba(COLORS.white, toolA); ctx.shadowBlur = 12 * K;
+    ctx.fillStyle = rgba(COLORS.white, toolA * lift);
+    ctx.beginPath(); ctx.arc(P[0], P[1], 2.6, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
+  /* ---- Loop fade, vignette, grain ------------------------------------- */
+  ctx.globalCompositeOperation = 'source-over';
+  const fade = easeInOutSine(prog(t, TIMING.fade));
+  if (fade > 0) { ctx.globalAlpha = fade; ctx.fillStyle = COLORS.bg; ctx.fillRect(0, 0, W, H); }
+  ctx.globalAlpha = 1;
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(vigCanvas, 0, 0);
+
+  const gi = Math.floor(t * GRAIN.fps);
+  const gs = Math.max(1, K * 0.9);
+  const ox = Math.floor(hash(gi * 2 + 11) * GRAIN.size), oy = Math.floor(hash(gi * 2 + 12) * GRAIN.size);
+  ctx.setTransform(gs, 0, 0, gs, -ox * gs, -oy * gs);
+  ctx.fillStyle = grainPatterns[gi % GRAIN.tiles];
+  ctx.fillRect(ox, oy, canvas.width / gs + 1, canvas.height / gs + 1);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+}
+
+/* ==========================================================================
+   Playback — the only place that reads a clock.
+   ========================================================================== */
+
+const playBtn = document.getElementById('play');
+const scrub = document.getElementById('scrub');
+const timeEl = document.getElementById('time');
+const ICON_PLAY = '<svg viewBox="0 0 12 12"><path d="M2 1l9 5-9 5z"/></svg>';
+const ICON_PAUSE = '<svg viewBox="0 0 12 12"><path d="M2 1h3v10H2zM7 1h3v10H7z"/></svg>';
+
+let playing = !params.has('t');
+let origin = performance.now();         // wall time at which playhead was 0
+let held = params.has('t') ? parseFloat(params.get('t')) || 0 : 0;
+let scrubbing = false;
+
+function currentTime() {
+  if (!playing) return held;
+  return ((performance.now() - origin) / 1000) % DURATION;
+}
+function setPlaying(p) {
+  const t = currentTime();
+  playing = p;
+  if (p) origin = performance.now() - t * 1000; else held = t;
+  playBtn.innerHTML = p ? ICON_PAUSE : ICON_PLAY;
+}
+function seek(t) { held = ((t % DURATION) + DURATION) % DURATION; origin = performance.now() - held * 1000; drawFrame(held); updateUI(held); }
+function updateUI(t) {
+  if (!scrubbing) scrub.value = t.toFixed(3);
+  timeEl.innerHTML = `<b>${t.toFixed(2).padStart(5, '0')}</b> / ${DURATION.toFixed(2)}`;
+}
+
+[[3, 'extrude'], [6, 'halo'], [9, 'pull back']].forEach(([s, label]) => {
+  const d = document.createElement('div'); d.className = 'tick';
+  d.style.left = `calc(6px + (100% - 12px) * ${s / DURATION})`;
+  d.innerHTML = `<span>${label}</span>`;
+  document.getElementById('track').appendChild(d);
+});
+
+playBtn.addEventListener('click', () => setPlaying(!playing));
+scrub.addEventListener('input', () => { scrubbing = true; if (playing) setPlaying(false); seek(parseFloat(scrub.value)); });
+scrub.addEventListener('change', () => { scrubbing = false; });
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); setPlaying(!playing); }
+  else if (e.code === 'ArrowRight' || e.code === 'ArrowLeft') {
+    e.preventDefault(); if (playing) setPlaying(false);
+    seek(currentTime() + (e.code === 'ArrowRight' ? 1 : -1) * (e.shiftKey ? 1 : 1/60));
+  } else if (e.code === 'Home') { seek(0); }
+});
+window.addEventListener('resize', resize);
+
+function loop() {
+  if (playing) { const t = currentTime(); drawFrame(t); updateUI(t); }
+  requestAnimationFrame(loop);
+}
+
+playBtn.innerHTML = playing ? ICON_PAUSE : ICON_PLAY;
+resize();
+updateUI(currentTime());
+requestAnimationFrame(loop);
+
+// For Remotion / frame capture: window.renderFrame(frame / fps)
+window.renderFrame = t => { if (playing) setPlaying(false); held = t; drawFrame(t); updateUI(((t % DURATION) + DURATION) % DURATION); };
+window.DURATION = DURATION;
+</script>
+</body>
+</html>
