@@ -61,7 +61,7 @@
 'use strict';
 
 /* ==========================================================================
-   SETTINGS — timings, colours, characters. Tune here.
+   SETTINGS: timings, colours, characters. Tune here.
    ========================================================================== */
 
 const DURATION = 32;
@@ -72,15 +72,15 @@ const SCENES = [
   { id: 1, name: 'Shop front',      t0: 0,     t1: 4     },
   { id: 2, name: 'Into the studio', t0: 4,     t1: 8     },
   { id: 3, name: 'Peel & throw',    t0: 8,     t1: 10.75 },
-  { id: 4, name: 'The flight',      t0: 10.75, t1: 13    },
-  { id: 5, name: 'Fabrication',     t0: 13,    t1: 20    },
+  { id: 4, name: 'The flight',      t0: 10.75, t1: 12.95 },
+  { id: 5, name: 'Fabrication',     t0: 12.95, t1: 20    },
   { id: 6, name: 'The van',         t0: 20,    t1: 26    },
   { id: 7, name: 'The fit',         t0: 26,    t1: 32    },
 ];
 
 const COLORS = {
   paper:     '#f3efe6',
-  paperHi:   '#fbf8f1',               // thought bubble / design sheet
+  paperHi:   '#fbf8f1',
   ink:       '#23282b',
   teal:      '#4e7e8c',
   tealSoft:  '#a8c3ca',
@@ -88,12 +88,14 @@ const COLORS = {
   // street
   facade: '#e7dfcf', neighbourL: '#ddd3c1', neighbourR: '#e1d8c7',
   fascia: '#cdc6b8', glass: '#dde4e1', pavement: '#e8e1d4', road: '#dcd5c8',
-  // interiors
-  wall: '#f3efe6', wallShop: '#ece6d9', floor: '#e6dfd1', desk: '#d9c7a8', bezel: '#3b4246',
+  // studio
+  wall: '#f3efe6', floor: '#e6dfd1', desk: '#d9c7a8', bezel: '#3b4246', rug: '#dfe7e6', cork: '#d8c3a0',
   screenOff: '#eceee9', underside: '#e3ddcf', sky: '#dfe9ea', roof: '#cfc6b5', hill: '#e4ddcd', tree: '#b9cbc6',
+  // warehouse
+  shopWall: '#ebe6dc', block: '#dcd6cb', steel: '#8d9699', concrete: '#e0dbd1', sheetStock: ['#a8c3ca', '#fbf8f1', '#e9b44c', '#e07a5f', '#4e7e8c'],
   // fabricated letters
   faceInk: '#2f3538', returnInk: '#646c70', hole: '#bfb7a6', led: '#fff0c4', glow: '#ffd98a',
-  wrap: 'rgba(226,240,241,0.78)', van: '#fbf8f1',
+  wrap: 'rgba(226,240,241,0.82)', van: '#fbf8f1',
   // characters: one warm colour each
   customer:   '#e07a5f',
   designer:   '#e9b44c',
@@ -106,7 +108,6 @@ const COLORS = {
 const INK = { width: 3.4, boil: 1.25 };            // boil amplitude in screen px
 
 const CHARACTERS = {
-  // k scales the details (eyes, hands, stride) with the body
   customer:   { shape: 'pill',   w: 124, h: 202, legLen: 70, color: COLORS.customer,   eyeGap: 34, eyeY: 0.72, eyeR: 7,   k: 1.35 },
   designer:   { shape: 'square', w: 178, h: 158, legLen: 52, color: COLORS.designer,   eyeGap: 42, eyeY: 0.64, eyeR: 7.5, k: 1.3 },
   fabricator: { shape: 'trap',   w: 170, h: 176, legLen: 58, color: COLORS.fabricator, eyeGap: 40, eyeY: 0.66, eyeR: 7,   k: 1.3, goggles: true },
@@ -114,19 +115,20 @@ const CHARACTERS = {
   fitterB:    { shape: 'round',  w: 136, h: 132, legLen: 50, color: COLORS.fitterB,    eyeGap: 34, eyeY: 0.6,  eyeR: 6.5, k: 1.2 },
 };
 
-// The designer's hand swells into a big mitten as the arm stretches to the screen.
-const HAND = { r: 6, stretchGrow: 3.2, carried: 1.8 };
+const HAND = { r: 6, stretchGrow: 3.2, carried: 1.8 };   // designer's hand swells as the arm stretches
+const PAPER = 0.34;                   // the design shrinks to regular paper size in flight
 
 const HERO = { aspect: 1.6, wordmarkWidth: 1.46 /* in F units, F.w = 2 */ };
 const OX = -9000;                     // where the shop sits in the main world
 const WORLDS = {
-  street: { F: { cx: 1130, cy: 430, w: 400 } },           // scene 1 (thought bubble)
-  main:   { F: { cx: 1010, cy: 420, w: 520 } },           // studio monitor
+  street: { F: { cx: 930, cy: 400, w: 340 } },            // the thought bubble, above the customer
+  main:   { F: { cx: 960, cy: 420, w: 420 } },            // the studio monitor
 };
-const BED = { cx: -1250, cy: 430, w: 520 };               // CNC bed in the workshop
-const FASCIA = { cx: OX + 960, cy: 206, H: 86 };           // letters on the fascia (cap height)
-const PUSH_MAX_W = 3800;             // F width when it fills the frame (covers 9:16 too)
-const PORTRAIT_VIEW = { fit: 1.0, cx: 975, cy: 520 };     // 9:16 frames a 1080-wide slice
+const BED = { cx: -1040, cy: 520, w: 420 };               // CNC bed: same size as the design
+const FASCIA = { cx: OX + 960, cy: 206, H: 86 };
+const PUSH_MAX_W = 3800;
+// Framed for 9:16 first: the phone sees an 830-wide slice at 1.3×; 16:9 sees the same shot with more room.
+const PORTRAIT_VIEW = { fit: 1.3, cx: 960, cy: 540 };
 
 // Beat times (seconds)
 const T = {
@@ -136,17 +138,17 @@ const T = {
   // 2 studio
   push: [4.0, 5.35], pull: [5.35, 6.8], morph: [4.3, 6.4], clicks: [6.35, 6.8, 7.25], swatch: 7.32,
   // 3 peel & throw
-  glance: 8.0, judder: [8.25, 8.95], shake: [8.95, 9.25], wind: 9.25, reach: [9.4, 9.7],
+  glance: 8.0, judder: [8.3, 9.0], shake: [9.0, 9.3], wind: 9.25, reach: [9.4, 9.7],
   peel: [9.7, 10.3], toss: [10.3, 10.75],
-  // 4 flight
-  flight: [10.75, 12.55], catch: [12.55, 13.0],
+  // 4 flight (the throw carries straight through)
+  flight: [10.75, 12.45], catch: [12.45, 12.95],
   // 5 fabrication
-  slap: [13.0, 13.55], router: [13.8, 16.2], extrude: [16.3, 17.3], leds: [17.45, 18.6], thumbs: 18.75, glow: [19.05, 19.8],
+  place: [12.95, 13.6], router: [13.85, 16.2], extrude: [16.3, 17.3], leds: [17.45, 18.6], thumbs: 18.75, glow: [19.05, 19.8],
   // 6 van
-  wrap: [19.95, 20.55], hop: [20.6, 21.55], doors: [21.75, 22.1], drive: [22.4, 25.9],
+  wrap: [19.95, 20.55], lift: [20.3, 21.8], hop: [20.6, 21.35], slide: [21.35, 21.65], drive: [22.3, 25.9],
   // 7 fit
-  unload: [26.3, 26.8], ladder: [26.55, 26.95], climb: [26.95, 27.3], letter0: 27.35, letterStep: 0.4, letterDur: 0.32,
-  halo: 29.4, pack: [29.5, 29.85], leave: [29.85, 30.6], custIn: [30.45, 31.1], custLook: 31.12, bounce: [31.2, 31.5], door: [31.55, 31.92],
+  unloadLift: [26.1, 26.3], unload: [26.3, 26.85], ladder: [26.55, 26.95], climb: [26.95, 27.3], letter0: 27.35, letterStep: 0.4, letterDur: 0.32,
+  halo: 29.4, pack: [29.5, 29.85], leave: [29.9, 30.65], custIn: [30.3, 31.0], custLook: 31.12, bounce: [31.2, 31.5], door: [31.55, 31.92],
 };
 
 /* ==========================================================================
@@ -162,12 +164,10 @@ const E = {
   inQuad: u => u * u,
   inCubic: u => u * u * u,
   outCubic: u => 1 - Math.pow(1 - u, 3),
-  outQuint: u => 1 - Math.pow(1 - u, 5),
   inOutCubic: u => u < .5 ? 4*u*u*u : 1 - Math.pow(-2*u + 2, 3) / 2,
-  inOutQuint: u => u < .5 ? 16*u*u*u*u*u : 1 - Math.pow(-2*u + 2, 5) / 2,
   outBack: u => { const c = 1.70158; return 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); },
+  outBackSoft: u => { const c = 0.9; return 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); },
   outBackBig: u => { const c = 2.6; return 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); },
-  inOutBack: u => { const c = 1.70158 * 1.525; return u < .5 ? (Math.pow(2*u, 2) * ((c + 1) * 2*u - c)) / 2 : (Math.pow(2*u - 2, 2) * ((c + 1) * (u*2 - 2) + c) + 2) / 2; },
 };
 function spring(t, w = 14, z = 0.32) {
   if (t <= 0) return 0;
@@ -188,6 +188,17 @@ function catmull(P, u) {
   const p0 = P[Math.max(0, i - 1)], p1 = P[i], p2 = P[i + 1], p3 = P[Math.min(n, i + 2)];
   const f = (a, b, c, d) => 0.5 * (2*b + (-a + c)*s + (2*a - 5*b + 4*c - d)*s*s + (-a + 3*b - 3*c + d)*s*s*s);
   return [f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1])];
+}
+// A spline sampled by arc length, so speed along it is exactly what the easing says.
+function arcPath(P, n = 600) {
+  const pts = []; for (let i = 0; i <= n; i++) pts.push(catmull(P, i / n));
+  const cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i-1] + Math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1]));
+  return { pts, cum, len: cum[cum.length - 1] };
+}
+function pathAt(A, s) {
+  const d = clamp01(s) * A.len; let lo = 0, hi = A.cum.length - 1;
+  while (lo < hi - 1) { const m = (lo + hi) >> 1; if (A.cum[m] <= d) lo = m; else hi = m; }
+  return lerp2(A.pts[lo], A.pts[hi], (d - A.cum[lo]) / ((A.cum[hi] - A.cum[lo]) || 1));
 }
 function hash(n) {
   let x = Math.imul((n | 0) ^ 0x9e3779b9, 0x85ebca6b);
@@ -275,7 +286,11 @@ function chaikin(P, n = 2) {
   return P;
 }
 function dot(x, y, r, color = COLORS.ink) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fillStyle = color; ctx.fill(); }
-function puff(x, y, t0, t, n = 3, size = 10) {       // dust / steam puffs that pop and shrink
+function label(text, x, y, size, color = COLORS.ink, weight = 700) {
+  ctx.fillStyle = color; ctx.font = `${weight} ${size}px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, x, y);
+}
+function puff(x, y, t0, t, n = 3, size = 10) {
   for (let i = 0; i < n; i++) {
     const tt = t - t0 - i * 0.04; if (tt <= 0 || tt > 0.5) continue;
     const s = E.outBack(clamp01(tt / 0.16)) * (1 - E.inCubic(clamp01((tt - 0.2) / 0.3)));
@@ -284,10 +299,17 @@ function puff(x, y, t0, t, n = 3, size = 10) {       // dust / steam puffs that 
   }
 }
 
+// The Onesign logo, straight from public/Onesign-Logo-Black.svg (viewBox 785.08 × 166.13).
+const ONESIGN_LOGO = { w: 785.08, h: 166.13, mark: new Path2D('M136.34,132.33c14.04-12.74,21.06-30.09,21.06-52.04s-7-39.26-21.01-51.92c-14-12.66-33.19-18.99-57.58-18.99s-43.71,6.32-57.75,18.99C7.02,41.03,0,58.34,0,80.29s7.06,39.3,21.17,52.04c12.94,11.67,30.15,17.99,51.66,18.97v-59.11H28.68v-29.08h3.73c13.69,0,24.1-2.3,31.22-6.92,7.11-4.6,11.72-11.99,13.83-22.17h34.66v112.41c9.3-3.2,17.37-7.88,24.22-14.1M246.46,129.98h30.06v-53.42c0-8.9-.44-15.45-1.32-19.64-.87-4.18-2.34-7.83-4.39-10.94-3.34-4.98-8.09-8.81-14.24-11.51-6.15-2.7-13.3-4.05-21.44-4.05-7.21,0-13.98,1.43-20.31,4.31-6.32,2.86-12.15,7.15-17.48,12.83v-14.6h-30.05v97.01h30.05v-47.89c0-8.55,2.51-15.27,7.52-20.16,5.01-4.9,11.87-7.35,20.61-7.35,7.73,0,13.16,2.02,16.29,6.06,3.13,4.05,4.7,11.49,4.7,22.32v47.03h0ZM315.03,69.07c.53-5.91,2.98-10.61,7.34-14.09,4.36-3.49,10.01-5.24,16.92-5.24s12.63,1.74,16.96,5.19c4.34,3.45,6.76,8.19,7.3,14.23l-48.52-.09ZM314.15,89.29h82.78v-4.13c0-17.81-5.06-31.54-15.16-41.17-10.12-9.63-24.51-14.46-43.2-14.46s-32.18,4.65-42.61,13.93-15.65,21.93-15.65,37.92,5.23,28.67,15.69,38c10.46,9.35,24.65,14.02,42.56,14.02,14.14,0,26.11-3.04,35.95-9.1,9.84-6.06,16.76-14.65,20.74-25.78h-33.13c-1.82,4.45-4.78,7.89-8.87,10.32-4.11,2.42-9,3.64-14.69,3.64-7.26,0-13.09-2.08-17.52-6.28-4.42-4.18-6.72-9.82-6.89-16.91M435.76,58.18c0-2.75,1.72-4.93,5.15-6.5,3.43-1.58,8.18-2.37,14.27-2.37,7.27,0,12.83,1.04,16.7,3.12,3.87,2.08,6.15,5.25,6.86,9.54h30.05v-.88c0-9.83-4.59-17.56-13.8-23.15-9.2-5.6-21.94-8.4-38.22-8.4s-30.1,2.83-39.16,8.48c-9.05,5.66-13.57,13.81-13.57,24.48,0,8.2,2.93,14.98,8.79,20.34,5.85,5.36,13.79,8.47,23.81,9.35l27.15,2.38c6.92.52,11.45,1.34,13.59,2.45,2.14,1.12,3.2,2.93,3.2,5.44,0,2.83-1.88,5.1-5.67,6.87-3.77,1.75-8.8,2.63-15.07,2.63-9.14,0-15.84-1.08-20.08-3.25-4.25-2.17-6.61-5.69-7.08-10.54h-31.72c.64,11.65,5.7,20.44,15.16,26.36,9.46,5.9,23.19,8.88,41.17,8.88s31.32-3.02,40.55-9.05c9.23-6.04,13.83-14.85,13.83-26.46,0-8.49-2.79-15.24-8.38-20.25-5.6-5-13.61-7.89-24.04-8.66l-21.01-1.67c-8.2-.64-14-1.67-17.4-3.08-3.38-1.4-5.08-3.42-5.08-6.06M546.41,32.96h-29.87v97.01h29.87V32.96ZM516.54,23.3h29.87V0h-29.87v23.3ZM640.39,78.13c0,7.9-2.56,14.21-7.69,18.89-5.13,4.7-12.02,7.04-20.7,7.04s-15.66-2.34-20.78-7.04c-5.13-4.68-7.69-10.99-7.69-18.89s2.57-14.2,7.69-18.89,12.05-7.04,20.78-7.04,15.57,2.35,20.7,7.04c5.13,4.69,7.69,10.98,7.69,18.89M667.99,136.73c1.64-4.79,2.46-12.82,2.46-24.06V32.96h-30.06v8.79c-4.1-3.92-8.92-6.82-14.45-8.7s-12.11-2.81-19.73-2.81c-16.28,0-29.53,4.47-39.72,13.4s-15.29,20.42-15.29,34.48,5.11,25.74,15.33,34.54c10.23,8.77,23.63,13.18,40.21,13.18,7.38,0,13.82-.99,19.32-2.91,5.52-1.93,10.29-4.86,14.33-8.78v6.49c0,8.21-2.12,13.93-6.36,17.19-4.25,3.25-11.82,4.87-22.73,4.87-7.38,0-12.86-1-16.43-3.03s-5.36-5.09-5.36-9.18h-30.05v1.68c0,10.6,4.34,18.57,13.01,23.93,8.67,5.36,21.56,8.04,38.66,8.04,11.14,0,20.64-1.19,28.52-3.61,7.89-2.39,14.57-6.12,20.09-11.15,3.86-3.62,6.61-7.83,8.25-12.65M785.08,129.98v-53.42c0-8.9-.44-15.45-1.32-19.64-.88-4.18-2.34-7.83-4.39-10.94-3.34-4.98-8.08-8.81-14.24-11.51-6.15-2.7-13.3-4.05-21.44-4.05-7.2,0-13.97,1.43-20.3,4.31-6.33,2.86-12.16,7.15-17.49,12.83v-14.6h-30.05v97.01h30.05v-47.89c0-8.55,2.51-15.27,7.52-20.16,5-4.9,11.88-7.35,20.61-7.35,7.73,0,13.17,2.02,16.3,6.06,3.13,4.05,4.7,11.49,4.7,22.32v47.01h30.05v.02Z'), tag: new Path2D('M520.47,162.14h4.68v-17.99h-4.68v17.99ZM513.08,162.14h4.68v-17.99h-4.68v17.99ZM503.71,159.51c-.96,0-1.65-.54-1.65-1.45v-.05c0-.99.79-1.65,2.14-1.65.69,0,1.36.15,1.82.34v.62c.01,1.32-.95,2.19-2.31,2.19M502.04,162.44c1.75,0,3.01-.67,3.92-1.68v1.38h4.63v-7.66c0-1.87-.42-3.25-1.43-4.24-1.06-1.06-2.69-1.63-5.08-1.63s-3.89.42-5.4,1.03l.96,3.3c1.18-.47,2.27-.74,3.67-.74,1.8,0,2.66.79,2.66,2.17v.22c-.76-.27-1.97-.52-3.2-.52-3.13,0-5.22,1.43-5.22,4.19v.05c0,2.68,1.95,4.13,4.49,4.13M492.9,162.41c1.31,0,2.41-.3,3.25-.76v-3.67c-.57.27-1.16.44-1.77.44-.86,0-1.28-.39-1.28-1.33v-4.51h3.1v-3.77h-3.1v-3.38h-4.68v3.38h-1.58v3.77h1.58v5.42c0,3.18,1.67,4.41,4.48,4.41M480.48,162.44c3.25,0,5.45-1.53,5.45-4.46v-.05c0-2.59-2.09-3.5-4.73-4.24-1.4-.42-2.17-.67-2.17-1.18v-.05c0-.37.37-.64,1.08-.64,1.06,0,2.56.47,3.94,1.23l1.6-2.96c-1.53-.99-3.55-1.55-5.49-1.55-3.08,0-5.35,1.58-5.35,4.41v.05c0,2.69,2.09,3.57,4.73,4.26,1.4.39,2.14.62,2.14,1.13v.05c0,.47-.37.71-1.18.71-1.38,0-3.06-.52-4.58-1.53l-1.75,2.83c1.85,1.35,4.07,1.99,6.31,1.99M459.56,162.14h4.68v-7.22c0-1.45.84-2.24,1.97-2.24s1.87.79,1.87,2.24v7.22h4.68v-8.72c0-3.03-1.7-4.9-4.53-4.9-1.9,0-3.13,1.06-3.99,2.17v-1.87h-4.68v13.32ZM451.87,162.14h4.8v-17.25h-4.8v17.25ZM437.48,162.14h4.88v-4.8h-4.88v4.8ZM419.84,154.38c.25-1.45,1.08-2.41,2.32-2.41s2.14.94,2.32,2.41h-4.64ZM422.55,162.46c2.66,0,4.51-1.08,5.79-2.71l-2.59-2.14c-.96.94-1.85,1.36-2.96,1.36-1.45,0-2.51-.74-2.88-2.19h8.92c.02-.32.02-.67.02-.96,0-3.92-2.12-7.29-6.73-7.29-3.94,0-6.73,3.08-6.73,6.97v.05c.02,4.13,2.97,6.91,7.16,6.91M405.65,162.14h4.68v-4.14c0-3.08,1.38-4.48,3.82-4.48h.39v-4.93c-2.22-.1-3.45,1.08-4.21,2.91v-2.69h-4.68v13.33h0ZM394.46,162.44c1.9,0,3.13-1.01,3.99-2.12v1.82h4.68v-13.33h-4.68v7.22c0,1.45-.84,2.24-1.95,2.24s-1.9-.79-1.9-2.24v-7.22h-4.68v8.72c.01,3.04,1.71,4.91,4.54,4.91M384.71,162.41c1.31,0,2.41-.3,3.25-.76v-3.67c-.57.27-1.16.44-1.77.44-.86,0-1.28-.39-1.28-1.33v-4.51h3.1v-3.77h-3.1v-3.38h-4.68v3.38h-1.58v3.77h1.58v5.42c-.01,3.18,1.67,4.41,4.48,4.41M371.82,162.46c2.93,0,4.71-1.23,5.94-3.06l-3.13-2.27c-.74.86-1.45,1.38-2.56,1.38-1.58,0-2.66-1.31-2.66-3.03v-.05c0-1.63,1.11-2.96,2.61-2.96,1.13,0,1.85.52,2.49,1.4l3.18-2.37c-1.13-1.8-2.96-2.98-5.69-2.98-4.21,0-7.15,3.18-7.15,6.95v.05c0,3.79,2.96,6.94,6.97,6.94M356.13,159.51c-.96,0-1.65-.54-1.65-1.45v-.05c0-.99.79-1.65,2.14-1.65.69,0,1.36.15,1.82.34v.62c0,1.32-.96,2.19-2.31,2.19M354.45,162.44c1.75,0,3.01-.67,3.92-1.68v1.38h4.63v-7.66c0-1.87-.42-3.25-1.43-4.24-1.06-1.06-2.69-1.63-5.08-1.63s-3.89.42-5.4,1.03l.96,3.3c1.18-.47,2.27-.74,3.67-.74,1.8,0,2.66.79,2.66,2.17v.22c-.76-.27-1.97-.52-3.2-.52-3.13,0-5.22,1.43-5.22,4.19v.05c0,2.68,1.95,4.13,4.49,4.13M341.89,162.14h4.66v-9.58h2.98v-3.6h-3.06v-.32c0-.86.47-1.26,1.33-1.26.67,0,1.21.1,1.75.27v-3.3c-.74-.22-1.63-.37-3.06-.37-1.58,0-2.66.34-3.47,1.16-.79.79-1.13,1.92-1.13,3.45v.3h-1.55v3.67h1.55v9.58ZM329.86,162.44c1.9,0,3.13-1.01,3.99-2.12v1.82h4.68v-13.33h-4.68v7.22c0,1.45-.84,2.24-1.95,2.24s-1.9-.79-1.9-2.24v-7.22h-4.68v8.72c.01,3.04,1.71,4.91,4.54,4.91M309.81,162.14h4.68v-7.22c0-1.45.84-2.24,1.97-2.24s1.87.79,1.87,2.24v7.22h4.68v-8.72c0-3.03-1.7-4.9-4.53-4.9-1.9,0-3.13,1.06-3.99,2.17v-1.87h-4.68v13.32ZM300.54,159.51c-.96,0-1.65-.54-1.65-1.45v-.05c0-.99.79-1.65,2.14-1.65.69,0,1.36.15,1.82.34v.62c0,1.32-.95,2.19-2.31,2.19M298.87,162.44c1.75,0,3.01-.67,3.92-1.68v1.38h4.63v-7.66c0-1.87-.42-3.25-1.43-4.24-1.06-1.06-2.69-1.63-5.08-1.63s-3.89.42-5.4,1.03l.96,3.3c1.18-.47,2.27-.74,3.67-.74,1.8,0,2.66.79,2.66,2.17v.22c-.76-.27-1.97-.52-3.2-.52-3.13,0-5.22,1.43-5.22,4.19v.05c0,2.68,1.95,4.13,4.49,4.13M273.93,162.14h4.68v-9.86l4.39,6.7h.1l4.41-6.75v9.9h4.76v-17.25h-5.05l-4.11,6.68-4.11-6.68h-5.05v17.26h-.02ZM259.64,162.14h4.88v-4.8h-4.88v4.8ZM237.39,162.14h4.68v-7.22c0-1.45.84-2.24,1.97-2.24s1.87.79,1.87,2.24v7.22h4.68v-8.72c0-3.03-1.7-4.9-4.53-4.9-1.9,0-3.13,1.06-3.99,2.17v-1.87h-4.68v13.32ZM227.56,157.36c-1.6,0-2.73-1.08-2.73-2.56v-.05c0-1.48,1.13-2.59,2.73-2.59s2.71,1.08,2.71,2.56v.05c0,1.48-1.13,2.59-2.71,2.59M227.29,166.13c2.78,0,4.66-.67,5.86-1.87,1.18-1.18,1.72-2.88,1.72-5.32v-10.13h-4.68v1.58c-1.01-1.06-2.19-1.87-4.19-1.87-3.08,0-5.77,2.37-5.77,6.21v.05c0,3.82,2.64,6.18,5.91,6.18,1.95,0,3.18-.91,4.11-2v.52c0,2.12-1.16,3.28-3.5,3.28-1.8,0-3.23-.47-4.66-1.26l-1.5,3.1c1.95.99,4.11,1.53,6.7,1.53M213.44,162.14h4.68v-13.33h-4.68v13.33ZM213.35,147.61h4.88v-3.45h-4.88v3.45ZM205.98,162.44c3.25,0,5.45-1.53,5.45-4.46v-.05c0-2.59-2.09-3.5-4.73-4.24-1.4-.42-2.17-.67-2.17-1.18v-.05c0-.37.37-.64,1.08-.64,1.06,0,2.56.47,3.94,1.23l1.6-2.96c-1.53-.99-3.55-1.55-5.49-1.55-3.08,0-5.35,1.58-5.35,4.41v.05c0,2.69,2.09,3.57,4.73,4.26,1.4.39,2.14.62,2.14,1.13v.05c0,.47-.37.71-1.18.71-1.38,0-3.06-.52-4.58-1.53l-1.75,2.83c1.85,1.35,4.07,1.99,6.31,1.99M189.67,154.38c.25-1.45,1.08-2.41,2.32-2.41s2.14.94,2.32,2.41h-4.64ZM192.38,162.46c2.66,0,4.51-1.08,5.79-2.71l-2.59-2.14c-.96.94-1.85,1.36-2.96,1.36-1.45,0-2.51-.74-2.88-2.19h8.92c.02-.32.02-.67.02-.96,0-3.92-2.12-7.29-6.73-7.29-3.94,0-6.73,3.08-6.73,6.97v.05c.01,4.13,2.97,6.91,7.16,6.91M171.98,157.91v-8.77h1.95c2.86,0,4.76,1.6,4.76,4.36v.05c0,2.78-1.9,4.36-4.76,4.36h-1.95ZM167.2,162.14h6.55c6.21,0,9.83-3.7,9.83-8.67v-.05c0-4.98-3.57-8.53-9.73-8.53h-6.65v17.25h0Z') };
+function drawOnesignLogo(cx, cy, width, color = COLORS.ink, tagColor = COLORS.teal) {
+  const s = width / ONESIGN_LOGO.w;
+  ctx.save(); ctx.translate(cx - width / 2, cy - ONESIGN_LOGO.h * s / 2); ctx.scale(s, s);
+  ctx.fillStyle = color; ctx.fill(ONESIGN_LOGO.mark); ctx.fillStyle = tagColor; ctx.fill(ONESIGN_LOGO.tag);
+  ctx.restore();
+}
+
 /* ==========================================================================
    Characters: geometric body, dot eyes, stick legs and arms.
-   state: x, y (ground), sx, sy, rot, look [x,y], blink, legs {mode, phase, amt},
-          hands [[x,y]|null, [x,y]|null], handStyle [null|'thumb'], skipArm, dir ±1, jump
    ========================================================================== */
 
 function charFrame(spec, st) {
@@ -316,32 +338,25 @@ function drawCharacter(spec, st) {
     if (legs.mode === 'walk') {
       const ph = legs.phase + (side > 0 ? Math.PI : 0);
       foot = [hip[0] + Math.sin(ph) * 20 * k * legs.amt, st.y - Math.max(0, Math.cos(ph)) * 10 * k * legs.amt];
-    } else if (legs.mode === 'sit') {
-      foot = [hip[0] + Math.sin(st.t * 2.6 + side * 1.3) * 5 + side * 4, hip[1] + spec.legLen];
-    } else if (legs.mode === 'air') {
-      foot = [hip[0] + side * 10, hip[1] + spec.legLen * 0.8];
-    } else if (legs.mode === 'climb') {
-      foot = [hip[0] + side * 8, hip[1] + spec.legLen * (side > 0 ? 0.75 : 1)];
-    } else {
-      foot = [hip[0] + side * 6, st.y - (st.jump || 0) * 0];
-    }
+    } else if (legs.mode === 'sit') foot = [hip[0] + Math.sin(st.t * 2.6 + side * 1.3) * 5 + side * 4, hip[1] + spec.legLen];
+    else if (legs.mode === 'air') foot = [hip[0] + side * 10, hip[1] + spec.legLen * 0.8];
+    else if (legs.mode === 'climb') foot = [hip[0] + side * 8, hip[1] + spec.legLen * (side > 0 ? 0.75 : 1)];
+    else foot = [hip[0] + side * 6, st.y];
     sk([hip, foot], { width: 3.4 });
     sk([foot, [foot[0] + dir * 11, foot[1]]], { width: 3.4 });
   }
   const sh = [0, 1].map(i => shoulderOf(spec, f, i));
   const hands = [0, 1].map(i => st.hands && st.hands[i] ? st.hands[i]
     : [sh[i][0] + (i ? 10 : -10) + Math.sin((legs.phase || 0) + i*Math.PI) * 12 * k * (legs.amt || 0), sh[i][1] + h * 0.3]);
-
   sk(bodyShape(spec).map(p => L2W(p[0], p[1])), { closed: true, fill: spec.color, width: 3.6 });
-
   const lx = (st.look ? st.look[0] : 0) * 9 * k, ly = (st.look ? st.look[1] : 0) * 8 * k;
   if (spec.goggles) {
-    const a = L2W(-w * 0.36, -h * spec.eyeY), b = L2W(w * 0.36, -h * spec.eyeY);
-    sk([a, b], { width: 4.5 });
+    sk([L2W(-w * 0.36, -h * spec.eyeY), L2W(w * 0.36, -h * spec.eyeY)], { width: 4.5 });
     for (const side of [-1, 1]) { const e = L2W(side * spec.eyeGap / 2, -h * spec.eyeY); sk(circle(e[0], e[1], spec.eyeR * 2.3), { closed: true, fill: COLORS.tealSoft, width: 3 }); }
   }
   for (const side of [-1, 1]) {
-    const e = L2W(side * spec.eyeGap / 2 + lx * (spec.goggles ? 0.5 : 1), -h * spec.eyeY + ly * (spec.goggles ? 0.5 : 1));
+    const g = spec.goggles ? 0.5 : 1;
+    const e = L2W(side * spec.eyeGap / 2 + lx * g, -h * spec.eyeY + ly * g);
     if ((st.blink || 0) > 0.5) sk([[e[0] - 6, e[1]], [e[0] + 6, e[1]]], { width: 3, amp: 0.4 });
     else dot(e[0], e[1], spec.eyeR);
   }
@@ -375,6 +390,15 @@ const walkState = (x, amt) => ({ mode: 'walk', phase: x / 34, amt });
    Hero: the BLOOM wordmark. Monoline skeletons in letter units (cap height 1).
    ========================================================================== */
 
+function partial(pts, len) {
+  const out = [pts[0]]; let acc = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const d = Math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1]);
+    if (acc + d >= len) { const u = (len - acc) / (d || 1); out.push([lerp(pts[i-1][0], pts[i][0], u), lerp(pts[i-1][1], pts[i][1], u)]); return out; }
+    out.push(pts[i]); acc += d;
+  }
+  return out;
+}
 const WORDMARK = (() => {
   const arc = (cx, cy, r, a0, a1, n = 14) => { const o = []; for (let i = 0; i <= n; i++) { const a = lerp(a0, a1, i/n); o.push([cx + r*Math.cos(a), cy + r*Math.sin(a)]); } return o; };
   const H = Math.PI / 2, gap = 0.26;
@@ -398,21 +422,10 @@ const WORDMARK = (() => {
     }
     x += l.w + gap;
   });
-  // LED positions along each letter
   const leds = [];
   strokes.forEach(s => { let acc = 0.12; while (acc < s.len - 0.05) { leds.push({ p: partial(s.pts, acc).pop(), li: s.li }); acc += 0.3; } });
   return { strokes, total, centers, leds, length: strokes.reduce((s, k) => s + k.len, 0), unit: HERO.wordmarkWidth / total, count: letters.length };
 })();
-
-function partial(pts, len) {
-  const out = [pts[0]]; let acc = 0;
-  for (let i = 1; i < pts.length; i++) {
-    const d = Math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1]);
-    if (acc + d >= len) { const u = (len - acc) / (d || 1); out.push([lerp(pts[i-1][0], pts[i][0], u), lerp(pts[i-1][1], pts[i][1], u)]); return out; }
-    out.push(pts[i]); acc += d;
-  }
-  return out;
-}
 function jitter(pts, amp, seed) {
   let L = 0;
   return pts.map((p, i) => {
@@ -430,7 +443,6 @@ const Fh = F => F.w / HERO.aspect;
 const Fpt = (F, u, v) => [F.cx + u * F.w / 2, F.cy + v * F.w / 2];
 const letterH = F => F.w / 2 * WORDMARK.unit;
 
-// Printed wordmark. opts: reveal, sketch (1 = scribble, 0 = clean vector), alpha, hide(li)
 function drawWordmark(F, { reveal = 1, sketch = 0, alpha = 1, hide = null, color = null } = {}) {
   if (reveal <= 0) return;
   ctx.save();
@@ -451,7 +463,7 @@ function drawWordmark(F, { reveal = 1, sketch = 0, alpha = 1, hide = null, color
   ctx.restore();
 }
 
-// Fabricated letters with depth. o: depth(li), off(li) world [dx,dy], squash(li), show(li), glow 0..1, leds count
+// Fabricated letters with depth. o: depth(li), off(li), squash(li), rot(li), show(li), glow 0..1, leds
 function drawLetters(cx, cy, H, o = {}) {
   const pxPerWorld = worldScale() * BASE_SCALE;
   ctx.save(); ctx.translate(cx, cy); ctx.scale(H, H);
@@ -463,7 +475,6 @@ function drawLetters(cx, cy, H, o = {}) {
     ctx.translate(lc, 0.5); ctx.rotate(o.rot ? o.rot(li) : 0); ctx.scale(1 / Math.sqrt(s), s); ctx.translate(-lc, -0.5);
   };
   const strokesOf = li => WORDMARK.strokes.filter(s => s.li === li);
-  // glow behind
   if (o.glow > 0.01) {
     each(li => {
       ctx.save(); place(li);
@@ -483,10 +494,9 @@ function drawLetters(cx, cy, H, o = {}) {
     const fp = pts => pts.map(p => [p[0] + V[0]*d, p[1] + V[1]*d]);
     for (const s of strokesOf(li)) sk(fp(s.pts), { width: 0.2, amp: INK.boil * 0.6 });
     for (const s of strokesOf(li)) sk(fp(s.pts), { width: 0.13, stroke: face, amp: 0 });
-    // LEDs on the face
     if (o.leds) {
       WORDMARK.leds.forEach((L, i) => {
-        if (L.li !== li || i >= o.leds.count) return;
+        if (L.li !== li) return;
         const pop = E.outBackBig(clamp01((o.leds.t - o.leds.times[i]) / 0.18));
         if (pop > 0.02) { ctx.beginPath(); ctx.arc(L.p[0] + V[0]*d, L.p[1] + V[1]*d, 0.035 * pop, 0, Math.PI * 2); ctx.fillStyle = COLORS.led; ctx.fill(); ctx.lineWidth = 0.012; ctx.strokeStyle = COLORS.ink; ctx.stroke(); }
       });
@@ -496,10 +506,9 @@ function drawLetters(cx, cy, H, o = {}) {
   ctx.restore();
 }
 
-// Bubble ↔ bezel outline around F. m: 0 = thought bubble, 1 = monitor bezel.
 function frameOutline(F, m) {
   const e = E.inOutSine(clamp01(m));
-  const n = lerp(2.6, 12, e), margin = lerp(62, 26, e), bump = 15 * (1 - e);
+  const n = lerp(2.6, 12, e), margin = lerp(62, 24, e), bump = 15 * (1 - e);
   const hw = F.w / 2 + margin, hh = Fh(F) / 2 + margin, out = [];
   for (let i = 0; i < 120; i++) {
     const a = i / 120 * Math.PI * 2, c = Math.cos(a), s = Math.sin(a);
@@ -517,7 +526,7 @@ function drawHeroFrame(F, t, scale = 1, opts = {}) {
   const m = morphAt(t);
   ctx.save();
   ctx.translate(F.cx, F.cy); ctx.scale(scale, scale); ctx.translate(-F.cx, -F.cy);
-  const bezelTone = E.inOutSine(clamp01((m - 0.55) / 0.45));       // stays paper until the bubble has left the frame
+  const bezelTone = E.inOutSine(clamp01((m - 0.55) / 0.45));
   sk(frameOutline(F, m), { closed: true, fill: mixHex(COLORS.paperHi, COLORS.bezel, bezelTone), width: 4 });
   const h = Fh(F);
   ctx.fillStyle = opts.peeling ? COLORS.screenOff : COLORS.paperHi;
@@ -529,9 +538,9 @@ function drawHeroFrame(F, t, scale = 1, opts = {}) {
 }
 
 /* ==========================================================================
-   The sheet: peel (cylinder curl) → toss → flight → catch → slap onto the bed.
-   One object; its geometry always lives in studio-monitor coordinates and is
-   carried by a rigid pose that pins its top-right corner to a point H.
+   The sheet: peel (cylinder curl) → one continuous throw → catch → pressed
+   onto the bed. Its geometry always lives in studio-monitor coordinates and
+   a rigid pose pins its top-right corner to a point H.
    ========================================================================== */
 
 const PEEL = (() => {
@@ -562,35 +571,38 @@ function clipHalf(poly, f) {
 const cornerAt = (p, r) => { const a = curlMap(p, p, r)[0]; return [PEEL.C[0] + a * PEEL.d[0], PEEL.C[1] + a * PEEL.d[1]]; };
 const Q_END = cornerAt(PEEL.Dmax, R_END);
 const C_BED = [BED.cx + BED.w / 2, BED.cy - Fh(BED) / 2];
-const TOSS_PTS = [Q_END, [840, 360], [700, 250], [520, 280]];
-const FLIGHT_PTS = [[520, 280], [230, 90], [-120, 150], [-360, 260], [-560, 380], [-650, 470]];
-const CATCH_HOLD = [-640, 470];
+const CATCH = [-600, 560];
+// One smooth path from the pinched corner, over the designer's head, through the hatch, into the fabricator's hands.
+const THROW = arcPath([Q_END, [Q_END[0] - 50, Q_END[1] - 150], [720, 250], [520, 232], [290, 222], [40, 242], [-230, 300], [-440, 410], CATCH]);
+const throwS = t => 1 - Math.pow(1 - prog(t, T.toss[0], T.flight[1]), 1.7);   // leaves the peel at speed, eases into the catch
 
 function sheetPose(t) {
   if (t < T.peel[0]) return null;
-  const Dm = PEEL.Dmax;
+  const Dm = PEEL.Dmax, full = -Math.PI * 2;
   if (t < T.peel[1]) { const p = Dm * E.inQuad(prog(t, T.peel[0], T.peel[1])); return { stage: 'peel', p, r: peelRadius(p), H: null }; }
-  if (t < T.toss[1]) {
-    const u = prog(t, T.toss[0], T.toss[1]);
-    return { stage: 'toss', p: Dm, r: R_END, H: catmull(TOSS_PTS, E.outCubic(u) * 0.35 + u * 0.65), ang: -1.5 * E.inQuad(u), flip: 1, scale: 1 };
-  }
   if (t < T.flight[1]) {
-    const u = prog(t, T.flight[0], T.flight[1]), e = E.inOutSine(u);
-    return { stage: 'flight', p: Dm, r: R_END * (1 + 60 * E.inCubic(u)), H: catmull(FLIGHT_PTS, lerp(u, e, 0.6)),
-             ang: lerp(-1.5, -Math.PI * 2 + 0.18, e), flip: Math.cos(Math.PI * 4 * e), scale: 1 + 0.16 * Math.sin(Math.PI * u) };
+    const u = prog(t, T.toss[0], T.flight[1]);
+    const r = t < T.toss[1] ? R_END : t < 11.9 ? R_END * (1 + 80 * E.inCubic(prog(t, T.toss[1], 11.9))) : 1e7;
+    return { stage: t < T.toss[1] ? 'toss' : 'flight', p: Dm, r, H: pathAt(THROW, throwS(t)),
+             ang: (full + 0.12) * E.inOutSine(u), flip: Math.cos(Math.PI * 2 * E.inOutSine(prog(t, 10.95, 12.15))),
+             scale: lerp(1, PAPER, E.inOutSine(prog(t, T.toss[0], 11.5))) };
   }
-  const flat = 1e7;
   if (t < T.catch[1]) {
-    const k = t - T.catch[0];
-    return { stage: 'held', p: Dm, r: flat, H: [CATCH_HOLD[0], CATCH_HOLD[1] + 14 * settle(k, 18, 0.3)], ang: 0.18 - 0.08 * E.outCubic(prog(t, T.catch[0], T.catch[1])), flip: 1, scale: 1 };
+    return { stage: 'held', p: Dm, r: 1e7, H: [CATCH[0], CATCH[1] + 10 * settle(t - T.catch[0], 16, 0.3)],
+             ang: lerp(full + 0.12, full, E.outCubic(prog(t, T.catch[0], T.catch[1]))), flip: 1, scale: PAPER };
   }
-  if (t < T.slap[1]) {
-    const u = E.inOutBack(prog(t, T.slap[0], T.slap[1]));
-    return { stage: 'held', p: Dm, r: flat, H: lerp2(CATCH_HOLD, C_BED, u), ang: lerp(0.1, 0, u), flip: 1, scale: 1 };
+  if (t < T.place[1]) {
+    return { stage: 'held', p: Dm, r: 1e7, H: lerp2(CATCH, C_BED, E.inOutCubic(prog(t, T.place[0], T.place[0] + 0.42))),
+             ang: full, flip: 1, scale: lerp(PAPER, 1, E.outBackSoft(prog(t, T.place[0] + 0.28, T.place[1]))) };
   }
   return { stage: 'bed' };
 }
-function sheetHand(t) { const S = sheetPose(t); if (!S) return null; return S.H || cornerAt(S.p, S.r); }
+function sheetHand(t) { const S = sheetPose(t); if (!S || S.stage === 'bed') return null; return S.H || cornerAt(S.p, S.r); }
+function poseApply(S, P) {                // where a flat-sheet point sits under the pose
+  const Q = cornerAt(S.p, S.r), vx = (P[0] - Q[0]) * S.flip * S.scale, vy = (P[1] - Q[1]) * S.scale;
+  const c = Math.cos(S.ang), s = Math.sin(S.ang);
+  return [S.H[0] + vx * c - vy * s, S.H[1] + vx * s + vy * c];
+}
 
 function drawSheetContent(F) {
   ctx.fillStyle = COLORS.paperHi;
@@ -611,9 +623,9 @@ function drawSheet(t, layer) {
     if (!S.H) { const flat = clipHalf(corners, P => aOf(P) - p); if (flat.length > 2) { ctx.save(); trace(flat, true); ctx.clip(); drawSheetContent(F); ctx.restore(); } }
     ctx.restore(); return;
   }
-  if (r > 1e5) {                          // flat: one pass
+  if (r > 1e5) {
     if (back) { ctx.fillStyle = COLORS.underside; ctx.fillRect(F.cx - F.w/2, F.cy - PEEL.h/2, F.w, PEEL.h); } else drawSheetContent(F);
-    sk(poly(corners, true, 10), { closed: true, width: 2.6, amp: 0.8 });
+    sk(poly(corners, true, 10), { closed: true, width: 2.6 / Math.max(0.3, S.scale), amp: 0.8 });
     ctx.restore(); return;
   }
   const N = 44, strips = [];
@@ -626,7 +638,7 @@ function drawSheet(t, layer) {
     const off = (a0 - A0) - k * (d[0] * C[0] + d[1] * C[1] + A0);
     strips.push({ pl, M: [1 + k*d[0]*d[0], k*d[0]*d[1], k*d[0]*d[1], 1 + k*d[1]*d[1], d[0]*off, d[1]*off], hm: (h0 + h1) / 2, th: (th0 + th1) / 2 });
   }
-  if (!S.H) for (const s of strips) {     // shadow on the screen while it's still attached
+  if (!S.H) for (const s of strips) {
     ctx.save(); ctx.transform(...s.M); ctx.translate(s.hm * 0.10, s.hm * 0.16);
     trace(s.pl, true); ctx.fillStyle = `rgba(35,40,43,${0.05 + 0.05 * Math.min(1, s.hm / 60)})`; ctx.fill(); ctx.restore();
   }
@@ -639,13 +651,13 @@ function drawSheet(t, layer) {
     ctx.restore();
   }
   const edge = poly(corners, true, 8).map(P => { const a = aOf(P); if (a >= p) return P; const a2 = curlMap(p - a, p, r)[0]; return [P[0] + (a2 - a) * d[0], P[1] + (a2 - a) * d[1]]; });
-  sk(edge, { closed: true, width: 2.6, amp: 0.8 });
+  sk(edge, { closed: true, width: 2.6 / Math.max(0.3, S.scale || 1), amp: 0.8 });
   ctx.restore();
 }
 
 /* ==========================================================================
-   Camera: {world, cx, cy, zoom, roll} per t. Never parked; whips, punch-ins,
-   tracking with lag, tilted framing on big moves, shake on impacts.
+   Camera: calm and deliberate. Slow pans, gentle push-ins, follows with a
+   little lag, almost no roll. Composed for 9:16 first.
    ========================================================================== */
 
 const cam = (cx, cy, zoom = 1, roll = 0) => ({ cx, cy, zoom, roll });
@@ -657,79 +669,71 @@ function camKeys(t, ks) {
   return val(ks[ks.length - 1]);
 }
 const fcam = (F, w) => cam(F.cx, F.cy, w / F.w, 0);
-const shake = (t, t0, amp) => t < t0 ? 0 : amp * settle(t - t0, 38, 0.22);
+const shake = (t, t0, amp) => t < t0 ? 0 : amp * settle(t - t0, 30, 0.3);
 
 const S1_CAM = [
-  [0,    cam(960, 540, 1)],
-  [0.95, t => cam(customerState(t).x + 250, 640, 1.34, 0.012), E.inOutSine],
-  [1.8,  t => cam(customerState(t).x + 230, 630, 1.36, 0.01)],
-  [2.35, cam(900, 380, 1.3, -0.012), E.inOutCubic],
-  [3.05, cam(1000, 455, 1.32, 0), E.inOutSine],
-  [4.0,  cam(1040, 448, 1.4, 0), E.inOutSine],
+  [0,   cam(960, 540, 1)],
+  [1.0, t => cam(customerState(t).x + 140, 600, 1.18), E.inOutSine],
+  [1.8, t => cam(customerState(t).x + 130, 590, 1.2)],
+  [2.45, cam(880, 440, 1.16), E.inOutCubic],
+  [3.1, cam(905, 452, 1.24), E.inOutSine],
+  [4.0, cam(915, 442, 1.3), E.inOutSine],
 ];
+const followSheet = t => { const h = sheetHand(t - 0.2) || CATCH; return cam(h[0] - 30, h[1] + 70, keys(t, [[10.3, 1.2], [11.4, 1.02], [12.45, 1.26]], E.inOutSine), 0); };
 function mainCam(t) {
-  const H = sheetHand;
   return camKeys(t, [
     [T.pull[0], fcam(WORLDS.main.F, PUSH_MAX_W)],
-    [T.pull[1], cam(900, 470, 1.18, -0.015), E.outCubic],
-    [7.95, cam(935, 450, 1.3, -0.008), E.inOutSine],
-    [8.22, cam(1380, 640, 1.72, 0.03), E.inOutQuint],                      // whip to the printer
-    [8.85, cam(1400, 652, 1.8, 0.022), E.inOutSine],
-    [9.08, cam(690, 560, 1.6, -0.025), E.inOutQuint],                       // whip back to the designer
-    [9.28, cam(700, 552, 1.62, -0.02), E.inOutSine],
-    [9.7,  cam(870, 440, 1.12, 0), E.inOutCubic],
-    [10.3, cam(820, 445, 1.22, -0.03), E.inOutSine],
-    [10.7, cam(560, 360, 1.02, 0.025), E.inOutSine],
-    [11.05, t => { const h = H(t - 0.14) || [0, 0]; return cam(h[0] - 110, h[1] + 70, keys(t, [[10.75, 1.0], [11.7, 0.8], [12.55, 1.22]]), 0.035 * Math.sin((t - 10.75) * 3)); }, E.inOutSine],
-    [12.45, t => { const h = H(t - 0.14) || [0, 0]; return cam(h[0] - 110, h[1] + 70, keys(t, [[10.75, 1.0], [11.7, 0.8], [12.55, 1.22]]), 0.035 * Math.sin((t - 10.75) * 3)); }],
-    [12.9, cam(-760, 520, 1.45, 0.02), E.outCubic],                         // the catch
-    [13.55, cam(-1060, 450, 1.3, -0.012), E.inOutCubic],                    // the slap
-    [13.9, cam(-1180, 440, 1.36, 0), E.inOutSine],
-    [16.2, t => { const r = routerHead(t); return cam(lerp(-1250, r[0], 0.4), lerp(430, r[1], 0.4), keys(t, [[13.9, 1.36], [16.2, 1.75]], E.inOutSine), 0); }, E.inOutSine],
-    [17.3, cam(-1170, 470, 1.24, 0.03), E.outCubic],                        // letters rise
-    [18.6, cam(-1040, 480, 1.36, 0), E.inOutSine],
-    [18.85, cam(-820, 560, 1.85, -0.03), E.outBack],                        // punch-in: thumbs up
-    [19.15, cam(-830, 560, 1.9, -0.03)],
-    [19.5, cam(-1160, 450, 1.3, 0), E.inOutCubic],
-    [20.5, cam(-1240, 450, 1.46, 0.01), E.inOutSine],
-    [21.4, t => { const p = parcelPos(t); return cam(p[0] - 60, p[1] + 60, 0.98, 0.035); }, E.inOutCubic],   // whip after the parcel
-    [21.8, cam(-3000, 690, 1.28, 0), E.outCubic],
-    [22.45, cam(-3010, 690, 1.3, 0), E.inOutSine],
-    [22.9, t => cam(vanX(t) - 210, 690, 1.15, 0.012 * Math.sin(t * 2.2)), E.inOutSine],
-    [25.4, t => cam(vanX(t) - 210, 690, 1.15, 0.012 * Math.sin(t * 2.2))],
-    [26.2, cam(OX + 1400, 590, 1.12, 0), E.inOutSine],
-    [27.25, cam(OX + 1200, 560, 1.2, 0.01), E.inOutSine],
+    [T.pull[1], cam(905, 470, 1.15), E.outCubic],
+    [7.95, cam(915, 460, 1.22), E.inOutSine],
+    [8.5,  cam(1210, 600, 1.3, 0.004), E.inOutCubic],                      // pan across to the printer
+    [9.0,  cam(1230, 606, 1.33, 0.004), E.inOutSine],
+    [9.45, cam(885, 468, 1.18), E.inOutCubic],                            // and back
+    [10.3, cam(865, 455, 1.24), E.inOutSine],
+    [10.85, followSheet, E.inOutSine],
+    [12.25, followSheet],
+    [12.8, cam(-650, 580, 1.3), E.inOutSine],
+    [13.6, cam(-830, 540, 1.26), E.inOutSine],
+    [13.95, cam(-960, 520, 1.3), E.inOutSine],
+    [16.2, t => { const r = routerHead(t); return cam(lerp(-980, r[0], 0.2), lerp(520, r[1], 0.2), keys(t, [[13.95, 1.3], [16.2, 1.42]], E.inOutSine)); }, E.inOutSine],
+    [17.3, cam(-990, 540, 1.3), E.inOutSine],
+    [18.55, cam(-920, 560, 1.32), E.inOutSine],
+    [18.95, cam(-810, 610, 1.42), E.inOutSine],
+    [19.35, cam(-815, 610, 1.44), E.inOutSine],
+    [19.75, cam(-980, 540, 1.3), E.inOutSine],
+    [20.5, cam(-1040, 530, 1.36), E.inOutSine],
+    [20.85, t => { const p = parcelPos(t - 0.08); return cam(p[0], p[1] - 20, 1.08); }, E.inOutSine],
+    [21.3, t => { const p = parcelPos(t - 0.08); return cam(p[0], p[1] - 20, 1.02); }],
+    [21.8, cam(VAN_START + 20, 760, 0.98), E.inOutCubic],
+    [22.3, cam(VAN_START + 20, 760, 0.98), E.inOutSine],
+    [22.9, t => cam(vanX(t) + 20, 750, 0.98), E.inOutSine],
+    [25.5, t => cam(vanX(t) + 20, 750, 0.98)],
+    [26.25, cam(OX + 440, 620, 1.04), E.inOutSine],
+    [27.2, cam(OX + 720, 520, 1.14), E.inOutSine],
     ...fitCamKeys(),
-    [29.7, cam(OX + 960, 430, 1.16, 0), E.inOutCubic],
-    [30.9, cam(OX + 880, 500, 1.1, 0), E.inOutSine],
-    [31.7, cam(OX + 960, 540, 1, 0), E.inOutCubic],
+    [29.75, cam(OX + 900, 440, 1.14), E.inOutCubic],
+    [30.9, cam(OX + 620, 540, 1.08), E.inOutSine],
+    [31.7, cam(OX + 960, 540, 1), E.inOutCubic],
   ]);
 }
-function fitCamKeys() {                    // punch in on each letter as it clunks home
+function fitCamKeys() {                    // ease along the fascia, letter by letter
   const out = [];
   for (let i = 0; i < WORDMARK.count; i++) {
-    const tl = T.letter0 + i * T.letterStep + T.letterDur;
-    const x = FASCIA.cx + WORDMARK.centers[i] * FASCIA.H;
-    out.push([tl - 0.05, cam(x, 270, 1.7, (i % 2 ? 1 : -1) * 0.018), E.inOutQuint]);
-    out.push([tl + 0.25, cam(x + 10, 272, 1.74, (i % 2 ? 1 : -1) * 0.014), E.inOutSine]);
+    const tl = T.letter0 + i * T.letterStep + T.letterDur, x = FASCIA.cx + WORDMARK.centers[i] * FASCIA.H;
+    out.push([tl, cam(lerp(x, OX + 960, 0.35), 330, 1.36), E.inOutSine]);
   }
   return out;
 }
-
 function camera(t) {
   let c, world;
   if (t < T.push[0]) { world = 'street'; c = camKeys(t, S1_CAM); }
   else if (t < T.push[1]) {
     world = 'street';
-    const from = camKeys(T.push[0], S1_CAM), to = fcam(WORLDS.street.F, PUSH_MAX_W);
-    c = camLerp(from, to, E.inCubic(prog(t, T.push[0], T.push[1])));
+    c = camLerp(camKeys(T.push[0], S1_CAM), fcam(WORLDS.street.F, PUSH_MAX_W), E.inCubic(prog(t, T.push[0], T.push[1])));
   } else { world = 'main'; c = mainCam(t); }
-  // impact shake
-  let sx = 0, sy = 0;
-  const hits = [[T.catch[0], 7], [T.slap[1], 9], [T.doors[1], 8], [T.drive[1], 5], [T.halo, 3]];
-  for (let i = 0; i < WORDMARK.count; i++) hits.push([T.letter0 + i * T.letterStep + T.letterDur, 6]);
-  for (const [t0, a] of hits) { sy += shake(t, t0, a); sx += shake(t, t0 + 0.02, a * 0.6); }
-  return { world, cx: c.cx + sx / c.zoom, cy: c.cy + sy / c.zoom, zoom: c.zoom, roll: c.roll };
+  let sy = 0;
+  for (let i = 0; i < WORDMARK.count; i++) sy += shake(t, T.letter0 + i * T.letterStep + T.letterDur, 2.5);
+  sy += shake(t, T.place[1] - 0.05, 2.5);
+  return { world, cx: c.cx, cy: c.cy + sy / c.zoom, zoom: c.zoom, roll: c.roll };
 }
 
 /* ==========================================================================
@@ -748,7 +752,7 @@ function customerState(t) {
   const lookUp = E.outBack(prog(t, T.lookUp, T.lookUp + 0.28));
   return {
     t, x, y: 880, sx: 1 / Math.sqrt(sy), sy, rot, dir: 1,
-    look: [lerp(0.6, 0.45, lookUp), lerp(0.1, -1, lookUp)],
+    look: [lerp(0.6, 0.35, lookUp), lerp(0.1, -1, lookUp)],
     blink: (t > T.blink1 && t < T.blink1 + 0.12) || (t > 0.9 && t < 1.0) ? 1 : 0,
     legs: amt > 0.001 ? walkState(x, amt) : { mode: 'stand' },
   };
@@ -762,7 +766,6 @@ function drawShopBlock(t, opts = {}) {
   sk(rect(560, -900, 800, 1780), { closed: true, fill: COLORS.facade });
   for (const x of [640, 1060]) sk(rect(x, -440, 220, 300), { closed: true, fill: COLORS.glass, width: 3 });
   sk([[640, -290], [860, -290]], { width: 2.4 }); sk([[1060, -290], [1280, -290]], { width: 2.4 });
-  // fascia: blank and tired, or lit
   const I = opts.halo || 0;
   if (I > 0.01) {
     const g = ctx.createRadialGradient(960, 206, 40, 960, 206, 520);
@@ -797,7 +800,7 @@ function drawShopBlock(t, opts = {}) {
 function drawStreet(t) {
   drawShopBlock(t);
   drawCharacter(CHARACTERS.customer, customerState(t));
-  const puffs = [[768, 588, 10], [803, 562, 14], [846, 536, 19]];
+  const puffs = [[762, 596, 8], [783, 574, 11], [808, 553, 14]];
   puffs.forEach(([x, y, r], i) => {
     const s = E.outBackBig(prog(t, T.cloud[i], T.cloud[i] + 0.26));
     if (s > 0.01) sk(circle(x, y, r * s), { closed: true, fill: COLORS.paperHi, width: 3 });
@@ -807,14 +810,15 @@ function drawStreet(t) {
 }
 
 /* ==========================================================================
-   Scenes 2–3: the studio (main world, x -330 … 1950)
+   Scenes 2–3: the design studio (main world, x -330 … 1950)
    ========================================================================== */
 
+const DESIGNER_X = 640;
 function designerState(t) {
   let rot = 0, sy = 1 + 0.015 * Math.sin(t * 2.4), look = [0.8, -0.1];
   for (const c of T.clicks) sy -= 0.05 * Math.max(0, settle(t - c + 0.02, 22, 0.35));
-  const g = E.outBack(prog(t, T.glance, T.glance + 0.22)) * (1 - E.inOutCubic(prog(t, 8.85, 8.98)));
-  look = [lerp(look[0], 1, g), lerp(look[1], 0.55, g)]; rot += 0.06 * g;
+  const g = E.outBack(prog(t, T.glance, T.glance + 0.3)) * (1 - E.inOutCubic(prog(t, 8.9, 9.05)));
+  look = [lerp(look[0], 1, g), lerp(look[1], 0.45, g)]; rot += 0.05 * g;
   if (t > T.shake[0] && t < T.shake[1] + 0.2) {
     const u = prog(t, T.shake[0], T.shake[1]), sh = Math.sin(u * Math.PI * 5) * (1 - u) * (t < T.shake[1] ? 1 : 0);
     rot += 0.09 * sh; look = [-sh * 0.9, 0.1];
@@ -826,26 +830,27 @@ function designerState(t) {
   if (t > T.peel[1] - 0.1) { const u = E.inOutCubic(prog(t, T.peel[1] - 0.1, T.toss[1])); look = [lerp(0.9, -1, u), lerp(-0.2, -0.9, u)]; }
   if (t > T.toss[1] + 0.9) look = [-0.6, -0.3];
   const blink = [5.9, 7.7, 9.35, 11.9].some(b => t > b && t < b + 0.11) ? 1 : 0;
-  return { t, x: 606, y: 712, sx: 1 / Math.sqrt(sy), sy, rot, dir: 1, look, blink, legs: { mode: 'sit' } };
+  return { t, x: DESIGNER_X, y: 712, sx: 1 / Math.sqrt(sy), sy, rot, dir: 1, look, blink, legs: { mode: 'sit' } };
 }
 const handGrow = t => 1 + (HAND.stretchGrow - 1) * E.outBack(prog(t, T.reach[0], T.reach[1]))
   - (HAND.stretchGrow - HAND.carried) * E.inOutCubic(prog(t, T.toss[0], T.toss[1]))
   - (HAND.carried - 1) * E.inOutCubic(prog(t, T.toss[1] + 0.1, T.toss[1] + 0.6));
+const MOUSE = [786, 642];
 function designerHand(t) {
-  const rest = [752, 634 + (T.clicks.some(c => t > c - 0.02 && t < c + 0.08) ? 2 : 0)];
+  const rest = [MOUSE[0], MOUSE[1] - 8 + (T.clicks.some(c => t > c - 0.02 && t < c + 0.08) ? 2 : 0)];
   if (t <= T.reach[0]) return rest;
   if (t < T.reach[1]) return lerp2(rest, cornerAt(0, peelRadius(0)), E.outBack(prog(t, T.reach[0], T.reach[1])));
   if (t < T.toss[1]) return sheetHand(t);
-  const rel = catmull(TOSS_PTS, 1);
-  return lerp2(rel, [470, 560], E.outBack(prog(t, T.toss[1], T.toss[1] + 0.6)));
+  const rel = pathAt(THROW, throwS(T.toss[1]));
+  return lerp2(rel, [520, 560], E.outBack(prog(t, T.toss[1], T.toss[1] + 0.6)));
 }
 
 function drawPrinter(t) {
-  const u = t - T.judder[0];
-  const jx = u > 0 && t < T.judder[1] ? 6 * Math.sin(u * 58) * Math.exp(-u * 3.2) : 0;
+  const u = t - T.judder[0], X = 1340;
+  const jx = u > 0 && t < T.judder[1] ? 5 * Math.sin(u * 52) * Math.exp(-u * 3.2) : 0;
   const droop = E.outBack(prog(t, T.judder[0] + 0.1, T.judder[0] + 0.45)) * (1 - 0.4 * E.inOutCubic(prog(t, 11.2, 11.8)));
   const sy = 1 - 0.06 * droop + 0.03 * settle(u, 18, 0.3);
-  ctx.save(); ctx.translate(1420 + jx, 740); ctx.scale(1 + 0.03 * droop, sy);
+  ctx.save(); ctx.translate(X + jx, 740); ctx.scale(1 + 0.03 * droop, sy);
   sk(rrect(-88, -104, 176, 104, 12), { closed: true, fill: COLORS.printer });
   sk([[-56, -104], [-50, -118], [50, -118], [56, -104]], { width: 3 });
   sk(rect(-62, -38, 124, 16), { closed: true, fill: '#a9aca9', width: 2.6 });
@@ -857,44 +862,91 @@ function drawPrinter(t) {
   }
   dot(62, -86, 4, COLORS.teal);
   ctx.restore();
-  puff(1420, 628, T.judder[0] + 0.18, t, 3, 7);
+  puff(X, 628, T.judder[0] + 0.18, t, 3, 7);
 }
 
 function drawStudioRoom(t) {
+  // walls, skirting, floor, rug
   ctx.fillStyle = COLORS.wall; ctx.fillRect(-330, -40, 2280, 910);
+  sk([[-330, 836], [1950, 836]], { width: 2.4 });
   sk(rect(-330, 870, 2280, 1000), { closed: true, fill: COLORS.floor });
+  for (let x = -300; x < 1950; x += 150) sk([[x, 870], [x - 60, 1000]], { width: 1.6, alpha: 0.35 });
+  sk(ellipse(900, 900, 440, 36, 40), { closed: true, fill: COLORS.rug, width: 2.6 });
   sk([[-330, -40], [1950, -40]], { width: 4 });
-  sk(rect(-360, -110, 2340, 70), { closed: true, fill: COLORS.roof });                    // flat roof + parapet
-  sk(rect(1950, -110, 30, 980), { closed: true, fill: COLORS.roof });                     // end wall
-  sk(rect(400, 20, 250, 300), { closed: true, fill: COLORS.sky });
-  sk([[525, 20], [525, 320]], { width: 3 }); sk([[400, 170], [650, 170]], { width: 3 });
-  sk(ellipse(470, 90, 36, 14, 16), { closed: true, fill: COLORS.paperHi, width: 2.4 });
-  sk([[1010, -40], [1010, 96]], { width: 2.4 });
-  sk([[962, 150], [986, 96], [1034, 96], [1058, 150]], { closed: true, fill: COLORS.teal, width: 3 });
-  sk([[1300, 330], [1540, 330]], { width: 5 });
-  sk(poly([[1450, 330], [1440, 280], [1500, 280], [1490, 330]], true), { closed: true, fill: COLORS.customer, width: 3 });
-  sk([[1470, 280], [1452, 236]], { width: 3 }); sk([[1470, 280], [1494, 228]], { width: 3 });
-  sk(ellipse(1446, 232, 14, 8, 12), { closed: true, fill: COLORS.tealSoft, width: 2.4 });
-  sk(ellipse(1498, 224, 14, 8, 12), { closed: true, fill: COLORS.tealSoft, width: 2.4 });
-  sk(rect(1330, 250, 34, 80), { closed: true, fill: COLORS.designer, width: 2.6 });
-  sk(rect(1366, 262, 28, 68), { closed: true, fill: COLORS.tealSoft, width: 2.6 });
-  sk(rect(1640, 300, 230, 570), { closed: true, fill: '#dccfb8' }); dot(1660, 600, 5);
-  sk(rect(1300, 740, 240, 130), { closed: true, fill: COLORS.desk });
+  sk(rect(-360, -110, 2340, 70), { closed: true, fill: COLORS.roof });
+  sk(rect(1950, -110, 30, 980), { closed: true, fill: COLORS.roof });
+  // partition + serving hatch to the workshop
+  sk(rect(-330, -40, 40, 110), { closed: true, fill: '#d9cfbd' });
+  sk(rect(-330, 480, 40, 390), { closed: true, fill: '#d9cfbd' });
+  sk(rect(-340, 470, 70, 14), { closed: true, fill: COLORS.desk, width: 2.6 });
+  // bookshelf of binders
+  sk(rect(-240, 200, 280, 670), { closed: true, fill: COLORS.desk });
+  for (const y of [360, 520, 690]) sk([[-240, y], [40, y]], { width: 3 });
+  const binderCols = [COLORS.teal, COLORS.designer, COLORS.tealSoft, COLORS.customer, '#fbf8f1', COLORS.fabricator];
+  [[210, 360], [370, 520], [530, 690]].forEach(([y0, y1], row) => {
+    let x = -226;
+    for (let i = 0; i < 7; i++) { const w = 26 + hash(row * 17 + i) * 12, h = (y1 - y0) - 18 - hash(row * 9 + i) * 30; sk(rect(x, y1 - h, w, h), { closed: true, fill: binderCols[(i + row) % binderCols.length], width: 2.4, amp: 0.8 }); x += w + 4; if (x > 20) break; }
+  });
+  sk(rect(-230, 720, 90, 150), { closed: true, fill: COLORS.printer, width: 2.4 });
+  // tall floor plant
+  sk(poly([[150, 870], [140, 780], [240, 780], [230, 870]], true), { closed: true, fill: COLORS.customer, width: 3 });
+  for (const [dx, dy, a] of [[-60, -160, -0.5], [10, -230, 0.1], [70, -150, 0.6], [-20, -110, -0.2], [50, -80, 0.4]]) {
+    sk([[190, 780], [190 + dx * 0.6, 780 + dy * 0.6]], { width: 3 });
+    sk(ellipse(190 + dx, 780 + dy, 34, 14, 16).map(p => { const c = Math.cos(a), s = Math.sin(a), x = p[0] - 190 - dx, y = p[1] - 780 - dy; return [190 + dx + x * c - y * s, 780 + dy + x * s + y * c]; }), { closed: true, fill: COLORS.tree, width: 2.6 });
+  }
+  // window with a half-drawn roller blind and a sill plant
+  sk(rect(380, 40, 230, 270), { closed: true, fill: COLORS.sky });
+  sk([[495, 40], [495, 310]], { width: 3 }); sk([[380, 175], [610, 175]], { width: 3 });
+  sk(ellipse(440, 110, 34, 12, 16), { closed: true, fill: COLORS.paperHi, width: 2.4 });
+  sk(rect(372, 30, 246, 96), { closed: true, fill: COLORS.tealSoft, width: 3 });
+  sk([[495, 126], [495, 140]], { width: 2 }); dot(495, 144, 4);
+  sk(rect(366, 310, 258, 14), { closed: true, fill: COLORS.desk, width: 2.6 });
+  sk(poly([[560, 310], [556, 282], [596, 282], [592, 310]], true), { closed: true, fill: COLORS.designer, width: 2.4 });
+  sk(circle(576, 268, 16), { closed: true, fill: COLORS.tree, width: 2.4 });
+  // pendant lamp
+  sk([[960, -40], [960, 96]], { width: 2.4 });
+  sk([[912, 150], [936, 96], [984, 96], [1008, 150]], { closed: true, fill: COLORS.teal, width: 3 });
+  // mood board with swatches and a BLOOM sketch
+  sk(rect(1240, 60, 300, 220), { closed: true, fill: COLORS.cork });
+  const cards = [[1258, 78, 80, 60, COLORS.paperHi], [1352, 84, 60, 60, COLORS.teal], [1426, 76, 96, 70, COLORS.paperHi], [1262, 160, 70, 96, COLORS.customer], [1346, 166, 88, 60, COLORS.tealSoft], [1446, 162, 70, 90, COLORS.designer]];
+  cards.forEach(([x, y, w, h, c], i) => { sk(rect(x, y, w, h), { closed: true, fill: c, width: 2.2, amp: 0.8 }); dot(x + w / 2, y + 6, 4, [COLORS.fabricator, COLORS.teal, COLORS.designer][i % 3]); });
+  label('BLOOM', 1474, 115, 18, COLORS.ink, 600); sk([[1440, 128], [1508, 128]], { width: 1.6, stroke: COLORS.teal });
+  for (let i = 0; i < 3; i++) sk([[1270, 100 + i * 10], [1326, 100 + i * 10]], { width: 1.6, alpha: 0.5 });
+  // clock
+  sk(circle(1700, 170, 44), { closed: true, fill: COLORS.paperHi, width: 3 });
+  const ca = t * 0.9, cb = t * 0.075;
+  sk([[1700, 170], [1700 + Math.sin(ca) * 32, 170 - Math.cos(ca) * 32]], { width: 2.4, amp: 0 });
+  sk([[1700, 170], [1700 + Math.sin(cb + 1) * 22, 170 - Math.cos(cb + 1) * 22]], { width: 3.4, amp: 0 });
+  // door
+  sk(rect(1600, 300, 230, 570), { closed: true, fill: '#dccfb8' }); dot(1620, 600, 5);
+  sk(rect(1640, 340, 150, 200), { closed: true, stroke: 'rgba(35,40,43,.35)', width: 2 });
+  // printer on its cabinet
+  sk(rect(1240, 740, 200, 130), { closed: true, fill: COLORS.desk });
+  sk([[1340, 740], [1340, 870]], { width: 2 }); dot(1325, 800, 3.5); dot(1355, 800, 3.5);
   drawPrinter(t);
-  sk(rect(700, 652, 800, 24), { closed: true, fill: COLORS.desk });
-  sk([[730, 676], [730, 870]], { width: 5 }); sk([[1470, 676], [1470, 870]], { width: 5 });
-  sk(rect(990, 600, 40, 52), { closed: true, fill: COLORS.bezel });
-  sk(ellipse(1010, 652, 86, 8, 22), { closed: true, fill: COLORS.bezel, width: 3 });
-  sk(rrect(840, 634, 180, 16, 5), { closed: true, fill: '#e9e4d8', width: 2.6 });
+  // desk with an anglepoise, mug and pen pot
+  sk(rect(740, 652, 460, 24), { closed: true, fill: COLORS.desk });
+  sk([[770, 676], [770, 870]], { width: 5 }); sk([[1170, 676], [1170, 870]], { width: 5 });
+  sk(ellipse(1150, 648, 26, 6, 14), { closed: true, fill: COLORS.bezel, width: 2.4 });
+  sk([[1150, 646], [1120, 540], [1170, 470]], { width: 4 });
+  sk(poly([[1150, 470], [1196, 452], [1206, 488]], true), { closed: true, fill: COLORS.teal, width: 3 });
+  sk(rrect(1070, 612, 30, 40, 5), { closed: true, fill: COLORS.paperHi, width: 2.6 });
+  sk(ellipse(1106, 628, 9, 10, 12).slice(10, 26), { width: 2.4 });
+  sk(rect(1020, 604, 26, 48), { closed: true, fill: COLORS.tealSoft, width: 2.4 });
+  sk([[1026, 604], [1022, 580]], { width: 2.4 }); sk([[1038, 604], [1044, 584]], { width: 2.4, stroke: COLORS.fabricator });
+  // monitor stand, keyboard, mouse
+  sk(rect(940, 577, 40, 75), { closed: true, fill: COLORS.bezel });
+  sk(ellipse(960, 652, 80, 8, 22), { closed: true, fill: COLORS.bezel, width: 3 });
+  sk(rrect(870, 634, 170, 16, 5), { closed: true, fill: '#e9e4d8', width: 2.6 });
   const press = T.clicks.some(c => t > c - 0.02 && t < c + 0.08) ? 2 : 0;
-  sk(ellipse(752, 642 + press, 17, 10, 16), { closed: true, fill: '#e9e4d8', width: 2.6 });
-  // monitor + the design on it
+  sk(ellipse(MOUSE[0], MOUSE[1] + press, 17, 10, 16), { closed: true, fill: '#e9e4d8', width: 2.6 });
+  // the monitor + the design on it
   const F = WORLDS.main.F, peeling = t >= T.peel[0];
   drawHeroFrame(F, t, 1, { peeling });
   if (peeling) drawSheet(t, 'flat'); else drawScreenUI(F, t);
   // stool
-  sk(ellipse(606, 716, 82, 11, 22), { closed: true, fill: COLORS.desk, width: 3 });
-  sk([[562, 725], [540, 870]], { width: 4 }); sk([[650, 725], [672, 870]], { width: 4 });
+  sk(ellipse(DESIGNER_X, 716, 82, 11, 22), { closed: true, fill: COLORS.desk, width: 3 });
+  sk([[DESIGNER_X - 44, 725], [DESIGNER_X - 66, 870]], { width: 4 }); sk([[DESIGNER_X + 44, 725], [DESIGNER_X + 66, 870]], { width: 4 });
 }
 function drawDesigner(t) {
   const st = designerState(t), spec = CHARACTERS.designer, hand = designerHand(t);
@@ -903,9 +955,7 @@ function drawDesigner(t) {
     const S = sheetPose(t);
     if (S && (S.stage === 'peel' || S.stage === 'toss')) drawSheet(t, 'flap');
     drawArm(spec, shoulderOf(spec, charFrame(spec, st), 1), hand, handGrow(t));
-  } else {
-    drawCharacter(spec, { ...st, hands: [null, hand] });
-  }
+  } else drawCharacter(spec, { ...st, hands: [null, hand] });
 }
 function drawScreenUI(F, t) {
   const pts = [[0.55, 0.45], [-0.3, 0.08], [0.12, -0.05], [0.7, -0.4]], times = [6.0, ...T.clicks];
@@ -913,18 +963,17 @@ function drawScreenUI(F, t) {
   for (let i = 1; i < pts.length; i++) { const k = E.inOutCubic(prog(t, times[i] - 0.34, times[i] - 0.04)); u = lerp(u, pts[i][0], k); v = lerp(v, pts[i][1], k); }
   T.clicks.forEach((c, i) => {
     const k = prog(t, c, c + 0.35);
-    if (k > 0 && k < 1) { const [x, y] = Fpt(F, pts[i + 1][0], pts[i + 1][1]); sk(circle(x, y, 6 + 26 * E.outCubic(k)), { closed: true, stroke: COLORS.teal, width: 2.4 * (1 - k) + 0.4, amp: 0.4 }); }
+    if (k > 0 && k < 1) { const [x, y] = Fpt(F, pts[i + 1][0], pts[i + 1][1]); sk(circle(x, y, 6 + 22 * E.outCubic(k)), { closed: true, stroke: COLORS.teal, width: 2.4 * (1 - k) + 0.4, amp: 0.4 }); }
   });
   const s = E.outBackBig(prog(t, T.swatch, T.swatch + 0.32));
-  if (s > 0.01) { const [x, y] = Fpt(F, 0.78, -0.43); sk(circle(x, y, 19 * s), { closed: true, fill: COLORS.teal, width: 2.6 }); sk(circle(x - 36 * s, y + 4, 11 * s), { closed: true, fill: COLORS.tealSoft, width: 2.2 }); }
-  if (t > 5.9) { const [x, y] = Fpt(F, u, v); sk([[x, y], [x, y + 22], [x + 6, y + 16], [x + 11, y + 25], [x + 15, y + 23], [x + 10, y + 14], [x + 17, y + 14]], { closed: true, fill: COLORS.paperHi, width: 2.2, amp: 0.3 }); }
+  if (s > 0.01) { const [x, y] = Fpt(F, 0.78, -0.43); sk(circle(x, y, 16 * s), { closed: true, fill: COLORS.teal, width: 2.6 }); sk(circle(x - 30 * s, y + 4, 9 * s), { closed: true, fill: COLORS.tealSoft, width: 2.2 }); }
+  if (t > 5.9) { const [x, y] = Fpt(F, u, v); sk([[x, y], [x, y + 20], [x + 5, y + 15], [x + 10, y + 23], [x + 14, y + 21], [x + 9, y + 13], [x + 15, y + 13]], { closed: true, fill: COLORS.paperHi, width: 2.2, amp: 0.3 }); }
 }
 
 /* ==========================================================================
-   Scenes 4–5: the workshop (x -2720 … -330): catch, CNC, letters, LEDs.
+   Scenes 4–5: the warehouse workshop (x -2760 … -290)
    ========================================================================== */
 
-// Router tool path over the wordmark (cuts + quick travel moves), in letter units.
 const ROUTE = (() => {
   const items = []; let s = 0;
   WORDMARK.strokes.forEach((k, i) => {
@@ -945,136 +994,192 @@ function routeAt(t) {
   }
   return { cut, pos, cutting: cutting && s < ROUTE.total };
 }
-const bedH = letterH(BED);
+const bedH = letterH(BED), BED_H = Fh(BED);
 const L2Bed = p => [BED.cx + p[0] * bedH, BED.cy + p[1] * bedH];
+const HEAD_PARK = [BED.cx + BED.w / 2 + 30, BED.cy - BED_H / 2 - 30];
 function routerHead(t) {
-  if (t < T.router[0]) return [BED.cx + BED.w / 2 + 20, BED.cy - Fh(BED) / 2 - 20];
-  if (t > T.router[1]) return lerp2(L2Bed(routeAt(T.router[1]).pos), [BED.cx + BED.w / 2 + 20, BED.cy - Fh(BED) / 2 - 20], E.inOutCubic(prog(t, T.router[1], T.router[1] + 0.4)));
+  if (t < T.router[0]) return lerp2(HEAD_PARK, L2Bed(WORDMARK.strokes[0].pts[0]), E.inOutCubic(prog(t, T.router[0] - 0.3, T.router[0])));
+  if (t > T.router[1]) return lerp2(L2Bed(routeAt(T.router[1]).pos), HEAD_PARK, E.inOutCubic(prog(t, T.router[1], T.router[1] + 0.5)));
   return L2Bed(routeAt(t).pos);
 }
-const letterDepth = (t, li) => 17 * spring(t - T.extrude[0] - li * 0.08, 11, 0.35);
+const letterDepth = (t, li) => 14 * spring(t - T.extrude[0] - li * 0.08, 11, 0.35);
 const LED_TIMES = WORDMARK.leds.map((_, i) => lerp(T.leds[0], T.leds[1], i / (WORDMARK.leds.length - 1)));
 
 function drawWorkshopRoom(t) {
-  ctx.fillStyle = COLORS.wallShop; ctx.fillRect(-2720, -40, 2390, 910);
-  sk(rect(-2720, 870, 2390, 1000), { closed: true, fill: COLORS.floor });
-  // sawtooth warehouse roof
-  const teeth = []; for (let x = -2760; x <= -300; x += 240) teeth.push([x, -40], [x + 200, -200], [x + 240, -40]);
-  sk([[-2760, -40], ...teeth, [-290, -40]], { closed: true, fill: COLORS.roof, width: 3.4 });
-  sk([[-2720, -40], [-330, -40]], { width: 4 });
-  // left wall with the roller door open to the road
-  sk(rect(-2760, -40, 40, 420), { closed: true, fill: COLORS.roof });
-  sk(rrect(-2770, 330, 60, 60, 20), { closed: true, fill: '#c9c0ae' });
-  // pegboard + tools
-  sk(rect(-2400, 120, 560, 300), { closed: true, fill: '#e2d4bb' });
-  for (let x = -2370; x < -1860; x += 34) for (let y = 150; y < 410; y += 34) dot(x, y, 2, 'rgba(35,40,43,.35)');
-  sk([[-2320, 170], [-2320, 300]], { width: 5 }); sk(rect(-2340, 160, 40, 26), { closed: true, fill: COLORS.fitterA, width: 2.6 });
-  sk([[-2200, 170], [-2140, 320]], { width: 5 }); sk(circle(-2020, 240, 46), { closed: true, fill: COLORS.tealSoft, width: 3 });
-  sk([[-1950, 170], [-1950, 330]], { width: 4 }); sk(rect(-1968, 160, 36, 20), { closed: true, fill: COLORS.fabricator, width: 2.6 });
-  // workbench
-  sk(rect(-2450, 640, 640, 26), { closed: true, fill: COLORS.desk });
-  sk([[-2420, 666], [-2420, 870]], { width: 5 }); sk([[-1840, 666], [-1840, 870]], { width: 5 });
-  sk(rect(-2380, 600, 120, 40), { closed: true, fill: '#cfc6b3', width: 2.6 }); sk(rect(-2240, 610, 80, 30), { closed: true, fill: COLORS.tealSoft, width: 2.6 });
-  // pendant lamps
-  for (const x of [-2100, -1250, -700]) { sk([[x, -40], [x, 60]], { width: 2.4 }); sk([[x - 44, 108], [x - 22, 60], [x + 22, 60], [x + 44, 108]], { closed: true, fill: COLORS.teal, width: 3 }); }
-  // CNC: frame, rails, bed
-  sk(rect(-1580, 190, 660, 490), { closed: true, fill: '#d3cbbb' });
-  sk(rect(-1550, 226, 600, 420), { closed: true, fill: '#e1dacb', width: 3 });
-  sk([[-1560, 680], [-1560, 870]], { width: 6 }); sk([[-940, 680], [-940, 870]], { width: 6 });
-  sk([[-1598, 170], [-1598, 700]], { width: 5 }); sk([[-902, 170], [-902, 700]], { width: 5 });
-  // partition wall with a hatch through to the studio
+  const x0 = -2720, x1 = -330;
+  // upper wall, blockwork dado, concrete floor
+  ctx.fillStyle = COLORS.shopWall; ctx.fillRect(x0, -40, x1 - x0, 910);
+  sk(rect(x0, 560, x1 - x0, 310), { closed: true, fill: COLORS.block, width: 2.6 });
+  for (let y = 600; y < 870; y += 40) sk([[x0, y], [x1, y]], { width: 1.4, alpha: 0.35, amp: 0.6 });
+  for (let y = 560, r = 0; y < 870; y += 40, r++) for (let x = x0 + (r % 2 ? 60 : 0); x < x1; x += 120) sk([[x, y], [x, y + 40]], { width: 1.4, alpha: 0.3, amp: 0.5 });
+  sk(rect(x0, 870, x1 - x0, 1000), { closed: true, fill: COLORS.concrete });
+  for (let x = x0; x < x1; x += 300) sk([[x, 870], [x - 90, 1000]], { width: 1.4, alpha: 0.3 });
+  // sawtooth roof with skylights, steel trusses under it
+  for (let x = -2760; x < -300; x += 240) {
+    sk(poly([[x, -40], [x + 200, -200], [x + 240, -40]], true), { closed: true, fill: COLORS.roof, width: 3.4 });
+    sk(poly([[x + 200, -200], [x + 240, -40], [x + 226, -40], [x + 196, -160]], true), { closed: true, fill: COLORS.sky, width: 2 });
+  }
+  sk([[x0, -40], [x1, -40]], { width: 4 });
+  sk([[x0, 40], [x1, 40]], { width: 4, stroke: COLORS.steel });
+  for (let x = x0; x < x1 - 60; x += 120) sk([[x, 40], [x + 60, -36], [x + 120, 40]], { width: 2.6, stroke: COLORS.steel, amp: 0.6 });
+  for (const x of [-2690, -1880, -1370, -360]) { sk(rect(x - 12, 40, 24, 830), { closed: true, fill: COLORS.steel, width: 2.6 }); sk([[x - 20, 40], [x + 20, 40]], { width: 4 }); }
+  // high-bay lights
+  for (const x of [-2300, -1620, -1040, -560]) { sk([[x, 40], [x, 110]], { width: 2.4 }); sk(chaikin([[x - 46, 160], [x - 30, 110], [x + 30, 110], [x + 46, 160]], 1), { closed: true, fill: COLORS.teal, width: 3 }); }
+  // left wall with a slatted roller door, rolled up
+  sk(rect(-2760, -40, 40, 400), { closed: true, fill: COLORS.roof });
+  sk(rrect(-2786, 300, 92, 64, 24), { closed: true, fill: COLORS.steel });
+  for (let y = 312; y < 360; y += 12) sk([[-2780, y], [-2700, y]], { width: 1.6, alpha: 0.5 });
+  sk([[-2760, 360], [-2760, 870]], { width: 3, alpha: 0.4 });
+  // racking with boxes
+  sk([[-2640, 870], [-2640, 260]], { width: 5, stroke: COLORS.steel }); sk([[-2240, 870], [-2240, 260]], { width: 5, stroke: COLORS.steel });
+  for (const y of [400, 600, 800]) sk([[-2650, y], [-2230, y]], { width: 6, stroke: COLORS.fitterA });
+  [[400, [[-2620, 90, 80], [-2520, 120, 100], [-2380, 100, 70]]], [600, [[-2610, 140, 110], [-2450, 90, 90], [-2350, 100, 60]]], [800, [[-2620, 110, 90], [-2500, 130, 120], [-2350, 90, 80]]]]
+    .forEach(([y, boxes]) => boxes.forEach(([x, w, h], i) => { sk(rect(x, y - h, w, h), { closed: true, fill: i % 2 ? '#d9c39d' : '#cfb58a', width: 2.6, amp: 0.8 }); sk([[x + w / 2, y - h], [x + w / 2, y - h + 20]], { width: 2, stroke: COLORS.teal }); }));
+  // pegboard + bench with a vice
+  sk(rect(-2140, 150, 520, 280), { closed: true, fill: '#e2d4bb' });
+  for (let x = -2116; x < -1630; x += 30) for (let y = 172; y < 420; y += 30) dot(x, y, 1.8, 'rgba(35,40,43,.3)');
+  sk([[-2080, 190], [-2080, 330]], { width: 5 }); sk(rect(-2100, 178, 40, 26), { closed: true, fill: COLORS.fitterA, width: 2.6 });
+  sk([[-1980, 190], [-1920, 330]], { width: 5 }); sk(circle(-1810, 260, 44), { closed: true, fill: COLORS.tealSoft, width: 3 });
+  sk([[-1700, 190], [-1700, 350]], { width: 4 }); sk(rect(-1718, 180, 36, 20), { closed: true, fill: COLORS.fabricator, width: 2.6 });
+  sk(rect(-2160, 640, 560, 26), { closed: true, fill: COLORS.desk });
+  sk([[-2130, 666], [-2130, 870]], { width: 5 }); sk([[-1630, 666], [-1630, 870]], { width: 5 });
+  sk(rect(-2110, 592, 90, 48), { closed: true, fill: COLORS.steel, width: 2.6 }); sk(rect(-2124, 604, 14, 24), { closed: true, fill: COLORS.steel, width: 2.2 });
+  sk([[-2110, 616], [-2150, 616]], { width: 4 }); sk(rect(-1960, 606, 110, 34), { closed: true, fill: COLORS.tealSoft, width: 2.6 });
+  // A-frame rack of sheet stock
+  COLORS.sheetStock.forEach((c, i) => sk(poly([[-1580 + i * 22, 860], [-1540 + i * 22, 360 + i * 14], [-1500 + i * 22, 372 + i * 14], [-1540 + i * 22, 866]], true), { closed: true, fill: c, width: 2.6, amp: 0.8 }));
+  sk([[-1600, 870], [-1520, 330], [-1440, 870]], { width: 5, stroke: COLORS.steel });
+  // fire point
+  sk(rrect(-420, 690, 40, 110, 12), { closed: true, fill: COLORS.customer, width: 3 }); sk([[-400, 690], [-392, 668], [-376, 668]], { width: 3 });
+  sk(rect(-450, 560, 100, 60), { closed: true, fill: COLORS.paperHi, width: 2.4 }); label('FIRE', -400, 590, 20, COLORS.customer, 800);
+  // hazard stripes in front of the machine
+  for (let x = BED.cx - 300; x < BED.cx + 300; x += 36) sk(poly([[x, 876], [x + 18, 876], [x + 8, 896], [x - 10, 896]], true), { closed: true, fill: COLORS.ink, stroke: false, amp: 0 });
+  // partition wall + hatch (workshop side)
   sk(rect(-330, -40, 40, 110), { closed: true, fill: '#d9cfbd' });
   sk(rect(-330, 480, 40, 390), { closed: true, fill: '#d9cfbd' });
 }
+function drawCNC(t) {
+  const L = BED.cx - BED.w / 2, R = BED.cx + BED.w / 2, Tp = BED.cy - BED_H / 2, B = BED.cy + BED_H / 2;
+  // legs + cross brace
+  sk([[L - 30, B + 40], [L - 40, 870]], { width: 7 }); sk([[R + 30, B + 40], [R + 40, 870]], { width: 7 });
+  sk([[L - 36, 800], [R + 36, 800]], { width: 4, stroke: COLORS.steel });
+  // bed with T-slots
+  sk(rect(L - 40, Tp - 36, BED.w + 80, BED_H + 76), { closed: true, fill: '#cfd8d6' });
+  for (let y = Tp - 16; y < B + 36; y += 26) sk([[L - 28, y], [R + 28, y]], { width: 1.4, alpha: 0.4, amp: 0.4 });
+  // side rails
+  sk(rect(L - 64, Tp - 70, 24, BED_H + 140), { closed: true, fill: COLORS.steel, width: 3 });
+  sk(rect(R + 40, Tp - 70, 24, BED_H + 140), { closed: true, fill: COLORS.steel, width: 3 });
+  // control pendant
+  sk([[L - 64, Tp - 20], [L - 120, Tp - 20]], { width: 4 });
+  sk(rrect(L - 170, Tp - 40, 64, 110, 10), { closed: true, fill: COLORS.bezel, width: 3 });
+  sk(rect(L - 160, Tp - 30, 44, 30), { closed: true, fill: t > T.router[0] && t < T.router[1] ? COLORS.teal : COLORS.tealDark, width: 2 });
+  dot(L - 150, Tp + 20, 5, COLORS.customer); dot(L - 128, Tp + 20, 5, COLORS.tealSoft); dot(L - 150, Tp + 44, 5, COLORS.designer); dot(L - 128, Tp + 44, 5, COLORS.paperHi);
+}
+function drawGantry(t) {
+  const L = BED.cx - BED.w / 2, R = BED.cx + BED.w / 2, hd = routerHead(t);
+  // extraction hose from the ceiling to the carriage
+  const hose = []; for (let i = 0; i <= 16; i++) { const u = i / 16; hose.push([lerp(BED.cx + 120, hd[0], u) + Math.sin(u * Math.PI) * -60, lerp(40, hd[1] - 80, u)]); }
+  sk(hose, { width: 14, stroke: COLORS.steel, amp: 0.6 }); sk(hose, { width: 8, stroke: '#b9c0c2', amp: 0.6 });
+  // beam across the rails, carriage, spindle
+  sk(rect(L - 76, hd[1] - 52, BED.w + 152, 26), { closed: true, fill: COLORS.bezel, width: 3 });
+  sk(rrect(hd[0] - 30, hd[1] - 90, 60, 80, 10), { closed: true, fill: COLORS.steel, width: 3 });
+  sk(circle(hd[0], hd[1] - 20, 13), { closed: true, fill: COLORS.bezel, width: 2.6 });
+  sk(circle(hd[0], hd[1] - 20, 6), { closed: true, fill: t > T.router[0] && t < T.router[1] ? COLORS.teal : COLORS.tealSoft, width: 2, amp: 0 });
+  sk([[hd[0], hd[1] - 8], [hd[0], hd[1] + 2]], { width: 4 });
+}
 function drawBed(t) {
-  // the template: the same sheet, now on the bed
-  if (t < T.slap[1]) return;
-  const F = BED, h = Fh(F);
-  ctx.fillStyle = COLORS.paperHi; ctx.fillRect(F.cx - F.w/2, F.cy - h/2, F.w, h);
-  sk(rect(F.cx - F.w/2, F.cy - h/2, F.w, h), { closed: true, width: 2.6, amp: 0.8 });
-  for (const [x, y] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) dot(F.cx + x * (F.w/2 - 12), F.cy + y * (h/2 - 12), 4, COLORS.tealDark);
-  const lifted = li => letterDepth(t, li) > 0.4;
-  const gone = t > T.hop[0];
-  drawWordmark(F, { hide: li => lifted(li) });
-  // holes left behind
-  ctx.save(); ctx.translate(F.cx, F.cy); ctx.scale(bedH, bedH);
-  WORDMARK.strokes.forEach(s => { if (lifted(s.li)) sk(s.pts, { width: 0.17, stroke: COLORS.hole, amp: 0 }); });
-  // the cut so far
-  const R = routeAt(t);
-  WORDMARK.strokes.forEach((s, i) => { if (R.cut[i] > 0 && !lifted(s.li)) sk(partial(s.pts, R.cut[i]), { width: 0.23, stroke: 'rgba(35,40,43,0.32)', amp: 0 }); });
-  ctx.restore();
-  // gantry + router head
-  const hd = routerHead(t);
-  sk([[-1600, hd[1] - 26], [-900, hd[1] - 26]], { width: 7 });
-  sk(rrect(hd[0] - 22, hd[1] - 64, 44, 58, 8), { closed: true, fill: COLORS.bezel, width: 3 });
-  sk([[hd[0], hd[1] - 6], [hd[0], hd[1] + 4]], { width: 4 });
-  if (t > T.router[0] && t < T.router[1]) dot(hd[0], hd[1] - 46, 4.5, COLORS.tealSoft);
-  // sparks: tiny teal dots, each derived from its emission index
+  drawCNC(t);
+  if (t >= T.place[1]) {
+    const F = BED, h = BED_H;
+    ctx.fillStyle = COLORS.paperHi; ctx.fillRect(F.cx - F.w/2, F.cy - h/2, F.w, h);
+    sk(rect(F.cx - F.w/2, F.cy - h/2, F.w, h), { closed: true, width: 2.6, amp: 0.8 });
+    for (const [x, y] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) dot(F.cx + x * (F.w/2 - 12), F.cy + y * (h/2 - 12), 4, COLORS.tealDark);
+    const lifted = li => letterDepth(t, li) > 0.4;
+    drawWordmark(F, { hide: li => lifted(li) });
+    ctx.save(); ctx.translate(F.cx, F.cy); ctx.scale(bedH, bedH);
+    WORDMARK.strokes.forEach(s => { if (lifted(s.li)) sk(s.pts, { width: 0.17, stroke: COLORS.hole, amp: 0 }); });
+    const R = routeAt(t);
+    WORDMARK.strokes.forEach((s, i) => { if (R.cut[i] > 0 && !lifted(s.li)) sk(partial(s.pts, R.cut[i]), { width: 0.23, stroke: 'rgba(35,40,43,0.32)', amp: 0 }); });
+    ctx.restore();
+  }
+  drawGantry(t);
   if (t > T.router[0] && t < T.router[1] + 0.4) {
     const rate = 70;
     for (let i = Math.ceil((t - 0.45) * rate); i <= Math.floor(t * rate); i++) {
       const te = i / rate; if (te < T.router[0] || te > T.router[1]) continue;
       if (!routeAt(te).cutting) continue;
       const age = t - te, life = 0.25 + 0.2 * hash(i * 3 + 1); if (age > life) continue;
-      const p0 = L2Bed(routeAt(te).pos), a = hash(i * 3 + 2) * Math.PI * 2, v = 90 + 180 * hash(i * 3 + 3);
+      const p0 = L2Bed(routeAt(te).pos), a = hash(i * 3 + 2) * Math.PI * 2, v = 80 + 160 * hash(i * 3 + 3);
       const x = p0[0] + Math.cos(a) * v * age, y = p0[1] + Math.sin(a) * v * age + 260 * age * age;
-      ctx.beginPath(); ctx.arc(x, y, 3.4 * (1 - age / life) + 0.8, 0, Math.PI * 2); ctx.fillStyle = COLORS.teal; ctx.fill();
+      ctx.beginPath(); ctx.arc(x, y, 3 * (1 - age / life) + 0.8, 0, Math.PI * 2); ctx.fillStyle = COLORS.teal; ctx.fill();
     }
   }
-  // the letters, rising out of the sheet (until the parcel takes them)
-  if (!gone && t > T.extrude[0]) drawBedLetters(t);
+  if (t < T.hop[0] && t > T.extrude[0]) drawBedLetters(t);
 }
-function drawBedLetters(t, extra = {}) {
-  const ledCount = t > T.leds[0] ? WORDMARK.leds.length : 0;
+function drawBedLetters(t) {
   const glowI = t > T.glow[0] && t < T.glow[1] ? Math.sin(Math.PI * prog(t, T.glow[0], T.glow[1])) : 0;
   drawLetters(BED.cx, BED.cy, bedH, {
     depth: li => letterDepth(t, li),
     squash: li => 1 + 0.12 * settle(t - T.extrude[0] - li * 0.08 - 0.12, 16, 0.3),
-    leds: ledCount ? { count: ledCount, t, times: LED_TIMES } : null,
-    glow: glowI, ...extra,
+    leds: t > T.leds[0] ? { t, times: LED_TIMES } : null,
+    glow: glowI,
   });
 }
 
+// Fabricator: waits by the hatch, catches the sheet overhead with both hands,
+// walks it to the machine and presses it onto the bed.
+const FAB_X = t => keys(t, [[T.catch[1], -620], [T.place[0] + 0.4, -720, E.inOutSine], [T.place[1] + 0.3, -720], [T.place[1] + 0.7, -680, E.inOutSine],
+                           [T.leds[0] - 0.4, -680], [T.leds[0], -720, E.inOutSine], [T.thumbs - 0.15, -720], [T.thumbs + 0.1, -690, E.inOutSine]]);
+function fabricatorHands(t) {
+  const S = sheetPose(t);
+  if (t > 12.1 && t < T.catch[0]) {
+    const u = E.outBackSoft(prog(t, 12.1, T.catch[0])), x = FAB_X(t);
+    return [lerp2([x - 90, 760], [CATCH[0] - 420 * PAPER, CATCH[1]], u), lerp2([x + 90, 760], CATCH, u)];
+  }
+  if (S && S.stage === 'held') {
+    const corners = [poseApply(S, PEEL.corners[0]), S.H];
+    if (t < T.place[0] + 0.3) return corners;
+    const press = [[BED.cx + BED.w / 2 - 40, BED.cy - 10], [BED.cx + BED.w / 2 - 30, BED.cy + 50]];
+    const u = E.inOutSine(prog(t, T.place[0] + 0.3, T.place[1]));
+    return [lerp2(corners[0], press[0], u), lerp2(corners[1], press[1], u)];
+  }
+  if (t >= T.place[1] && t < T.place[1] + 0.35) {
+    const u = E.inOutSine(prog(t, T.place[1], T.place[1] + 0.35)), x = FAB_X(t);
+    return [lerp2([BED.cx + BED.w / 2 - 40, BED.cy - 10], [x - 90, 760], u), lerp2([BED.cx + BED.w / 2 - 30, BED.cy + 50], [x + 90, 760], u)];
+  }
+  return null;
+}
 function fabricatorState(t) {
-  let x = -780, rot = 0, sy = 1 + 0.015 * Math.sin(t * 2.1), look = [0.6, -0.3], dir = 1, legs = { mode: 'stand' }, hands = [null, null], handStyle = null, skip = null, jump = 0;
-  // watching the sheet come, crouch, catch
-  if (t > 11.6) look = [0.9, -0.7];
-  sy *= keys(t, [[12.2, 1], [12.45, 0.9, E.outCubic], [T.catch[0], 1.06, E.outBack], [T.catch[0] + 0.3, 1]]);
-  sy -= 0.1 * settle(t - T.catch[0], 16, 0.3);
-  if (t > T.catch[0] - 0.12 && t < T.slap[1] + 0.12) { skip = 2; }
-  if (t > T.catch[0]) look = [0.3, -0.2];
-  if (t > T.slap[0]) { look = [-1, -0.3]; dir = -1; rot = keys(t, [[T.slap[0], 0], [T.slap[0] + 0.25, 0.08, E.outCubic], [T.slap[1], -0.12, E.inOutBack], [T.slap[1] + 0.4, 0, E.outBack]]); }
-  // step back and watch the router
-  const xs = keys(t, [[T.slap[1] + 0.1, -780], [T.slap[1] + 0.6, -820, E.inOutSine], [T.leds[0] - 0.4, -820], [T.leds[0], -860, E.inOutSine], [T.thumbs - 0.15, -860], [T.thumbs + 0.1, -800, E.inOutSine]]);
-  if (t > T.slap[1]) { x = xs; look = [-0.8, -0.2]; dir = -1; }
-  if (t > T.router[0]) { const hd = routerHead(t); look = [Math.max(-1, (hd[0] - x) / 400), Math.max(-1, Math.min(1, (hd[1] - 520) / 300))]; }
+  const x = FAB_X(t);
+  let rot = 0, sy = 1 + 0.015 * Math.sin(t * 2.1), look = [0.7, -0.3], dir = 1, hands = [null, null], handStyle = null, skip = null, jump = 0;
+  if (t > 11.4) look = [0.8, -0.6];
+  sy *= keys(t, [[11.9, 1], [12.15, 0.92, E.outCubic], [T.catch[0], 1.05, E.outBack], [T.catch[0] + 0.3, 1]]);
+  sy -= 0.08 * settle(t - T.catch[0], 14, 0.3);
+  const H = fabricatorHands(t);
+  if (H) { skip = 2; hands = H; }
+  if (t > T.catch[0]) look = [0.2, -0.7];
+  if (t > T.place[0]) { look = [-0.9, -0.2]; dir = -1; rot = 0.06 * Math.sin(Math.PI * prog(t, T.place[0] + 0.3, T.place[1])); }
+  if (t > T.router[0] - 0.3) { const hd = routerHead(t); look = [Math.max(-1, (hd[0] - x) / 400), Math.max(-1, Math.min(1, (hd[1] - 560) / 300))]; dir = -1; }
   if (t > T.leds[0] - 0.2 && t < T.leds[1] + 0.1) {
     const i = Math.min(WORDMARK.leds.length - 1, Math.max(0, Math.floor((t - T.leds[0]) / (T.leds[1] - T.leds[0]) * WORDMARK.leds.length)));
     const L = WORDMARK.leds[i].p, d = letterDepth(t, WORDMARK.leds[i].li) / bedH;
     hands = [null, L2Bed([L[0] - 0.55 * d, L[1] - 0.75 * d])]; look = [-0.9, -0.3];
   }
   if (t > T.thumbs - 0.1 && t < T.glow[0] + 0.5) {
-    const k = E.outBack(prog(t, T.thumbs - 0.1, T.thumbs + 0.12));
-    hands = [null, [x + 80, 700 - 250 * k]]; handStyle = [null, 'thumb']; look = [0, 0.1]; dir = 1;
-    jump = 26 * Math.max(0, Math.sin(Math.PI * prog(t, T.thumbs, T.thumbs + 0.3)));
+    const k = E.outBack(prog(t, T.thumbs - 0.1, T.thumbs + 0.14));
+    hands = [null, [x + 80, 700 - 220 * k]]; handStyle = [null, 'thumb']; look = [0, 0.1]; dir = 1;
+    jump = 22 * Math.max(0, Math.sin(Math.PI * prog(t, T.thumbs, T.thumbs + 0.3)));
   }
   if (t > T.glow[0] + 0.3) look = [-0.8, -0.2];
   if (t > T.hop[0]) { const p = parcelPos(t); look = [Math.max(-1, (p[0] - x) / 300), -0.4]; }
-  const walking = Math.abs(xs - keys(t - 0.05, [[T.slap[1] + 0.1, -780], [T.slap[1] + 0.6, -820, E.inOutSine], [T.leds[0] - 0.4, -820], [T.leds[0], -860, E.inOutSine], [T.thumbs - 0.15, -860], [T.thumbs + 0.1, -800, E.inOutSine]])) > 0.3;
-  if (walking && t > T.slap[1]) legs = walkState(x, 1);
-  return { t, x, y: 870, sx: 1 / Math.sqrt(sy), sy, rot, look, dir, legs, hands, handStyle, skipArm: skip, jump };
+  const moving = Math.abs(FAB_X(t) - FAB_X(t - 0.05)) > 0.3;
+  return { t, x, y: 870, sx: 1 / Math.sqrt(sy), sy, rot, look, dir, legs: moving ? walkState(x, 1) : { mode: 'stand' }, hands, handStyle, skipArm: skip, jump };
 }
 function drawFabricator(t) {
   const spec = CHARACTERS.fabricator, st = fabricatorState(t);
   drawCharacter(spec, st);
   const S = sheetPose(t);
   if (S && (S.stage === 'flight' || S.stage === 'held')) drawSheet(t, 'flap');
-  if (st.skipArm === 2) {
-    const f = charFrame(spec, st), H = sheetHand(t) || [st.x, 500];
-    drawArm(spec, shoulderOf(spec, f, 1), H, 1.3, null, 1);
-    drawArm(spec, shoulderOf(spec, f, 0), [H[0] - 60, H[1] + 150], 1.2, null, 0);
-  }
-  // wire from the LED being placed back to a spool on the floor
+  if (st.skipArm === 2) { const f = charFrame(spec, st); drawArm(spec, shoulderOf(spec, f, 0), st.hands[0], 1.25, null, 0); drawArm(spec, shoulderOf(spec, f, 1), st.hands[1], 1.25, null, 1); }
   if (t > T.leds[0] && t < T.hop[0]) {
     const hand = st.hands[1] || [st.x + 60, 700];
     sk([[hand[0], hand[1]], [hand[0] + 40, hand[1] + 160], [st.x + 120, 850]], { width: 2.2, stroke: COLORS.tealDark, amp: 0.8 });
@@ -1083,84 +1188,97 @@ function drawFabricator(t) {
 }
 
 /* ==========================================================================
-   Scene 6: the parcel + van
+   Scene 6: the parcel + the Luton van
    ========================================================================== */
 
-const VAN = { wheelR: 38, ground: 1000, scale: 1.4 };
-const VAN_PARK = OX + 1760, VAN_START = -3060;
+const VAN = { wheelR: 38, ground: 1000, scale: 1.15 };
+const VAN_PARK = OX + 250, VAN_START = -3200;
+const VAN_REAR = 330 * VAN.scale, LIFT_LEN = 110;
 function vanX(t) {
   if (t < T.drive[0]) return VAN_START;
   if (t < T.leave[0]) return keys(t, [[T.drive[0], VAN_START], [T.drive[1], VAN_PARK, E.inOutSine]]);
-  return keys(t, [[T.leave[0], VAN_PARK], [T.leave[1], OX - 1100, E.inCubic]]);
+  return keys(t, [[T.leave[0], VAN_PARK], [T.leave[1], OX - 1400, E.inCubic]]);
 }
+const platform = x => [x + VAN_REAR + LIFT_LEN * VAN.scale * 0.55, VAN.ground - 62];
 function parcelPos(t) {
-  const start = [BED.cx, BED.cy - 10], van = [VAN_START + 330, 790];
+  const start = [BED.cx, BED.cy], onLift = platform(VAN_START);
   if (t < T.hop[0]) return start;
-  if (t < T.hop[1]) { const u = prog(t, T.hop[0], T.hop[1]); const p = lerp2(start, van, E.inOutSine(u)); return [p[0], p[1] - 380 * Math.sin(Math.PI * u)]; }
-  if (t < T.unload[0]) return van;
-  const from = [VAN_PARK + 330, 790], to = [OX + 1470, 690];
-  const u = prog(t, T.unload[0], T.unload[1]); const p = lerp2(from, to, E.inOutSine(u)); return [p[0], p[1] - 140 * Math.sin(Math.PI * u)];
+  if (t < T.hop[1]) { const u = prog(t, T.hop[0], T.hop[1]); const p = lerp2(start, onLift, E.inOutSine(u)); return [p[0], p[1] - 330 * Math.sin(Math.PI * u)]; }
+  if (t < T.slide[1]) return lerp2(onLift, [VAN_START + 140, onLift[1] - 20], E.inOutCubic(prog(t, T.slide[0], T.slide[1])));
+  if (t < T.unload[0]) return [VAN_START + 140, onLift[1] - 20];
+  const lift = platform(VAN_PARK), arms = [OX + 820, 690];
+  if (t < T.unload[0] + 0.2) return lerp2([VAN_PARK + 140, lift[1] - 20], lift, E.outCubic(prog(t, T.unload[0], T.unload[0] + 0.2)));
+  const u = prog(t, T.unload[0] + 0.2, T.unload[1]); const p = lerp2(lift, arms, E.inOutSine(u)); return [p[0], p[1] - 90 * Math.sin(Math.PI * u)];
 }
 function parcelScale(t) {
-  if (t < T.hop[1]) return lerp(1, 0.5, E.inCubic(prog(t, T.hop[0], T.hop[1])));
+  if (t < T.hop[1]) return lerp(1, 0.5, E.inOutSine(prog(t, T.hop[0], T.hop[1])));
   if (t < T.unload[0]) return 0.5;
   const last = T.letter0 + (WORDMARK.count - 1) * T.letterStep;
-  return lerp(0.5, 0.62, E.outBack(prog(t, T.unload[0], T.unload[1]))) * (1 - E.inCubic(prog(t, last, last + 0.3)));
+  return lerp(0.5, 0.6, E.outBackSoft(prog(t, T.unload[0] + 0.2, T.unload[1]))) * (1 - E.inCubic(prog(t, last, last + 0.3)));
 }
 function drawParcel(t) {
   if (t < T.wrap[0]) return;
-  if (t > T.hop[1] && t < T.unload[0]) return;                           // inside the van
   const P = parcelPos(t), s = parcelScale(t);
   if (s < 0.02) return;
   const wrapU = E.outCubic(prog(t, T.wrap[0], T.wrap[1]));
-  const squash = t > T.hop[0] - 0.12 && t < T.hop[0] ? 0.88 : 1 + 0.1 * settle(t - T.unload[1], 16, 0.3);
-  ctx.save(); ctx.translate(P[0], P[1]); ctx.scale(s / Math.sqrt(squash), s * squash); ctx.rotate(t > T.hop[0] && t < T.hop[1] ? -0.6 * Math.sin(Math.PI * prog(t, T.hop[0], T.hop[1])) : 0);
-  // letters inside while they're still there
-  if (t < T.letter0) drawLetters(0, 10, bedH, { depth: () => 17 });
-  const w = 440, h = 170;
-  const outline = rrect(-w/2, -h/2, w, h, 40, 16);
-  const n = Math.max(2, Math.floor(outline.length * wrapU));
+  const squash = 1 + 0.1 * settle(t - T.hop[1], 16, 0.3) + 0.1 * settle(t - T.unload[1], 16, 0.3);
+  ctx.save(); ctx.translate(P[0], P[1]); ctx.scale(s / Math.sqrt(squash), s * squash);
+  ctx.rotate(t > T.hop[0] && t < T.hop[1] ? -0.35 * Math.sin(Math.PI * prog(t, T.hop[0], T.hop[1])) : 0);
+  if (t < T.letter0) drawLetters(0, 0, bedH, { depth: () => 14 });
+  const w = 380, h = 140;
+  const outline = rrect(-w/2, -h/2, w, h, 34, 16);
   if (wrapU > 0.98) sk(outline, { closed: true, fill: COLORS.wrap, width: 3 });
-  else sk(outline.slice(0, n), { width: 3 });
-  for (let i = 0; i < 26; i++) {
-    const bx = (hash(i * 5 + 1) - 0.5) * (w - 50), by = (hash(i * 5 + 2) - 0.5) * (h - 40);
-    const pop = E.outBackBig(prog(t, T.wrap[0] + 0.25 + i * 0.012, T.wrap[0] + 0.45 + i * 0.012));
-    if (pop > 0.02) sk(circle(bx, by, 9 * pop), { closed: true, stroke: 'rgba(35,40,43,.35)', width: 1.8, amp: 0.4 });
+  else sk(outline.slice(0, Math.max(2, Math.floor(outline.length * wrapU))), { width: 3 });
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 8; c++) {
+    const i = r * 8 + c, bx = -w/2 + 36 + c * 44 + (r % 2) * 18, by = -h/2 + 30 + r * 40;
+    if (bx > w/2 - 24) continue;
+    const pop = E.outBackBig(prog(t, T.wrap[0] + 0.2 + i * 0.01, T.wrap[0] + 0.4 + i * 0.01));
+    if (pop < 0.02) continue;
+    sk(circle(bx, by, 13 * pop), { closed: true, stroke: 'rgba(35,40,43,.3)', width: 1.8, amp: 0.4 });
+    sk([[bx - 6 * pop, by - 4 * pop], [bx - 2 * pop, by - 8 * pop]], { width: 2, stroke: '#fbf8f1', amp: 0 });
+  }
+  if (wrapU > 0.98) {
+    const tp = E.outCubic(prog(t, T.wrap[1] - 0.05, T.wrap[1] + 0.2));
+    sk(rect(-18, -h/2 - 2, 36, (h + 4) * tp), { closed: true, fill: COLORS.teal, width: 2.4, amp: 0.5 });
   }
   ctx.restore();
+}
+function liftState(t) {                   // 0 = tail lift up, 1 = down
+  if (t < T.drive[0]) return keys(t, [[T.lift[0], 0], [T.lift[0] + 0.25, 1, E.outBackSoft], [T.lift[1], 1], [T.lift[1] + 0.3, 0, E.inOutSine]]);
+  return keys(t, [[T.unloadLift[0], 0], [T.unloadLift[1], 1, E.outBackSoft], [T.pack[1], 1], [T.pack[1] + 0.25, 0, E.inOutSine]]);
 }
 function drawVan(t) {
   const x = vanX(t), g = VAN.ground;
   const vx = (vanX(t + 0.02) - vanX(t - 0.02)) / 0.04;
-  let rot = 0.035 * settle(t - T.drive[0] + 0.1, 10, 0.3) + 0.03 * settle(t - T.leave[0], 10, 0.3)
-          - 0.03 * settle(t - T.drive[1], 11, 0.28) + 0.03 * settle(t - T.doors[1], 18, 0.3);
-  const bob = Math.abs(vx) > 5 ? 3.5 * Math.sin(x * 0.045) : 0;
-  const wa = -x / VAN.wheelR;
-  // exhaust
-  puff(x + 300 * VAN.scale, g - 40, T.drive[0], t, 3, 10); puff(x + 300 * VAN.scale, g - 40, T.leave[0], t, 3, 10);
+  const rot = 0.03 * settle(t - T.drive[0] + 0.1, 9, 0.35) + 0.025 * settle(t - T.leave[0], 9, 0.35) - 0.025 * settle(t - T.drive[1], 10, 0.3);
+  const bob = Math.abs(vx) > 5 ? 3 * Math.sin(x * 0.04) : 0;
+  const wa = -x / (VAN.wheelR * VAN.scale);
+  puff(x + VAN_REAR + 10, g - 30, T.drive[0], t, 3, 10); puff(x + VAN_REAR + 10, g - 30, T.leave[0], t, 3, 10);
   ctx.save(); ctx.translate(x, g - VAN.wheelR * VAN.scale - bob); ctx.rotate(rot); ctx.scale(VAN.scale, VAN.scale);
-  // body (facing left): cab + box
-  sk(chaikin([[-300, -40], [-300, -150], [-230, -230], [-120, -250], [290, -250], [290, -40]], 1), { closed: true, fill: COLORS.van, width: 3.8 });
-  sk(poly([[-270, -150], [-220, -214], [-140, -214], [-140, -150]], true), { closed: true, fill: COLORS.glass, width: 3 });
-  sk([[-120, -250], [-120, -40]], { width: 3 });
-  sk([[-300, -60], [290, -60]], { width: 2.4 });
-  ctx.fillStyle = COLORS.teal; ctx.font = '800 50px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('ONESIGN', 90, -150);
-  sk(circle(-60, -150, 20), { closed: true, fill: COLORS.teal, width: 2.4 });
-  ctx.fillStyle = COLORS.paperHi; ctx.font = '800 26px ui-sans-serif, system-ui, sans-serif'; ctx.fillText('1', -60, -149);
-  dot(-296, -80, 6, '#f6e7c1');
-  // rear doors: swing open toward us, then slam
-  const open = t < T.doors[0] ? 1 : t < T.doors[1] ? 1 - E.inCubic(prog(t, T.doors[0], T.doors[1])) :
-               t < T.unload[0] - 0.2 ? 0 : t < T.unload[0] ? E.outBack(prog(t, T.unload[0] - 0.2, T.unload[0])) :
-               t < T.pack[1] ? 1 : 1 - E.inCubic(prog(t, T.pack[1], T.pack[1] + 0.15));
-  if (open > 0.02) {
-    sk(poly([[290, -250], [290 + 120 * open, -270], [290 + 120 * open, -20], [290, -40]], true), { closed: true, fill: '#ece8de', width: 3 });
-    sk(rect(284, -244, 8, 198), { closed: true, fill: '#6d6a62', width: 2 });
-  }
-  for (const wx of [-190, 180]) {
+  // Luton box body with its peak over the cab
+  sk(rrect(-170, -300, 500, 262, 14), { closed: true, fill: COLORS.van, width: 3.8 });
+  sk(chaikin([[-170, -300], [-238, -300], [-262, -276], [-262, -234], [-238, -212], [-170, -212]], 1), { closed: true, fill: COLORS.van, width: 3.6 });
+  sk(rect(-170, -58, 500, 16), { closed: true, fill: COLORS.teal, width: 2.4 });
+  // cab
+  sk(chaikin([[-170, -212], [-212, -212], [-262, -150], [-302, -128], [-308, -64], [-300, -38], [-170, -38]], 1), { closed: true, fill: COLORS.van, width: 3.6 });
+  sk(poly([[-186, -198], [-222, -198], [-260, -150], [-186, -150]], true), { closed: true, fill: COLORS.glass, width: 3 });
+  sk([[-176, -150], [-176, -40]], { width: 2.4 }); sk([[-196, -120], [-182, -120]], { width: 3 });
+  sk(rect(-318, -60, 44, 16), { closed: true, fill: COLORS.steel, width: 2.6 });
+  dot(-300, -96, 7, '#f6e7c1'); sk(rect(-190, -206, 10, 26), { closed: true, fill: COLORS.bezel, width: 2 });
+  // the Onesign logo on the box
+  drawOnesignLogo(80, -176, 400);
+  // rear: shutter and tail lift
+  const lf = liftState(t);
+  if (lf > 0.02) sk(rect(318, -290, 12, 248), { closed: true, fill: '#6d6a62', width: 2.4 });
+  const hinge = [330, -30], ang = lerp(-Math.PI / 2, 0, lf), lx = Math.cos(ang) * LIFT_LEN, ly = Math.sin(ang) * LIFT_LEN;
+  const lower = lf * 26;
+  sk(poly([[hinge[0], hinge[1] + lower], [hinge[0] + lx, hinge[1] + ly + lower], [hinge[0] + lx + 4, hinge[1] + ly + lower + 10], [hinge[0] + 4, hinge[1] + lower + 10]], true), { closed: true, fill: COLORS.steel, width: 2.6 });
+  // wheels
+  for (const wx of [-215, 230]) {
     sk(circle(wx, 0, VAN.wheelR), { closed: true, fill: COLORS.bezel, width: 3.4 });
     sk(circle(wx, 0, 14), { closed: true, fill: '#d6d2c8', width: 2.4 });
     sk([[wx + Math.cos(wa) * 14, Math.sin(wa) * 14], [wx + Math.cos(wa) * 30, Math.sin(wa) * 30]], { width: 3, stroke: '#d6d2c8', amp: 0 });
+    sk(chaikin([[wx - 56, -38], [wx - 50, -62], [wx + 50, -62], [wx + 56, -38]], 1).slice(1, -1), { width: 3 });
   }
   ctx.restore();
 }
@@ -1170,13 +1288,8 @@ function drawVan(t) {
    ========================================================================== */
 
 function drawBackdrop(c) {
-  // distant hills + trees, drifting at 55% of camera speed
-  const px = c.cx * 0.45;
-  ctx.save(); ctx.translate(px, 60);
-  for (let i = -18; i <= 6; i++) {
-    const x = i * 700 + hash(i * 7 + 3) * 200;
-    sk(ellipse(x, 700, 520 + hash(i) * 160, 220 + hash(i + 9) * 90, 28), { closed: true, fill: COLORS.hill, width: 2.4, alpha: 1 });
-  }
+  ctx.save(); ctx.translate(c.cx * 0.45, 60);
+  for (let i = -18; i <= 6; i++) sk(ellipse(i * 700 + hash(i * 7 + 3) * 200, 700, 520 + hash(i) * 160, 220 + hash(i + 9) * 90, 28), { closed: true, fill: COLORS.hill, width: 2.4 });
   ctx.restore();
 }
 function drawRoadside(t, v) {
@@ -1194,13 +1307,10 @@ function drawRoadside(t, v) {
   }
 }
 function drawForeground(c, v) {
-  // bollards whipping past in the foreground at 130% of camera speed
   const px = -c.cx * 0.3;
   for (let i = -40; i < 10; i++) {
-    const x = i * 900 + 300;
-    const wx = x + px;
-    if (wx < OX + 2860 || wx > -2800) continue;
-    if (wx < v.x0 - 200 || wx > v.x1 + 200) continue;
+    const wx = i * 900 + 300 + px;
+    if (wx < OX + 2860 || wx > -2800 || wx < v.x0 - 200 || wx > v.x1 + 200) continue;
     sk(rrect(wx - 22, 1060, 44, 160, 18), { closed: true, fill: COLORS.bezel, width: 3 });
     sk(rect(wx - 22, 1090, 44, 16), { closed: true, fill: COLORS.paperHi, width: 2 });
   }
@@ -1212,58 +1322,59 @@ function drawForeground(c, v) {
 
 const letterLand = i => T.letter0 + i * T.letterStep + T.letterDur;
 const haloI = t => t < T.halo ? 0 : keys(t, [[T.halo, 0], [T.halo + 0.08, 0.95, E.outCubic], [T.halo + 0.16, 0.12, E.inCubic], [T.halo + 0.24, 0.2], [T.halo + 0.3, 0.6, E.outCubic]]) + (t > T.halo + 0.3 ? 0.4 * spring(t - T.halo - 0.3, 9, 0.5) : 0);
-const ladderBase = [OX + 1370, 880], ladderTop = [OX + 1300, 250];
+const ladderBase = [OX + 560, 880], ladderTop = [OX + 620, 250];
 function ladderState(t) {
   if (t < T.ladder[0] || t > T.pack[1] + 0.05) return null;
-  const up = E.outBack(prog(t, T.ladder[0], T.ladder[1])), down = E.inCubic(prog(t, T.pack[0], T.pack[1]));
-  const ang = lerp(-Math.PI / 2 + 0.15, 0, up), len = Math.hypot(ladderTop[0] - ladderBase[0], ladderTop[1] - ladderBase[1]);
-  const base = [ladderBase[0] + 500 * down, ladderBase[1]];
+  const up = E.outBackSoft(prog(t, T.ladder[0], T.ladder[1])), down = E.inCubic(prog(t, T.pack[0], T.pack[1]));
+  const ang = lerp(Math.PI / 2 - 0.15, 0, up) - down * 0.9;
+  const len = Math.hypot(ladderTop[0] - ladderBase[0], ladderTop[1] - ladderBase[1]);
   const dir = [(ladderTop[0] - ladderBase[0]) / len, (ladderTop[1] - ladderBase[1]) / len];
   const c = Math.cos(ang), s = Math.sin(ang), d = [dir[0] * c - dir[1] * s, dir[0] * s + dir[1] * c];
-  return { base, top: [base[0] + d[0] * len, base[1] + d[1] * len], d, len };
+  return { base: ladderBase, top: [ladderBase[0] + d[0] * len, ladderBase[1] + d[1] * len], d, len };
 }
 function drawLadder(t) {
   const L = ladderState(t); if (!L) return;
   const n = [-L.d[1] * 26, L.d[0] * 26];
   sk([[L.base[0] + n[0], L.base[1] + n[1]], [L.top[0] + n[0], L.top[1] + n[1]]], { width: 5 });
   sk([[L.base[0] - n[0], L.base[1] - n[1]], [L.top[0] - n[0], L.top[1] - n[1]]], { width: 5 });
-  for (let k = 1; k < 12; k++) { const u = k / 12, p = lerp2(L.base, L.top, u); sk([[p[0] + n[0], p[1] + n[1]], [p[0] - n[0], p[1] - n[1]]], { width: 3.4 }); }
+  for (let k = 1; k < 12; k++) { const p = lerp2(L.base, L.top, k / 12); sk([[p[0] + n[0], p[1] + n[1]], [p[0] - n[0], p[1] - n[1]]], { width: 3.4 }); }
 }
-function slotPos(i) { return [FASCIA.cx + WORDMARK.centers[i] * FASCIA.H, FASCIA.cy]; }
+const slotPos = i => [FASCIA.cx + WORDMARK.centers[i] * FASCIA.H, FASCIA.cy];
 function fitterAState(t) {
   const L = ladderState(t);
   const climb = E.inOutSine(prog(t, T.climb[0], T.climb[1])) * (1 - E.inOutCubic(prog(t, T.pack[0] - 0.05, T.pack[0] + 0.2)));
-  let x = keys(t, [[T.unload[0], VAN_PARK + 240], [T.unload[0] + 0.35, OX + 1420, E.inOutSine]]), y = 880;
-  if (L && climb > 0) { const p = lerp2(L.base, lerp2(L.base, L.top, 0.55), climb); x = p[0] + 40; y = p[1]; }
-  if (t > T.pack[0] + 0.2) x = keys(t, [[T.pack[0] + 0.2, OX + 1420], [T.leave[0], VAN_PARK + 240, E.inOutSine]]);
-  let hands = [null, null], look = [-0.6, -0.8];
+  const walkKeys = [[T.unload[0], VAN_PARK + 300], [T.unload[0] + 0.3, OX + 540, E.inOutSine], [T.pack[0] + 0.2, OX + 540], [T.pack[1], VAN_PARK + 150, E.inOutSine]];
+  let x = keys(t, walkKeys), y = 880;
+  if (L && climb > 0) { const p = lerp2(L.base, lerp2(L.base, L.top, 0.55), climb); x = p[0] - 30; y = p[1]; }
+  let hands = [null, null], look = [0.6, -0.8];
   for (let i = 0; i < WORDMARK.count; i++) {
-    const tl = letterLand(i), k = Math.max(0, 1 - Math.abs(t - tl) / 0.28);
-    if (k > 0) { const s = slotPos(i); hands = [lerp2([x - 60, y - 160], [s[0] + 10, s[1] + 50], E.outCubic(k)), null]; look = [Math.max(-1, (s[0] - x) / 300), -0.9]; }
+    const k = Math.max(0, 1 - Math.abs(t - letterLand(i)) / 0.28);
+    if (k > 0) { const s = slotPos(i); hands = [null, lerp2([x + 60, y - 160], [s[0] - 10, s[1] + 50], E.outCubic(k))]; look = [Math.max(-1, Math.min(1, (s[0] - x) / 300)), -0.9]; }
   }
-  const walking = Math.abs(x - keys(t - 0.05, [[T.unload[0], VAN_PARK + 240], [T.unload[0] + 0.35, OX + 1420, E.inOutSine]])) > 0.5 && climb === 0;
-  return { t, x, y, sx: 1, sy: 1 + 0.012 * Math.sin(t * 3), rot: 0, look, dir: -1, legs: climb > 0 ? { mode: 'climb' } : walking ? walkState(x, 1) : { mode: 'stand' }, hands };
+  const moving = Math.abs(keys(t, walkKeys) - keys(t - 0.05, walkKeys)) > 0.5 && climb === 0;
+  return { t, x, y, sx: 1, sy: 1 + 0.012 * Math.sin(t * 3), rot: 0, look, dir: 1, legs: climb > 0 ? { mode: 'climb' } : moving ? walkState(x, 1) : { mode: 'stand' }, hands };
 }
 function fitterBState(t) {
-  let x = keys(t, [[T.unload[0] + 0.1, VAN_PARK + 260], [T.unload[1], OX + 1500, E.inOutSine]]);
-  if (t > T.pack[0]) x = keys(t, [[T.pack[0], OX + 1500], [T.leave[0], VAN_PARK + 260, E.inOutSine]]);
+  const walkKeys = [[T.unload[0], VAN_PARK + 320], [T.unload[0] + 0.25, OX + 820, E.inOutSine], [T.pack[0], OX + 820], [T.pack[1], VAN_PARK + 180, E.inOutSine]];
+  const x = keys(t, walkKeys);
   let sy = 1 + 0.012 * Math.sin(t * 3.3), rot = 0, hands = [null, null];
   const P = parcelPos(t);
   if (t > T.unload[1] - 0.1 && t < T.letter0 + WORDMARK.count * T.letterStep) hands = [[P[0] - 40, P[1] + 20], [P[0] + 40, P[1] + 20]];
   for (let i = 0; i < WORDMARK.count; i++) {
     const t0 = T.letter0 + i * T.letterStep;
     sy *= keys(t, [[t0 - 0.12, 1], [t0, 0.9, E.outCubic], [t0 + 0.12, 1.05, E.outBack], [t0 + 0.3, 1]]);
-    rot += -0.06 * Math.sin(Math.PI * prog(t, t0 - 0.1, t0 + 0.2));
+    rot += 0.05 * Math.sin(Math.PI * prog(t, t0 - 0.1, t0 + 0.2));
   }
-  return { t, x, y: 880, sx: 1 / Math.sqrt(sy), sy, rot, look: [-0.7, -0.7], dir: -1, legs: { mode: 'stand' }, hands };
+  const moving = Math.abs(keys(t, walkKeys) - keys(t - 0.05, walkKeys)) > 0.5;
+  return { t, x, y: 880, sx: 1 / Math.sqrt(sy), sy, rot, look: [0.2, -0.8], dir: 1, legs: moving ? walkState(x, 1) : { mode: 'stand' }, hands };
 }
-function flyingLetter(t, i) {             // → { pos (world offset from fascia slot), squash, show }
+function flyingLetter(t, i) {
   const t0 = T.letter0 + i * T.letterStep, tl = t0 + T.letterDur, s = slotPos(i);
   if (t < t0) return { show: false };
   if (t >= tl) return { show: true, off: [0, 0], squash: 1 - 0.18 * settle(t - tl, 20, 0.3), rot: 0 };
   const u = prog(t, t0, tl), from = parcelPos(t0);
   const p = lerp2(from, s, E.inOutSine(u));
-  return { show: true, off: [p[0] - s[0], p[1] - s[1] - 180 * Math.sin(Math.PI * u)], squash: 1 + 0.12 * Math.sin(Math.PI * u), rot: 0.4 * Math.sin(Math.PI * u) * (i % 2 ? 1 : -1) };
+  return { show: true, off: [p[0] - s[0], p[1] - s[1] - 160 * Math.sin(Math.PI * u)], squash: 1 + 0.1 * Math.sin(Math.PI * u), rot: 0.35 * Math.sin(Math.PI * u) * (i % 2 ? 1 : -1) };
 }
 function customerFit(t) {
   const x = keys(t, [[T.custIn[0], OX - 160], [T.custIn[1], OX + 700, E.inOutSine], [T.door[0], OX + 700], [T.door[1], OX + 1190, E.inOutSine]]);
@@ -1276,36 +1387,24 @@ function customerFit(t) {
            look: t > T.door[0] ? [0.8, 0] : [lerp(0.6, 0.4, lk), lerp(0.1, -1, lk)], blink: 0,
            legs: jump > 1 ? { mode: 'air' } : moving ? walkState(x, 1) : { mode: 'stand' } };
 }
-function drawFit(t, v) {
+const flyingLetters = t => [0, 1, 2, 3, 4].map(i => flyingLetter(t, i));
+function drawFitBack(t, v) {             // shop, landed letters, ladder and fitters (behind the van)
   if (v.x1 < OX - 900 || v.x0 > OX + 2860) return;
-  // fascia letters (landed + halo), in street coordinates
   const I = haloI(t);
   ctx.save(); ctx.translate(OX, 0);
   drawShopBlock(t, { fitted: t > T.letter0, halo: I, doorOpen: t > T.door[0] ? Math.sin(Math.PI * prog(t, T.door[0] + 0.05, T.door[1] - 0.04)) : 0 });
   ctx.restore();
-  if (t > T.letter0) {
-    const F = flyingLetterCache(t);
-    drawLetters(FASCIA.cx, FASCIA.cy, FASCIA.H, {
-      show: i => F[i].show && t >= letterLand(i), depth: () => 10, squash: i => F[i].squash || 1, glow: I,
-    });
-  }
-}
-function flyingLetterCache(t) { return [0, 1, 2, 3, 4].map(i => flyingLetter(t, i)); }
-function drawFitActors(t, v) {
-  if (v.x1 < OX - 900 || v.x0 > OX + 2860 || t < T.drive[1] - 0.5) return;
+  if (t > T.letter0) { const F = flyingLetters(t); drawLetters(FASCIA.cx, FASCIA.cy, FASCIA.H, { show: i => F[i].show && t >= letterLand(i), depth: () => 10, squash: i => F[i].squash || 1, glow: I }); }
+  if (t < T.drive[1] - 0.5) return;
   drawLadder(t);
-  if (t > T.unload[0] && t < T.leave[0]) {
-    drawCharacter(CHARACTERS.fitterA, fitterAState(t));
-    drawCharacter(CHARACTERS.fitterB, fitterBState(t));
-  }
-  drawParcel(t);
-  // letters in the air
-  const F = flyingLetterCache(t);
-  drawLetters(FASCIA.cx, FASCIA.cy, FASCIA.H, {
-    show: i => F[i].show && t < letterLand(i), depth: () => 10, off: i => F[i].off || [0, 0], squash: i => F[i].squash || 1, rot: i => F[i].rot || 0,
-  });
+  if (t > T.unload[0] && t < T.pack[1] + 0.05) { drawCharacter(CHARACTERS.fitterA, fitterAState(t)); drawCharacter(CHARACTERS.fitterB, fitterBState(t)); }
+}
+function drawFitFront(t, v) {            // parcel, flying letters, dust, customer (in front of the van)
+  if (v.x1 < OX - 900 || v.x0 > OX + 2860 || t < T.drive[1] - 0.5) return;
+  if (t > T.unload[0]) drawParcel(t);
+  const F = flyingLetters(t);
+  drawLetters(FASCIA.cx, FASCIA.cy, FASCIA.H, { show: i => F[i].show && t < letterLand(i), depth: () => 10, off: i => F[i].off || [0, 0], squash: i => F[i].squash || 1, rot: i => F[i].rot || 0 });
   for (let i = 0; i < WORDMARK.count; i++) { const s = slotPos(i); puff(s[0], s[1] + 46, letterLand(i), t, 3, 8); }
-  // customer, walking into the shop through its door
   if (t > T.custIn[0]) {
     ctx.save();
     if (t > T.door[0]) { ctx.beginPath(); ctx.rect(OX - 3000, -2000, 3000 + 1086, 5000); ctx.clip(); }   // the door frame swallows them
@@ -1319,26 +1418,25 @@ function drawFitActors(t, v) {
    ========================================================================== */
 
 function viewBounds(c) {
-  const hw = (PORTRAIT ? 540 / PORTRAIT_VIEW.fit : 960) / c.zoom * 1.25, hh = (PORTRAIT ? 960 / PORTRAIT_VIEW.fit : 540) / c.zoom * 1.25;
-  const ox = PORTRAIT ? (PORTRAIT_VIEW.cx - 960) / c.zoom : 0, oy = PORTRAIT ? (PORTRAIT_VIEW.cy - 540) / c.zoom : 0;
-  return { x0: c.cx + ox - hw, x1: c.cx + ox + hw, y0: c.cy + oy - hh, y1: c.cy + oy + hh };
+  const hw = (PORTRAIT ? 540 / PORTRAIT_VIEW.fit : 960) / c.zoom * 1.3, hh = (PORTRAIT ? 960 / PORTRAIT_VIEW.fit : 540) / c.zoom * 1.3;
+  return { x0: c.cx - hw, x1: c.cx + hw, y0: c.cy - hh, y1: c.cy + hh };
 }
 function drawMain(t, c) {
   const v = viewBounds(c);
   drawBackdrop(c);
   drawRoadside(t, v);
-  // outside ground by the studio end
   if (v.x1 > 1950) { sk(rect(1980, 880, 1400, 80), { closed: true, fill: COLORS.pavement }); sk(rect(1980, 960, 1400, 900), { closed: true, fill: COLORS.road }); }
-  drawFit(t, v);
-  if (v.x1 > -2800 && v.x0 < -300) { drawWorkshopRoom(t); drawBed(t); }
-  if (v.x1 > -340 && v.x0 < 2000) drawStudioRoom(t);
-  // parcel into the van: drawn before the van so the body swallows it
-  if (t < T.hop[1] + 0.01 && t > T.wrap[0]) drawParcel(t);
+  if (v.x0 < -2700) { sk(rect(-3900, 880, 1140, 80), { closed: true, fill: COLORS.pavement }); }
+  drawFitBack(t, v);
+  const inShop = v.x1 > -2800 && v.x0 < -290, inStudio = v.x1 > -340 && v.x0 < 2000;
+  if (inShop) { drawWorkshopRoom(t); drawBed(t); }
+  if (inStudio) drawStudioRoom(t);
+  if (t > T.wrap[0] && t < T.drive[0]) drawParcel(t);          // into the van: drawn first so the body swallows it
   drawVan(t);
-  if (v.x1 > -340 && v.x0 < 2000) drawDesigner(t);
-  if (v.x1 > -2800 && v.x0 < -300) drawFabricator(t);
+  if (inStudio) drawDesigner(t);
+  if (inShop) drawFabricator(t);
   else { const S = sheetPose(t); if (S && (S.stage === 'flight' || S.stage === 'held')) drawSheet(t, 'flap'); }
-  drawFitActors(t, v);
+  drawFitFront(t, v);
   drawForeground(c, v);
 }
 
