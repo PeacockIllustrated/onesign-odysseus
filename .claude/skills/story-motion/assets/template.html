@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Story Motion Template</title>
+<!--
+  STORY MOTION TEMPLATE — a working starter for a hand-built canvas story animation.
+
+  Demo story, 12s: someone has an idea, it becomes a card, they throw it across the room,
+  time slows as a colleague leaps to catch it, thumbs up, and the camera drifts home (seamless loop).
+  It exists to show every technique in one place; replace the story, keep the engine.
+
+  Contract (every piece):
+    drawFrame(t) is a pure function of t (no Math.random, no clocks) — randomness via hash(n).
+    window.renderFrame(realSeconds), window.DURATION for frame capture.
+    URL params: ?t=6.5 freeze  ?ui=0 hide bar  ?portrait=1 9:16  ?native=1 exact pixels  ?style=paper
+  Styles: paper · flat · chalk · neon · blueprint · cutout  (STYLES below; add your own the same way).
+-->
+<style>
+  :root { color-scheme: light dark; --bar:#ebe5d8; --ink:#23282b; --muted:#6d6a62; --line:#d6cfbf; --accent:#4e7e8c; --page:#f3efe6; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--page); color: var(--ink); overflow: hidden;
+    font: 500 13px/1.2 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #stage { position: absolute; inset: 0 0 calc(60px + env(safe-area-inset-bottom, 0px)) 0; display: flex; align-items: center; justify-content: center; padding: 12px; }
+  body.noui #stage { bottom: 0; padding: 0; }
+  body.noui #bar { display: none; }
+  canvas { display: block; border-radius: 3px; box-shadow: 0 0 0 1px var(--line), 0 14px 40px rgba(35,40,43,.12); }
+  body.noui canvas { border-radius: 0; box-shadow: none; }
+  #bar { position: absolute; left: 0; right: 0; bottom: 0; height: calc(60px + env(safe-area-inset-bottom, 0px));
+    padding: 0 16px env(safe-area-inset-bottom, 0px); display: flex; align-items: center; gap: 10px; background: var(--bar); border-top: 1px solid var(--line); }
+  button, select { font: inherit; color: var(--ink); background: var(--page); border: 1.5px solid var(--ink); border-radius: 999px; height: 34px; padding: 0 12px; cursor: pointer; flex: none; }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #play { width: 34px; padding: 0; display: grid; place-items: center; }
+  #play svg { width: 12px; height: 12px; fill: currentColor; }
+  #track { position: relative; flex: 1; min-width: 80px; height: 34px; display: flex; align-items: center; }
+  #rail { position: absolute; left: 6px; right: 6px; height: 6px; border-radius: 3px; border: 1.5px solid var(--ink); }
+  #scrub { position: relative; z-index: 1; width: 100%; margin: 0; appearance: none; -webkit-appearance: none; background: transparent; height: 34px; cursor: pointer; }
+  #scrub::-webkit-slider-runnable-track { height: 6px; background: transparent; }
+  #scrub::-moz-range-track { height: 6px; background: transparent; }
+  #scrub::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; margin-top: -5px; border-radius: 50%; background: var(--accent); border: 1.5px solid var(--ink); }
+  #scrub::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 1.5px solid var(--ink); }
+  .tick { position: absolute; top: 4px; bottom: 4px; width: 1.5px; background: rgba(35,40,43,.35); pointer-events: none; }
+  #time { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 88px; text-align: right; }
+  #time b { color: var(--ink); font-weight: 600; }
+  @media (max-width: 620px) { #time { display: none; } #scene, #styleSel { max-width: 104px; } }
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="c"></canvas></div>
+<div id="bar">
+  <button id="play" aria-label="Play / pause"></button>
+  <select id="scene" aria-label="Jump to scene"></select>
+  <select id="styleSel" aria-label="Visual style"></select>
+  <div id="track"><div id="rail"></div><input id="scrub" type="range" min="0" max="12" step="0.001" value="0" aria-label="Scrub"></div>
+  <div id="time"><b>00.00</b></div>
+  <button id="orient" aria-label="Toggle orientation">16:9</button>
+</div>
+<script>
+'use strict';
+
+/* ==========================================================================
+   SETTINGS: story length, scenes, beats, styles, cast. Tune here.
+   ========================================================================== */
+
+const STORY_END = 12;                 // story seconds; real length is DURATION (time warps change it)
+const FPS = 60;
+
+const SCENES = [
+  { id: 1, name: 'The idea',   t0: 0,   t1: 2.5 },
+  { id: 2, name: 'The throw',  t0: 2.5, t1: 4.0 },
+  { id: 3, name: 'The catch',  t0: 4.0, t1: 7.8 },
+  { id: 4, name: 'Back to it', t0: 7.8, t1: STORY_END },
+];
+
+// Beat sheet. Every time in the piece is a key here (or derived from one) — retime here, not in functions.
+const T = {
+  bulb: 1.0, bulbDive: [2.1, 2.5], onScreen: 2.5,
+  reach: [3.1, 3.4], peel: [3.4, 3.7], windup: [3.7, 4.0], flight: [4.0, 7.0],
+  notice: 5.0, crouch: [6.25, 6.55], leap: [6.55, 7.0], land: [7.0, 7.45],
+  thumbs: 7.8, cheer: [8.0, 9.2], home: [9.6, 11.4],
+  slow: { at: [6.62, 7.22], k: 0.12, ramp: 0.08 },     // slow motion across the catch
+};
+
+// A style is a palette (semantic roles) + a way of drawing shapes. Scenes only ever name roles.
+//   render: ink | flat | chalk | neon | blueprint | cutout (see shape())
+//   stroke: outline width   boil: wobble amplitude (screen px)   boilEvery: frames per re-seed
+//   grain:  paper texture strength   vignette: edge darkening
+const STYLES = {
+  paper: {
+    label: 'Paper & ink', render: 'ink', stroke: 3.4, boil: 1.25, boilEvery: 3, grain: 1, vignette: 0.10,
+    C: { page: '#f3efe6', wall: '#f3efe6', floor: '#e6dfd1', ink: '#23282b', desk: '#d9c7a8', screen: '#eceee9', card: '#fbf8f1',
+         a1: '#4e7e8c', a2: '#e9b44c', a3: '#e07a5f', a4: '#a8c3ca', c1: '#e9b44c', c2: '#cf5c78', glow: '#ffe7a3' },
+  },
+  flat: {
+    label: 'Flat vector', render: 'flat', stroke: 0, boil: 0, boilEvery: 1, grain: 0, vignette: 0,
+    C: { page: '#eef1f6', wall: '#eef1f6', floor: '#d5dbe8', ink: '#1f2a44', desk: '#b8c2d9', screen: '#ffffff', card: '#ffffff',
+         a1: '#3d5afe', a2: '#ffb400', a3: '#ff5a5f', a4: '#00b3a4', c1: '#ff5a5f', c2: '#3d5afe', glow: '#ffe07a' },
+  },
+  chalk: {
+    label: 'Chalkboard', render: 'chalk', stroke: 3, boil: 2.2, boilEvery: 4, grain: 0.6, vignette: 0.25,
+    C: { page: '#1f3b33', wall: '#22433a', floor: '#1b3730', ink: '#f4f1e8', desk: '#c9b89a', screen: '#2c5146', card: '#f4f1e8',
+         a1: '#9fd8cb', a2: '#fbe38e', a3: '#f7a3ad', a4: '#b5c9f5', c1: '#fbe38e', c2: '#f7a3ad', glow: '#fff4c2' },
+  },
+  neon: {
+    label: 'Neon night', render: 'neon', stroke: 3, boil: 0.4, boilEvery: 3, grain: 0, vignette: 0.35,
+    C: { page: '#0b0d17', wall: '#0f1222', floor: '#0b0d17', ink: '#e8ecff', desk: '#6a6f99', screen: '#161a33', card: '#e8ecff',
+         a1: '#00e5ff', a2: '#ffe600', a3: '#ff3df2', a4: '#7cff4f', c1: '#ff3df2', c2: '#00e5ff', glow: '#ffe600' },
+  },
+  blueprint: {
+    label: 'Blueprint', render: 'blueprint', stroke: 2, boil: 0, boilEvery: 1, grain: 0, vignette: 0.15,
+    C: { page: '#174a7c', wall: '#174a7c', floor: '#15426f', ink: '#eaf4ff', desk: '#eaf4ff', screen: '#1d5791', card: '#eaf4ff',
+         a1: '#9fd3ff', a2: '#ffd36b', a3: '#ff9f9f', a4: '#b9f2d0', c1: '#ffd36b', c2: '#9fd3ff', glow: '#ffd36b' },
+  },
+  cutout: {
+    label: 'Cut paper', render: 'cutout', stroke: 0, boil: 0.7, boilEvery: 6, grain: 1, vignette: 0.08,
+    C: { page: '#efe7da', wall: '#e8dcc8', floor: '#d9c7a6', ink: '#3b2f2a', desk: '#b98b5f', screen: '#fffaf0', card: '#fffaf0',
+         a1: '#0e7c7b', a2: '#f0a202', a3: '#d95d39', a4: '#7b9e89', c1: '#f0a202', c2: '#d95d39', glow: '#ffd98a' },
+  },
+};
+const ACCENT_ROLES = new Set(['a1', 'a2', 'a3', 'a4', 'c1', 'c2', 'glow']);
+
+// Cast. shape: pill | round | square. A brand can swap the body for its own mark (see drawBody hook).
+const CAST = {
+  maker:   { shape: 'square', w: 150, h: 132, legLen: 50, color: 'c1', eyeGap: 38, eyeY: 0.62, eyeR: 7, k: 1.2 },
+  catcher: { shape: 'pill',   w: 110, h: 176, legLen: 62, color: 'c2', eyeGap: 32, eyeY: 0.72, eyeR: 6.5, k: 1.25 },
+};
+
+const WORLD = { floor: 880, x0: -700, x1: 2700 };
+const DESK = { x0: 600, x1: 920, y: 700 };
+const SCREEN = { cx: 770, cy: 600, w: 170, h: 112 };
+const MAKER_X = 500, CATCHER_X = 1820;
+const PORTRAIT_VIEW = { fit: 1.3 };   // 9:16 sees the centre ~830 world units at zoom 1: compose for it first
+
+/* ==========================================================================
+   Easing, springs, paths, hashing — all pure.
+   ========================================================================== */
+
+const clamp01 = x => x < 0 ? 0 : x > 1 ? 1 : x;
+const lerp = (a, b, u) => a + (b - a) * u;
+const lerp2 = (a, b, u) => [lerp(a[0], b[0], u), lerp(a[1], b[1], u)];
+const prog = (t, a, b) => clamp01((t - a) / (b - a));
+const E = {
+  inOutSine: u => -(Math.cos(Math.PI * u) - 1) / 2,
+  inCubic: u => u * u * u, outCubic: u => 1 - Math.pow(1 - u, 3),
+  inOutCubic: u => u < .5 ? 4*u*u*u : 1 - Math.pow(-2*u + 2, 3) / 2,
+  outBack: u => { const c = 1.70158; return 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); },
+  outBackBig: u => { const c = 2.6; return 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); },
+};
+const settle = (t, w = 16, z = 0.3) => t <= 0 ? 0 : Math.exp(-z*w*t) * Math.sin(w*Math.sqrt(1 - z*z)*t);
+function keys(t, k) {                  // piecewise keyframes: [[t, value, easing?], ...]
+  if (t <= k[0][0]) return k[0][1];
+  for (let i = 1; i < k.length; i++) if (t <= k[i][0]) { const [t0, v0] = k[i-1], [t1, v1, e] = k[i]; return lerp(v0, v1, (e || E.inOutCubic)((t - t0) / (t1 - t0))); }
+  return k[k.length - 1][1];
+}
+const cyc = (t, n, ph = 0) => Math.sin(2 * Math.PI * n * t / STORY_END + ph);   // idle motion that loops exactly
+function hash(n) { let x = Math.imul((n | 0) ^ 0x9e3779b9, 0x85ebca6b); x ^= x >>> 13; x = Math.imul(x, 0xc2b2ae35); x ^= x >>> 16; return (x >>> 0) / 4294967296; }
+function catmull(P, u) {
+  const n = P.length - 1, x = clamp01(u) * n, i = Math.min(n - 1, Math.floor(x)), s = x - i;
+  const p0 = P[Math.max(0, i - 1)], p1 = P[i], p2 = P[i + 1], p3 = P[Math.min(n, i + 2)];
+  const f = (a, b, c, d) => 0.5 * (2*b + (-a + c)*s + (2*a - 5*b + 4*c - d)*s*s + (-a + 3*b - 3*c + d)*s*s*s);
+  return [f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1])];
+}
+function arcPath(P, n = 400) {          // spline sampled by arc length: speed along it is exactly what the easing says
+  const pts = []; for (let i = 0; i <= n; i++) pts.push(catmull(P, i / n));
+  const cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i-1] + Math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1]));
+  return { pts, cum, len: cum[cum.length - 1] };
+}
+function pathAt(A, s) {
+  const d = clamp01(s) * A.len; let lo = 0, hi = A.cum.length - 1;
+  while (lo < hi - 1) { const m = (lo + hi) >> 1; if (A.cum[m] <= d) lo = m; else hi = m; }
+  return lerp2(A.pts[lo], A.pts[hi], (d - A.cum[lo]) / ((A.cum[hi] - A.cum[lo]) || 1));
+}
+
+// Time warp: beats are authored in story time; speedAt(s) maps it to real time. Slow motion = speed < 1.
+const speedAt = s => { const S = T.slow, env = E.inOutSine(prog(s, S.at[0] - S.ramp, S.at[0])) * (1 - E.inOutSine(prog(s, S.at[1], S.at[1] + S.ramp))); return lerp(1, S.k, env); };
+const WARP = (() => { const ds = 0.001, n = Math.ceil(STORY_END / ds), r = new Float64Array(n + 1); for (let i = 1; i <= n; i++) r[i] = r[i-1] + ds / speedAt((i - 0.5) * ds); return { ds, n, r }; })();
+const DURATION = WARP.r[WARP.n];
+function realAt(st) { const x = clamp01(st / STORY_END) * WARP.n, i = Math.min(WARP.n - 1, Math.floor(x)); return lerp(WARP.r[i], WARP.r[i + 1], x - i); }
+function storyAt(rt) { let lo = 0, hi = WARP.n; if (rt <= 0) return 0; if (rt >= WARP.r[hi]) return STORY_END; while (lo < hi - 1) { const m = (lo + hi) >> 1; if (WARP.r[m] <= rt) lo = m; else hi = m; } return (lo + (rt - WARP.r[lo]) / (WARP.r[hi] - WARP.r[lo])) * WARP.ds; }
+
+/* ==========================================================================
+   Drawing: one shape() primitive; the style decides how a shape is rendered.
+   ========================================================================== */
+
+const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
+let STYLE = STYLES.paper, BASE_SCALE = 1, CAM_ZOOM = 1, BOIL = 0, STROKE = 0, W = 1920, H = 1080, PORTRAIT = false, K = 1, grain = null;
+const col = r => (STYLE.C[r] || r);
+const worldScale = () => { const m = ctx.getTransform(); return Math.max(0.05, Math.sqrt(Math.abs(m.a * m.d - m.b * m.c))) / BASE_SCALE; };
+
+function boil(pts, amp, closed) {       // hand-drawn wobble, re-seeded every STYLE.boilEvery frames
+  const id = STROKE++;
+  if (!amp || pts.length < 2) return pts;
+  const A = amp / worldScale();
+  let total = 0; const L = [0];
+  for (let i = 1; i < pts.length; i++) { total += Math.hypot(pts[i][0] - pts[i-1][0], pts[i][1] - pts[i-1][1]); L.push(total); }
+  if (closed) total += Math.hypot(pts[0][0] - pts[pts.length-1][0], pts[0][1] - pts[pts.length-1][1]);
+  const k1 = Math.max(2, Math.round(total * worldScale() * 0.03 / (2 * Math.PI))), k2 = k1 * 2 + 1;
+  const ph = [1, 2, 3, 4].map(j => hash(BOIL * 7919 + id * 131 + j) * Math.PI * 2);
+  return pts.map((p, i) => { const a = (L[i] / (total || 1)) * Math.PI * 2;
+    return [p[0] + A * (Math.sin(k1*a + ph[0]) + 0.5*Math.sin(k2*a + ph[1])) / 1.5, p[1] + A * (Math.sin(k1*a + ph[2]) + 0.5*Math.sin(k2*a + ph[3])) / 1.5]; });
+}
+function trace(P, closed) { ctx.beginPath(); P.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); if (closed) ctx.closePath(); }
+function strokeP(P, closed, color, w) { trace(P, closed); ctx.strokeStyle = color; ctx.lineWidth = w; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke(); }
+function fillP(P, color) { trace(P, true); ctx.fillStyle = color; ctx.fill(); }
+
+// shape(points, { fill: role|hex, closed=true, stroke: role|false, w, amp, alpha })
+function shape(pts, o = {}) {
+  const closed = o.closed !== false, S = STYLE, fillRole = closed ? o.fill : null;
+  const fill = fillRole ? col(fillRole) : null, w = o.w ?? (S.stroke || 3), strokeRole = o.stroke ?? 'ink';
+  ctx.save(); if (o.alpha !== undefined) ctx.globalAlpha *= o.alpha;
+  const P = boil(pts, (o.amp ?? 1) * S.boil, closed);
+  switch (S.render) {
+    case 'ink':        // flat fill + a boiling ink outline
+      if (fill) fillP(P, fill);
+      if (strokeRole !== false) strokeP(P, closed, col(strokeRole), w);
+      break;
+    case 'flat':       // crisp fills, no outlines; open lines keep a stroke
+      if (fill) fillP(P, fill); else if (strokeRole !== false) strokeP(P, false, col(strokeRole), o.w ?? 5);
+      break;
+    case 'cutout':     // paper pieces with a hard cast shadow, no outlines
+      if (fill) { ctx.shadowColor = 'rgba(50,30,15,0.24)'; ctx.shadowOffsetX = 3 * K; ctx.shadowOffsetY = 5 * K; fillP(P, fill); ctx.shadowColor = 'transparent'; }
+      else if (strokeRole !== false) strokeP(P, false, col(strokeRole), o.w ?? 5);
+      break;
+    case 'chalk': {    // translucent fill, two scratchy passes of chalk on the line
+      if (fill) { const a = ctx.globalAlpha; ctx.globalAlpha = a * 0.32; fillP(P, fill); ctx.globalAlpha = a; }
+      if (strokeRole !== false) {
+        const c = col(fillRole && ACCENT_ROLES.has(fillRole) ? fillRole : strokeRole), a = ctx.globalAlpha;
+        ctx.globalAlpha = a * 0.75; strokeP(P, closed, c, w);
+        ctx.globalAlpha = a * 0.4; strokeP(boil(pts, S.boil * 1.4, closed), closed, c, w * 0.6);
+        ctx.globalAlpha = a;
+      }
+      break;
+    }
+    case 'neon': {     // dark fill, glowing tube in the shape's own colour
+      if (fill) { const a = ctx.globalAlpha; ctx.globalAlpha = a * (ACCENT_ROLES.has(fillRole) ? 0.14 : 1); fillP(P, ACCENT_ROLES.has(fillRole) ? fill : col('wall')); ctx.globalAlpha = a; }
+      if (strokeRole !== false) {
+        const c = fillRole && (ACCENT_ROLES.has(fillRole) || fillRole === 'card') ? fill : col(strokeRole);
+        ctx.shadowColor = c; ctx.shadowBlur = 14 * K * CAM_ZOOM; strokeP(P, closed, c, w); ctx.shadowBlur = 0; ctx.shadowColor = 'transparent';
+      }
+      break;
+    }
+    case 'blueprint':  // ghosted fill, fine white line
+      if (fill) { const a = ctx.globalAlpha; ctx.globalAlpha = a * (ACCENT_ROLES.has(fillRole) ? 0.35 : 0.08); fillP(P, fill); ctx.globalAlpha = a; }
+      if (strokeRole !== false) strokeP(P, closed, col(strokeRole), w);
+      break;
+  }
+  ctx.restore();
+}
+const line = (pts, o = {}) => shape(pts, { ...o, closed: false });
+function dot(x, y, r, role = 'ink') {
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = col(role);
+  if (STYLE.render === 'neon') { ctx.shadowColor = col(role); ctx.shadowBlur = 10 * K * CAM_ZOOM; }
+  ctx.fill(); ctx.shadowBlur = 0;
+}
+function seg(a, b, step = 22) { const n = Math.max(1, Math.ceil(Math.hypot(b[0]-a[0], b[1]-a[1]) / step)), out = []; for (let i = 0; i <= n; i++) out.push(lerp2(a, b, i / n)); return out; }
+function poly(c, closed = true) { const out = [], n = c.length, m = closed ? n : n - 1; for (let i = 0; i < m; i++) out.push(...seg(c[i], c[(i + 1) % n]).slice(0, -1)); if (!closed) out.push(c[n - 1]); return out; }
+const rect = (x, y, w, h) => poly([[x, y], [x + w, y], [x + w, y + h], [x, y + h]]);
+function rrect(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2); const out = [], arc = (cx, cy, a0) => { for (let i = 0; i <= 6; i++) { const a = a0 + i / 6 * Math.PI / 2; out.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); } };
+  out.push(...seg([x + r, y], [x + w - r, y]).slice(0, -1)); arc(x + w - r, y + r, -Math.PI / 2);
+  out.push(...seg([x + w, y + r], [x + w, y + h - r]).slice(1, -1)); arc(x + w - r, y + h - r, 0);
+  out.push(...seg([x + w - r, y + h], [x + r, y + h]).slice(1, -1)); arc(x + r, y + h - r, Math.PI / 2);
+  out.push(...seg([x, y + h - r], [x, y + r]).slice(1, -1)); arc(x + r, y + r, Math.PI);
+  return out;
+}
+function ellipse(cx, cy, rx, ry, n = 32) { const o = []; for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2; o.push([cx + rx * Math.cos(a), cy + ry * Math.sin(a)]); } return o; }
+const circle = (cx, cy, r) => ellipse(cx, cy, r, r, Math.max(14, Math.round(r * 0.8)));
+// Motion trails for fast things the camera isn't following: faint earlier copies, then the thing itself.
+function ghosted(t, fn, n = 4, span = 0.05) { const s0 = STROKE, a = ctx.globalAlpha; for (let k = n; k >= 1; k--) { ctx.globalAlpha = a * 0.25 * (1 - k / (n + 1)); fn(t - span * k / n); STROKE = s0; } ctx.globalAlpha = a; fn(t); }
+function puff(x, y, t0, t, n = 3, size = 10) {
+  for (let i = 0; i < n; i++) { const tt = t - t0 - i * 0.04; if (tt <= 0 || tt > 0.5) continue;
+    const s = E.outBack(clamp01(tt / 0.16)) * (1 - E.inCubic(clamp01((tt - 0.2) / 0.3))), a = (i / Math.max(1, n - 1) - 0.5) * 2.2 - Math.PI / 2;
+    if (s > 0.03) shape(circle(x + Math.cos(a) * (18 + tt * 70), y + Math.sin(a) * (10 + tt * 50), (size + i * 2) * s), { fill: 'card', w: 2.2, amp: 0.6 }); }
+}
+
+/* ==========================================================================
+   Characters: body shape, dot eyes, stick limbs. spec.drawBody(frame, state) swaps in a custom body
+   (set spec.ownFace if it draws its own eyes, spec.hipY to move the legs).
+   State: { x, y (feet), base?, rot, sx, sy, look:[x,y], blink, happy, wide, legs:{mode}, hands:[p|null], handStyle:[..], jump }
+   ========================================================================== */
+
+function charFrame(spec, st) {
+  const sit = st.legs && st.legs.mode === 'sit';
+  const bx = st.x, by = (sit ? st.y : st.y - spec.legLen) - (st.jump || 0);
+  const c = Math.cos(st.rot || 0), s = Math.sin(st.rot || 0), sx = st.sx || 1, sy = st.sy || 1;
+  return { bx, by, sx, sy, L2W: (lx, ly) => [bx + lx*sx*c - ly*sy*s, by + lx*sx*s + ly*sy*c] };
+}
+function bodyShape(spec) {
+  const w = spec.w, h = spec.h;
+  if (spec.shape === 'pill') return rrect(-w/2, -h, w, h, w/2);
+  if (spec.shape === 'round') return ellipse(0, -h/2, w/2, h/2, 36);
+  return rrect(-w/2, -h, w, h, 20);
+}
+function drawArm(spec, a, hand, style, side) {
+  const len = Math.hypot(hand[0]-a[0], hand[1]-a[1]) || 1, bend = Math.min(18, len * 0.12) * (side ? 1 : -1);
+  const m = [(a[0] + hand[0]) / 2 - (hand[1] - a[1]) / len * bend, (a[1] + hand[1]) / 2 + (hand[0] - a[0]) / len * bend];
+  const pts = []; for (let i = 0; i <= 10; i++) { const u = i / 10; pts.push([(1-u)*(1-u)*a[0] + 2*(1-u)*u*m[0] + u*u*hand[0], (1-u)*(1-u)*a[1] + 2*(1-u)*u*m[1] + u*u*hand[1]]); }
+  line(pts, { w: 3.4 });
+  const r = 6 * (spec.k || 1);
+  if (style === 'thumb') {             // thumbs up that reads: wide fist, finger creases, short stout thumb
+    const q = r * 1.5, s2 = side ? 1 : -1;
+    shape(rrect(hand[0] - s2 * q * 1.2, hand[1] - q * 3.0, q * 1.2, q * 2.2, q * 0.6), { fill: spec.color, w: 2.6, amp: 0.3 });
+    shape(rrect(hand[0] - q * 1.5, hand[1] - q * 1.2, q * 3, q * 2.4, q * 0.85), { fill: spec.color, w: 2.6, amp: 0.3 });
+    for (const y of [-0.3, 0.3]) line([[hand[0] + s2 * q * 1.5, hand[1] + y * q], [hand[0] + s2 * q * 0.5, hand[1] + y * q]], { w: 2, amp: 0.2 });
+    return;
+  }
+  shape(circle(hand[0], hand[1], r), { fill: spec.color, w: 2.6, amp: 0.5 });
+}
+function drawCharacter(spec, st) {
+  const f = charFrame(spec, st), { L2W } = f, w = spec.w, h = spec.h, k = spec.k || 1, legs = st.legs || { mode: 'stand' };
+  if (legs.mode !== 'sit' && !st.base) {                // contact shadow, shrinking as they leave the ground
+    const k2 = 1 / (1 + (st.jump || 0) / 60); ctx.save(); ctx.globalAlpha *= STYLE.render === 'neon' ? 0.5 : 0.12;
+    ctx.beginPath(); ctx.ellipse(st.x, st.y + 3, w * 0.5 * k2, 8 * k2, 0, 0, Math.PI * 2); ctx.fillStyle = STYLE.render === 'neon' ? col(spec.color) : '#000'; ctx.fill(); ctx.restore();
+  }
+  for (const side of [-1, 1]) {
+    const hip = L2W(side * w * 0.2, spec.hipY ?? -2);
+    const foot = legs.mode === 'sit' ? [hip[0] + side * 6 + cyc(st.t, 6, side) * 4, hip[1] + spec.legLen]
+               : legs.mode === 'air' ? [hip[0] + side * 12, hip[1] + spec.legLen * 0.75] : [hip[0] + side * 6, st.y];
+    line([hip, foot], { w: 3.4 }); line([foot, [foot[0] + (st.dir || 1) * 11, foot[1]]], { w: 3.4 });
+  }
+  const sh = [0, 1].map(i => L2W((i ? 1 : -1) * w * 0.5, -h * 0.46));
+  const hands = [0, 1].map(i => (st.hands && st.hands[i]) || [sh[i][0] + (i ? 10 : -10), sh[i][1] + h * 0.3]);
+  if (spec.drawBody) spec.drawBody(f, st);             // brand hook: draw your own body in the frame
+  else shape(bodyShape(spec).map(p => L2W(p[0], p[1])), { fill: spec.color, w: 3.6 });
+  const lx = (st.look ? st.look[0] : 0) * 9 * k, ly = (st.look ? st.look[1] : 0) * 8 * k;
+  if (!spec.ownFace) for (const side of [-1, 1]) {        // a custom body can draw its own face (spec.ownFace)
+    const e = L2W(side * spec.eyeGap / 2 + lx, -h * spec.eyeY + ly);
+    if (st.happy) line([[e[0] - 7, e[1] + 3], [e[0], e[1] - 5], [e[0] + 7, e[1] + 3]], { w: 3.4, amp: 0.3 });
+    else if (st.blink) line([[e[0] - 6, e[1]], [e[0] + 6, e[1]]], { w: 3, amp: 0.3 });
+    else dot(e[0], e[1], spec.eyeR * (st.wide ? 1.3 : 1));
+  }
+  for (let i = 0; i < 2; i++) drawArm(spec, sh[i], hands[i], st.handStyle && st.handStyle[i], i);
+}
+
+/* ==========================================================================
+   The story: state functions (pure in t), then the set, then the frame.
+   ========================================================================== */
+
+const THROW = arcPath([[515, 455], [700, 290], [1050, 220], [1450, 290], [1700, 430], [1812, 540]]);
+const throwS = t => 1 - Math.pow(1 - prog(t, T.flight[0], T.flight[1]), 1.6);
+const CARD = { w: 116, h: 78 };
+
+function cardPose(t) {
+  if (t < T.onScreen) return null;
+  const P = T.peel, Wd = T.windup;
+  if (t < P[0]) return { stage: 'screen' };
+  if (t < Wd[0]) return { p: lerp2([SCREEN.cx, SCREEN.cy], [650, 560], E.outCubic(prog(t, P[0], P[1]))), rot: -0.1, sc: lerp(1.2, 1, prog(t, P[0], P[1])), flip: 1 };
+  if (t < T.flight[0]) return { p: lerp2([650, 560], [515, 455], E.inOutCubic(prog(t, Wd[0], Wd[1]))), rot: lerp(-0.1, -0.45, prog(t, Wd[0], Wd[1])), sc: 1, flip: 1 };
+  if (t < T.flight[1]) { const u = prog(t, T.flight[0], T.flight[1]); return { p: pathAt(THROW, throwS(t)), rot: -0.45 + Math.PI * 4 * E.inOutSine(u), sc: 1, flip: Math.cos(Math.PI * 2 * E.inOutSine(u)) }; }
+  const C = catcherState(t); return { p: C.hold, rot: Math.PI * 4 - 0.45 + 0.45 * E.outCubic(prog(t, T.flight[1], T.land[1])), sc: 1, flip: 1 };
+}
+function drawCard(t) {
+  const c = cardPose(t); if (!c || c.stage === 'screen') return;
+  ctx.save(); ctx.translate(c.p[0], c.p[1]); ctx.rotate(c.rot); ctx.scale(c.sc * Math.max(0.08, Math.abs(c.flip)), c.sc);
+  shape(rrect(-CARD.w / 2, -CARD.h / 2, CARD.w, CARD.h, 8), { fill: 'card', w: 2.8 });
+  if (c.flip > 0) drawIdeaIcon(0, 0, 0.9);
+  ctx.restore();
+}
+function drawIdeaIcon(x, y, s) {                         // the "idea": a bulb with rays
+  shape(circle(x, y - 6 * s, 16 * s), { fill: 'a2', w: 2.4 });
+  shape(rect(x - 7 * s, y + 10 * s, 14 * s, 9 * s), { fill: 'a4', w: 2 });
+  for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + (i - 2) * 0.55; line([[x + Math.cos(a) * 24 * s, y - 6 * s + Math.sin(a) * 24 * s], [x + Math.cos(a) * 32 * s, y - 6 * s + Math.sin(a) * 32 * s]], { w: 2.4, stroke: 'a2' }); }
+}
+
+function makerState(t) {
+  let sy = 1 + 0.015 * cyc(t, 12), rot = 0, look = [0.9, 0.35], happy = false, wide = false, hands = [null, null], handStyle = null;
+  const typing = t < T.bulb || t > T.home[1] - 0.4, tap = Math.abs(cyc(t, 60)) * 5;
+  if (typing) hands = [null, [MAKER_X + 120, 668 - tap]];                  // the near hand types; an arm across the body hides the face
+  if (t > T.bulb - 0.05 && t < T.bulbDive[1]) { look = [0.1, -1]; wide = t < T.bulb + 0.5; sy *= keys(t, [[T.bulb, 1], [T.bulb + 0.08, 0.9, E.outCubic], [T.bulb + 0.3, 1.05, E.outBack], [T.bulb + 0.5, 1]]); }
+  if (t > T.bulbDive[0]) look = [0.9, 0.3];
+  const R = T.reach, P = T.peel, Wd = T.windup;
+  if (t > R[0] && t < Wd[1] + 0.4) {
+    const c = cardPose(Math.max(t, P[0])), onScreen = [SCREEN.cx - 40, SCREEN.cy];
+    let h = t < P[0] ? lerp2([MAKER_X + 60, 640], onScreen, E.outBack(prog(t, R[0], R[1]))) : [c.p[0] - 30, c.p[1] + 10];
+    if (t > Wd[1]) h = lerp2([700, 300], [MAKER_X + 70, 600], E.inOutCubic(prog(t, Wd[1], Wd[1] + 0.4)));   // follow-through
+    hands = [null, h];
+    rot = keys(t, [[Wd[0], 0], [Wd[1] - 0.05, -0.12, E.inOutSine], [Wd[1] + 0.1, 0.1, E.outBack], [Wd[1] + 0.5, 0]]);
+  }
+  if (t > T.flight[0]) look = [1, -0.4];
+  if (t > T.cheer[0] && t < T.cheer[1]) { happy = true; const u = prog(t, T.cheer[0], T.cheer[1]), wave = Math.sin(u * Math.PI * 8) * 14;
+    const up = Math.sin(Math.PI * u); hands = [[MAKER_X - 80 - wave, lerp(640, 470, up)], [MAKER_X + 80 + wave, lerp(640, 470, up)]]; sy *= 1 + 0.06 * up; }
+  if (t > T.cheer[1]) look = [lerp(1, 0.9, prog(t, T.cheer[1], T.home[0])), lerp(-0.4, 0.35, prog(t, T.cheer[1], T.home[0]))];
+  const blink = [4.6, 10.2].some(b => t > b && t < b + 0.11);
+  return { t, x: MAKER_X, y: 716, sx: 1 / Math.sqrt(sy), sy, rot, dir: 1, look, blink, happy, wide, legs: { mode: 'sit' }, hands, handStyle };
+}
+function catcherState(t) {
+  let sy = 1 + 0.015 * cyc(t, 10, 1), jump = 0, look = [-0.8, 0.1], wide = false, happy = false, hands = [null, null], handStyle = null, legs = { mode: 'stand' };
+  if (t > T.notice && t < T.flight[1]) { const p = pathAt(THROW, throwS(t)), d = [p[0] - CATCHER_X, p[1] - 640], L = Math.hypot(...d) || 1; look = [d[0] / L, d[1] / L]; wide = t < T.crouch[0]; }   // watches the flight path (not cardPose: that asks us where the hands are)
+  sy *= keys(t, [[T.crouch[0], 1], [T.crouch[1], 0.82, E.inOutCubic], [T.crouch[1] + 0.06, 1.12, E.outBack], [T.leap[1], 1]]);
+  if (t > T.leap[0] && t < T.land[1]) { jump = t < T.leap[1] ? 95 * E.outCubic(prog(t, T.leap[0], T.leap[1])) : 95 * (1 - E.inCubic(prog(t, T.land[0], T.land[1]))); legs = { mode: 'air' }; }
+  sy -= 0.14 * settle(t - T.land[1], 15, 0.3);
+  const up = E.outBack(prog(t, T.crouch[1], T.leap[1] - 0.1)) * (1 - E.inOutCubic(prog(t, T.land[1], T.land[1] + 0.35)));
+  const top = 880 - 62 - 176 * sy - jump;
+  const hold = lerp2([CATCHER_X - 8, 700], [CATCHER_X - 8, top - 45], up);
+  if (t > T.crouch[0]) hands = [[hold[0] - 50, hold[1] + 14], [hold[0] + 50, hold[1] + 14]];
+  if (t > T.land[1] + 0.2) { happy = true; look = [-0.6, -0.2]; }
+  if (t > T.thumbs - 0.1 && t < T.home[1]) {
+    const th = E.outBack(prog(t, T.thumbs - 0.1, T.thumbs + 0.15)) * (1 - E.inOutCubic(prog(t, T.home[0], T.home[0] + 0.5)));
+    hands = [[hold[0] - 46, hold[1] + 14], lerp2([CATCHER_X + 60, 760], [CATCHER_X + 95, 560], th)]; handStyle = [null, th > 0.05 ? 'thumb' : null];
+  }
+  return { t, x: CATCHER_X, y: WORLD.floor, sx: 1 / Math.sqrt(sy), sy, rot: 0, dir: -1, look, wide, happy, jump, legs, hands, handStyle, hold: [hold[0], hold[1] + 4] };
+}
+
+function drawSet(t) {
+  const F = WORLD.floor;
+  ctx.fillStyle = col('wall'); ctx.fillRect(WORLD.x0, -600, WORLD.x1 - WORLD.x0, F + 600);
+  if (STYLE.render === 'blueprint') { ctx.save(); ctx.globalAlpha = 0.14; ctx.strokeStyle = col('ink'); ctx.lineWidth = 1;
+    for (let x = WORLD.x0; x < WORLD.x1; x += 80) { ctx.beginPath(); ctx.moveTo(x, -600); ctx.lineTo(x, F); ctx.stroke(); }
+    for (let y = -600; y < F; y += 80) { ctx.beginPath(); ctx.moveTo(WORLD.x0, y); ctx.lineTo(WORLD.x1, y); ctx.stroke(); } ctx.restore(); }
+  if (STYLE.render === 'cutout') { ctx.fillStyle = col('floor'); ctx.globalAlpha = 0.35; ctx.fillRect(WORLD.x0, 760, WORLD.x1 - WORLD.x0, 120); ctx.globalAlpha = 1; }
+  shape(rect(WORLD.x0, F, WORLD.x1 - WORLD.x0, 700), { fill: 'floor' });
+  line([[WORLD.x0, F - 34], [WORLD.x1, F - 34]], { w: 2.2, alpha: 0.6 });
+  // window, with sky and a cloud that drifts (loops over the story)
+  shape(rect(1080, 220, 300, 320), { fill: 'a4' });
+  shape(ellipse(1150 + 120 * ((t / STORY_END) % 1), 300, 40, 16, 18), { fill: 'card', w: 2.2 });
+  line([[1230, 220], [1230, 540]], { w: 3 }); line([[1080, 380], [1380, 380]], { w: 3 });
+  shape(rect(1068, 540, 324, 16), { fill: 'desk', w: 2.6 });
+  // hanging lamp over the desk, lit while the idea is alive
+  line([[770, -600], [770, 250]], { w: 2.4 });
+  shape(poly([[720, 310], [745, 250], [795, 250], [820, 310]]), { fill: 'a1', w: 3 });
+  // plant, shelf with books, a picture frame
+  shape(poly([[180, F], [168, F - 90], [262, F - 90], [250, F]]), { fill: 'a3', w: 3 });
+  for (const [dx, dy] of [[-40, -170], [10, -230], [55, -160], [-12, -120]]) { line([[215, F - 90], [215 + dx * 0.6, F - 90 + dy * 0.6]], { w: 3 }); shape(ellipse(215 + dx, F - 90 + dy, 32, 13, 16), { fill: 'a4', w: 2.4 }); }
+  shape(rect(2020, 360, 320, 18), { fill: 'desk', w: 2.6 });
+  [['a1', 2040, 60], ['a2', 2078, 72], ['a3', 2122, 54], ['c2', 2158, 66], ['a4', 2200, 70]].forEach(([c, x, h]) => shape(rect(x, 360 - h, 32, h), { fill: c, w: 2.4, amp: 0.8 }));
+  shape(rect(300, 220, 180, 140), { fill: 'card', w: 3 }); shape(poly([[320, 340], [370, 280], [410, 320], [440, 290], [460, 340]]), { fill: 'a4', w: 2 });
+  // desk + monitor
+  shape(rect(DESK.x0, DESK.y, DESK.x1 - DESK.x0, 22), { fill: 'desk' });
+  line([[DESK.x0 + 26, DESK.y + 22], [DESK.x0 + 26, F]], { w: 5 }); line([[DESK.x1 - 26, DESK.y + 22], [DESK.x1 - 26, F]], { w: 5 });
+  shape(rect(SCREEN.cx - 16, SCREEN.cy + SCREEN.h / 2 + 6, 32, DESK.y - SCREEN.cy - SCREEN.h / 2 - 6), { fill: 'ink', w: 2 });
+  shape(rrect(SCREEN.cx - SCREEN.w / 2 - 12, SCREEN.cy - SCREEN.h / 2 - 12, SCREEN.w + 24, SCREEN.h + 24, 12), { fill: 'ink', w: 3 });
+  shape(rect(SCREEN.cx - SCREEN.w / 2, SCREEN.cy - SCREEN.h / 2, SCREEN.w, SCREEN.h), { fill: 'screen', w: 2 });
+  const c = cardPose(t);
+  if (c && c.stage === 'screen') { const s = E.outBackBig(prog(t, T.onScreen, T.onScreen + 0.3)); ctx.save(); ctx.translate(SCREEN.cx, SCREEN.cy); ctx.scale(s * 1.2, s * 1.2);
+    shape(rrect(-CARD.w / 2, -CARD.h / 2, CARD.w, CARD.h, 8), { fill: 'card', w: 2.4 }); drawIdeaIcon(0, 0, 0.9); ctx.restore(); }
+  shape(rrect(DESK.x0 + 40, DESK.y - 12, 120, 12, 4), { fill: 'screen', w: 2.2 });
+  // stool
+  shape(ellipse(MAKER_X, 720, 78, 10, 22), { fill: 'desk', w: 3 });
+  line([[MAKER_X - 42, 728], [MAKER_X - 62, F]], { w: 4 }); line([[MAKER_X + 42, 728], [MAKER_X + 62, F]], { w: 4 });
+}
+function drawBulb(t) {
+  if (t < T.bulb || t > T.bulbDive[1]) return;
+  const pop = E.outBackBig(prog(t, T.bulb, T.bulb + 0.3)), d = E.inCubic(prog(t, T.bulbDive[0], T.bulbDive[1]));
+  const p = lerp2([MAKER_X + 10, 470 + 8 * Math.sin(t * 5)], [SCREEN.cx, SCREEN.cy], d);
+  ctx.save(); ctx.translate(p[0], p[1]); ctx.scale(pop * (1 - 0.6 * d), pop * (1 - 0.6 * d));
+  const g = ctx.createRadialGradient(0, -6, 4, 0, -6, 80); g.addColorStop(0, col('glow')); g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.globalAlpha = 0.5; ctx.fillStyle = g; ctx.fillRect(-80, -86, 160, 160); ctx.globalAlpha = 1;
+  drawIdeaIcon(0, 0, 1.4); ctx.restore();
+  puff(MAKER_X + 10, 470, T.bulb, t, 3, 7);
+}
+
+/* ==========================================================================
+   Camera: keyed, calm, composed for 9:16 first. Values may be functions of t (follow shots).
+   ========================================================================== */
+
+const cam = (cx, cy, zoom = 1) => ({ cx, cy, zoom });
+const camLerp = (a, b, u) => cam(lerp(a.cx, b.cx, u), lerp(a.cy, b.cy, u), Math.exp(lerp(Math.log(a.zoom), Math.log(b.zoom), u)));
+function camKeys(t, ks) {
+  const v = k => typeof k[1] === 'function' ? k[1](t) : k[1];
+  if (t <= ks[0][0]) return v(ks[0]);
+  for (let i = 1; i < ks.length; i++) if (t <= ks[i][0]) return camLerp(v(ks[i-1]), v(ks[i]), (ks[i][2] || E.inOutCubic)((t - ks[i-1][0]) / (ks[i][0] - ks[i-1][0])));
+  return v(ks[ks.length - 1]);
+}
+const HOME = cam(600, 600, 1.3);                         // first frame = last frame: the loop point
+const followCard = t => { const c = cardPose(t - 0.15); const p = c && c.p ? c.p : [1812, 540]; return cam(p[0], Math.min(620, p[1] + 90), 1.02); };
+function camera(t) {
+  return camKeys(t, [
+    [0, HOME], [T.bulb + 0.3, cam(580, 560, 1.4), E.inOutSine], [T.onScreen, cam(640, 590, 1.35)],
+    [T.windup[1], cam(660, 540, 1.15), E.inOutSine],
+    [T.flight[0] + 0.5, followCard, E.inOutSine], [T.crouch[0], followCard],
+    [T.leap[1], cam(1780, 610, 1.45), E.inOutSine],      // push in on the catch while time is slow
+    [T.thumbs + 0.2, cam(1790, 630, 1.3), E.inOutSine],
+    [T.cheer[0] + 0.5, cam(1180, 560, 0.72), E.inOutSine],
+    [T.home[0], cam(1180, 560, 0.74)], [T.home[1], HOME, E.inOutCubic], [STORY_END, HOME],
+  ]);
+}
+
+/* ==========================================================================
+   Frame
+   ========================================================================== */
+
+function buildGrain() {
+  const c = document.createElement('canvas'); c.width = c.height = 320;
+  const g = c.getContext('2d'), img = g.createImageData(320, 320); let seed = 12345; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < img.data.length; i += 4) { const v = rnd(); img.data[i] = img.data[i+1] = img.data[i+2] = v > 0.5 ? 255 : 40; img.data[i+3] = Math.round(Math.pow(Math.abs(v - 0.5) * 2, 3) * 38); }
+  g.putImageData(img, 0, 0); grain = ctx.createPattern(c, 'repeat');
+}
+function drawFrame(tIn) {
+  const r = ((tIn % DURATION) + DURATION) % DURATION, t = storyAt(r);
+  BOIL = Math.floor(r * FPS / STYLE.boilEvery); STROKE = 0;
+  const fit = PORTRAIT ? PORTRAIT_VIEW.fit : 1; BASE_SCALE = K * fit;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+  ctx.fillStyle = col('page'); ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const c = camera(t); CAM_ZOOM = c.zoom;
+  ctx.setTransform(K, 0, 0, K, 0, 0); ctx.translate(W / 2, H / 2); ctx.scale(fit * c.zoom, fit * c.zoom); ctx.translate(-c.cx, -c.cy);
+  drawSet(t);
+  drawCharacter(CAST.maker, makerState(t));
+  drawCharacter(CAST.catcher, catcherState(t));
+  drawBulb(t);
+  const cp = cardPose(t); if (cp && cp.p && t > T.flight[0] && t < T.flight[1]) ghosted(t, drawCard, 4, 0.05); else drawCard(t);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (STYLE.grain && grain) { ctx.globalAlpha = STYLE.grain; ctx.fillStyle = grain; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.globalAlpha = 1; }
+  const slow = 1 - speedAt(t) / 1, v = STYLE.vignette + 0.18 * Math.max(0, slow);   // vignette deepens in slow motion
+  if (v > 0) { const g = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, Math.min(canvas.width, canvas.height) * 0.35, canvas.width / 2, canvas.height / 2, Math.hypot(canvas.width, canvas.height) * 0.6);
+    g.addColorStop(0, 'rgba(20,16,10,0)'); g.addColorStop(1, `rgba(20,16,10,${v.toFixed(3)})`); ctx.fillStyle = g; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+}
+
+/* ==========================================================================
+   Canvas sizing + review controls (the only code that reads a clock).
+   ========================================================================== */
+
+const params = new URLSearchParams(location.search);
+const NATIVE = params.get('native') === '1';
+if (params.get('ui') === '0') document.body.classList.add('noui');
+PORTRAIT = params.get('portrait') === '1';
+STYLE = STYLES[params.get('style')] || STYLES.paper;
+
+function resize() {
+  W = PORTRAIT ? 1080 : 1920; H = PORTRAIT ? 1920 : 1080;
+  const stage = document.getElementById('stage'), pad = document.body.classList.contains('noui') ? 0 : 24;
+  const aw = stage.clientWidth - pad, ah = stage.clientHeight - pad, cssW = Math.max(10, Math.min(aw, ah * W / H)), cssH = cssW * H / W;
+  canvas.style.width = cssW + 'px'; canvas.style.height = cssH + 'px';
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = NATIVE ? W : Math.max(2, Math.round(cssW * dpr)); canvas.height = NATIVE ? H : Math.max(2, Math.round(cssH * dpr));
+  K = canvas.width / W; if (!grain) buildGrain();
+  document.getElementById('orient').textContent = PORTRAIT ? '9:16' : '16:9';
+  drawFrame(currentTime());
+}
+const playBtn = document.getElementById('play'), scrub = document.getElementById('scrub'), timeEl = document.getElementById('time'), sceneSel = document.getElementById('scene'), styleSel = document.getElementById('styleSel');
+const ICON_PLAY = '<svg viewBox="0 0 12 12"><path d="M2 1l9 5-9 5z"/></svg>', ICON_PAUSE = '<svg viewBox="0 0 12 12"><path d="M2 1h3v10H2zM7 1h3v10H7z"/></svg>';
+let playing = !params.has('t'), origin = performance.now(), held = params.has('t') ? parseFloat(params.get('t')) || 0 : 0, scrubbing = false;
+function currentTime() { return playing ? ((performance.now() - origin) / 1000) % DURATION : held; }
+function setPlaying(p) { const t = currentTime(); playing = p; if (p) origin = performance.now() - t * 1000; else held = t; playBtn.innerHTML = p ? ICON_PAUSE : ICON_PLAY; }
+function seek(t) { held = ((t % DURATION) + DURATION) % DURATION; origin = performance.now() - held * 1000; drawFrame(held); updateUI(held); }
+function updateUI(t) {
+  if (!scrubbing) scrub.value = t.toFixed(3);
+  timeEl.innerHTML = `<b>${t.toFixed(2).padStart(5, '0')}</b> / ${DURATION.toFixed(2)}`;
+  const st = storyAt(t), sc = SCENES.find(s => st >= s.t0 && st < s.t1); if (sc && document.activeElement !== sceneSel) sceneSel.value = String(sc.id);
+}
+scrub.max = DURATION.toFixed(3);
+SCENES.forEach(s => { const o = document.createElement('option'); o.value = s.id; o.textContent = `${s.id}. ${s.name}`; sceneSel.appendChild(o);
+  if (s.t0 > 0) { const d = document.createElement('div'); d.className = 'tick'; d.style.left = `calc(6px + (100% - 12px) * ${realAt(s.t0) / DURATION})`; document.getElementById('track').appendChild(d); } });
+Object.entries(STYLES).forEach(([k, s]) => { const o = document.createElement('option'); o.value = k; o.textContent = s.label; if (STYLES[k] === STYLE) o.selected = true; styleSel.appendChild(o); });
+playBtn.addEventListener('click', () => setPlaying(!playing));
+scrub.addEventListener('input', () => { scrubbing = true; if (playing) setPlaying(false); seek(parseFloat(scrub.value)); });
+scrub.addEventListener('change', () => { scrubbing = false; });
+sceneSel.addEventListener('change', () => { const s = SCENES.find(x => x.id === +sceneSel.value); seek(realAt(s.t0)); if (!playing) setPlaying(true); });
+styleSel.addEventListener('change', () => { STYLE = STYLES[styleSel.value]; drawFrame(currentTime()); });
+document.getElementById('orient').addEventListener('click', () => { PORTRAIT = !PORTRAIT; resize(); });
+window.addEventListener('keydown', e => {
+  if (e.target === sceneSel || e.target === styleSel) return;
+  if (e.code === 'Space') { e.preventDefault(); setPlaying(!playing); }
+  else if (e.code === 'ArrowRight' || e.code === 'ArrowLeft') { e.preventDefault(); if (playing) setPlaying(false); seek(currentTime() + (e.code === 'ArrowRight' ? 1 : -1) * (e.shiftKey ? 1 : 1 / FPS)); }
+});
+window.addEventListener('resize', resize);
+function loop() { if (playing) { const t = currentTime(); drawFrame(t); updateUI(t); } requestAnimationFrame(loop); }
+playBtn.innerHTML = playing ? ICON_PAUSE : ICON_PLAY;
+resize(); updateUI(currentTime()); requestAnimationFrame(loop);
+
+window.renderFrame = t => { if (playing) setPlaying(false); held = t; drawFrame(t); updateUI(((t % DURATION) + DURATION) % DURATION); };
+window.setStyle = k => { STYLE = STYLES[k] || STYLE; drawFrame(currentTime()); };
+window.DURATION = DURATION;
+</script>
+</body>
+</html>
