@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Onesign Sign Build</title>
+<!--
+  A sign being made, told abstractly. 1080×1920, 12s, loops.
+
+  0–3s   router traces the outline, leaving a thin steel-teal line
+  3–6s   outline extrudes into letters with returns; camera orbits to 3/4
+  6–9s   halo switches on — strikes, flickers once, settles
+  9–12s  camera eases back, hold, lights down, loop
+
+  Deterministic: renderFrame(t) is a pure function of t (seconds). Nothing
+  reads the clock except the playback driver at the bottom of the script, so
+  Remotion can call window.renderFrame(frame / fps) directly.
+
+  URL params:  ?t=4.5     freeze on a time      ?ui=0     hide the review bar
+               ?native=1  back the canvas at exactly 1080×1920 (for capture)
+-->
+<style>
+  :root { color-scheme:dark; --bg:#0f1417; --teal:#4e7e8c; --ink:#c9d6da; --muted:#6f848b; --bar:#0b0f11; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); overflow:hidden;
+    font:500 12px/1 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--ink); }
+  #stage { position:absolute; inset:0 0 calc(56px + env(safe-area-inset-bottom, 0px)) 0; display:flex; align-items:center; justify-content:center; }
+  body.noui #stage { bottom:0; }
+  canvas { display:block; background:var(--bg); }
+  #bar { position:absolute; left:0; right:0; bottom:0; height:calc(56px + env(safe-area-inset-bottom, 0px)); display:flex; align-items:center;
+    gap:14px; padding:0 16px env(safe-area-inset-bottom, 0px); background:var(--bar); border-top:1px solid #1b2327; }
+  body.noui #bar { display:none; }
+  #play { width:34px; height:34px; flex:none; border-radius:50%; border:1px solid #2a383e; background:transparent;
+    color:var(--ink); cursor:pointer; display:grid; place-items:center; }
+  #play:hover, #play:focus-visible { border-color:var(--teal); outline:none; }
+  #scrub:focus-visible::-webkit-slider-thumb { box-shadow:0 0 0 3px #0b0f11, 0 0 0 5px var(--teal); }
+  #play svg { width:12px; height:12px; fill:currentColor; }
+  #track { position:relative; flex:1; height:34px; display:flex; align-items:center; }
+  #scrub { width:100%; margin:0; appearance:none; -webkit-appearance:none; background:transparent; height:34px; cursor:pointer; position:relative; z-index:1; }
+  #scrub::-webkit-slider-runnable-track { height:2px; background:#26323a; }
+  #scrub::-moz-range-track { height:2px; background:#26323a; }
+  #scrub::-webkit-slider-thumb { -webkit-appearance:none; width:12px; height:12px; margin-top:-5px; border-radius:50%; background:var(--teal); box-shadow:0 0 10px var(--teal); }
+  #scrub::-moz-range-thumb { width:12px; height:12px; border:0; border-radius:50%; background:var(--teal); }
+  .tick { position:absolute; top:6px; bottom:6px; width:1px; background:#26323a; pointer-events:none; }
+  .tick span { position:absolute; top:-2px; left:4px; font-size:9px; letter-spacing:.08em; color:var(--muted); text-transform:uppercase; white-space:nowrap; }
+  #time { font-variant-numeric:tabular-nums; color:var(--muted); min-width:92px; text-align:right; }
+  #time b { color:var(--ink); font-weight:500; }
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="c"></canvas></div>
+<div id="bar">
+  <button id="play" aria-label="Play / pause"></button>
+  <div id="track"><input id="scrub" type="range" min="0" max="12" step="0.001" value="0" aria-label="Scrub"></div>
+  <div id="time"><b>00.00</b> / 12.00</div>
+</div>
+<script>
+'use strict';
+
+/* ==========================================================================
+   TUNING — colours, timings, stroke weights. Everything else derives from here.
+   ========================================================================== */
+
+const W = 1080, H = 1920;             // logical canvas size
+const DURATION = 12;                  // seconds, loops
+
+const COLORS = {
+  bg:        '#0f1417',
+  teal:      [78, 126, 140],          // #4e7e8c steel teal
+  warm:      [255, 228, 196],         // halo / warm white light
+  white:     [255, 249, 240],         // tool point core
+  faceTop:   '#161d21',               // letter face gradient
+  faceBot:   '#0b0f12',
+  returnDark:[12, 17, 20],            // unlit return
+  returnLit: [34, 50, 56],            // key-lit return (teal-grey)
+  returnWarm:[46, 34, 24],            // bounce from the lit wall
+  tagline:   [214, 206, 194],         // strapline on the wall
+};
+
+const TIMING = {
+  toolIn:        [0.05, 0.35],        // tool point fades in
+  trace:         [0.20, 2.90],        // router path (eased as a whole)
+  toolOut:       [2.90, 3.25],        // tool lifts off
+  extrude:        3.00,               // spring starts (per contour, staggered)
+  extrudeStagger: 0.055,              // s between letters
+  rotate:        [3.00, 6.00],        // orbit to three-quarter
+  solid:         [4.80, 6.00],        // wireframe → solid returns
+  haloOn:         6.00,               // first strike
+  drift:         [6.00, 11.4],        // slow continuing orbit
+  pull:          [9.00, 10.9],        // camera eases back
+  lightsDown:    [11.05, 11.70],      // halo off
+  fade:          [11.30, 11.97],      // scene to empty stage (loop point)
+  tagline:       [6.90, 8.10],        // strapline appears on the wall
+};
+
+const STROKE = {
+  trace:  [ { w: 3.4, a: 0.07 }, { w: 1.6, a: 0.20 }, { w: 0.7, a: 0.85 } ], // stacked passes
+  heat:   { len: 60, w: 1.3, a: 0.75, chunks: 6 },    // freshly cut, still warm
+  ruling: { w: 0.7, a: 0.32 },                        // return hatch lines
+  rim:    { w: 1.1, a: 0.60 },                        // halo-lit back edge
+  trim:   { w: 0.8, a: 0.55 },                        // face edge once solid
+  spark:  { w: 0.9, a: 0.9 },
+};
+
+const GEOM = {
+  width: 720,        // logo width in world units (≈ mm); the SVG is scaled to this
+  depth: 42,         // return depth
+  standoff: 28,      // gap to wall (halo)
+  sample: 7,         // max edge length → ruling density
+  curveSeg: 2.5,     // bezier flattening, in SVG units
+  travelWeight: 0.35 // rapid moves are this fraction of cut time per unit
+};
+
+const CAMERA = {
+  f: 1820, cx: 540, cy: 930,
+  dist: 1400, pushIn: 40,             // slow push during trace
+  orbitDist: 1420,                    // camera distance once turned
+  orbitAimX: -30,                     // re-centres the turned sign (near-side "1" projects larger)
+  yaw: -0.47, pitch: -0.085,          // three-quarter view (rad); negative brings the "1" mark near
+  yawDrift: -0.07,
+  pullDist: 1560, pullPitch: -0.12,
+};
+
+const GLOW = {                         // halo layers (blur in logical px)
+  wash: { blur: 180, a: 0.45, color: 'teal' },
+  mid:  { blur: 60,  a: 0.62, color: 'warm' },
+  edge: { blur: 14,  a: 0.95, w: 3, color: 'warm' },
+  core: { blur: 4,   a: 0.55, w: 1.2, color: 'white' },
+  tool: { r: 46, a: 0.55 },
+};
+
+const SPRING = {
+  extrude: { w: 9.0, z: 0.55 },       // slight overshoot
+  halo:    { w: 6.5, z: 0.62 },
+};
+
+const GLOW_RES = 0.4;                  // halo buffer resolution vs main canvas
+const SPARKS = { rate: 42, life: [0.25, 0.55], speed: [70, 260], gravity: 320 };
+const GRAIN  = { amount: 0.028, fps: 24, tiles: 6, size: 256 };
+const VIGNETTE = { inner: 0.30, outer: 0.92, strength: 0.62 };
+
+/* ==========================================================================
+   Maths — easing, springs, hashing. All pure.
+   ========================================================================== */
+
+const clamp01 = x => x < 0 ? 0 : x > 1 ? 1 : x;
+const lerp = (a, b, u) => a + (b - a) * u;
+const prog = (t, [a, b]) => clamp01((t - a) / (b - a));
+const easeInOutCubic = u => u < 0.5 ? 4*u*u*u : 1 - Math.pow(-2*u + 2, 3) / 2;
+const easeInOutSine  = u => -(Math.cos(Math.PI * u) - 1) / 2;
+const easeOutCubic   = u => 1 - Math.pow(1 - u, 3);
+const easeInQuad     = u => u * u;
+const easeInOutQuint = u => u < 0.5 ? 16*u*u*u*u*u : 1 - Math.pow(-2*u + 2, 5) / 2;
+
+// Damped harmonic oscillator step response (0 → 1), analytic so it's pure in t.
+function spring(t, { w, z }) {
+  if (t <= 0) return 0;
+  const wd = w * Math.sqrt(1 - z*z);
+  return 1 - Math.exp(-z*w*t) * (Math.cos(wd*t) + (z*w/wd) * Math.sin(wd*t));
+}
+
+function hash(n) {
+  let x = Math.imul((n | 0) ^ 0x9e3779b9, 0x85ebca6b);
+  x ^= x >>> 13; x = Math.imul(x, 0xc2b2ae35); x ^= x >>> 16;
+  return (x >>> 0) / 4294967296;
+}
+function mulberry32(a) {
+  return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+
+/* ==========================================================================
+   Geometry — the Onesign logo, straight from public/Onesign-Logo-Black.svg
+   (viewBox 0 0 785.08 166.13). The main path is traced + extruded; the
+   strapline path goes on the wall as flat lettering. World units, y up,
+   letters face +z.
+   ========================================================================== */
+
+const LOGO_SVG = {
+  viewBox: [785.08, 166.13],
+  mark: 'M136.34,132.33c14.04-12.74,21.06-30.09,21.06-52.04s-7-39.26-21.01-51.92c-14-12.66-33.19-18.99-57.58-18.99s-43.71,6.32-57.75,18.99C7.02,41.03,0,58.34,0,80.29s7.06,39.3,21.17,52.04c12.94,11.67,30.15,17.99,51.66,18.97v-59.11H28.68v-29.08h3.73c13.69,0,24.1-2.3,31.22-6.92,7.11-4.6,11.72-11.99,13.83-22.17h34.66v112.41c9.3-3.2,17.37-7.88,24.22-14.1M246.46,129.98h30.06v-53.42c0-8.9-.44-15.45-1.32-19.64-.87-4.18-2.34-7.83-4.39-10.94-3.34-4.98-8.09-8.81-14.24-11.51-6.15-2.7-13.3-4.05-21.44-4.05-7.21,0-13.98,1.43-20.31,4.31-6.32,2.86-12.15,7.15-17.48,12.83v-14.6h-30.05v97.01h30.05v-47.89c0-8.55,2.51-15.27,7.52-20.16,5.01-4.9,11.87-7.35,20.61-7.35,7.73,0,13.16,2.02,16.29,6.06,3.13,4.05,4.7,11.49,4.7,22.32v47.03h0ZM315.03,69.07c.53-5.91,2.98-10.61,7.34-14.09,4.36-3.49,10.01-5.24,16.92-5.24s12.63,1.74,16.96,5.19c4.34,3.45,6.76,8.19,7.3,14.23l-48.52-.09ZM314.15,89.29h82.78v-4.13c0-17.81-5.06-31.54-15.16-41.17-10.12-9.63-24.51-14.46-43.2-14.46s-32.18,4.65-42.61,13.93-15.65,21.93-15.65,37.92,5.23,28.67,15.69,38c10.46,9.35,24.65,14.02,42.56,14.02,14.14,0,26.11-3.04,35.95-9.1,9.84-6.06,16.76-14.65,20.74-25.78h-33.13c-1.82,4.45-4.78,7.89-8.87,10.32-4.11,2.42-9,3.64-14.69,3.64-7.26,0-13.09-2.08-17.52-6.28-4.42-4.18-6.72-9.82-6.89-16.91M435.76,58.18c0-2.75,1.72-4.93,5.15-6.5,3.43-1.58,8.18-2.37,14.27-2.37,7.27,0,12.83,1.04,16.7,3.12,3.87,2.08,6.15,5.25,6.86,9.54h30.05v-.88c0-9.83-4.59-17.56-13.8-23.15-9.2-5.6-21.94-8.4-38.22-8.4s-30.1,2.83-39.16,8.48c-9.05,5.66-13.57,13.81-13.57,24.48,0,8.2,2.93,14.98,8.79,20.34,5.85,5.36,13.79,8.47,23.81,9.35l27.15,2.38c6.92.52,11.45,1.34,13.59,2.45,2.14,1.12,3.2,2.93,3.2,5.44,0,2.83-1.88,5.1-5.67,6.87-3.77,1.75-8.8,2.63-15.07,2.63-9.14,0-15.84-1.08-20.08-3.25-4.25-2.17-6.61-5.69-7.08-10.54h-31.72c.64,11.65,5.7,20.44,15.16,26.36,9.46,5.9,23.19,8.88,41.17,8.88s31.32-3.02,40.55-9.05c9.23-6.04,13.83-14.85,13.83-26.46,0-8.49-2.79-15.24-8.38-20.25-5.6-5-13.61-7.89-24.04-8.66l-21.01-1.67c-8.2-.64-14-1.67-17.4-3.08-3.38-1.4-5.08-3.42-5.08-6.06M546.41,32.96h-29.87v97.01h29.87V32.96ZM516.54,23.3h29.87V0h-29.87v23.3ZM640.39,78.13c0,7.9-2.56,14.21-7.69,18.89-5.13,4.7-12.02,7.04-20.7,7.04s-15.66-2.34-20.78-7.04c-5.13-4.68-7.69-10.99-7.69-18.89s2.57-14.2,7.69-18.89,12.05-7.04,20.78-7.04,15.57,2.35,20.7,7.04c5.13,4.69,7.69,10.98,7.69,18.89M667.99,136.73c1.64-4.79,2.46-12.82,2.46-24.06V32.96h-30.06v8.79c-4.1-3.92-8.92-6.82-14.45-8.7s-12.11-2.81-19.73-2.81c-16.28,0-29.53,4.47-39.72,13.4s-15.29,20.42-15.29,34.48,5.11,25.74,15.33,34.54c10.23,8.77,23.63,13.18,40.21,13.18,7.38,0,13.82-.99,19.32-2.91,5.52-1.93,10.29-4.86,14.33-8.78v6.49c0,8.21-2.12,13.93-6.36,17.19-4.25,3.25-11.82,4.87-22.73,4.87-7.38,0-12.86-1-16.43-3.03s-5.36-5.09-5.36-9.18h-30.05v1.68c0,10.6,4.34,18.57,13.01,23.93,8.67,5.36,21.56,8.04,38.66,8.04,11.14,0,20.64-1.19,28.52-3.61,7.89-2.39,14.57-6.12,20.09-11.15,3.86-3.62,6.61-7.83,8.25-12.65M785.08,129.98v-53.42c0-8.9-.44-15.45-1.32-19.64-.88-4.18-2.34-7.83-4.39-10.94-3.34-4.98-8.08-8.81-14.24-11.51-6.15-2.7-13.3-4.05-21.44-4.05-7.2,0-13.97,1.43-20.3,4.31-6.33,2.86-12.16,7.15-17.49,12.83v-14.6h-30.05v97.01h30.05v-47.89c0-8.55,2.51-15.27,7.52-20.16,5-4.9,11.88-7.35,20.61-7.35,7.73,0,13.17,2.02,16.3,6.06,3.13,4.05,4.7,11.49,4.7,22.32v47.01h30.05v.02Z',
+  tagline: 'M520.47,162.14h4.68v-17.99h-4.68v17.99ZM513.08,162.14h4.68v-17.99h-4.68v17.99ZM503.71,159.51c-.96,0-1.65-.54-1.65-1.45v-.05c0-.99.79-1.65,2.14-1.65.69,0,1.36.15,1.82.34v.62c.01,1.32-.95,2.19-2.31,2.19M502.04,162.44c1.75,0,3.01-.67,3.92-1.68v1.38h4.63v-7.66c0-1.87-.42-3.25-1.43-4.24-1.06-1.06-2.69-1.63-5.08-1.63s-3.89.42-5.4,1.03l.96,3.3c1.18-.47,2.27-.74,3.67-.74,1.8,0,2.66.79,2.66,2.17v.22c-.76-.27-1.97-.52-3.2-.52-3.13,0-5.22,1.43-5.22,4.19v.05c0,2.68,1.95,4.13,4.49,4.13M492.9,162.41c1.31,0,2.41-.3,3.25-.76v-3.67c-.57.27-1.16.44-1.77.44-.86,0-1.28-.39-1.28-1.33v-4.51h3.1v-3.77h-3.1v-3.38h-4.68v3.38h-1.58v3.77h1.58v5.42c0,3.18,1.67,4.41,4.48,4.41M480.48,162.44c3.25,0,5.45-1.53,5.45-4.46v-.05c0-2.59-2.09-3.5-4.73-4.24-1.4-.42-2.17-.67-2.17-1.18v-.05c0-.37.37-.64,1.08-.64,1.06,0,2.56.47,3.94,1.23l1.6-2.96c-1.53-.99-3.55-1.55-5.49-1.55-3.08,0-5.35,1.58-5.35,4.41v.05c0,2.69,2.09,3.57,4.73,4.26,1.4.39,2.14.62,2.14,1.13v.05c0,.47-.37.71-1.18.71-1.38,0-3.06-.52-4.58-1.53l-1.75,2.83c1.85,1.35,4.07,1.99,6.31,1.99M459.56,162.14h4.68v-7.22c0-1.45.84-2.24,1.97-2.24s1.87.79,1.87,2.24v7.22h4.68v-8.72c0-3.03-1.7-4.9-4.53-4.9-1.9,0-3.13,1.06-3.99,2.17v-1.87h-4.68v13.32ZM451.87,162.14h4.8v-17.25h-4.8v17.25ZM437.48,162.14h4.88v-4.8h-4.88v4.8ZM419.84,154.38c.25-1.45,1.08-2.41,2.32-2.41s2.14.94,2.32,2.41h-4.64ZM422.55,162.46c2.66,0,4.51-1.08,5.79-2.71l-2.59-2.14c-.96.94-1.85,1.36-2.96,1.36-1.45,0-2.51-.74-2.88-2.19h8.92c.02-.32.02-.67.02-.96,0-3.92-2.12-7.29-6.73-7.29-3.94,0-6.73,3.08-6.73,6.97v.05c.02,4.13,2.97,6.91,7.16,6.91M405.65,162.14h4.68v-4.14c0-3.08,1.38-4.48,3.82-4.48h.39v-4.93c-2.22-.1-3.45,1.08-4.21,2.91v-2.69h-4.68v13.33h0ZM394.46,162.44c1.9,0,3.13-1.01,3.99-2.12v1.82h4.68v-13.33h-4.68v7.22c0,1.45-.84,2.24-1.95,2.24s-1.9-.79-1.9-2.24v-7.22h-4.68v8.72c.01,3.04,1.71,4.91,4.54,4.91M384.71,162.41c1.31,0,2.41-.3,3.25-.76v-3.67c-.57.27-1.16.44-1.77.44-.86,0-1.28-.39-1.28-1.33v-4.51h3.1v-3.77h-3.1v-3.38h-4.68v3.38h-1.58v3.77h1.58v5.42c-.01,3.18,1.67,4.41,4.48,4.41M371.82,162.46c2.93,0,4.71-1.23,5.94-3.06l-3.13-2.27c-.74.86-1.45,1.38-2.56,1.38-1.58,0-2.66-1.31-2.66-3.03v-.05c0-1.63,1.11-2.96,2.61-2.96,1.13,0,1.85.52,2.49,1.4l3.18-2.37c-1.13-1.8-2.96-2.98-5.69-2.98-4.21,0-7.15,3.18-7.15,6.95v.05c0,3.79,2.96,6.94,6.97,6.94M356.13,159.51c-.96,0-1.65-.54-1.65-1.45v-.05c0-.99.79-1.65,2.14-1.65.69,0,1.36.15,1.82.34v.62c0,1.32-.96,2.19-2.31,2.19M354.45,162.44c1.75,0,3.01-.67,3.92-1.68v1.38h4.63v-7.66c0-1.87-.42-3.25-1.43-4.24-1.06-1.06-2.69-1.63-5.08-1.63s-3.89.42-5.4,1.03l.96,3.3c1.18-.47,2.27-.74,3.67-.74,1.8,0,2.66.79,2.66,2.17v.22c-.76-.27-1.97-.52-3.2-.52-3.13,0-5.22,1.43-5.22,4.19v.05c0,2.68,1.95,4.13,4.49,4.13M341.89,162.14h4.66v-9.58h2.98v-3.6h-3.06v-.32c0-.86.47-1.26,1.33-1.26.67,0,1.21.1,1.75.27v-3.3c-.74-.22-1.63-.37-3.06-.37-1.58,0-2.66.34-3.47,1.16-.79.79-1.13,1.92-1.13,3.45v.3h-1.55v3.67h1.55v9.58ZM329.86,162.44c1.9,0,3.13-1.01,3.99-2.12v1.82h4.68v-13.33h-4.68v7.22c0,1.45-.84,2.24-1.95,2.24s-1.9-.79-1.9-2.24v-7.22h-4.68v8.72c.01,3.04,1.71,4.91,4.54,4.91M309.81,162.14h4.68v-7.22c0-1.45.84-2.24,1.97-2.24s1.87.79,1.87,2.24v7.22h4.68v-8.72c0-3.03-1.7-4.9-4.53-4.9-1.9,0-3.13,1.06-3.99,2.17v-1.87h-4.68v13.32ZM300.54,159.51c-.96,0-1.65-.54-1.65-1.45v-.05c0-.99.79-1.65,2.14-1.65.69,0,1.36.15,1.82.34v.62c0,1.32-.95,2.19-2.31,2.19M298.87,162.44c1.75,0,3.01-.67,3.92-1.68v1.38h4.63v-7.66c0-1.87-.42-3.25-1.43-4.24-1.06-1.06-2.69-1.63-5.08-1.63s-3.89.42-5.4,1.03l.96,3.3c1.18-.47,2.27-.74,3.67-.74,1.8,0,2.66.79,2.66,2.17v.22c-.76-.27-1.97-.52-3.2-.52-3.13,0-5.22,1.43-5.22,4.19v.05c0,2.68,1.95,4.13,4.49,4.13M273.93,162.14h4.68v-9.86l4.39,6.7h.1l4.41-6.75v9.9h4.76v-17.25h-5.05l-4.11,6.68-4.11-6.68h-5.05v17.26h-.02ZM259.64,162.14h4.88v-4.8h-4.88v4.8ZM237.39,162.14h4.68v-7.22c0-1.45.84-2.24,1.97-2.24s1.87.79,1.87,2.24v7.22h4.68v-8.72c0-3.03-1.7-4.9-4.53-4.9-1.9,0-3.13,1.06-3.99,2.17v-1.87h-4.68v13.32ZM227.56,157.36c-1.6,0-2.73-1.08-2.73-2.56v-.05c0-1.48,1.13-2.59,2.73-2.59s2.71,1.08,2.71,2.56v.05c0,1.48-1.13,2.59-2.71,2.59M227.29,166.13c2.78,0,4.66-.67,5.86-1.87,1.18-1.18,1.72-2.88,1.72-5.32v-10.13h-4.68v1.58c-1.01-1.06-2.19-1.87-4.19-1.87-3.08,0-5.77,2.37-5.77,6.21v.05c0,3.82,2.64,6.18,5.91,6.18,1.95,0,3.18-.91,4.11-2v.52c0,2.12-1.16,3.28-3.5,3.28-1.8,0-3.23-.47-4.66-1.26l-1.5,3.1c1.95.99,4.11,1.53,6.7,1.53M213.44,162.14h4.68v-13.33h-4.68v13.33ZM213.35,147.61h4.88v-3.45h-4.88v3.45ZM205.98,162.44c3.25,0,5.45-1.53,5.45-4.46v-.05c0-2.59-2.09-3.5-4.73-4.24-1.4-.42-2.17-.67-2.17-1.18v-.05c0-.37.37-.64,1.08-.64,1.06,0,2.56.47,3.94,1.23l1.6-2.96c-1.53-.99-3.55-1.55-5.49-1.55-3.08,0-5.35,1.58-5.35,4.41v.05c0,2.69,2.09,3.57,4.73,4.26,1.4.39,2.14.62,2.14,1.13v.05c0,.47-.37.71-1.18.71-1.38,0-3.06-.52-4.58-1.53l-1.75,2.83c1.85,1.35,4.07,1.99,6.31,1.99M189.67,154.38c.25-1.45,1.08-2.41,2.32-2.41s2.14.94,2.32,2.41h-4.64ZM192.38,162.46c2.66,0,4.51-1.08,5.79-2.71l-2.59-2.14c-.96.94-1.85,1.36-2.96,1.36-1.45,0-2.51-.74-2.88-2.19h8.92c.02-.32.02-.67.02-.96,0-3.92-2.12-7.29-6.73-7.29-3.94,0-6.73,3.08-6.73,6.97v.05c.01,4.13,2.97,6.91,7.16,6.91M171.98,157.91v-8.77h1.95c2.86,0,4.76,1.6,4.76,4.36v.05c0,2.78-1.9,4.36-4.76,4.36h-1.95ZM167.2,162.14h6.55c6.21,0,9.83-3.7,9.83-8.67v-.05c0-4.98-3.57-8.53-9.73-8.53h-6.65v17.25h0Z',
+};
+
+// SVG path data → closed polylines (M L H V C S Q T Z, absolute + relative).
+function parsePath(d, seg) {
+  const tok = d.match(/[a-zA-Z]|-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/g);
+  const subs = []; let cur = null, i = 0, cmd = '', x = 0, y = 0, sx = 0, sy = 0, cx = 0, cy = 0, prev = '';
+  const num = () => parseFloat(tok[i++]);
+  const bez = (pts, x1, y1, x2, y2, x3, y3) => {
+    const len = Math.hypot(x1-x, y1-y) + Math.hypot(x2-x1, y2-y1) + Math.hypot(x3-x2, y3-y2);
+    const n = Math.max(2, Math.min(40, Math.ceil(len / seg)));
+    for (let k = 1; k <= n; k++) {
+      const u = k / n, v = 1 - u;
+      pts.push([v*v*v*x + 3*v*v*u*x1 + 3*v*u*u*x2 + u*u*u*x3, v*v*v*y + 3*v*v*u*y1 + 3*v*u*u*y2 + u*u*u*y3]);
+    }
+  };
+  while (i < tok.length) {
+    if (/[a-zA-Z]/.test(tok[i])) cmd = tok[i++];
+    const rel = cmd === cmd.toLowerCase(), C = cmd.toUpperCase(), ox = rel ? x : 0, oy = rel ? y : 0;
+    if (C === 'Z') { if (cur) subs.push(cur); cur = null; x = sx; y = sy; prev = C; continue; }
+    if (C === 'M') {
+      if (cur) subs.push(cur);
+      x = ox + num(); y = oy + num(); sx = x; sy = y; cur = [[x, y]];
+      cmd = rel ? 'l' : 'L'; prev = 'M'; continue;
+    }
+    if (!cur) cur = [[x, y]];
+    if (C === 'L') { x = ox + num(); y = oy + num(); cur.push([x, y]); }
+    else if (C === 'H') { x = ox + num(); cur.push([x, y]); }
+    else if (C === 'V') { y = oy + num(); cur.push([x, y]); }
+    else if (C === 'C' || C === 'S') {
+      let x1, y1;
+      if (C === 'C') { x1 = ox + num(); y1 = oy + num(); }
+      else if (prev === 'C' || prev === 'S') { x1 = 2*x - cx; y1 = 2*y - cy; } else { x1 = x; y1 = y; }
+      const x2 = ox + num(), y2 = oy + num(), x3 = ox + num(), y3 = oy + num();
+      bez(cur, x1, y1, x2, y2, x3, y3); cx = x2; cy = y2; x = x3; y = y3;
+    }
+    else if (C === 'Q' || C === 'T') {
+      let qx, qy;
+      if (C === 'Q') { qx = ox + num(); qy = oy + num(); }
+      else if (prev === 'Q' || prev === 'T') { qx = 2*x - cx; qy = 2*y - cy; } else { qx = x; qy = y; }
+      const x3 = ox + num(), y3 = oy + num();
+      bez(cur, x + 2/3*(qx-x), y + 2/3*(qy-y), x3 + 2/3*(qx-x3), y3 + 2/3*(qy-y3), x3, y3); cx = qx; cy = qy; x = x3; y = y3;
+    }
+    else throw new Error('Unsupported path command ' + cmd);
+    prev = C;
+  }
+  if (cur) subs.push(cur);
+  return subs;
+}
+
+function subdivide(pts, maxSeg) {
+  const out = [];
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    const n = Math.max(1, Math.ceil(Math.hypot(b[0]-a[0], b[1]-a[1]) / maxSeg));
+    for (let j = 0; j < n; j++) out.push([lerp(a[0], b[0], j/n), lerp(a[1], b[1], j/n)]);
+  }
+  return out;
+}
+function dedupe(pts, eps) {
+  const out = [];
+  for (const p of pts) { const q = out[out.length - 1]; if (!q || Math.hypot(p[0]-q[0], p[1]-q[1]) > eps) out.push(p); }
+  const f = out[0], l = out[out.length - 1];
+  if (out.length > 2 && Math.hypot(f[0]-l[0], f[1]-l[1]) < eps) out.pop();
+  return out;
+}
+const area = pts => { let s = 0; for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i+1) % pts.length]; s += a[0]*b[1] - b[0]*a[1]; } return s / 2; };
+function inside(p, poly) {
+  let c = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i], b = poly[j];
+    if ((a[1] > p[1]) !== (b[1] > p[1]) && p[0] < (b[0]-a[0]) * (p[1]-a[1]) / (b[1]-a[1]) + a[0]) c = !c;
+  }
+  return c;
+}
+
+// SVG space → world: centred on the main mark, y flipped, scaled to GEOM.width.
+const SVG_SCALE = GEOM.width / LOGO_SVG.viewBox[0];
+const toWorld = sub => sub.map(([x, y]) => [(x - LOGO_SVG.viewBox[0]/2) * SVG_SCALE, -(y - LOGO_SVG.viewBox[1]/2) * SVG_SCALE]);
+
+function buildLogo() {
+  const raw = parsePath(LOGO_SVG.mark, GEOM.curveSeg).map(toWorld).map(p => dedupe(p, 0.3)).filter(p => p.length > 2);
+  // A contour inside an odd number of others is a hole (letter counters).
+  const shapes = raw.map((pts, k) => ({ pts, hole: raw.reduce((n, o, j) => n + (j !== k && inside(pts[0], o) ? 1 : 0), 0) % 2 === 1 }));
+  // Group outers into letters by overlapping x-range (the i's dot joins its stem), left to right.
+  const bx = pts => [Math.min(...pts.map(p => p[0])), Math.max(...pts.map(p => p[0]))];
+  const outers = shapes.filter(s => !s.hole).sort((a, b) => bx(a.pts)[0] - bx(b.pts)[0]);
+  let group = -1, lastMax = -Infinity;
+  for (const o of outers) {
+    const [x0, x1] = bx(o.pts);
+    if (x0 > lastMax - 0.5 * (x1 - x0)) group++;
+    o.group = group; lastMax = Math.max(lastMax, x1);
+  }
+  for (const h of shapes.filter(s => s.hole)) h.group = outers.find(o => inside(h.pts[0], o.pts)).group;
+  // Router order: letter by letter, outline before counters.
+  shapes.sort((a, b) => a.group - b.group || a.hole - b.hole);
+
+  // Normalise: outers CCW, holes CW, uniform-ish sampling, per-edge outward normals.
+  return shapes.map(s => {
+    let pts = s.pts;
+    const A = area(pts);
+    if ((s.hole && A > 0) || (!s.hole && A < 0)) pts = pts.slice().reverse();
+    pts = subdivide(pts, GEOM.sample);
+    const n = pts.length, cum = new Float64Array(n + 1), nx = new Float64Array(n), ny = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      const a = pts[i], b = pts[(i + 1) % n], dx = b[0]-a[0], dy = b[1]-a[1], l = Math.hypot(dx, dy) || 1;
+      cum[i + 1] = cum[i] + l; nx[i] = dy / l; ny[i] = -dx / l;   // right-hand side = away from material
+    }
+    return { ...s, pts, n, cum, len: cum[n], nx, ny };
+  });
+}
+
+const TAGLINE = parsePath(LOGO_SVG.tagline, 1.5).map(toWorld);
+const LOGO = buildLogo();
+const GROUPS = LOGO.reduce((m, c) => Math.max(m, c.group), 0) + 1;
+
+// Router schedule: cut each contour, rapid-travel to the next. Distances in "cost" units.
+const SCHEDULE = (() => {
+  const items = []; let s = 0;
+  LOGO.forEach((c, k) => {
+    items.push({ type: 'cut', k, s0: s, cost: c.len }); s += c.len;
+    const nxt = LOGO[k + 1];
+    if (nxt) {
+      const a = c.pts[0], b = nxt.pts[0], d = Math.hypot(b[0]-a[0], b[1]-a[1]);
+      items.push({ type: 'travel', from: a, to: b, s0: s, cost: d * GEOM.travelWeight }); s += d * GEOM.travelWeight;
+    }
+  });
+  return { items, total: s };
+})();
+
+function contourPoint(c, d) {           // point at arc length d along a closed contour
+  d = Math.max(0, Math.min(c.len, d));
+  let lo = 0, hi = c.n;
+  while (lo < hi - 1) { const m = (lo + hi) >> 1; if (c.cum[m] <= d) lo = m; else hi = m; }
+  const a = c.pts[lo], b = c.pts[(lo + 1) % c.n], u = (d - c.cum[lo]) / ((c.cum[lo + 1] - c.cum[lo]) || 1);
+  return [lerp(a[0], b[0], u), lerp(a[1], b[1], u)];
+}
+
+function routerState(t) {
+  const p = easeInOutSine(prog(t, TIMING.trace));
+  const s = p * SCHEDULE.total;
+  const cut = new Float64Array(LOGO.length);
+  let tool = LOGO[0].pts[0], active = -1, travelling = false;
+  for (const it of SCHEDULE.items) {
+    if (s < it.s0) break;
+    const u = Math.min(it.cost, s - it.s0);
+    if (it.type === 'cut') { cut[it.k] = u; tool = contourPoint(LOGO[it.k], u); active = it.k; travelling = false; }
+    else if (s < it.s0 + it.cost) { const v = easeInOutCubic(u / it.cost); tool = [lerp(it.from[0], it.to[0], v), lerp(it.from[1], it.to[1], v)]; travelling = true; active = -1; }
+  }
+  return { cut, tool, active, travelling, done: p >= 1 };
+}
+
+/* ==========================================================================
+   Camera — orbit around the sign, perspective projection.
+   ========================================================================== */
+
+function cameraAt(t) {
+  const rot = easeInOutCubic(prog(t, TIMING.rotate));
+  const pull = easeInOutCubic(prog(t, TIMING.pull));
+  const yaw = CAMERA.yaw * rot + CAMERA.yawDrift * easeInOutSine(prog(t, TIMING.drift));
+  const pitch = CAMERA.pitch * rot + (CAMERA.pullPitch - CAMERA.pitch) * pull;
+  const dist = CAMERA.dist - CAMERA.pushIn * easeInOutSine(prog(t, [0, 3])) + (CAMERA.orbitDist - CAMERA.dist + CAMERA.pushIn) * rot + (CAMERA.pullDist - CAMERA.orbitDist) * pull;
+  const target = [CAMERA.orbitAimX * rot, 0, GEOM.depth / 2];
+  const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const pos = [target[0] + dist*sy*cp, target[1] + dist*sp, target[2] + dist*cy*cp];
+  return { cy, sy, cp, sp, pos };
+}
+function project(cam, x, y, z, out, i) {
+  const px = x - cam.pos[0], py = y - cam.pos[1], pz = z - cam.pos[2];
+  const x1 = px*cam.cy - pz*cam.sy, z1 = px*cam.sy + pz*cam.cy;
+  const y2 = py*cam.cp - z1*cam.sp, z2 = py*cam.sp + z1*cam.cp;
+  const depth = -z2, k = CAMERA.f / depth;
+  out[i] = CAMERA.cx + x1*k; out[i + 1] = CAMERA.cy - y2*k;
+  return depth;
+}
+
+/* ==========================================================================
+   Halo intensity: strike, drop, buzz, spring to full; lights down at the end.
+   ========================================================================== */
+
+function haloIntensity(t) {
+  const u = t - TIMING.haloOn;
+  if (u <= 0) return 0;
+  let v;
+  if (u < 0.09)       v = 0.85 * easeOutCubic(u / 0.09);
+  else if (u < 0.15)  v = lerp(0.85, 0.10, easeInQuad((u - 0.09) / 0.06));
+  else if (u < 0.30)  v = 0.10 + 0.05 * (0.5 + 0.5*Math.sin(u * 140));        // LED driver buzz
+  else                v = 0.10 + 0.90 * spring(u - 0.30, SPRING.halo);
+  v *= 1 + 0.025 * Math.sin(u * 53) * Math.exp(-u * 1.8);                     // hum, decaying
+  v *= 1 - easeInOutSine(prog(t, TIMING.lightsDown));
+  return Math.max(0, v);
+}
+
+/* ==========================================================================
+   Canvas setup — DPR aware. Logical coords are always 1080×1920.
+   ========================================================================== */
+
+const params = new URLSearchParams(location.search);
+const NATIVE = params.get('native') === '1';
+if (params.get('ui') === '0') document.body.classList.add('noui');
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const glowCanvas = document.createElement('canvas');
+const gctx = glowCanvas.getContext('2d');
+const vigCanvas = document.createElement('canvas');
+let K = 1, KG = 0.5;                    // logical → device px (main, glow buffer)
+let grainPatterns = [];
+
+function buildGrain() {
+  grainPatterns = [];
+  for (let i = 0; i < GRAIN.tiles; i++) {
+    const c = document.createElement('canvas'); c.width = c.height = GRAIN.size;
+    const g = c.getContext('2d'), img = g.createImageData(GRAIN.size, GRAIN.size), rnd = mulberry32(1234 + i * 977);
+    for (let p = 0; p < img.data.length; p += 4) {
+      const v = rnd(), light = v > 0.5, a = Math.abs(v - 0.5) * 2;
+      img.data[p] = img.data[p+1] = img.data[p+2] = light ? 255 : 0;
+      img.data[p+3] = Math.round(a * a * 255 * GRAIN.amount * 2.2);
+    }
+    g.putImageData(img, 0, 0);
+    grainPatterns.push(ctx.createPattern(c, 'repeat'));
+  }
+}
+
+function buildVignette() {
+  vigCanvas.width = canvas.width; vigCanvas.height = canvas.height;
+  const v = vigCanvas.getContext('2d');
+  v.setTransform(K, 0, 0, K, 0, 0);
+  const R = Math.hypot(W, H) / 2;
+  const g = v.createRadialGradient(W/2, H*0.47, R*VIGNETTE.inner, W/2, H*0.47, R*VIGNETTE.outer);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(0.6, `rgba(0,0,0,${VIGNETTE.strength * 0.35})`);
+  g.addColorStop(1, `rgba(0,0,0,${VIGNETTE.strength})`);
+  v.fillStyle = g; v.fillRect(0, 0, W, H);
+}
+
+function resize() {
+  const stage = document.getElementById('stage');
+  const aw = stage.clientWidth, ah = stage.clientHeight;
+  const cssW = Math.min(aw, ah * W / H), cssH = cssW * H / W;
+  canvas.style.width = cssW + 'px'; canvas.style.height = cssH + 'px';
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = NATIVE ? W : Math.max(2, Math.round(cssW * dpr));
+  canvas.height = NATIVE ? H : Math.max(2, Math.round(cssH * dpr));
+  K = canvas.width / W; KG = K * GLOW_RES;
+  glowCanvas.width = Math.ceil(canvas.width * GLOW_RES); glowCanvas.height = Math.ceil(canvas.height * GLOW_RES);
+  buildVignette();
+  if (!grainPatterns.length) buildGrain();
+  drawFrame(currentTime());
+}
+
+/* ==========================================================================
+   Frame — pure function of t.
+   ========================================================================== */
+
+// Scratch buffers, reused every frame (contents fully rewritten, so still pure).
+const BUF = LOGO.map(c => ({ back: new Float64Array(c.n*2), face: new Float64Array(c.n*2), wall: new Float64Array(c.n*2) }));
+const OFF = 30000;                      // off-canvas offset for shadow-only glow
+
+function tracePolyline(g, xy, c, d0, d1) {   // stroke-path arc-length range [d0, d1] of contour c
+  if (d1 <= d0) return;
+  let started = false;
+  for (let i = 0; i < c.n; i++) {
+    const s0 = c.cum[i], s1 = c.cum[i + 1];
+    if (s1 < d0) continue;
+    if (s0 > d1) break;
+    const j = (i + 1) % c.n;
+    const ax = xy[i*2], ay = xy[i*2+1], bx = xy[j*2], by = xy[j*2+1];
+    const u0 = Math.max(0, (d0 - s0) / (s1 - s0)), u1 = Math.min(1, (d1 - s0) / (s1 - s0));
+    if (!started) { g.moveTo(lerp(ax, bx, u0), lerp(ay, by, u0)); started = true; }
+    g.lineTo(lerp(ax, bx, u1), lerp(ay, by, u1));
+  }
+}
+function contourPath(g, xy, c) {
+  g.moveTo(xy[0], xy[1]);
+  for (let i = 1; i < c.n; i++) g.lineTo(xy[i*2], xy[i*2+1]);
+  g.closePath();
+}
+function glowLayer(color, alpha, blur, draw) {  // shadow-only blurred shape on the glow buffer
+  gctx.save();
+  gctx.shadowColor = rgba(color, alpha);
+  gctx.shadowBlur = blur * KG;
+  gctx.shadowOffsetX = OFF * KG;
+  gctx.translate(-OFF, 0);
+  draw();
+  gctx.restore();
+}
+
+function drawFrame(tIn) {
+  const t = ((tIn % DURATION) + DURATION) % DURATION;
+  const cam = cameraAt(t);
+  const router = routerState(t);
+  const I = haloIntensity(t);
+  const solid = easeInOutCubic(prog(t, TIMING.solid));
+  const { depth, standoff } = GEOM;
+
+  // Per-contour extrusion (spring, staggered by letter) and projection.
+  const ext = LOGO.map(c => t < TIMING.extrude ? 0 : spring(t - TIMING.extrude - c.group * TIMING.extrudeStagger, SPRING.extrude));
+  LOGO.forEach((c, k) => {
+    const b = BUF[k], fz = depth * ext[k];
+    for (let i = 0; i < c.n; i++) {
+      const [x, y] = c.pts[i];
+      project(cam, x, y, 0, b.back, i*2);
+      project(cam, x, y, fz, b.face, i*2);
+      if (I > 0) project(cam, x, y, -standoff, b.wall, i*2);
+    }
+  });
+
+  ctx.setTransform(K, 0, 0, K, 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = COLORS.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  /* ---- Halo: light thrown back onto the wall -------------------------- */
+  if (I > 0.001) {
+    gctx.setTransform(1, 0, 0, 1, 0, 0);
+    gctx.clearRect(0, 0, glowCanvas.width, glowCanvas.height);
+    gctx.setTransform(KG, 0, 0, KG, 0, 0);
+    gctx.globalCompositeOperation = 'lighter';
+    const col = name => COLORS[name];
+    const wallFill = () => { gctx.beginPath(); LOGO.forEach((c, k) => { if (!c.hole) contourPath(gctx, BUF[k].wall, c); }); gctx.fillStyle = '#000'; gctx.fill(); };
+    const wallStroke = w => () => { gctx.beginPath(); LOGO.forEach((c, k) => contourPath(gctx, BUF[k].wall, c)); gctx.lineWidth = w; gctx.strokeStyle = '#000'; gctx.stroke(); };
+    glowLayer(col(GLOW.wash.color), GLOW.wash.a * I, GLOW.wash.blur, wallFill);
+    glowLayer(col(GLOW.mid.color),  GLOW.mid.a * I,  GLOW.mid.blur,  wallFill);
+    glowLayer(col(GLOW.edge.color), GLOW.edge.a * I, GLOW.edge.blur, wallStroke(GLOW.edge.w));
+    glowLayer(col(GLOW.core.color), GLOW.core.a * I, GLOW.core.blur, wallStroke(GLOW.core.w));
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(glowCanvas, 0, 0, canvas.width, canvas.height);
+    ctx.restore();
+  }
+
+  /* ---- Strapline: flat lettering on the wall, read by the halo's spill */
+  const tagA = easeInOutSine(prog(t, TIMING.tagline));
+  if (tagA > 0.002) {
+    const rise = (1 - easeOutCubic(prog(t, TIMING.tagline))) * 6;       // settles up into place
+    const P = [0, 0];
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = tagA * (0.35 + 0.65 * Math.min(1, I));
+    ctx.beginPath();
+    for (const sub of TAGLINE) {
+      sub.forEach(([x, y], i) => { project(cam, x, y - rise, -standoff, P, 0); i ? ctx.lineTo(P[0], P[1]) : ctx.moveTo(P[0], P[1]); });
+      ctx.closePath();
+    }
+    ctx.fillStyle = rgba(COLORS.tagline, 1); ctx.fill('evenodd');
+    ctx.globalAlpha = 1;
+  }
+
+  /* ---- Returns: wireframe hatch, turning solid ----------------------- */
+  if (t >= TIMING.extrude) {
+    const quads = [];
+    LOGO.forEach((c, k) => {
+      const fz = depth * ext[k];
+      if (fz < 0.5) return;
+      for (let i = 0; i < c.n; i++) {
+        const j = (i + 1) % c.n, a = c.pts[i], b = c.pts[j];
+        const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, mz = fz / 2;
+        const facing = c.nx[i]*(cam.pos[0] - mx) + c.ny[i]*(cam.pos[1] - my) > 0;
+        const px = mx - cam.pos[0], py = my - cam.pos[1], pz = mz - cam.pos[2];
+        const z1 = px*cam.sy + pz*cam.cy, d = -(py*cam.sp + z1*cam.cp);
+        quads.push({ k, i, j, facing, d });
+      }
+    });
+    quads.sort((p, q) => q.d - p.d);
+
+    const L = [-0.55, 0.72]; const Ll = Math.hypot(L[0], L[1]);
+    const wireIn = clamp01((t - TIMING.extrude) / 0.25);
+    for (const q of quads) {
+      const c = LOGO[q.k], b = BUF[q.k];
+      const bx0 = b.back[q.i*2], by0 = b.back[q.i*2+1], bx1 = b.back[q.j*2], by1 = b.back[q.j*2+1];
+      const fx0 = b.face[q.i*2], fy0 = b.face[q.i*2+1], fx1 = b.face[q.j*2], fy1 = b.face[q.j*2+1];
+      if (q.facing && solid > 0) {
+        const lam = Math.max(0, (c.nx[q.i]*L[0] + c.ny[q.i]*L[1]) / Ll);
+        const s = 0.15 + 0.85 * lam, warm = I * 0.35;
+        const col = [0, 1, 2].map(ch => Math.round(lerp(COLORS.returnDark[ch], COLORS.returnLit[ch], s) + COLORS.returnWarm[ch] * warm));
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = solid;
+        ctx.beginPath(); ctx.moveTo(bx0, by0); ctx.lineTo(bx1, by1); ctx.lineTo(fx1, fy1); ctx.lineTo(fx0, fy0); ctx.closePath();
+        ctx.fillStyle = `rgb(${col})`; ctx.fill();
+        ctx.lineWidth = 0.6; ctx.strokeStyle = `rgb(${col})`; ctx.stroke();       // hide AA seams
+        if (I > 0.001) {                                                          // halo rim on the back edge
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = STROKE.rim.a * I * solid;
+          ctx.beginPath(); ctx.moveTo(bx0, by0); ctx.lineTo(bx1, by1);
+          ctx.lineWidth = STROKE.rim.w; ctx.strokeStyle = rgba(COLORS.warm, 1); ctx.stroke();
+        }
+      }
+      const wa = STROKE.ruling.a * wireIn * (q.facing ? 1 - 0.72 * solid : 1 - solid);
+      if (wa > 0.002) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = wa;
+        ctx.beginPath(); ctx.moveTo(bx0, by0); ctx.lineTo(fx0, fy0);
+        ctx.lineWidth = STROKE.ruling.w; ctx.strokeStyle = rgba(COLORS.teal, 1); ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+
+    // Faces (even-odd keeps the "1" and the counters open to the lit wall).
+    if (solid > 0) {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = solid;
+      const g = ctx.createLinearGradient(0, CAMERA.cy - 160, 0, CAMERA.cy + 160);
+      g.addColorStop(0, COLORS.faceTop); g.addColorStop(1, COLORS.faceBot);
+      ctx.beginPath(); LOGO.forEach((c, k) => { if (ext[k] > 0.01) contourPath(ctx, BUF[k].face, c); });
+      ctx.fillStyle = g; ctx.fill('evenodd');
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  /* ---- Outlines: traced line (back), lifted copy (face) --------------- */
+  ctx.globalCompositeOperation = 'lighter';
+  const backAlpha = 1 - solid;
+  for (const pass of STROKE.trace) {
+    ctx.lineWidth = pass.w; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.strokeStyle = rgba(COLORS.teal, 1);
+    // back outline (the router's line)
+    if (backAlpha > 0.002) {
+      ctx.globalAlpha = pass.a * backAlpha;
+      ctx.beginPath();
+      LOGO.forEach((c, k) => {
+        const d = router.cut[k];
+        if (d >= c.len - 0.01) contourPath(ctx, BUF[k].back, c); else tracePolyline(ctx, BUF[k].back, c, 0, d);
+      });
+      ctx.stroke();
+    }
+    // face outline, lifting away
+    if (t >= TIMING.extrude) {
+      const trim = lerp(1, STROKE.trim.a / 0.85, solid);
+      ctx.beginPath();
+      let any = false;
+      LOGO.forEach((c, k) => { if (ext[k] > 0.002) { contourPath(ctx, BUF[k].face, c); any = true; } });
+      if (any) { ctx.globalAlpha = pass.a * trim * clamp01((t - TIMING.extrude) / 0.2); ctx.stroke(); }
+    }
+  }
+
+  /* ---- Router tool point, hot trail, chips ---------------------------- */
+  const toolA = easeInOutSine(prog(t, TIMING.toolIn)) * (1 - easeInOutSine(prog(t, TIMING.toolOut)));
+  if (toolA > 0.002) {
+    // heat: the last few cm of cut, warmer and brighter
+    if (router.active >= 0) {
+      const c = LOGO[router.active], d = router.cut[router.active], h = STROKE.heat;
+      for (let q = 0; q < h.chunks; q++) {
+        const d0 = d - h.len * (1 - q / h.chunks), d1 = d - h.len * (1 - (q + 1) / h.chunks);
+        if (d1 <= 0) continue;
+        ctx.globalAlpha = h.a * toolA * Math.pow((q + 1) / h.chunks, 1.6);
+        ctx.beginPath(); tracePolyline(ctx, BUF[router.active].back, c, Math.max(0, d0), d1);
+        ctx.lineWidth = h.w; ctx.strokeStyle = rgba(COLORS.warm, 1); ctx.stroke();
+      }
+    }
+    // chips: emitted at a fixed rate while cutting; each derived from its index
+    const sp = SPARKS, maxLife = sp.life[1];
+    const i0 = Math.ceil((t - maxLife) * sp.rate), i1 = Math.floor(t * sp.rate);
+    ctx.lineCap = 'round';
+    for (let i = Math.max(0, i0); i <= i1; i++) {
+      const te = i / sp.rate, age = t - te, life = lerp(sp.life[0], sp.life[1], hash(i*7 + 1));
+      if (age > life) continue;
+      const st = routerState(te);
+      if (st.active < 0 || st.done || te < TIMING.trace[0] + 0.05) continue;
+      const ang = hash(i*7 + 2) * Math.PI * 2, spd = lerp(sp.speed[0], sp.speed[1], hash(i*7 + 3));
+      const vx = Math.cos(ang) * spd, vy = Math.sin(ang) * spd + 60;
+      const x = st.tool[0] + vx*age, y = st.tool[1] + vy*age - 0.5*sp.gravity*age*age;
+      const vyNow = vy - sp.gravity*age, tail = 0.022;
+      const P = [0, 0, 0, 0];
+      project(cam, x, y, 2, P, 0); project(cam, x - vx*tail, y - vyNow*tail, 2, P, 2);
+      const fade = 1 - easeInQuad(age / life);
+      ctx.globalAlpha = STROKE.spark.a * fade * toolA;
+      ctx.beginPath(); ctx.moveTo(P[0], P[1]); ctx.lineTo(P[2], P[3]);
+      ctx.lineWidth = STROKE.spark.w; ctx.strokeStyle = rgba(hash(i*7 + 4) > 0.7 ? COLORS.teal : COLORS.warm, 1); ctx.stroke();
+    }
+    // the point itself
+    const P = [0, 0];
+    project(cam, router.tool[0], router.tool[1], 0, P, 0);
+    const lift = router.travelling ? 0.4 : 1;
+    const pulse = 1 + 0.08 * Math.sin(t * 38) * Math.sin(t * 13.7);
+    const g = ctx.createRadialGradient(P[0], P[1], 0, P[0], P[1], GLOW.tool.r * pulse);
+    g.addColorStop(0, rgba(COLORS.warm, GLOW.tool.a * toolA * lift));
+    g.addColorStop(0.25, rgba(COLORS.warm, 0.18 * toolA * lift));
+    g.addColorStop(1, rgba(COLORS.teal, 0));
+    ctx.globalAlpha = 1; ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(P[0], P[1], GLOW.tool.r * pulse, 0, Math.PI*2); ctx.fill();
+    ctx.save();
+    ctx.shadowColor = rgba(COLORS.white, toolA); ctx.shadowBlur = 12 * K;
+    ctx.fillStyle = rgba(COLORS.white, toolA * lift);
+    ctx.beginPath(); ctx.arc(P[0], P[1], 2.6, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
+  /* ---- Loop fade, vignette, grain ------------------------------------- */
+  ctx.globalCompositeOperation = 'source-over';
+  const fade = easeInOutSine(prog(t, TIMING.fade));
+  if (fade > 0) { ctx.globalAlpha = fade; ctx.fillStyle = COLORS.bg; ctx.fillRect(0, 0, W, H); }
+  ctx.globalAlpha = 1;
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(vigCanvas, 0, 0);
+
+  const gi = Math.floor(t * GRAIN.fps);
+  const gs = Math.max(1, K * 0.9);
+  const ox = Math.floor(hash(gi * 2 + 11) * GRAIN.size), oy = Math.floor(hash(gi * 2 + 12) * GRAIN.size);
+  ctx.setTransform(gs, 0, 0, gs, -ox * gs, -oy * gs);
+  ctx.fillStyle = grainPatterns[gi % GRAIN.tiles];
+  ctx.fillRect(ox, oy, canvas.width / gs + 1, canvas.height / gs + 1);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+}
+
+/* ==========================================================================
+   Playback — the only place that reads a clock.
+   ========================================================================== */
+
+const playBtn = document.getElementById('play');
+const scrub = document.getElementById('scrub');
+const timeEl = document.getElementById('time');
+const ICON_PLAY = '<svg viewBox="0 0 12 12"><path d="M2 1l9 5-9 5z"/></svg>';
+const ICON_PAUSE = '<svg viewBox="0 0 12 12"><path d="M2 1h3v10H2zM7 1h3v10H7z"/></svg>';
+
+let playing = !params.has('t');
+let origin = performance.now();         // wall time at which playhead was 0
+let held = params.has('t') ? parseFloat(params.get('t')) || 0 : 0;
+let scrubbing = false;
+
+function currentTime() {
+  if (!playing) return held;
+  return ((performance.now() - origin) / 1000) % DURATION;
+}
+function setPlaying(p) {
+  const t = currentTime();
+  playing = p;
+  if (p) origin = performance.now() - t * 1000; else held = t;
+  playBtn.innerHTML = p ? ICON_PAUSE : ICON_PLAY;
+}
+function seek(t) { held = ((t % DURATION) + DURATION) % DURATION; origin = performance.now() - held * 1000; drawFrame(held); updateUI(held); }
+function updateUI(t) {
+  if (!scrubbing) scrub.value = t.toFixed(3);
+  timeEl.innerHTML = `<b>${t.toFixed(2).padStart(5, '0')}</b> / ${DURATION.toFixed(2)}`;
+}
+
+[[3, 'extrude'], [6, 'halo'], [9, 'pull back']].forEach(([s, label]) => {
+  const d = document.createElement('div'); d.className = 'tick';
+  d.style.left = `calc(6px + (100% - 12px) * ${s / DURATION})`;
+  d.innerHTML = `<span>${label}</span>`;
+  document.getElementById('track').appendChild(d);
+});
+
+playBtn.addEventListener('click', () => setPlaying(!playing));
+scrub.addEventListener('input', () => { scrubbing = true; if (playing) setPlaying(false); seek(parseFloat(scrub.value)); });
+scrub.addEventListener('change', () => { scrubbing = false; });
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); setPlaying(!playing); }
+  else if (e.code === 'ArrowRight' || e.code === 'ArrowLeft') {
+    e.preventDefault(); if (playing) setPlaying(false);
+    seek(currentTime() + (e.code === 'ArrowRight' ? 1 : -1) * (e.shiftKey ? 1 : 1/60));
+  } else if (e.code === 'Home') { seek(0); }
+});
+window.addEventListener('resize', resize);
+
+function loop() {
+  if (playing) { const t = currentTime(); drawFrame(t); updateUI(t); }
+  requestAnimationFrame(loop);
+}
+
+playBtn.innerHTML = playing ? ICON_PAUSE : ICON_PLAY;
+resize();
+updateUI(currentTime());
+requestAnimationFrame(loop);
+
+// For Remotion / frame capture: window.renderFrame(frame / fps)
+window.renderFrame = t => { if (playing) setPlaying(false); held = t; drawFrame(t); updateUI(((t % DURATION) + DURATION) % DURATION); };
+window.DURATION = DURATION;
+</script>
+</body>
+</html>
