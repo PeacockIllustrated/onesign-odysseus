@@ -21,7 +21,7 @@ const portrait = !!args.portrait, times = String(args.at).split(',').map(Number)
 const cols = +(args.cols || Math.min(times.length, portrait ? 6 : 3)), tileW = +(args['tile-width'] || (portrait ? 360 : 640));
 const tileH = Math.round(tileW * (portrait ? 16 / 9 : 9 / 16));
 
-const { browser, page, errors, duration } = await openPiece(file, { portrait, query: args.style ? 'style=' + args.style : (args.query || '') });
+const { browser, page, errors, duration } = await openPiece(file, { portrait, query: [args.style ? 'style=' + args.style : '', args.query || ''].filter(Boolean).join('&') });
 const dir = join(dirname(args.out), '.stills-' + process.pid);
 mkdirSync(dir, { recursive: true });
 for (let i = 0; i < times.length; i++) {

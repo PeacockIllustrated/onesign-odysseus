@@ -26,12 +26,13 @@ technique and all six styles (`?style=paper|flat|chalk|neon|blueprint|cutout`). 
 replace the story — keep the engine.** Don't write a new engine from scratch; the template already
 solves determinism, capture, portrait/landscape framing, time warps, the review bar and styles.
 
-Read the reference files as you need them:
-- `references/styles.md` — how styles work, the six presets, how to design a new one
-- `references/characters.md` — the character rig, acting, custom bodies (e.g. a logo as a mascot)
-- `references/techniques.md` — camera, paths, time warps, motion blur, night lighting, loops, props
-- `references/craft.md` — the review notes that shaped this method; read before the first build
-- `references/brand-packs.md` — how to turn a client's brand into a reusable pack skill
+Read in this order:
+1. `references/craft.md` — the review notes that shaped this method. **Before the first build.**
+2. `references/styles.md` — when choosing or designing the look (roles, presets, new styles)
+3. `references/characters.md` — when casting and acting (rig, eyes and lids, hands, logo mascots)
+4. `references/techniques.md` — while building (keys, paths, camera and framing, time warps,
+   motion blur, light, loops, text and end cards)
+5. `references/brand-packs.md` — when a client will want more than one piece
 
 ## The contract (every piece)
 
@@ -54,7 +55,8 @@ Read the reference files as you need them:
    and any must-have moment. Ask only what you can't infer; propose a style if none is given.
 2. **Beat sheet.** Write `T` before drawing anything: each beat, its time, and where the camera is.
    Give comedy and payoffs air — if it feels rushed, make the piece longer rather than faster.
-3. **Build** from the template: set, cast, state functions (pure in t), camera keys.
+3. **Build** from the template (craft.md in mind): set, cast, state functions (pure in t), camera
+   keys composed for 9:16 (techniques.md → framing). Keep to the style's colour roles.
 4. **Check with contact sheets, not by eye in a player** — both orientations, story-time and
    real-time pacing. Always look at the PNGs (Read them):
    ```bash
@@ -86,8 +88,8 @@ Read the reference files as you need them:
    bitrate for longer pieces: 15 MB ≈ 120 Mbit ÷ seconds). Attach the 6 Mbps copies as files.
    Never commit rendered videos to a repo; commit the page that makes them.
 
-Tooling needs Playwright (Chromium) and ffmpeg; the scripts find both at runtime (`FFMPEG=` to
-override). `scripts/lib.mjs` has the shared capture code if you need a custom capture.
+Tooling needs Playwright (Chromium) and ffmpeg; the scripts find both at runtime (global npm
+Playwright, then `ffmpeg` on PATH or an imageio-ffmpeg binary; set `FFMPEG=` to override). `scripts/lib.mjs` has the shared capture code if you need a custom capture.
 
 ## What makes these good (short version of craft.md)
 
@@ -99,4 +101,5 @@ override). `scripts/lib.mjs` has the shared capture code if you need a custom ca
 - **Gestures read at a glance** — especially at phone size. Test them in a close crop.
 - **Deadpan is funny.** Serious characters doing absurd things; slow motion via the time warp.
 - **Clear stage behind the key action.** Move props so hero beats play against quiet background.
-- **Loop it.** The last frame lands on the first frame's framing.
+- **Loop it** where it suits: the last frame lands on the first frame's framing (for a before/after
+  story, matching the framing is enough — see techniques.md → loops).

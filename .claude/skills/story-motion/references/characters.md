@@ -20,7 +20,9 @@ drawCharacter(CAST.maker, makerState(t));
 - **Body:** `pill`, `round`, `square` — simple, readable at thumbnail size. Squash/stretch via `sy`
   with `sx = 1/√sy` (volume-preserving).
 - **Eyes do all the acting.** No mouths. `look` aims the pupils; `happy` (^ ^), `blink`, `wide`
-  (surprise), and lids (half-closed = serious/focused) cover almost every emotion.
+  (surprise), and `lids` 0–1 (sleepy, serious, focused; the template draws a lid line above 0.15 and
+  a shut line above 0.85 — drive it back to 0 when they wake, or the line lingers like an eyebrow)
+  cover almost every emotion.
 - **Stick limbs** with a slight bend; hands are circles in the character's colour. Hands are placed
   in *world* space, so a hand can hold a prop, reach a keyboard or catch something precisely.
 - **Arms cross the body only on purpose** — an arm drawn across the face hides the acting. Use the
@@ -31,6 +33,10 @@ drawCharacter(CAST.maker, makerState(t));
 - **Anticipation → action → follow-through.** Crouch (`sy` 0.82) before a jump; wind-up before a
   throw; the throwing hand carries on past the release point, then settles.
 - **Land it.** `sy -= 0.14 * settle(t - landTime)` gives the little squash-wobble on landing.
+  Squash about the **contact point**: characters already scale about their feet (the frame's base);
+  for props, translate to the base before scaling, or a landing squash lifts them off the surface.
+- **Pose hands with points.** `keys2(t, [[t0, [x, y]], [t1, [x, y], easing]])` moves a hand (or a
+  prop) between poses — every pose change eases; nothing jumps.
 - **Notice → look → react.** A character sees something (pupils track it), a beat of stillness,
   then the reaction. The beat of stillness is what makes it read.
 - **Idle life.** A slow breath (`sy` ± 1.5%), occasional blinks (listed times), a tapping foot —

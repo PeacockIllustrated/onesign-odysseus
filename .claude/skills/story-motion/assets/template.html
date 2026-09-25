@@ -85,7 +85,7 @@ const T = {
 // A style is a palette (semantic roles) + a way of drawing shapes. Scenes only ever name roles.
 //   render: ink | flat | chalk | neon | blueprint | cutout (see shape())
 //   stroke: outline width   boil: wobble amplitude (screen px)   boilEvery: frames per re-seed
-//   grain:  paper texture strength   vignette: edge darkening
+//   grain:  paper texture strength   vignette: edge darkening (vignetteRGB tints it; slowVignette is the extra in slow motion)
 const STYLES = {
   paper: {
     label: 'Paper & ink', render: 'ink', stroke: 3.4, boil: 1.25, boilEvery: 3, grain: 1, vignette: 0.10,
@@ -93,22 +93,22 @@ const STYLES = {
          a1: '#4e7e8c', a2: '#e9b44c', a3: '#e07a5f', a4: '#a8c3ca', c1: '#e9b44c', c2: '#cf5c78', glow: '#ffe7a3' },
   },
   flat: {
-    label: 'Flat vector', render: 'flat', stroke: 0, boil: 0, boilEvery: 1, grain: 0, vignette: 0,
+    label: 'Flat vector', render: 'flat', stroke: 0, boil: 0, boilEvery: 1, grain: 0, vignette: 0, slowVignette: 0.08, vignetteRGB: '31,42,68',
     C: { page: '#eef1f6', wall: '#eef1f6', floor: '#d5dbe8', ink: '#1f2a44', desk: '#b8c2d9', screen: '#ffffff', card: '#ffffff',
          a1: '#3d5afe', a2: '#ffb400', a3: '#ff5a5f', a4: '#00b3a4', c1: '#ff5a5f', c2: '#3d5afe', glow: '#ffe07a' },
   },
   chalk: {
-    label: 'Chalkboard', render: 'chalk', stroke: 3, boil: 2.2, boilEvery: 4, grain: 0.6, vignette: 0.25,
+    label: 'Chalkboard', render: 'chalk', stroke: 3, boil: 2.2, boilEvery: 4, grain: 0.6, vignette: 0.25, vignetteRGB: '8,20,16',
     C: { page: '#1f3b33', wall: '#22433a', floor: '#1b3730', ink: '#f4f1e8', desk: '#c9b89a', screen: '#2c5146', card: '#f4f1e8',
          a1: '#9fd8cb', a2: '#fbe38e', a3: '#f7a3ad', a4: '#b5c9f5', c1: '#fbe38e', c2: '#f7a3ad', glow: '#fff4c2' },
   },
   neon: {
-    label: 'Neon night', render: 'neon', stroke: 3, boil: 0.4, boilEvery: 3, grain: 0, vignette: 0.35,
+    label: 'Neon night', render: 'neon', stroke: 3, boil: 0.4, boilEvery: 3, grain: 0, vignette: 0.35, vignetteRGB: '0,0,0',
     C: { page: '#0b0d17', wall: '#0f1222', floor: '#0b0d17', ink: '#e8ecff', desk: '#6a6f99', screen: '#161a33', card: '#e8ecff',
          a1: '#00e5ff', a2: '#ffe600', a3: '#ff3df2', a4: '#7cff4f', c1: '#ff3df2', c2: '#00e5ff', glow: '#ffe600' },
   },
   blueprint: {
-    label: 'Blueprint', render: 'blueprint', stroke: 2, boil: 0, boilEvery: 1, grain: 0, vignette: 0.15,
+    label: 'Blueprint', render: 'blueprint', stroke: 2, boil: 0, boilEvery: 1, grain: 0, vignette: 0.15, vignetteRGB: '6,20,40',
     C: { page: '#174a7c', wall: '#174a7c', floor: '#15426f', ink: '#eaf4ff', desk: '#eaf4ff', screen: '#1d5791', card: '#eaf4ff',
          a1: '#9fd3ff', a2: '#ffd36b', a3: '#ff9f9f', a4: '#b9f2d0', c1: '#ffd36b', c2: '#9fd3ff', glow: '#ffd36b' },
   },
@@ -130,7 +130,7 @@ const WORLD = { floor: 880, x0: -700, x1: 2700 };
 const DESK = { x0: 600, x1: 920, y: 700 };
 const SCREEN = { cx: 770, cy: 600, w: 170, h: 112 };
 const MAKER_X = 500, CATCHER_X = 1820;
-const PORTRAIT_VIEW = { fit: 1.3 };   // 9:16 sees the centre ~830 world units at zoom 1: compose for it first
+const PORTRAIT_VIEW = { fit: 1.3 };   // 9:16 sees ~830 wide × ~1477 tall world units ÷ zoom (16:9: 1920 × 1080 ÷ zoom). Compose for 9:16 first
 
 /* ==========================================================================
    Easing, springs, paths, hashing — all pure.
@@ -153,6 +153,7 @@ function keys(t, k) {                  // piecewise keyframes: [[t, value, easin
   for (let i = 1; i < k.length; i++) if (t <= k[i][0]) { const [t0, v0] = k[i-1], [t1, v1, e] = k[i]; return lerp(v0, v1, (e || E.inOutCubic)((t - t0) / (t1 - t0))); }
   return k[k.length - 1][1];
 }
+function keys2(t, k) { return [keys(t, k.map(([t0, p, e]) => [t0, p[0], e])), keys(t, k.map(([t0, p, e]) => [t0, p[1], e]))]; }   // keys() for points: hands, props
 const cyc = (t, n, ph = 0) => Math.sin(2 * Math.PI * n * t / STORY_END + ph);   // idle motion that loops exactly
 function hash(n) { let x = Math.imul((n | 0) ^ 0x9e3779b9, 0x85ebca6b); x ^= x >>> 13; x = Math.imul(x, 0xc2b2ae35); x ^= x >>> 16; return (x >>> 0) / 4294967296; }
 function catmull(P, u) {
@@ -185,7 +186,12 @@ function storyAt(rt) { let lo = 0, hi = WARP.n; if (rt <= 0) return 0; if (rt >=
 
 const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
 let STYLE = STYLES.paper, BASE_SCALE = 1, CAM_ZOOM = 1, BOIL = 0, STROKE = 0, W = 1920, H = 1080, PORTRAIT = false, K = 1, grain = null;
-const col = r => (STYLE.C[r] || r);
+const _warned = new Set();
+const col = r => {                        // role → colour. Unknown roles pass through as literal colours; warn once so a
+  if (STYLE.C[r]) return STYLE.C[r];      // role added to one style but not the others doesn't silently draw black
+  if (typeof r === 'string' && !/^(#|rgb|hsl)/.test(r) && !_warned.has(r)) { _warned.add(r); console.warn(`style "${STYLE.label}" has no role "${r}"`); }
+  return r;
+};
 const worldScale = () => { const m = ctx.getTransform(); return Math.max(0.05, Math.sqrt(Math.abs(m.a * m.d - m.b * m.c))) / BASE_SCALE; };
 
 function boil(pts, amp, closed) {       // hand-drawn wobble, re-seeded every STYLE.boilEvery frames
@@ -248,6 +254,10 @@ function shape(pts, o = {}) {
   ctx.restore();
 }
 const line = (pts, o = {}) => shape(pts, { ...o, closed: false });
+// Text for end cards and UI in scenes. A real logo should be its SVG path (new Path2D(d)), never typed.
+function label(text, x, y, size, role = 'ink', weight = 700, font = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif') {
+  ctx.fillStyle = col(role); ctx.font = `${weight} ${size}px ${font}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, x, y);
+}
 function dot(x, y, r, role = 'ink') {
   ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = col(role);
   if (STYLE.render === 'neon') { ctx.shadowColor = col(role); ctx.shadowBlur = 10 * K * CAM_ZOOM; }
@@ -277,7 +287,7 @@ function puff(x, y, t0, t, n = 3, size = 10) {
 /* ==========================================================================
    Characters: body shape, dot eyes, stick limbs. spec.drawBody(frame, state) swaps in a custom body
    (set spec.ownFace if it draws its own eyes, spec.hipY to move the legs).
-   State: { x, y (feet), base?, rot, sx, sy, look:[x,y], blink, happy, wide, legs:{mode}, hands:[p|null], handStyle:[..], jump }
+   State: { x, y (feet), rot, sx, sy, look:[x,y], blink, happy, wide, lids 0–1, legs:{mode}, hands:[p|null], handStyle:[..], jump }
    ========================================================================== */
 
 function charFrame(spec, st) {
@@ -326,8 +336,14 @@ function drawCharacter(spec, st) {
   const lx = (st.look ? st.look[0] : 0) * 9 * k, ly = (st.look ? st.look[1] : 0) * 8 * k;
   if (!spec.ownFace) for (const side of [-1, 1]) {        // a custom body can draw its own face (spec.ownFace)
     const e = L2W(side * spec.eyeGap / 2 + lx, -h * spec.eyeY + ly);
+    const lids = st.lids || 0;                            // 0 open … 1 shut: sleepy, serious, focused
     if (st.happy) line([[e[0] - 7, e[1] + 3], [e[0], e[1] - 5], [e[0] + 7, e[1] + 3]], { w: 3.4, amp: 0.3 });
-    else if (st.blink) line([[e[0] - 6, e[1]], [e[0] + 6, e[1]]], { w: 3, amp: 0.3 });
+    else if (st.blink || lids > 0.85) line([[e[0] - 6, e[1]], [e[0] + 6, e[1]]], { w: 3, amp: 0.3 });
+    else if (lids > 0.15) {                               // a half-closed eye: the dot's lower part under a flat lid line
+      const r = spec.eyeR, top = e[1] - r + 2 * r * lids;
+      ctx.save(); ctx.beginPath(); ctx.rect(e[0] - r - 2, top, 2 * r + 4, 2 * r); ctx.clip(); dot(e[0], e[1], r); ctx.restore();
+      line([[e[0] - r - 2, top], [e[0] + r + 2, top]], { w: 2.6, amp: 0.2 });
+    }
     else dot(e[0], e[1], spec.eyeR * (st.wide ? 1.3 : 1));
   }
   for (let i = 0; i < 2; i++) drawArm(spec, sh[i], hands[i], st.handStyle && st.handStyle[i], i);
@@ -454,8 +470,10 @@ function drawBulb(t) {
    Camera: keyed, calm, composed for 9:16 first. Values may be functions of t (follow shots).
    ========================================================================== */
 
-const cam = (cx, cy, zoom = 1) => ({ cx, cy, zoom });
-const camLerp = (a, b, u) => cam(lerp(a.cx, b.cx, u), lerp(a.cy, b.cy, u), Math.exp(lerp(Math.log(a.zoom), Math.log(b.zoom), u)));
+// cam(cx, cy, zoom, portraitZoom?) — the optional 4th value is used in 9:16 only (push in tighter on a phone).
+const cam = (cx, cy, zoom = 1, pz = null) => ({ cx, cy, zoom, pz });
+const logLerp = (a, b, u) => Math.exp(lerp(Math.log(a), Math.log(b), u));
+const camLerp = (a, b, u) => cam(lerp(a.cx, b.cx, u), lerp(a.cy, b.cy, u), logLerp(a.zoom, b.zoom, u), (a.pz || b.pz) ? logLerp(a.pz || a.zoom, b.pz || b.zoom, u) : null);
 function camKeys(t, ks) {
   const v = k => typeof k[1] === 'function' ? k[1](t) : k[1];
   if (t <= ks[0][0]) return v(ks[0]);
@@ -492,7 +510,7 @@ function drawFrame(tIn) {
   const fit = PORTRAIT ? PORTRAIT_VIEW.fit : 1; BASE_SCALE = K * fit;
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.shadowBlur = 0;
   ctx.fillStyle = col('page'); ctx.fillRect(0, 0, canvas.width, canvas.height);
-  const c = camera(t); CAM_ZOOM = c.zoom;
+  const c = camera(t); if (PORTRAIT && c.pz) c.zoom = c.pz; CAM_ZOOM = c.zoom;
   ctx.setTransform(K, 0, 0, K, 0, 0); ctx.translate(W / 2, H / 2); ctx.scale(fit * c.zoom, fit * c.zoom); ctx.translate(-c.cx, -c.cy);
   drawSet(t);
   drawCharacter(CAST.maker, makerState(t));
@@ -501,9 +519,9 @@ function drawFrame(tIn) {
   const cp = cardPose(t); if (cp && cp.p && t > T.flight[0] && t < T.flight[1]) ghosted(t, drawCard, 4, 0.05); else drawCard(t);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   if (STYLE.grain && grain) { ctx.globalAlpha = STYLE.grain; ctx.fillStyle = grain; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.globalAlpha = 1; }
-  const slow = 1 - speedAt(t) / 1, v = STYLE.vignette + 0.18 * Math.max(0, slow);   // vignette deepens in slow motion
-  if (v > 0) { const g = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, Math.min(canvas.width, canvas.height) * 0.35, canvas.width / 2, canvas.height / 2, Math.hypot(canvas.width, canvas.height) * 0.6);
-    g.addColorStop(0, 'rgba(20,16,10,0)'); g.addColorStop(1, `rgba(20,16,10,${v.toFixed(3)})`); ctx.fillStyle = g; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+  const slow = 1 - speedAt(t), v = STYLE.vignette + (STYLE.slowVignette ?? 0.18) * Math.max(0, slow);   // vignette deepens in slow motion
+  if (v > 0) { const rgb = STYLE.vignetteRGB || '20,16,10', g = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, Math.min(canvas.width, canvas.height) * 0.35, canvas.width / 2, canvas.height / 2, Math.hypot(canvas.width, canvas.height) * 0.6);
+    g.addColorStop(0, `rgba(${rgb},0)`); g.addColorStop(1, `rgba(${rgb},${v.toFixed(3)})`); ctx.fillStyle = g; ctx.fillRect(0, 0, canvas.width, canvas.height); }
 }
 
 /* ==========================================================================

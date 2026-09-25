@@ -21,11 +21,16 @@ is below.
   air past a character without ever leaving its path.
 - Rotation + `flip = cos(2π·u)` (scale x by flip) reads as a card tumbling in 3D.
 
-## Camera
+## Camera and framing
 - `camKeys(t, [[t, cam(cx, cy, zoom), easing], ...])`; a key's value may be a function of t for
   follow shots (`followCard`). Zoom interpolates in log space so pushes feel even.
-- Compose each key for 9:16: the phone sees ~830 world units ÷ zoom across. Faces and hands in the
-  centre third.
+- Compose each key for 9:16: the phone sees **~830 wide × ~1477 tall** world units ÷ zoom (16:9
+  sees 1920 × 1080 ÷ zoom). Faces and hands in the centre third. The tall frame shows a lot of floor
+  below a seated character — centre the camera higher, or push in.
+- `cam(cx, cy, zoom, portraitZoom)` — the optional 4th value applies in 9:16 only, for shots that
+  need to be tighter on a phone than on a desktop.
+- Following a small flying object at zoom ~1 makes characters tiny on a phone; follow a little
+  tighter, or let the object cross a held frame instead.
 - A follow cam lags its subject slightly (sample the subject at `t - 0.15`).
 - Push in for the payoff (zoom ~1.4–2 on the face), pull wide for the reaction, drift home to loop.
 
@@ -73,5 +78,17 @@ is below.
 
 ## Loops
 - Idle motion: `cyc(t, n)` — whole cycles over `STORY_END`.
-- First frame = last frame: same camera (`HOME`), same poses, props reset off-screen or back home.
+- A true loop: same camera (`HOME`), same poses, props reset off-screen or back home.
+- **Before/after stories** (sleepy → awake, empty wall → lit sign) can't match poses; match the
+  framing and let the cut land on a quiet moment — or end on a held end card instead of looping.
+- Things that silently break a loop: clock hands, the sun or clouds moving with `t` (use `cyc` or keep
+  them static), accumulated counters, anything that drifts one way.
 - Check with `stills.mjs --at 0,<STORY_END - 0.001>` side by side.
+
+## Text, logos and end cards
+- A client's logo or wordmark: always its real SVG path (`new Path2D(d)`), filled — never typed.
+  Ask for it if it matters to the piece; don't invent a logo.
+- No logo supplied: leave branding out of scenes, or use a simple icon; offer an end card.
+- End card (optional, common for explainers): the last 1.5–2s holds on the product name / line /
+  URL, set with `label(text, x, y, size, role, weight)` in the style's colours, logo above it when
+  supplied. If the piece loops, fade the card out before the loop point.

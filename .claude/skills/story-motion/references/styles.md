@@ -52,6 +52,25 @@ Ideas that fit this engine well: risograph (2–3 inks, misregistration offset, 
 pencil sketch (graphite stroke, cross-hatched fills), watercolour (soft fill blooms + bleed),
 comic (thick ink, halftone shading, speed lines), 8-bit (snap coordinates to a pixel grid, no AA).
 
+## Roles are shared across styles
+
+Scenes should only use the roles every preset defines (`page wall floor ink desk screen card a1–a4
+c1 c2 glow`). If a piece needs a new role (`tile`, `coffee`), add it to **every** style the piece can
+switch to — `col()` passes unknown names through as literal colours and warns once in the console,
+but canvas silently ignores an invalid colour, so a missing role draws wrong with no error.
+
+## Character colours
+
+Dot eyes are drawn in `ink`. A character's body colour must contrast with `ink` (or the eyes vanish)
+**and** with `wall` and the other characters. On light styles pick mid-to-light body colours; on dark
+styles (chalk, neon, blueprint) the ink is light, so bodies can be darker. Check faces in a crop.
+
+## Slow-motion vignette
+
+Each style can tint its vignette (`vignetteRGB`) and set how much it deepens in slow motion
+(`slowVignette`). Near-black darkening reads as dirt on light flat palettes — use the palette's own
+darkest colour and a small amount.
+
 ## Brand overrides
 
 A brand pack can define its own style (e.g. `STYLES.onesign`) or override roles on a preset:

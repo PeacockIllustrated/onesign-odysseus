@@ -17,7 +17,7 @@ const file = args._[0];
 if (!file || !args.out) { console.error('usage: render.mjs <piece.html> --out <file.mp4> [--portrait] [--fps 60] [--crf 16] [--from s] [--to s]'); process.exit(1); }
 const fps = +(args.fps || 60), crf = String(args.crf || 16), portrait = !!args.portrait;
 
-const { browser, page, errors, duration } = await openPiece(file, { portrait, query: args.style ? 'style=' + args.style : (args.query || '') });
+const { browser, page, errors, duration } = await openPiece(file, { portrait, query: [args.style ? 'style=' + args.style : '', args.query || ''].filter(Boolean).join('&') });
 const from = +(args.from || 0), to = Math.min(duration, +(args.to || duration));
 const first = Math.round(from * fps), last = Math.round(to * fps);   // last frame excluded: t = DURATION is t = 0 again
 mkdirSync(dirname(args.out), { recursive: true });
