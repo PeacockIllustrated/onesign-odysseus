@@ -39,6 +39,9 @@ drawCharacter(CAST.maker, makerState(t));
   prop) between poses — every pose change eases; nothing jumps.
 - **Notice → look → react.** A character sees something (pupils track it), a beat of stillness,
   then the reaction. The beat of stillness is what makes it read.
+- **Walking.** `legs: walkState(x, amt)` — feet stride with the ground covered, the body bobs and
+  arms swing opposite. Drive `x` with `keys()` and derive `amt` from how fast `x` is changing (see
+  the catcher in the template), so steps ease in and out instead of sliding.
 - **Idle life.** A slow breath (`sy` ± 1.5%), occasional blinks (listed times), a tapping foot —
   using `cyc(t, n)` so idle motion loops exactly with the film.
 - **Thumbs up** must be a wide fist with finger creases and a short stout thumb. A tall single digit

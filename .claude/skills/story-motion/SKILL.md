@@ -56,7 +56,8 @@ Read in this order:
 2. **Beat sheet.** Write `T` before drawing anything: each beat, its time, and where the camera is.
    Give comedy and payoffs air — if it feels rushed, make the piece longer rather than faster.
 3. **Build** from the template (craft.md in mind): set, cast, state functions (pure in t), camera
-   keys composed for 9:16 (techniques.md → framing). Keep to the style's colour roles.
+   keys composed for 9:16 (techniques.md → framing). Keep to the style's colour roles. With a brand
+   pack, paste its module at the template's BRAND PACK marker and set `DEFAULT_STYLE`.
 4. **Check with contact sheets, not by eye in a player** — both orientations, story-time and
    real-time pacing. Always look at the PNGs (Read them):
    ```bash
@@ -66,7 +67,7 @@ Read in this order:
    node <skill>/scripts/stills.mjs story.html --at 4,6 --style neon --out out/neon.png
    ```
    It also reports console errors and whether a frame re-renders identically; both must be clean.
-   A close crop helps judge details (hands, faces, props) — screenshot a region with Playwright.
+   Judge details (hands, faces, props) in a close crop: `--clip x,y,w,h` (canvas pixels).
 5. **Share the live page for review.** It plays instantly; video takes ~15 minutes. If publishing
    as a claude.ai artifact, strip the `<!doctype>/<html>/<head>/<meta>/<body>` wrapper lines first,
    and update the same artifact URL each round so the link stays stable.

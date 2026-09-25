@@ -1,6 +1,7 @@
 /* ==========================================================================
-   ONESIGN BRAND PACK for story-motion — paste into a piece, after the template's drawing primitives
-   (shape/line/dot/rrect/ellipse/circle/col are the template's) and before CAST is used.
+   ONESIGN BRAND PACK for story-motion — paste at the template's "BRAND PACK" marker (after STYLES,
+   before CAST), then set DEFAULT_STYLE = 'onesign'. It only defines things at load time; the
+   template's drawing primitives (shape/line/dot/rrect/ellipse/circle/col) are used when drawing.
 
    Gives you:  STYLES.onesign (house palette on the paper & ink render)
                ONESIGN_LOGO (the real logo paths) + drawOnesignLogo(cx, cy, width)
@@ -18,6 +19,18 @@ STYLES.onesign = {
        designer: '#e9b44c', pm: '#4e7e8c', fabricator: '#cf5c78', fitterA: '#f2a65a', fitterB: '#b9573f', driver: '#4e7e8c', customer: '#e07a5f' },
 };
 ['designer', 'pm', 'fabricator', 'fitterA', 'fitterB', 'driver', 'customer', 'teal'].forEach(r => ACCENT_ROLES.add(r));
+// Give every other style the Onesign roles too (mapped to its nearest roles), so switching style never
+// leaves a role undefined. Onesign pieces are paper & ink by design; the other styles are for previews.
+const ONESIGN_ROLE_FALLBACK = { teal: 'a1', tealSoft: 'a4', tealDark: 'ink', steel: 'desk', designer: 'c1', pm: 'a1', fabricator: 'c2', fitterA: 'a2', fitterB: 'a3', driver: 'a1', customer: 'a3' };
+for (const S of Object.values(STYLES)) for (const [r, f] of Object.entries(ONESIGN_ROLE_FALLBACK)) S.C[r] ??= S.C[f];
+
+// Adapter for lifting code from the reference film, which predates the template's API:
+//   sk(pts, { closed, fill, width, amp, alpha, stroke })  →  shape(pts, { closed, fill, w, amp, alpha, stroke })
+//   COLORS.<name>  →  a role name ('teal', 'customer', 'fitterA'…) or BLOOM_COLORS.<name> for one-offs
+function sk(pts, o = {}) { return shape(pts, { closed: !!o.closed, fill: o.fill, w: o.width, amp: o.amp, alpha: o.alpha, stroke: o.stroke === false ? false : (o.stroke || 'ink') }); }
+const BLOOM_COLORS = { paper: '#f3efe6', paperHi: '#fbf8f1', ink: '#23282b', teal: '#4e7e8c', tealSoft: '#a8c3ca', tealDark: '#35606c',
+  facade: '#e7dfcf', fascia: '#cdc6b8', glass: '#dde4e1', pavement: '#e8e1d4', road: '#dcd5c8', wall: '#f3efe6', floor: '#e6dfd1', desk: '#d9c7a8',
+  bezel: '#3b4246', shopWall: '#ebe6dc', block: '#dcd6cb', steel: '#8d9699', concrete: '#e0dbd1', van: '#fbf8f1', led: '#fff0c4', glow: '#ffd98a' };
 
 // The Onesign logo, straight from Onesign-Logo-Black.svg (viewBox 785.08 × 166.13). mark = icon + wordmark, tag = strapline.
 const ONESIGN_LOGO = { w: 785.08, h: 166.13,
@@ -32,10 +45,13 @@ function drawOnesignLogo(cx, cy, width, color = '#23282b', tagColor = '#4e7e8c')
 
 // The icon in its own SVG units: the O spans x 0–157, y 10–152; the 1 is cut out of it.
 // Eyes either side of the stem — chosen from eight placements (see crew.html); don't move them.
+// Mascots are drawn in fixed brand colours (ink mark, white eyes, yellow hard hats) whatever the style.
 const MARK_ICON = { w: 157, h: 142, cx: 78.5, base: 152, eyes: [[46, 112], [134, 102]], eyeR: 12 };
 const ONESIGN_KIT = { designer: null, pm: 'headset', fabricator: 'goggles', fitterA: 'hardhat', fitterB: 'hardhat', driver: 'cap' };
 
 // A crew member: onesignMascot('fitterA', { w: 132 }). The body is the mark; the 1 glows in the role colour.
+// Scale: a mascot is ~120–170 units tall; a Luton box side ~480, a fascia ~250 up. Give them access
+// the way the trade does: hop-ups and a staging board for a van side, a ladder for a fascia.
 function onesignMascot(role, o = {}) {
   const spec = { shape: 'mark', w: 150, legLen: 50, color: role, k: 1.2, kit: ONESIGN_KIT[role] ?? null, ownFace: true, ...o };
   spec.h = spec.w * MARK_ICON.h / MARK_ICON.w;

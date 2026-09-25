@@ -31,6 +31,11 @@ is below.
   need to be tighter on a phone than on a desktop.
 - Following a small flying object at zoom ~1 makes characters tiny on a phone; follow a little
   tighter, or let the object cross a held frame instead.
+- **Wide subjects on a phone** (a van, a fascia, a shopfront) leave the top and bottom thirds empty.
+  Either push in with `portraitZoom` on the part where the action is (the fitter and the section
+  being worked on) and pan along, or compose vertically — sky or signage above, the crew and
+  kit below. Show the whole subject once, in a held wide beat, when it matters (the reveal).
+- **Check close-ups** with `stills.mjs --clip x,y,w,h` (canvas pixels) — hands, faces, props.
 - A follow cam lags its subject slightly (sample the subject at `t - 0.15`).
 - Push in for the payoff (zoom ~1.4–2 on the face), pull wide for the reaction, drift home to loop.
 
@@ -83,7 +88,8 @@ is below.
   framing and let the cut land on a quiet moment — or end on a held end card instead of looping.
 - Things that silently break a loop: clock hands, the sun or clouds moving with `t` (use `cyc` or keep
   them static), accumulated counters, anything that drifts one way.
-- Check with `stills.mjs --at 0,<STORY_END - 0.001>` side by side.
+- Check the seam in **both orientations**: `stills.mjs --at 0,<STORY_END - 0.001>` with and without
+  `--portrait`.
 
 ## Text, logos and end cards
 - A client's logo or wordmark: always its real SVG path (`new Path2D(d)`), filled — never typed.

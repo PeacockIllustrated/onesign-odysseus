@@ -10,13 +10,18 @@ This pack makes every Onesign film look like part of one family. It sits on top 
 and follow its workflow; this pack decides the look, the cast and the house rules.
 
 Assets here:
-- `assets/onesign-pack.js` — paste into a piece built from the story-motion template (after the
-  drawing primitives): `STYLES.onesign`, the real logo paths (`ONESIGN_LOGO`, `drawOnesignLogo`),
-  and `onesignMascot(role)` which returns a cast spec whose body is the Onesign mark.
+- `assets/onesign-pack.js` — paste it at the template's **BRAND PACK marker** (after `STYLES`,
+  before `CAST`) and set `DEFAULT_STYLE = 'onesign'`. It adds `STYLES.onesign`, the real logo paths
+  (`ONESIGN_LOGO`, `drawOnesignLogo`), `onesignMascot(role)` (a cast spec whose body is the Onesign
+  mark), fallbacks so the Onesign roles exist in every style, and `sk()` / `BLOOM_COLORS` adapters
+  for lifting code from the reference film.
 - `assets/crew.html` — the character bible: line-up, how a mascot is built, expressions, status
   stickers, the eight eye placements that were tried and the one chosen, and the rules.
 - `assets/reference-bloom-sign-story.html` — the 40s reference film (a BLOOM sign from idea to lit
-  fascia). The best place to lift scenes, props and choreography from.
+  fascia). The best place to lift scenes, props and choreography from: the studio, the CNC and
+  router, the Luton van (`roundedPoly` body, alloy wheels, tail lift), the fascia and flowering
+  sprigs, the ladder fit, dusk lighting. It predates the template's API — use the pack's `sk()` and
+  `BLOOM_COLORS` adapters, or translate `sk(pts, {width})` → `shape(pts, {w})` as you lift.
 - `assets/video-page.html` — the delivery page for the two MP4s.
 
 In the Odysseus repo the same things live at `public/motion/` (`bloom-sign-story.html`,
@@ -53,16 +58,29 @@ Onesign staff are mascots made of **the Onesign mark** (an O with a 1 cut out of
 mark. The customer owns coral `#e07a5f`, and no staff member uses it.
 
 In code: `CAST.fitter = onesignMascot('fitterA', { w: 132 })`. The mascot's state takes the
-template's fields plus `lids` (0–1, "dead serious"), `wide`, `wink`, and a flipping `sx` (clamped
-away from zero). New roles or kit go on the crew sheet first (crew.html), then into the film.
+template's fields plus `lids` (0–1, "dead serious"), `wide`, `wink`. New roles or kit go on the crew
+sheet first (crew.html), then into the film.
+
+**Flipping:** "never reshape the mark" means at rest. A mascot may *turn* in 3D — `sx` passing
+through zero as they spin, as the PM does mid-air in the reference — because that reads as the
+character turning, not as a mirrored logo. Keep turns brief and never hold a mascot mirrored; to face
+the other way, use `look` (the eyes), not a flip.
+
+**Scale and access:** a mascot is ~120–170 units tall; a van box side is ~480 and a fascia sits
+~250 up. Give them access the way the trade does — hop-ups and a staging board for a van side, a
+ladder for a fascia — rather than scaling the crew up.
 
 ## House rules (from Onesign reviews)
 
-- **Get the trade right.** A job goes quote/idea → design → sign-off → fabrication (CNC, letters,
-  LEDs) → wrap and load → van → fit. On site, **the fascia panel goes up before the letters**; the
-  sign lights only once the last letter is fixed; dusk gathers while the fitters finish.
-- **The van is a real Luton van**: square corners where the real one is square, a tail lift, real
-  alloy wheels, and the Onesign livery from the logo path.
+- **Get the trade right.** A sign job goes quote/idea → design → sign-off → fabrication (CNC,
+  letters, LEDs) → wrap and load → van → fit. On site, **the fascia panel goes up before the
+  letters**; the sign lights only once the last letter is fixed; dusk gathers while they finish.
+- **Vehicle wraps:** design on screen → wide-format print → cut → carried as one panel by two
+  fitters → applied from hop-ups/staging: one squeegees in a single direction with the graphic
+  appearing behind the blade, the other holds the far end → trim → step back and check. The "before"
+  vehicle is plain white; the livery is drawn from the logo path (`drawOnesignLogo`), never typed.
+- **Vans look real** — whether it's Onesign's own van or the job: a Luton with square corners where
+  the real one is square, a tail lift, real alloy wheels (never toy wheels).
 - **The PM signs work off**: the reference film's slow-motion sign-off, deadpan and mid-air while
   the page flies past untouched, is the tone for Onesign comedy.
 - **Fascia graphics look designed**: the flowering sprigs on the BLOOM fascia are the standard.

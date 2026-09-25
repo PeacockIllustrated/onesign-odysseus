@@ -35,8 +35,8 @@ export function parseArgs(argv) {
 // Open a motion piece at its native capture size. Every piece follows the same contract:
 // window.renderFrame(realSeconds) draws one frame, window.DURATION is the real length,
 // ?ui=0 hides the review bar, ?native=1 backs the canvas at exact pixels, ?portrait=1 is the 9:16 cut
-// (pieces that are portrait-only ignore it), ?t= freezes on a time.
-export async function openPiece(file, { portrait = false, width, height } = {}) {
+// (pieces that are portrait-only ignore it), ?t= freezes on a time. `query` adds more params (e.g. style=neon).
+export async function openPiece(file, { portrait = false, width, height, query = '' } = {}) {
   const { chromium } = loadPlaywright();
   const browser = await chromium.launch();
   const vw = width ?? (portrait ? 1080 : 1920), vh = height ?? (portrait ? 1920 : 1080);
@@ -44,7 +44,7 @@ export async function openPiece(file, { portrait = false, width, height } = {}) 
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
-  const url = pathToFileURL(resolve(file)).href + '?ui=0&native=1&t=0' + (portrait ? '&portrait=1' : '');
+  const url = pathToFileURL(resolve(file)).href + '?ui=0&native=1&t=0' + (portrait ? '&portrait=1' : '') + (query ? '&' + query.replace(/^[?&]/, '') : '');
   await page.goto(url);
   await page.waitForFunction(() => typeof window.renderFrame === 'function' && typeof window.DURATION === 'number');
   const duration = await page.evaluate(() => window.DURATION);

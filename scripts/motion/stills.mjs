@@ -2,12 +2,12 @@
 // Review stills: render a piece at chosen times and tile them into one contact sheet, so a whole beat can be
 // judged in a single image. This is the everyday check while iterating; render.mjs is only for the final cut.
 //
-//   node scripts/motion/stills.mjs public/motion/bloom-sign-story.html --at 10.5,11.0,11.2,11.4 --out out/pm.png
-//   node scripts/motion/stills.mjs public/motion/bloom-sign-story.html --at 29.6,30,30.3 --portrait --out out/panel-p.png
+//   node scripts/motion/stills.mjs public/motion/<piece>.html --at 10.5,11.0,11.2,11.4 --out out/beat.png
+//   node scripts/motion/stills.mjs public/motion/<piece>.html --at 29.6,30,30.3 --portrait --out out/beat-p.png
 //
 // Times are STORY seconds when the piece exposes realAt() (pieces with a time warp: slow motion, sped-up
 // flights), otherwise real seconds. Add --real to force real seconds (to judge pacing as the viewer sees it).
-// Options: --cols 3  --tile-width 640  --portrait  --real  --keep (also keep each frame as its own PNG)
+// Options: --clip x,y,w,h (close crop)  --style <name>  --query 'a=1&b=2'  --cols 3  --tile-width 640  --portrait  --real  --keep (also keep each frame as its own PNG)
 // Prints the page's DURATION, any console errors, and whether one frame renders identically twice.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
@@ -18,15 +18,18 @@ const args = parseArgs(process.argv.slice(2));
 const file = args._[0];
 if (!file || !args.at || !args.out) { console.error('usage: stills.mjs <piece.html> --at t1,t2,... --out sheet.png [--portrait] [--real] [--cols 3] [--keep]'); process.exit(1); }
 const portrait = !!args.portrait, times = String(args.at).split(',').map(Number);
-const cols = +(args.cols || Math.min(times.length, portrait ? 6 : 3)), tileW = +(args['tile-width'] || (portrait ? 360 : 640));
-const tileH = Math.round(tileW * (portrait ? 16 / 9 : 9 / 16));
+// --clip x,y,w,h crops every frame to a region (canvas pixels: 1920×1080, or 1080×1920 with --portrait) for close checks
+const clip = args.clip ? (([x, y, width, height]) => ({ x, y, width, height }))(String(args.clip).split(',').map(Number)) : null;
+const cols = Math.min(times.length, +(args.cols || (clip ? 4 : portrait ? 6 : 3))), tileW = +(args['tile-width'] || (clip ? Math.min(640, clip.width) : portrait ? 360 : 640));
+const tileH = Math.round(tileW * (clip ? clip.height / clip.width : portrait ? 16 / 9 : 9 / 16));
 
-const { browser, page, errors, duration } = await openPiece(file, { portrait });
+const { browser, page, errors, duration } = await openPiece(file, { portrait, query: [args.style ? 'style=' + args.style : '', args.query || ''].filter(Boolean).join('&') });
 const dir = join(dirname(args.out), '.stills-' + process.pid);
 mkdirSync(dir, { recursive: true });
 for (let i = 0; i < times.length; i++) {
   await page.evaluate(([t, real]) => window.renderFrame(!real && typeof realAt === 'function' ? realAt(t) : t), [times[i], !!args.real]);
-  await page.locator('canvas').screenshot({ path: join(dir, `f_${String(i).padStart(3, '0')}.png`) });
+  const out = join(dir, `f_${String(i).padStart(3, '0')}.png`);
+  if (clip) await page.screenshot({ path: out, clip }); else await page.locator('canvas').screenshot({ path: out });
 }
 const deterministic = await page.evaluate(t => {
   const c = document.querySelector('canvas');
