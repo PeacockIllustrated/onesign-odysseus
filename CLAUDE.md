@@ -75,6 +75,7 @@ onesign-odysseus/
 │   ├── (portal)/              # ← Main authenticated app (was app/app/(portal))
 │   │   ├── admin/             # Super-admin routes
 │   │   │   ├── artwork/       # Artwork compliance management
+│   │   │   ├── calculator/    # ★ NEW — Sign calculator (panel_letters_v2, Mak's pricing tool)
 │   │   │   ├── deliverables/  # Client deliverables admin
 │   │   │   ├── design-packs/  # Printable design pack export
 │   │   │   ├── jobs/          # ★ NEW — Production job board (Phase 1)
@@ -135,7 +136,8 @@ onesign-odysseus/
 │   ├── schedule/              # ★ NEW — Fitting schedule: crew resolution, date maths, UK bank holidays, actions
 │   ├── qr-links/              # ★ NEW — Lynx QR link reads + ported scan analytics
 │   ├── quoter/                # ★ Signage quoter engine (CORE — do not break)
-│   │   ├── engine/            # Calculation engine with tests (panel_letters_v1 + generic items)
+│   │   ├── engine/            # Calculation engines with tests (panel_letters_v1, panel_letters_v2 = sign calculator)
+│   │   ├── calculator/        # Sign calculator: price book + job schemas, default book, server actions
 │   │   ├── actions.ts         # Server actions for quotes
 │   │   ├── pricing-actions.ts # Pricing management
 │   │   ├── rate-card.ts       # Rate card definitions
@@ -234,6 +236,9 @@ Migration 031 is intentionally absent (numbering gap from an early draft that wa
 | 076 | multi-day jobs, extra van, more PMs | `fitting_jobs.end_date` (inclusive; NULL = a single-day job) so one fit can run Mon–Wed as one card rather than three. `vans.is_additional` marks the spare van the toolbar switches on via `is_active` — DB state, so the workshop TV gets the extra column too. Adds Lucy / John / Davey as project managers, guarded per name (074's seed only fires on an empty table) |
 | 075 | fitting job summary | `fitting_jobs.summary` — one line of "what is this job", rendered on the card under the customer name in a smaller font. Deliberately separate from `notes`, which is long-form and never reaches the card |
 | 074 | `project_managers`, `vans`, `fitters`, `default_crew`, `day_crew_overrides`, `fitting_jobs` | The wall whiteboard, made live. Vans are the stable board columns, fitters a separate roster with a standing pairing per van plus per-day overrides for holidays and swaps ("people move, vans don't"). `fitting_jobs` is an inheritance-chain citizen (`org_id`/`contact_id`/`site_id` + `quote_id`) with free-text fallbacks for urgent work that reaches the board before a quote exists (same pattern as `site_surveys`, 061). Ref `FIT-YYYY-NNNNNN`; soft-archive only — completed jobs stay on the board ticked. All six tables Realtime-published |
+
+### Sign calculator (079)
+| 079 | `calculator_price_books`, `calculator_jobs` (+ `calculator_job_number_seq`) | Mak's pricing calculator as the `panel_letters_v2` engine. The price book is ONE JSON document, versioned: every save inserts a new immutable row (an UPDATE trigger refuses edits), so a priced job can name the exact prices it used. Saved jobs get `CAL-YYYY-NNNNNN` and a nullable `quote_id` once turned into a quote. Super-admin RLS like the 012 quoter tables. Deliberately NOT stored in the 012 rate-card tables — v2 needs real sheet dimensions + an active flag, an illumination sell price per letter, joint allowance and sheet sharing, none of which those tables can hold without breaking v1 for existing quotes |
 
 ### Public studio launch hardening (073)
 | 073 | design_request notifications | SECURITY DEFINER trigger on `design_requests` INSERT drops a `notifications` row (kind `design_request`, added to the kind CHECK) so new public leads appear on the dashboard Needs Attention feed — same pattern as the Persimmon trigger in 056 |
@@ -363,6 +368,20 @@ is the whole requirement, the portal carries no chart library today, and drawing
 them here means every colour is a `var(--…)` token that follows the theme toggle
 for free.
 
+### 2f. The sign calculator is v2 of the quoter, not a second calculator
+
+`/admin/calculator` (Financials) is Mak's standalone pricing tool brought in after an audit. The engine is `lib/quoter/engine/panel-letters-v2.ts`; v1 stays untouched so existing quotes keep their prices. What carried over is Mak's maths — sheets planned as a real cut (strips stacked down a sheet, long runs split into EQUAL pieces and joined), apertures placed by dimension, joins charged as fabrication time, and a full working trace behind every figure. What changed is everything the audit found going wrong quietly:
+
+- **Whole pence, rounded once per line**, totals summed from the rounded lines, and a sign's total is `unit × qty`, so the quote it becomes multiplies out to exactly the calculator's figure.
+- **References are ids, never names.** Renaming a labour rate, finish or letter type cannot orphan hours or selections. `normaliseSign` runs after every edit and re-points anything that no longer resolves, *saying so* — the original tool's dropdown showed one finish while the sign held another and priced the letters at £0.
+- **A reference that doesn't resolve is an ERROR on the sign**, shown in red and blocking "Create quote" — never a silent £0.
+- **The price book cannot be saved broken.** `validatePriceBook` refuses no finishes / no transformers / a price row with the wrong number of heights; deleting every finish used to blank the original tool for good.
+- **Batches share sheet** (`settings.sheet_sharing`, default `batch`); small panels pack along the sheet as well as down it. `per_sign` reproduces the original behaviour.
+- **Aperture LEDs are a material**, marked up once with materials. There is no separate aperture-LED markup any more (stacked on the materials markup it reached 6.4× cost).
+- **Settings parse key by key with defaults**, so a book saved before a setting existed picks it up.
+
+"Create quote" re-prices server-side from the current book (the browser's money is never trusted), creates a normal draft quote (OSD ref, 30-day validity, org carried over) and adds one **generic** production line per sign — tray / aperture / letter sets as sub-items, so artwork skeleton generation on acceptance works exactly as for a hand-built quote — plus a **service** line per extra at its sell price. After that the quote is the record; the calculator job is the working behind it.
+
 ### 3. Single-tenant internal platform — clients are records, not users
 
 Onesign Odysseus is used **only by Onesign & Digital staff** to run the internal production pipeline. It is not a customer-facing portal. The businesses Onesign does work for never log in here — they interact with Onesign via email, the tokenised artwork sign-off links at `/sign-off/[token]` (legacy `/approve/artwork/[token]` redirects), and proof-of-delivery links at `/delivery/[token]`. An additional internal-but-unauth surface at `/production-sign-off/[token]` lets the production approvers (Chris / John) tick each sub-item off before release to fabrication, using the same token-as-gate pattern.
@@ -395,6 +414,7 @@ The `/admin/booking` module (287K of code) was experimental and is not part of O
 - **Public design studio** (`/design`, migration 060) — unauthenticated customer-facing visualiser with a guided spotlight tour; submissions land in the `/admin/design-requests` inbox. See §2c.
 - **Built-up letter returns tool** (`/admin/visualiser/returns`, migration 065) — reads an outlined-letters SVG (real-size calibration like the neon tool), measures each contour's perimeter and breaks the side-wall return strips into welded segments at sharp corners + the stock length, wrapping the outer edge AND every counter. Produces an annotated cut-sheet PDF (faces drawn, weld dots, per-letter strip/weld table, totals). "Send to nester" hands the faces + return rectangles to `/admin/nesting` as ONE linked nest (same brass), grouped `FACES` / `RETURNS`; the nest banners back to its job and the job lists where it was nested. Engine is DOM-free + Vitest-covered (`lib/visualiser/returns.ts`).
 - **Live fitting schedule** (`/admin/schedule` + `/fitting-board`, migration 074) — the whiteboard made live. Week / month / year views, AM / PM / all-day / OOH slots, two holding panels, per-day crews with understaffing warnings, holiday ranges, dnd-kit drag & drop with optimistic rollback, Supabase Realtime with a *fail-loudly* offline banner, and a read-only workshop TV route. Accepted quotes feed the board directly — no ClarityGo importer. See §2d
+- **Sign calculator** (`/admin/calculator`, migration 079 — apply on deploy) — Mak's pricing tool as the `panel_letters_v2` engine: tray / aperture / letters / lighting / labour priced from a shared, versioned price book, full working breakdown, saved jobs (`CAL-` refs), and one-click conversion into a draft quote whose lines flow on to artwork. Every audit finding is a Vitest case. See §2f
 - **Printable fitting schedule** (`/admin/schedule/print`) — the week on paper at A3 by default, or one day per sheet at the largest type; PM named as well as coloured so a mono print still says whose job it is. See §2d
 - **QR Links overview** (`/admin/qr-links`) — read-only window onto Onesign Lynx's managed QR/NFC codes: platform roll-up, per-link scan analytics ported field-for-field from Lynx, dependency-free SVG charts in the portal's own palette. No migration — Lynx owns the tables. See §2e
 - **Production job board** (`/admin/jobs`) with Kanban across real Onesign departments, shop-floor queue at `/shop-floor`

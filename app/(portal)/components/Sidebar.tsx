@@ -13,6 +13,7 @@ import {
     Calculator,
     ShoppingCart,
     DollarSign,
+    PoundSterling,
     ClipboardCheck,
     Truck,
     BadgeCheck,
@@ -106,6 +107,7 @@ const adminNavGroups: NavGroup[] = [
         items: [
             { label: 'Invoices', href: '/admin/invoices', icon: FileText },
             { label: 'Purchase Orders', href: '/admin/purchase-orders', icon: ShoppingCart },
+            { label: 'Calculator', href: '/admin/calculator', icon: PoundSterling },
             { label: 'Pricing', href: '/admin/pricing', icon: DollarSign },
             { label: 'Clients', href: '/admin/clients', icon: Building2 },
             { label: 'External Orders', href: '/admin/external-orders', icon: Inbox },
