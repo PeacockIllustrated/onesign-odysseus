@@ -144,6 +144,59 @@ export function fitScale(naturalHeight: number, availableHeight: number): number
 }
 
 /**
+ * The scale the TV grid should settle at, given how tall it lays out at each
+ * candidate scale.
+ *
+ * {@link fitScale} alone is not enough, because the grid is not a picture: it
+ * is laid out at `100 / scale`% of the stage width so the scaled result lands
+ * back at full width, and the width it is laid out at changes how its text
+ * wraps. Scale up → laid out narrower → a long job summary or access note
+ * wraps onto another line → taller → scale down → laid out wider → unwraps →
+ * shorter → scale up… Measuring once per frame and re-scaling from the result
+ * chased that loop for ever, and on the wall it showed as the whole week
+ * twitching between two sizes. A deadband cannot stop it either: one line of
+ * wrap moves the height by a whole line, not by a rounding error.
+ *
+ * So the measurement asks the right question instead — "what is the biggest
+ * scale at which the grid, laid out at THAT scale's width, still fits?" — and
+ * answers it in one go. `scaledHeight(s)` (the height at scale `s` times `s`)
+ * only grows as `s` does (bigger AND narrower, so never shorter), which makes
+ * it a plain bisection. The answer depends only on the stage and the jobs, so
+ * re-measuring after it has been applied returns the same number and the loop
+ * has nothing to chase.
+ */
+export function solveFitScale(
+    heightAt: (scale: number) => number,
+    availableHeight: number,
+    {
+        min = 0.05,
+        max = MAX_FIT_SCALE,
+        tolerance = 0.004,
+    }: { min?: number; max?: number; tolerance?: number } = {}
+): number {
+    if (availableHeight <= 0) return 1;
+    const fits = (s: number) => {
+        const h = heightAt(s);
+        // An unmeasurable layout (hidden, not yet painted) is not evidence
+        // either way; treat it as fitting so the board renders rather than
+        // collapsing to the floor.
+        return h <= 0 || h * s <= availableHeight;
+    };
+    if (fits(max)) return max;
+    if (!fits(min)) return min;
+
+    let lo = min;
+    let hi = max;
+    while (hi - lo > tolerance) {
+        const mid = (lo + hi) / 2;
+        if (fits(mid)) lo = mid;
+        else hi = mid;
+    }
+    // Always the side that is known to fit, so the settled board never clips.
+    return lo;
+}
+
+/**
  * Scale that makes a header `naturalWidth` wide fit `availableWidth`.
  *
  * The chrome row — the mark, the remote's buttons, the PM key and where you
