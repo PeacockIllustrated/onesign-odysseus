@@ -5,6 +5,7 @@ import {
     nextTvView,
     fitChromeScale,
     fitScale,
+    solveFitScale,
     weekOfMonthStart,
     MAX_FIT_SCALE,
     TV_CYCLE_VIEWS,
@@ -166,5 +167,41 @@ describe('fitChromeScale', () => {
         const natural = 1500;
         expect(natural * fitChromeScale(natural, 960)).toBeCloseTo(960);
         expect(fitChromeScale(natural, 1920)).toBe(1);
+    });
+});
+
+describe('solveFitScale', () => {
+    // A grid whose text wraps more as it is laid out narrower: at scale s it
+    // is laid out at 1/s of the stage width, so its natural height steps up
+    // by a whole line each time a long summary loses room.
+    const wrapping = (s: number) => 800 + 40 * Math.floor(s * 4);
+
+    it('settles where the grid laid out at that scale still fits', () => {
+        const s = solveFitScale(wrapping, 1000);
+        expect(wrapping(s) * s).toBeLessThanOrEqual(1000);
+        // …and nothing meaningfully bigger would.
+        const bigger = s + 0.01;
+        expect(wrapping(bigger) * bigger).toBeGreaterThan(1000);
+    });
+
+    it('returns the same answer however many times it is asked', () => {
+        // The twitch on the wall was successive measurements disagreeing.
+        const a = solveFitScale(wrapping, 1000);
+        const b = solveFitScale(wrapping, 1000);
+        expect(a).toBe(b);
+    });
+
+    it('caps a quiet board at MAX_FIT_SCALE', () => {
+        expect(solveFitScale(() => 100, 1000)).toBe(MAX_FIT_SCALE);
+    });
+
+    it('keeps shrinking a packed board rather than clipping it', () => {
+        const s = solveFitScale(() => 5000, 1000);
+        expect(5000 * s).toBeLessThanOrEqual(1000);
+        expect(s).toBeGreaterThan(0.19);
+    });
+
+    it('renders at natural size when nothing can be measured', () => {
+        expect(solveFitScale(() => 0, 0)).toBe(1);
     });
 });

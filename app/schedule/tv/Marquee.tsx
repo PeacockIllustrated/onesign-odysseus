@@ -50,7 +50,11 @@ export function Marquee({
                 // duplicate lands exactly where the original started, so a
                 // constant px/sec keeps a long list moving at the same
                 // readable pace as a short one.
-                setDuration(over ? (needed + gapPx) / speed : 0);
+                //
+                // Whole seconds: changing a running animation's duration jumps
+                // the track to a new position, so a sub-pixel change in card
+                // width must not count as a new duration.
+                setDuration(over ? Math.round((needed + gapPx) / speed) : 0);
             });
         };
 

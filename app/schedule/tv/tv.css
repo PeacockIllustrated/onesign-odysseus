@@ -323,10 +323,15 @@
 /* Width is set inline from the current scale (see TvBoard) so the scaled
    result lands back at the stage's own width — a uniformly scaled board would
    otherwise leave the right of the panel empty. */
+/* No transition, deliberately. The fit is solved by laying the grid out at
+   trial widths and reading its height; an animated width means those reads
+   land mid-animation, the answer depends on WHEN it was measured, and the
+   board hunts between sizes — the twitch the wall showed. A wall TV gains
+   nothing from an eased rescale anyway: it happens once, when the week
+   changes. */
 .osd-board.tvb .tvb-fit {
     transform-origin: top left;
     will-change: transform;
-    transition: transform 220ms ease, width 220ms ease;
 }
 
 /* --- chrome the wall does not need --------------------------------------- */
@@ -569,11 +574,8 @@
 
 /* A kiosk still has to show everything, and stopping the drift would hide the
    end of the list — so the motion stays. What reduced motion gets is the
-   board's own transitions off, and a slower, steadier pass. */
+   slower, steadier pass. */
 @media (prefers-reduced-motion: reduce) {
-    .osd-board.tvb .tvb-fit {
-        transition: none;
-    }
     .osd-board.tvb .tvb-marquee[data-moving='true'] .tvb-marquee-track {
         animation-duration: 90s;
     }

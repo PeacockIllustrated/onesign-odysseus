@@ -29,10 +29,10 @@ import {
 } from '@/lib/schedule/utils';
 import {
     fitChromeScale,
-    fitScale,
     keyToTvAction,
     monthOfWeek,
     nextTvView,
+    solveFitScale,
     weekOfMonthStart,
     type TvAction,
     type TvView,
@@ -385,9 +385,17 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
     const fitRef = useRef<HTMLDivElement>(null);
     const [scale, setScale] = useState(1);
 
-    // `offsetHeight` reports the PRE-transform layout height, so the board's
-    // natural size can be read while a scale is already applied — no reset pass,
-    // and no feedback loop between measuring and scaling.
+    // The grid is laid out at `100 / scale`% of the stage width so the scaled
+    // result lands back at full width — which means the scale changes how its
+    // text wraps, and so its height. Measuring once and scaling from that
+    // chased its own tail: scale up, narrower, a long summary wraps, taller,
+    // scale down, wider, unwraps, shorter, scale up… and the whole week
+    // twitched on the wall. So each measurement solves for the scale directly:
+    // it tries candidate widths synchronously, reading the pre-transform
+    // `offsetHeight` at each, and keeps the biggest that fits
+    // (`solveFitScale`). The answer depends only on the stage and the jobs, so
+    // the resize our own commit triggers re-measures to the same number and
+    // nothing moves.
     //
     // useEffect rather than useLayoutEffect: the work happens inside a rAF, so
     // a layout effect buys nothing, and useLayoutEffect warns on the server
@@ -402,18 +410,22 @@ export function TvBoard({ data, deliveries, view, monday, month, year }: Props) 
             cancelAnimationFrame(frame);
             frame = requestAnimationFrame(() => {
                 const available = stage.clientHeight;
-                const natural = fit.offsetHeight;
-                if (available <= 0 || natural <= 0) return;
+                if (available <= 0) return;
+
+                // React owns the width; borrow it for the trial layouts and
+                // hand it back before committing, so the DOM never disagrees
+                // with state.
+                const owned = fit.style.width;
+                const next = solveFitScale((s) => {
+                    fit.style.width = `${100 / s}%`;
+                    return fit.offsetHeight;
+                }, available);
+                fit.style.width = owned;
 
                 // Never clip, however small that lands: on a screen nobody can
                 // scroll, a board scaled down still shows every job, where a
                 // clipped one silently hides Friday.
-                //
-                // Deadband: the width compensation below feeds back into the
-                // measured height, so ignore sub-percent wobble rather than
-                // letting the two chase each other across frames.
-                const next = fitScale(natural, available);
-                setScale((prev) => (Math.abs(prev - next) > 0.004 ? next : prev));
+                setScale(next);
             });
         };
 
