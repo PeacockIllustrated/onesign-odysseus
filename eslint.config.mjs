@@ -16,6 +16,11 @@ const eslintConfig = defineConfig([
     // worker (public/pdf.worker.min.mjs), which otherwise floods lint with
     // errors from third-party minified code.
     "public/**",
+    // Test fixtures holding third-party code verbatim — Mak's original sign
+    // calculator engine, kept as-is so panel_letters_v2 can be held to it. It
+    // is a .cjs file, which eslint-config-next's react-hooks plugin does not
+    // cover, so the global rule overrides below would otherwise crash lint.
+    "lib/quoter/engine/__fixtures__/**",
   ]),
   {
     rules: {

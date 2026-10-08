@@ -31,6 +31,13 @@ const set = (type_id: string, finish_id: string, height_mm: number, qty: number,
     illuminated,
 });
 
+/** Mak's original marked aperture LEDs up with materials (60%), not 300%. */
+const makBook = () => {
+    const b = book();
+    b.settings.aperture_led_markup_pct = 60;
+    return b;
+};
+
 describe('parity with the original calculator', () => {
     // Totals from Mak's standalone tool (price book v1.1) for the same signs.
     // v2 rounds each line to the penny, so it may differ by a few pence — never more.
@@ -48,7 +55,8 @@ describe('parity with the original calculator', () => {
     ];
     for (const [name, mut, expected] of cases) {
         it(name, () => {
-            const r = priceSign(sign(mut), book());
+            const b = makBook();
+            const r = priceSign(sign(mut, b), b);
             expect(r.errors).toEqual([]);
             expect(Math.abs(r.total_pence - expected)).toBeLessThanOrEqual(3);
         });
@@ -135,12 +143,23 @@ describe('audit findings', () => {
         expect(r.dev_w_mm).toBe(1750);
     });
 
-    it('05 — aperture LEDs are a material, marked up once', () => {
+    it('05 — aperture LEDs take their own markup, once, outside materials', () => {
         const r = priceSign(sign((x) => {
             x.aperture = { on: true, material: 'Opal 10mm', width_mm: 1000, height_mm: 400 };
         }), book());
-        expect(r.aperture_led_pence).toBe(10 * 29);
+        // 10 LEDs at 29p, +300% as Mak's note on the original asked.
+        expect(r.aperture_led_pence).toBe(10 * 29 * 4);
         expect(r.markup_pence).toBe(Math.round(r.materials_pence * 0.6));
+        expect(r.materials_pence).toBe(r.panel_pence + r.finish_pence + r.aperture_pence + r.transformer_pence);
+    });
+
+    it('a sign with no production hours cannot be quoted by accident', () => {
+        const bare = (x: CalcSign) => { x.hours = {}; };
+        const r = priceSign(sign(bare), book());
+        expect(r.errors.some((e) => /No production hours/.test(e))).toBe(true);
+        const ticked = priceSign(sign((x) => { bare(x); x.no_labour = true; }), book());
+        expect(ticked.errors).toEqual([]);
+        expect(ticked.warnings.some((w) => /no production labour/.test(w))).toBe(true);
     });
 
     it('06 / 07 — a book with no finishes or transformers is refused, and pricing does not throw', () => {

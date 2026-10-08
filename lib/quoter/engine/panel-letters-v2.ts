@@ -340,6 +340,7 @@ export function blankSign(b: PriceBook, n: number): CalcSign {
             transformer: 'auto',
             materials_markup_pct: null,
             discount_pct: 0,
+            no_labour: false,
         },
         b
     ).sign;
@@ -578,9 +579,12 @@ export function priceSign(sign: CalcSign, b: PriceBook): SignResult {
 
             const grid = S.aperture_led_grid_mm;
             apLeds = Math.ceil(aw / grid) * Math.ceil(ah / grid);
-            apLedPence = apLeds * qty * S.aperture_led_unit_cost_pence;
+            // Their own markup, NOT the materials one: they are kept out of the
+            // materials pool below, so they are marked up exactly once.
+            const ledCost = apLeds * qty * S.aperture_led_unit_cost_pence;
+            apLedPence = Math.round(ledCost * (1 + S.aperture_led_markup_pct / 100));
             g('Aperture', 'Aperture LEDs',
-                `ceil(${mm(aw)}/${grid}) × ceil(${mm(ah)}/${grid}) = ${apLeds} LEDs × ${formatPence(S.aperture_led_unit_cost_pence)}${each} — marked up with materials`,
+                `ceil(${mm(aw)}/${grid}) × ceil(${mm(ah)}/${grid}) = ${apLeds} LEDs × ${formatPence(S.aperture_led_unit_cost_pence)}${each} = ${formatPence(ledCost)} + ${S.aperture_led_markup_pct}% LED markup`,
                 apLedPence);
         }
     }
@@ -696,18 +700,29 @@ export function priceSign(sign: CalcSign, b: PriceBook): SignResult {
     if (orphaned.length) {
         warnings.push(`${plural(orphaned.length, 'labour line')} on this sign point at a rate that has been removed from the price book — those hours are not charged.`);
     }
-    if (!labourPence) warnings.push('No production hours entered — labour is £0.00.');
+    // No hours is the commonest way to quote a job at half its price, and a
+    // warning was too easy to scroll past. It is an error — which blocks
+    // "Create quote" — unless someone has said in so many words that this
+    // sign really has no production labour.
+    if (!labourPence && (hasPanel || letterCount > 0 || sign.aperture.on)) {
+        if (sign.no_labour) {
+            warnings.push('Priced with no production labour (ticked on this sign).');
+        } else {
+            errors.push('No production hours on this sign. Enter the hours, or tick "no production labour" if that is genuinely right.');
+        }
+    }
 
     // --- totals -------------------------------------------------------------
-    const materials = panelPence + finishPence + apPence + apLedPence + trPence;
+    const materials = panelPence + finishPence + apPence + trPence;
     const markup = Math.round((materials * markupPct) / 100);
-    const subtotal = materials + markup + lettersPence + illumPence + labourPence;
+    const subtotal = materials + markup + apLedPence + lettersPence + illumPence + labourPence;
     const discount = Math.round((subtotal * Math.min(100, pos(sign.discount_pct))) / 100);
     const unit = Math.round((subtotal - discount) / qty);
     const total = unit * qty;
 
-    g('Total', 'Materials at cost', 'panel + finish + aperture + its LEDs + transformers', materials, { sub: true });
+    g('Total', 'Materials at cost', 'panel + finish + aperture sheet + transformers', materials, { sub: true });
     g('Total', `Materials markup ${markupPct}%`, `${formatPence(materials)} × ${markupPct}%${sign.materials_markup_pct !== null ? ' (set on this sign)' : ''}`, markup);
+    if (apLedPence) g('Total', 'Aperture LEDs', `with their own ${S.aperture_led_markup_pct}% markup`, apLedPence, { sub: true });
     g('Total', 'Letters and illumination', 'sell prices from the price book — markup already in', lettersPence + illumPence, { sub: true });
     g('Total', 'Production labour', 'charged at the hourly sell rate', labourPence, { sub: true });
     if (discount) g('Total', `Discount ${sign.discount_pct}%`, `on ${formatPence(subtotal)}`, -discount);

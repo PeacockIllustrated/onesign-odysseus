@@ -83,12 +83,19 @@ export const SheetSharingEnum = z.enum(['batch', 'per_sign']);
  * book lacks rather than the whole block being replaced (audit finding 15).
  */
 export const SettingsSchema = z.object({
-    /** Markup on materials at cost: panel, finish, aperture, its LEDs, transformers. */
+    /** Markup on materials at cost: panel, finish, aperture sheet, transformers. */
     markup_pct: nonNeg.default(60),
     vat_pct: nonNeg.default(20),
     /** One aperture LED per grid cell. */
     aperture_led_grid_mm: z.number().positive().default(200),
     aperture_led_unit_cost_pence: pence.default(29),
+    /**
+     * Markup on aperture LEDs, applied INSTEAD of the materials markup (they
+     * are not in the materials pool, so they are never marked up twice).
+     * 300 matches the letter LEDs, as Mak's note on the original tool asked:
+     * there they went out at raw cost, "almost certainly an oversight".
+     */
+    aperture_led_markup_pct: nonNeg.default(300),
     /** Fabrication hours added per join, panel or aperture. */
     joint_allowance_hrs: nonNeg.default(1.5),
     height_policy: HeightPolicyEnum.default('roundup'),
@@ -99,6 +106,14 @@ export const SettingsSchema = z.object({
      * is what the original tool did and over-charged small multiples.
      */
     sheet_sharing: SheetSharingEnum.default('batch'),
+    /**
+     * Who signed the figures off as Onesign's real prices, and when. Until
+     * someone does, the calculator says it is pricing from unconfirmed figures
+     * (Mak flagged several in the original: labour at £65 vs £90, the 3000 ×
+     * 1500 sheet, aperture LED markup).
+     */
+    figures_confirmed_by: z.string().max(120).nullable().default(null),
+    figures_confirmed_at: z.string().nullable().default(null),
 });
 
 export const PriceBookSchema = z.object({
@@ -167,6 +182,11 @@ export const CalcSignSchema = z.object({
     materials_markup_pct: nonNeg.nullable(),
     /** Discount on the whole sign — materials, letters and labour alike. */
     discount_pct: z.number().min(0).max(100),
+    /**
+     * A sign with no production hours is refused (it is the commonest way to
+     * quote a job at half its price). Ticking this says "no labour is right".
+     */
+    no_labour: z.boolean().default(false),
 });
 
 export const ExtraSchema = z.object({
