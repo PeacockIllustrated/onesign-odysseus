@@ -562,3 +562,292 @@
     color: var(--fg-muted);
     font-size: 14px;
 }
+
+/* An in-place "are you sure" — replaces window.confirm, which a browser can
+   be told to suppress (and then every guarded button silently does nothing). */
+.calc-confirm {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 12.5px;
+    color: var(--fg);
+}
+.calc-confirm > button {
+    white-space: nowrap;
+}
+.calc-confirm-yes,
+.calc-confirm-no {
+    border-radius: var(--radius-sm);
+    padding: 4px 9px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid var(--card-border);
+    background: var(--card);
+    color: var(--fg);
+}
+.calc-confirm-yes {
+    background: var(--calc-crit);
+    border-color: var(--calc-crit);
+    color: #fff;
+}
+
+/* A sign row is a select button with a remove control beside it. */
+.calc-signs .row {
+    display: flex;
+    align-items: stretch;
+    border-bottom: 1px solid var(--card-border);
+}
+.calc-signs .row > button.pick {
+    flex: 1 1 auto;
+    min-width: 0;
+    border-bottom: 0;
+}
+.calc-signs .row > .rm {
+    display: flex;
+    align-items: center;
+    padding-right: 8px;
+}
+.calc-signs .row[data-current='true'] {
+    background: var(--surface-2);
+}
+
+/* Quick-add chips for the extras the calculator does not price itself. */
+.calc-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.calc-chips button {
+    background: var(--surface-2);
+    border: 1px dashed var(--card-border);
+    border-radius: 999px;
+    padding: 4px 11px;
+    font-size: 12.5px;
+    color: var(--fg-muted);
+    cursor: pointer;
+}
+.calc-chips button:hover {
+    border-style: solid;
+    border-color: var(--accent);
+    color: var(--fg);
+}
+
+/* --- hours picker -------------------------------------------------------
+   The Who Cares clock-face time picker, reworked for a duration and dressed
+   in the portal's own tokens: teal hand and selection, light panel, Gilroy
+   numerals. A centred panel on a desk, a sheet from the bottom on a phone. */
+.calc-hours-field {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    text-align: left;
+    cursor: pointer;
+    font-variant-numeric: tabular-nums;
+}
+.calc-hours-field svg {
+    color: var(--accent);
+    flex: 0 0 auto;
+}
+.calc-hours-field[data-empty] span {
+    color: var(--fg-subtle);
+}
+.calc-hours-field:hover {
+    border-color: var(--accent);
+}
+
+.calc-dial-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    background: color-mix(in srgb, #0b1316 45%, transparent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+.calc-dial-sheet {
+    width: min(360px, 100%);
+    background: var(--card);
+    color: var(--fg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-lg);
+    padding: 16px 18px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+@media (max-width: 520px) {
+    .calc-dial-scrim {
+        align-items: flex-end;
+        padding: 0;
+    }
+    .calc-dial-sheet {
+        width: 100%;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    }
+}
+.calc-dial-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.calc-dial-head h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+.calc-dial-boxes {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 8px;
+}
+.calc-dial-boxes label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--fg-muted);
+}
+.calc-dial-boxes .colon {
+    font-size: 46px;
+    line-height: 80px;
+    color: var(--fg);
+}
+.calc-dial-box {
+    width: 104px;
+    height: 80px;
+    border-radius: var(--radius-md);
+    border: 0;
+    background: var(--surface-2);
+    color: var(--fg);
+    font-family: var(--font-heading);
+    font-size: 48px;
+    line-height: 1;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    box-shadow: inset 0 0 0 1px var(--card-border);
+    transition: background-color 120ms ease, box-shadow 120ms ease;
+}
+.calc-dial-box[aria-pressed='true'],
+input.calc-dial-box:focus {
+    outline: none;
+    background: color-mix(in srgb, var(--accent) 14%, var(--card));
+    box-shadow: inset 0 0 0 2px var(--accent);
+}
+.calc-dial-box[aria-invalid] {
+    box-shadow: inset 0 0 0 2px var(--calc-crit);
+}
+.calc-dial-error {
+    margin: 0;
+    text-align: center;
+    font-size: 13px;
+    color: var(--calc-crit);
+}
+
+.calc-dial-wrap {
+    display: flex;
+    justify-content: center;
+}
+.calc-dial-face {
+    position: relative;
+    width: 100%;
+    max-width: 272px;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: var(--surface-2);
+    box-shadow: inset 0 0 0 1px var(--card-border);
+    touch-action: none;
+    user-select: none;
+}
+.calc-dial-face svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+.calc-dial-face .hand {
+    stroke: var(--accent);
+}
+.calc-dial-face .hub {
+    fill: var(--accent);
+}
+.calc-dial-face .dot {
+    fill: var(--accent-fg);
+}
+.calc-dial-face .tick {
+    fill: var(--fg-subtle);
+}
+.calc-dial-mark {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 0;
+    background: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    color: var(--fg);
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+}
+.calc-dial-mark.inner {
+    width: 36px;
+    height: 36px;
+    font-size: 13.5px;
+    color: var(--fg-muted);
+}
+.calc-dial-mark.on {
+    color: var(--accent-fg);
+    font-weight: 600;
+}
+.calc-dial-mark:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.calc-dial-foot {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.calc-dial-switch {
+    color: var(--fg-muted);
+}
+.calc-dial-switch:hover {
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, var(--card));
+}
+.calc-dial-text {
+    background: none;
+    border: 0;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent);
+    cursor: pointer;
+}
+.calc-dial-text:hover {
+    background: color-mix(in srgb, var(--accent) 10%, var(--card));
+}
+.calc-dial-ok {
+    min-width: 76px;
+    border-radius: 999px;
+}
+@media (prefers-reduced-motion: reduce) {
+    .calc-dial-box {
+        transition: none;
+    }
+}

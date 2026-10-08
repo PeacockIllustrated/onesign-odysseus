@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { ExternalLink, FileText, Trash2 } from 'lucide-react';
 import { formatPence, signSpec, type JobResult, type TraceGroup } from '@/lib/quoter/engine/panel-letters-v2';
 import type { CalculatorJobSummary, PriceBook, PriceBookVersion } from '@/lib/quoter/calculator/types';
+import { ConfirmButton } from './fields';
 
 const GROUP_ORDER: TraceGroup[] = ['Panel', 'Aperture', 'Letters', 'Illumination', 'Labour', 'Total'];
 
@@ -105,6 +106,7 @@ export function QuoteView({
     reference,
     quoteId,
     busy,
+    noExtras,
     onCreate,
 }: {
     priced: JobResult;
@@ -114,18 +116,31 @@ export function QuoteView({
     reference: string | null;
     quoteId: string | null;
     busy: boolean;
-    onCreate: () => void;
+    noExtras: boolean;
+    onCreate: (again?: boolean) => void;
 }) {
+    const blocked = busy || priced.error_count > 0 || priced.net_pence <= 0;
+    // A job with no fitting, access or delivery is usually a forgotten one,
+    // so making the quote asks first — on the page, not with confirm().
+    const ask = noExtras ? 'This job has no installation, access or delivery lines. Create the quote anyway?' : null;
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <section className="calc-panel" style={{ maxWidth: 900 }}>
                 <div className="body" style={{ gap: 12 }}>
                     {quoteId ? (
                         <div className="calc-actions">
-                            <span style={{ fontSize: 14 }}>This job has been turned into a quote.</span>
+                            <span style={{ fontSize: 14 }}>This job has been turned into a quote. Edits here do not change it.</span>
                             <Link href={`/admin/quotes/${quoteId}`} className="btn-primary" style={{ fontSize: 13 }}>
                                 <ExternalLink size={14} /> Open the quote
                             </Link>
+                            <ConfirmButton
+                                disabled={blocked}
+                                question="Make a new draft quote from this job as it is now? The first quote stays as it is."
+                                yes="Yes, create it"
+                                onConfirm={() => onCreate(true)}
+                            >
+                                <FileText size={14} /> Create a revised quote
+                            </ConfirmButton>
                         </div>
                     ) : (
                         <>
@@ -136,13 +151,15 @@ export function QuoteView({
                                 become service lines.
                             </p>
                             <div className="calc-actions">
-                                <button
-                                    className="btn-primary"
-                                    onClick={onCreate}
-                                    disabled={busy || priced.error_count > 0 || priced.net_pence <= 0}
-                                >
-                                    <FileText size={14} /> {busy ? 'Creating…' : 'Create quote'}
-                                </button>
+                                {ask ? (
+                                    <ConfirmButton className="btn-primary" disabled={blocked} question={ask} yes="Create it anyway" onConfirm={() => onCreate()}>
+                                        <FileText size={14} /> {busy ? 'Creating…' : 'Create quote'}
+                                    </ConfirmButton>
+                                ) : (
+                                    <button className="btn-primary" onClick={() => onCreate()} disabled={blocked}>
+                                        <FileText size={14} /> {busy ? 'Creating…' : 'Create quote'}
+                                    </button>
+                                )}
                                 {priced.error_count > 0 && (
                                     <span className="calc-note err">Part of this job is not priced — fix the red notes on the Calculator tab first.</span>
                                 )}
@@ -227,7 +244,7 @@ export function JobsView({
     jobs: CalculatorJobSummary[];
     currentId: string | null;
     onOpen: (id: string) => void;
-    onDelete: (id: string, label: string) => void;
+    onDelete: (id: string) => void;
     busy: boolean;
 }) {
     if (!jobs.length) {
@@ -276,9 +293,15 @@ export function JobsView({
                                     {new Date(j.updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                                 </td>
                                 <td>
-                                    <button className="calc-iconbtn" aria-label={`Delete ${j.reference}`} onClick={() => onDelete(j.id, j.reference)}>
+                                    <ConfirmButton
+                                        className="calc-iconbtn"
+                                        ariaLabel={`Delete ${j.reference}`}
+                                        question="Delete? Its quote stays."
+                                        yes="Delete"
+                                        onConfirm={() => onDelete(j.id)}
+                                    >
                                         <Trash2 size={14} />
-                                    </button>
+                                    </ConfirmButton>
                                 </td>
                             </tr>
                         ))}

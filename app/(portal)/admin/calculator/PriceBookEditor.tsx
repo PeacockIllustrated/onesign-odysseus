@@ -6,7 +6,7 @@ import { newId, validatePriceBook } from '@/lib/quoter/engine/panel-letters-v2';
 import { defaultPriceBook } from '@/lib/quoter/calculator/default-price-book';
 import { listPriceBookVersions, savePriceBook } from '@/lib/quoter/calculator/actions';
 import type { PriceBook, PriceBookVersion } from '@/lib/quoter/calculator/types';
-import { Field, MoneyInput, NumberInput } from './fields';
+import { ConfirmButton, Field, MoneyInput, NumberInput } from './fields';
 
 type Section = 'sheets' | 'finishes' | 'labour' | 'letters' | 'illum' | 'transformers' | 'settings' | 'history';
 
@@ -99,16 +99,13 @@ export function PriceBookEditor({
                             value={note}
                             onChange={(e) => setNote(e.target.value)}
                         />
-                        <button
-                            className="btn-secondary"
-                            onClick={() => {
-                                if (window.confirm("Replace the draft with Mak's original figures? Nothing is saved until you press Save.")) {
-                                    setDraft(defaultPriceBook());
-                                }
-                            }}
+                        <ConfirmButton
+                            question="Replace the draft with Mak's original figures? Nothing is saved until you press Save."
+                            yes="Replace the draft"
+                            onConfirm={() => setDraft(defaultPriceBook())}
                         >
                             <RotateCcw size={14} /> Mak’s figures
-                        </button>
+                        </ConfirmButton>
                         <button className="btn-secondary" disabled={!changed} onClick={() => setDraft(structuredClone(current.book))}>
                             Discard edits
                         </button>
@@ -235,13 +232,13 @@ export function PriceBookEditor({
                                             >
                                                 <Plus size={13} /> Finish
                                             </button>
-                                            <button
-                                                className="btn-secondary"
+                                            <ConfirmButton
                                                 style={{ padding: '4px 10px', fontSize: 12 }}
-                                                onClick={() => window.confirm(`Remove ${t.name}?`) && upd((b) => void b.letter_types.splice(ti, 1))}
+                                                question={`Remove ${t.name}?`}
+                                                onConfirm={() => upd((b) => void b.letter_types.splice(ti, 1))}
                                             >
                                                 <Trash2 size={13} /> Type
-                                            </button>
+                                            </ConfirmButton>
                                         </span>
                                     </h3>
                                     <div className="calc-tablewrap">
@@ -452,8 +449,11 @@ function SettingsForm({ draft, upd }: { draft: PriceBook; upd: (fn: (b: PriceBoo
                 <Field label="Aperture LED grid (mm per LED)">
                     <NumberInput step={10} value={S.aperture_led_grid_mm} onChange={(v) => upd((b) => void (b.settings.aperture_led_grid_mm = Math.max(1, v ?? 200)))} />
                 </Field>
-                <Field label="Aperture LED cost each £ (marked up with materials)">
+                <Field label="Aperture LED cost each £">
                     <MoneyInput pence={S.aperture_led_unit_cost_pence} onChange={(v) => upd((b) => void (b.settings.aperture_led_unit_cost_pence = v))} />
+                </Field>
+                <Field label="Aperture LED markup % (instead of materials markup)">
+                    <NumberInput step={10} value={S.aperture_led_markup_pct} onChange={(v) => upd((b) => void (b.settings.aperture_led_markup_pct = v ?? 0))} />
                 </Field>
                 <Field label="Batches of the same sign">
                     <select className="calc-input" value={S.sheet_sharing} onChange={(e) => upd((b) => void (b.settings.sheet_sharing = e.target.value as 'batch' | 'per_sign'))}>
@@ -476,11 +476,95 @@ function SettingsForm({ draft, upd }: { draft: PriceBook; upd: (fn: (b: PriceBoo
                 </Field>
             </div>
             <div className="calc-note info">
-                Aperture LEDs are a material, so they take the materials markup once. Mak’s original tool also had a
-                separate aperture-LED markup whose note suggested 300% — stacked on the materials markup that came to
-                6.4× cost, so it has been folded into the materials markup. Letter heights are fixed at {draft.heights[0]}–
-                {draft.heights[draft.heights.length - 1]}mm in {draft.heights[1] - draft.heights[0]}mm steps; taller letters are extrapolated and flagged.
+                Aperture LEDs carry their own markup ({S.aperture_led_markup_pct}%) and are kept out of the materials
+                markup, so they are marked up once. Mak&rsquo;s original charged them at cost and called that
+                &ldquo;almost certainly an oversight&rdquo;; 300% matches the letter LEDs. Letter heights are fixed at{' '}
+                {draft.heights[0]}–{draft.heights[draft.heights.length - 1]}mm in {draft.heights[1] - draft.heights[0]}mm steps;
+                taller letters are extrapolated and flagged.
             </div>
+
+            <ConfirmFigures draft={draft} upd={upd} />
+        </div>
+    );
+}
+
+/**
+ * Signing the figures off.
+ *
+ * The book shipped as Mak's spreadsheet, including the numbers he flagged
+ * himself as doubtful. Until someone who knows the real prices confirms them,
+ * every page that prices from the book says so. Confirming stamps a name and
+ * date into the draft; it takes effect when the book is saved.
+ */
+function ConfirmFigures({ draft, upd }: { draft: PriceBook; upd: (fn: (b: PriceBook) => void) => void }) {
+    const S = draft.settings;
+    const [name, setName] = useState('');
+    const fab = draft.labour.find((l) => l.is_fabrication);
+    const big = draft.sheets.find((s) => s.use === 'panel' && s.w === 3000 && s.h === 1500);
+    return (
+        <div className="calc-sec">
+            <h3>Are these Onesign&rsquo;s real prices?</h3>
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--fg-muted)' }}>
+                Mak flagged these in his own file. Check each before quoting real work.
+            </p>
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13.5, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <li>
+                    Fabrication {fab ? `is £${(fab.rate_pence / 100).toFixed(2)}/hr` : 'has no rate'} and assembly
+                    {' '}£{((draft.labour.find((l) => /assembl/i.test(l.name))?.rate_pence ?? 0) / 100).toFixed(2)}/hr —
+                    the old Apps Script charged £90 for both, the spreadsheet £65.
+                </li>
+                <li>
+                    The 3000 × 1500 aluminium sheet {big ? `is £${(big.price_pence / 100).toFixed(2)}` : 'is not in the book'} — never
+                    checked against a supplier price.
+                </li>
+                <li>Aperture LEDs are marked up {S.aperture_led_markup_pct}%.</li>
+                <li>Installation, access, delivery, survey, artwork and electrical work are not calculated — they are typed per job.</li>
+            </ul>
+            {S.figures_confirmed_by ? (
+                <div className="calc-actions">
+                    <span className="calc-note info" style={{ flex: 1 }}>
+                        Confirmed by {S.figures_confirmed_by}
+                        {S.figures_confirmed_at ? ` on ${new Date(S.figures_confirmed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}.
+                    </span>
+                    <button
+                        className="btn-secondary"
+                        onClick={() =>
+                            upd((b) => {
+                                b.settings.figures_confirmed_by = null;
+                                b.settings.figures_confirmed_at = null;
+                            })
+                        }
+                    >
+                        Withdraw
+                    </button>
+                </div>
+            ) : (
+                <div className="calc-actions">
+                    <input
+                        className="calc-input"
+                        style={{ width: 220 }}
+                        placeholder="Your name"
+                        aria-label="Name of the person confirming the figures"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                    />
+                    <button
+                        className="btn-primary"
+                        disabled={!name.trim()}
+                        onClick={() =>
+                            upd((b) => {
+                                b.settings.figures_confirmed_by = name.trim().slice(0, 120);
+                                b.settings.figures_confirmed_at = new Date().toISOString();
+                            })
+                        }
+                    >
+                        These are our real prices
+                    </button>
+                    <span className="hint" style={{ fontSize: 12, color: 'var(--fg-subtle)' }}>
+                        Takes effect when you save the price book.
+                    </span>
+                </div>
+            )}
         </div>
     );
 }

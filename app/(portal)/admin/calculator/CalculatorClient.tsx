@@ -31,7 +31,8 @@ import {
     listCalculatorJobs,
     saveCalculatorJob,
 } from '@/lib/quoter/calculator/actions';
-import { Field, MoneyInput, NumberInput } from './fields';
+import { ConfirmButton, Field, MoneyInput, NumberInput } from './fields';
+import { HoursField } from './HoursField';
 import { BreakdownView, JobsView, QuoteView } from './views';
 import { PriceBookEditor } from './PriceBookEditor';
 import './calculator.css';
@@ -163,10 +164,18 @@ export function CalculatorClient({
         return r.data.id;
     };
 
-    const confirmDiscard = () => !dirty || window.confirm('This job has unsaved changes. Discard them?');
+    // Questions are asked on the page, never with window.confirm: a browser
+    // that has been told to "prevent this page from creating additional
+    // dialogs" answers every confirm() with false, and the button it guarded
+    // silently stops working — which is how "remove" looked broken.
+    const [pending, setPending] = useState<{ text: string; yes: string; run: () => void } | null>(null);
+    const unlessDirty = (run: () => void) => {
+        if (!dirty) return run();
+        setPending({ text: 'This job has unsaved changes.', yes: 'Discard them and continue', run });
+    };
 
-    const newJob = () => {
-        if (!confirmDiscard()) return;
+    const newJob = () => unlessDirty(startNewJob);
+    const startNewJob = () => {
         setMeta(blankMeta());
         setJob(blankJob(book.book));
         setSel(0);
@@ -175,8 +184,8 @@ export function CalculatorClient({
         setTab('calc');
     };
 
-    const openJob = async (id: string) => {
-        if (!confirmDiscard()) return;
+    const openJob = (id: string) => unlessDirty(() => void loadJob(id));
+    const loadJob = async (id: string) => {
         setBusy('open');
         const r = await getCalculatorJob(id);
         setBusy(null);
@@ -206,8 +215,7 @@ export function CalculatorClient({
         }
     };
 
-    const removeJob = async (id: string, label: string) => {
-        if (!window.confirm(`Delete ${label}? A quote made from it is not affected.`)) return;
+    const removeJob = async (id: string) => {
         const r = await deleteCalculatorJob(id);
         if (!r.ok) {
             setMessage({ kind: 'err', text: r.error });
@@ -220,7 +228,7 @@ export function CalculatorClient({
         void refreshJobs();
     };
 
-    const makeQuote = async () => {
+    const makeQuote = async (again = false) => {
         if (priced.error_count > 0) {
             setMessage({ kind: 'err', text: 'Part of this job is not priced — fix the red notes first.' });
             return;
@@ -228,16 +236,34 @@ export function CalculatorClient({
         const id = dirty || !meta.id ? await save() : meta.id;
         if (!id) return;
         setBusy('quote');
-        const r = await createQuoteFromCalculatorJob(id);
+        // The net on screen goes with the request: if the book changed in the
+        // meantime, the server refuses rather than quoting a figure nobody saw.
+        const r = await createQuoteFromCalculatorJob(id, { expectedNetPence: priced.net_pence, again });
         setBusy(null);
         if (!r.ok) {
             setMessage({ kind: 'err', text: r.error });
             return;
         }
         setMeta((m) => ({ ...m, quote_id: r.data.quote_id }));
-        setMessage({ kind: 'info', text: 'Quote created. It is a normal draft quote now — edit, send and accept it from Quotes.' });
+        setMessage({
+            kind: 'info',
+            text: `${again ? 'Revised quote' : 'Quote'} created. It is a normal draft quote now — edit, send and accept it from Quotes.`,
+        });
         void refreshJobs();
     };
+
+    /** Remove a sign. The last one is replaced by a blank, so there is always one to edit. */
+    const removeSign = (i: number) => {
+        edit((j) => {
+            j.signs.splice(i, 1);
+            if (!j.signs.length) j.signs.push(blankSign(book.book, 1));
+            return j;
+        });
+        setSel((cur) => Math.max(0, cur >= i ? cur - 1 : cur));
+    };
+
+    const noExtras = priced.extras.every((e) => e.line_pence <= 0);
+    const unconfirmed = !book.book.settings.figures_confirmed_by;
 
     // --- render ------------------------------------------------------------
 
@@ -308,6 +334,46 @@ export function CalculatorClient({
                 </div>
             )}
 
+            {pending && (
+                <div className="calc-note warn" role="alertdialog" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ flex: 1 }}>{pending.text}</span>
+                    <button
+                        className="btn-danger"
+                        style={{ fontSize: 13 }}
+                        onClick={() => {
+                            const run = pending.run;
+                            setPending(null);
+                            run();
+                        }}
+                    >
+                        {pending.yes}
+                    </button>
+                    <button className="btn-secondary" style={{ fontSize: 13 }} onClick={() => setPending(null)}>
+                        Keep editing
+                    </button>
+                </div>
+            )}
+
+            {unconfirmed && (
+                <div className="calc-note warn">
+                    <b>These prices have not been signed off yet.</b> The price book is Mak&rsquo;s spreadsheet as he
+                    supplied it, including the figures he flagged himself — fabrication and assembly at £65/hr where the
+                    old system charged £90, and the 3000 × 1500 sheet at £87. Check them on the Price book tab and mark
+                    them confirmed before quoting real work from it.
+                </div>
+            )}
+
+            {meta.quote_id && (
+                <div className="calc-note info">
+                    This job has been turned into a quote. Edits here do not change it — use{' '}
+                    <b>Create a revised quote</b> on the Quote tab once you are happy, or{' '}
+                    <Link href={`/admin/quotes/${meta.quote_id}`} className="calc-linkbtn">
+                        open the quote
+                    </Link>{' '}
+                    to change it there.
+                </div>
+            )}
+
             <nav className="calc-tabs" role="tablist">
                 {(
                     [
@@ -331,6 +397,7 @@ export function CalculatorClient({
                         priced={priced}
                         sel={signIdx}
                         onSelect={setSel}
+                        onRemove={removeSign}
                         onAdd={() => {
                             edit((j) => ({ ...j, signs: [...j.signs, blankSign(book.book, j.signs.length + 1)] }));
                             setSel(job.signs.length);
@@ -353,18 +420,7 @@ export function CalculatorClient({
                                 });
                                 setSel(signIdx + 1);
                             }}
-                            onRemove={
-                                job.signs.length > 1
-                                    ? () => {
-                                          if (!window.confirm(`Remove ${sign.name}?`)) return;
-                                          edit((j) => {
-                                              j.signs.splice(signIdx, 1);
-                                              return j;
-                                          });
-                                          setSel(Math.max(0, signIdx - 1));
-                                      }
-                                    : null
-                            }
+                            onRemove={() => removeSign(signIdx)}
                         />
                         <ExtrasEditor job={job} priced={priced} book={book.book} edit={edit} />
                     </div>
@@ -373,6 +429,7 @@ export function CalculatorClient({
                         <JobMoney
                             priced={priced}
                             book={book.book}
+                            noExtras={noExtras}
                             onQuote={() => setTab('quote')}
                             onBreakdown={() => setTab('breakdown')}
                         />
@@ -391,6 +448,7 @@ export function CalculatorClient({
                     reference={meta.reference}
                     quoteId={meta.quote_id}
                     busy={busy === 'quote' || busy === 'save'}
+                    noExtras={noExtras}
                     onCreate={makeQuote}
                 />
             )}
@@ -425,12 +483,14 @@ function SignList({
     sel,
     onSelect,
     onAdd,
+    onRemove,
 }: {
     job: CalcJob;
     priced: JobResult;
     sel: number;
     onSelect: (i: number) => void;
     onAdd: () => void;
+    onRemove: (i: number) => void;
 }) {
     return (
         <section className="calc-panel">
@@ -444,14 +504,27 @@ function SignList({
                 {job.signs.map((s, i) => {
                     const r = priced.signs[i].r;
                     return (
-                        <button key={s.id} aria-current={i === sel} onClick={() => onSelect(i)}>
-                            <span className="nm">
-                                {r.errors.length > 0 && <span className="calc-dot" title="Part of this sign is not priced" />}
-                                {s.name || 'Untitled sign'}
-                                {s.qty > 1 && <span className="badge">{s.qty} off</span>}
+                        <div key={s.id} className="row" data-current={i === sel}>
+                            <button className="pick" aria-current={i === sel} onClick={() => onSelect(i)}>
+                                <span className="nm">
+                                    {r.errors.length > 0 && <span className="calc-dot" title="Part of this sign is not priced" />}
+                                    {s.name || 'Untitled sign'}
+                                    {s.qty > 1 && <span className="badge">{s.qty} off</span>}
+                                </span>
+                                <span className="amt mono">{formatPence(r.total_pence)}</span>
+                            </button>
+                            <span className="rm">
+                                <ConfirmButton
+                                    className="calc-iconbtn"
+                                    ariaLabel={`Remove ${s.name || 'sign'}`}
+                                    question={job.signs.length > 1 ? 'Remove?' : 'Clear it?'}
+                                    yes="Yes"
+                                    onConfirm={() => onRemove(i)}
+                                >
+                                    <Trash2 size={14} />
+                                </ConfirmButton>
                             </span>
-                            <span className="amt mono">{formatPence(r.total_pence)}</span>
-                        </button>
+                        </div>
                     );
                 })}
             </div>
@@ -474,7 +547,7 @@ function SignEditor({
     notes: string[];
     editSign: (fn: (s: CalcSign) => void) => void;
     onDuplicate: () => void;
-    onRemove: (() => void) | null;
+    onRemove: () => void;
 }) {
     const mats = panelMaterials(book);
     const apMats = apertureMaterials(book);
@@ -494,11 +567,13 @@ function SignEditor({
                     <button className="btn-secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={onDuplicate}>
                         <Copy size={13} /> Duplicate
                     </button>
-                    {onRemove && (
-                        <button className="btn-secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={onRemove}>
-                            <Trash2 size={13} /> Remove
-                        </button>
-                    )}
+                    <ConfirmButton
+                        style={{ padding: '4px 10px', fontSize: 12 }}
+                        question={`Remove ${sign.name || 'this sign'}?`}
+                        onConfirm={onRemove}
+                    >
+                        <Trash2 size={13} /> Remove
+                    </ConfirmButton>
                 </span>
             </header>
             <div className="body">
@@ -745,10 +820,22 @@ function SignEditor({
                     <div className="calc-grid4" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(130px, 1fr))` }}>
                         {book.labour.map((l) => (
                             <Field key={l.id} label={`${l.name} · ${formatPence(l.rate_pence)}/hr`}>
-                                <NumberInput step={0.25} value={sign.hours[l.id] ?? 0} onChange={(v) => editSign((s) => void (s.hours[l.id] = v ?? 0))} />
+                                <HoursField
+                                    label={l.name}
+                                    value={sign.hours[l.id] ?? 0}
+                                    onChange={(v) => editSign((s) => void (s.hours[l.id] = v))}
+                                />
                             </Field>
                         ))}
                     </div>
+                    <label className="calc-check">
+                        <input
+                            type="checkbox"
+                            checked={sign.no_labour}
+                            onChange={(e) => editSign((s) => void (s.no_labour = e.target.checked))}
+                        />
+                        No production labour on this sign (otherwise a sign with no hours cannot be quoted)
+                    </label>
                 </div>
 
                 <div className="calc-sec">
@@ -794,6 +881,9 @@ function SignEditor({
     );
 }
 
+/** What Mak's tool listed as priced by hand rather than calculated. */
+const STANDARD_EXTRAS = ['Installation', 'Access equipment', 'Delivery', 'Survey', 'Artwork', 'Electrical connection'];
+
 function ExtrasEditor({
     job,
     priced,
@@ -828,6 +918,25 @@ function ExtrasEditor({
                     markup to run a line through the {book.settings.markup_pct}% materials markup; leave it clear for
                     anything already at sell price.
                 </span>
+                {/* Mak prices these by hand, so the calculator cannot — but it
+                    can make sure nobody forgets them. One press adds the line;
+                    the price still has to be typed. */}
+                <div className="calc-chips" aria-label="Add a standard extra">
+                    {STANDARD_EXTRAS.filter((d) => !job.extras.some((e) => e.description === d)).map((d) => (
+                        <button
+                            key={d}
+                            type="button"
+                            onClick={() =>
+                                edit((j) => ({
+                                    ...j,
+                                    extras: [...j.extras, { id: newId(), description: d, qty: 1, unit_cost_pence: 0, markup: false }],
+                                }))
+                            }
+                        >
+                            + {d}
+                        </button>
+                    ))}
+                </div>
                 {job.extras.length > 0 && (
                     <div className="calc-tablewrap">
                         <table className="calc-table">
@@ -867,7 +976,9 @@ function ExtrasEditor({
                                             />
                                         </td>
                                         <td className="num mono">{formatPence(priced.extras[i].sell_unit_pence)}</td>
-                                        <td className="num mono">{formatPence(priced.extras[i].line_pence)}</td>
+                                        <td className="num mono" style={priced.extras[i].line_pence ? undefined : { color: 'var(--calc-warn)' }}>
+                                            {priced.extras[i].line_pence ? formatPence(priced.extras[i].line_pence) : 'no price'}
+                                        </td>
                                         <td>
                                             <button
                                                 className="calc-iconbtn"
@@ -926,11 +1037,13 @@ function JobMoney({
     book,
     onQuote,
     onBreakdown,
+    noExtras,
 }: {
     priced: JobResult;
     book: PriceBook;
     onQuote: () => void;
     onBreakdown: () => void;
+    noExtras: boolean;
 }) {
     return (
         <section className="calc-panel">
@@ -950,6 +1063,12 @@ function JobMoney({
                 {priced.error_count > 0 && (
                     <div className="calc-note err">
                         {priced.error_count} thing{priced.error_count === 1 ? ' is' : 's are'} not priced — see the red notes.
+                    </div>
+                )}
+                {noExtras && (
+                    <div className="calc-note warn">
+                        No installation, access or delivery on this job. They are priced by hand under Job extras —
+                        add them if they apply.
                     </div>
                 )}
                 <div className="calc-actions">

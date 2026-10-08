@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 
 /**
  * Number inputs that never fight the person typing.
@@ -106,5 +106,60 @@ export function Field({ label, children, htmlFor }: { label: string; children: R
             <span>{label}</span>
             {children}
         </label>
+    );
+}
+
+/**
+ * A destructive button that asks on the page, not with window.confirm.
+ *
+ * A browser told to "prevent this page from creating additional dialogs"
+ * answers every confirm() with false without showing anything, and the
+ * button it guarded just stops working. The first press here turns the
+ * button into "Remove? Yes / No" in place.
+ */
+export function ConfirmButton({
+    children,
+    question = 'Remove?',
+    yes = 'Yes, remove',
+    onConfirm,
+    className = 'btn-secondary',
+    style,
+    ariaLabel,
+    disabled,
+}: {
+    children: ReactNode;
+    question?: string;
+    yes?: string;
+    onConfirm: () => void;
+    className?: string;
+    style?: CSSProperties;
+    ariaLabel?: string;
+    disabled?: boolean;
+}) {
+    const [asking, setAsking] = useState(false);
+    if (asking) {
+        return (
+            <span className="calc-confirm" role="group" aria-label={question}>
+                <span>{question}</span>
+                <button
+                    type="button"
+                    className="calc-confirm-yes"
+                    onClick={() => {
+                        setAsking(false);
+                        onConfirm();
+                    }}
+                >
+                    {yes}
+                </button>
+                <button type="button" className="calc-confirm-no" onClick={() => setAsking(false)}>
+                    No
+                </button>
+            </span>
+        );
+    }
+    return (
+        <button type="button" className={className} style={style} aria-label={ariaLabel} disabled={disabled} onClick={() => setAsking(true)}>
+            {children}
+        </button>
     );
 }

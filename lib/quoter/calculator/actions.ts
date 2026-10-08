@@ -19,7 +19,6 @@ import { getUser, requireSuperAdminOrError } from '@/lib/auth';
 import { ok, err, type Result } from '@/lib/result';
 import { getActivePricingSet } from '@/lib/quoter/rate-card';
 import { addGenericQuoteItemAction, createQuoteAction, updateQuoteAction } from '@/lib/quoter/actions';
-import type { QuoteSubItemInput } from '@/lib/quoter/types';
 import { defaultPriceBook } from './default-price-book';
 import {
     CalcJobSchema,
@@ -29,7 +28,8 @@ import {
     type PriceBook,
     type PriceBookVersion,
 } from './types';
-import { parsePriceBook, priceJob, signSpec, validatePriceBook } from '../engine/panel-letters-v2';
+import { formatPence, parsePriceBook, priceJob, validatePriceBook } from '../engine/panel-letters-v2';
+import { buildQuoteLines } from './quote-lines';
 
 const PATH = '/admin/calculator';
 
@@ -233,21 +233,28 @@ export async function deleteCalculatorJob(id: string): Promise<Result<null>> {
  *
  * Each sign becomes a generic production line priced at the calculator's
  * "each" figure, so the quote's lines multiply out to exactly the calculator's
- * total. Its tray, aperture and letter sets go across as sub-items, which is
- * what the artwork skeleton is generated from when the quote is accepted.
- * Extras go across as service lines at their sell price.
+ * total (see quote-lines.ts, which the tests hold to that). Extras go across
+ * as service lines at their sell price.
  *
- * The quote gets its OSD- reference and 30-day validity from the normal quote
- * flow; everything after this point is the quote's, not the calculator's.
+ * `expectedNetPence` is the net the person was looking at. The job is
+ * re-priced here from the current book, and if someone saved new prices in
+ * between, the two differ — the quote is refused rather than going out at a
+ * figure nobody saw.
+ *
+ * A job that already has a quote can be quoted again (a revision after
+ * edits); the job then points at the new quote. The old one is untouched.
  */
-export async function createQuoteFromCalculatorJob(jobId: string): Promise<Result<{ quote_id: string }>> {
+export async function createQuoteFromCalculatorJob(
+    jobId: string,
+    opts: { expectedNetPence: number; again?: boolean }
+): Promise<Result<{ quote_id: string }>> {
     const gate = await requireSuperAdminOrError();
     if (!gate.ok) return err(gate.error);
 
     const loaded = await getCalculatorJob(jobId);
     if (!loaded.ok) return loaded;
     const row = loaded.data;
-    if (row.quote_id) return err('This job has already been turned into a quote.');
+    if (row.quote_id && !opts.again) return err('This job has already been turned into a quote.');
 
     const current = await loadCurrentBook();
     if (!current.ok) return current;
@@ -258,6 +265,11 @@ export async function createQuoteFromCalculatorJob(jobId: string): Promise<Resul
         return err('Part of this job is not priced (see the red notes on each sign). Fix those before making a quote.');
     }
     if (priced.net_pence <= 0) return err('There is nothing priced on this job yet.');
+    if (priced.net_pence !== opts.expectedNetPence) {
+        return err(
+            `The price book changed since this page loaded — the job now comes to ${formatPence(priced.net_pence)}, not ${formatPence(opts.expectedNetPence)}. Reload the page, check the figures, and create the quote again.`
+        );
+    }
 
     let pricingSetId: string;
     try {
@@ -279,83 +291,19 @@ export async function createQuoteFromCalculatorJob(jobId: string): Promise<Resul
     }.`;
     await updateQuoteAction({ id: quoteId, project_name: row.title, notes_internal: stamp });
 
-    const fail = (what: string, e: string) =>
-        err(`The quote was created but ${what} could not be added (${e}). Open the quote to finish it by hand.`);
-
-    for (const { sign, r } of priced.signs) {
-        const finish = book.panel_finishes.find((f) => f.id === sign.panel.finish_id);
-        const subItems: QuoteSubItemInput[] = [];
-        if (sign.panel.width_mm > 0 && sign.panel.height_mm > 0) {
-            subItems.push({
-                name: 'Tray',
-                material: sign.panel.material,
-                finish: finish?.name,
-                quantity: 1,
-                width_mm: sign.panel.width_mm,
-                height_mm: sign.panel.height_mm,
-                returns_mm: sign.panel.returns_mm,
-            });
-        }
-        if (sign.aperture.on && sign.aperture.width_mm > 0 && sign.aperture.height_mm > 0) {
-            subItems.push({
-                name: 'Illuminated aperture',
-                material: sign.aperture.material,
-                quantity: 1,
-                width_mm: sign.aperture.width_mm,
-                height_mm: sign.aperture.height_mm,
-            });
-        }
-        for (const set of sign.letter_sets) {
-            if (!(set.qty > 0)) continue;
-            const type = book.letter_types.find((t) => t.id === set.type_id);
-            const fin = type?.finishes.find((f) => f.id === set.finish_id);
-            subItems.push({
-                name: `${type?.name ?? 'Letters'} letters, ${set.height_mm}mm`,
-                material: type?.name,
-                finish: fin?.name,
-                quantity: set.qty,
-                height_mm: set.height_mm > 0 ? set.height_mm : null,
-                notes: set.illuminated ? 'Illuminated' : undefined,
-            });
-        }
-        const lit = sign.aperture.on || sign.letter_sets.some((s) => s.illuminated && s.qty > 0);
-
-        const added = await addGenericQuoteItemAction(quoteId, {
-            part_label: (sign.name || 'Sign').slice(0, 120),
-            description: signSpec(sign, book).join('; ').slice(0, 4000),
-            is_production_work: true,
-            width_mm: sign.panel.width_mm > 0 ? sign.panel.width_mm : null,
-            height_mm: sign.panel.height_mm > 0 ? sign.panel.height_mm : null,
-            returns_mm: sign.panel.returns_mm,
-            quantity: r.qty,
-            unit_cost_pence: Math.round(r.materials_pence / r.qty),
-            unit_price_pence: r.unit_pence,
-            lighting: lit ? 'Illuminated' : undefined,
-            spec_notes: stamp,
-            sub_items: subItems.slice(0, 20),
-        });
-        if ('error' in added) return fail(sign.name, added.error);
-    }
-
-    for (const e of priced.extras) {
-        if (e.line_pence <= 0) continue;
-        // Quote lines take whole quantities. A fractional one (half a day's
-        // fitting) goes across as one line at its total, with the working in
-        // the description, so the money still matches.
-        const whole = Number.isInteger(e.qty) && e.qty >= 1;
-        const added = await addGenericQuoteItemAction(quoteId, {
-            part_label: (e.description || 'Additional item').slice(0, 120),
-            description: whole ? undefined : `${e.qty} × £${(e.sell_unit_pence / 100).toFixed(2)}`,
-            is_production_work: false,
-            quantity: whole ? e.qty : 1,
-            unit_price_pence: whole ? e.sell_unit_pence : e.line_pence,
-            unit_cost_pence: e.unit_cost_pence,
-        });
-        if ('error' in added) return fail(e.description || 'an extra', added.error);
-    }
-
+    // Link the job straight away, so a failure part-way through still leaves
+    // the job pointing at the quote that needs finishing.
     const supabase = await createServerClient();
     await supabase.from('calculator_jobs').update({ quote_id: quoteId }).eq('id', jobId);
+
+    for (const line of buildQuoteLines(priced, book, stamp)) {
+        const added = await addGenericQuoteItemAction(quoteId, line);
+        if ('error' in added) {
+            return err(
+                `The quote was created but "${line.part_label}" could not be added (${added.error}). Open the quote to finish it by hand.`
+            );
+        }
+    }
 
     revalidatePath(PATH);
     revalidatePath('/admin/quotes');

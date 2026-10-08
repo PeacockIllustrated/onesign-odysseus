@@ -13,6 +13,7 @@ import { QuoteHeaderEdit } from './QuoteHeaderEdit';
 import { CreateJobButton } from './CreateJobButton';
 import { CreateInvoiceButton } from './CreateInvoiceButton';
 import { GenerateArtworkButton } from './GenerateArtworkButton';
+import { GenericItemActions } from './GenericItemActions';
 import { AddItemPicker } from './AddItemPicker';
 import { VisualsForQuoteCard } from './components/VisualsForQuoteCard';
 
@@ -354,6 +355,9 @@ export default async function QuoteDetailPage({ params }: PageProps) {
                                             <p className="text-[10px] text-neutral-500">
                                                 qty {anyItem.quantity ?? 1}
                                             </p>
+                                            {quote.status === 'draft' && (
+                                                <GenericItemActions quoteId={id} itemId={item.id} />
+                                            )}
                                         </div>
                                     </div>
                                 </div>
